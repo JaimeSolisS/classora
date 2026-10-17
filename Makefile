@@ -1,4 +1,4 @@
-.PHONY: dev migrate lint lint-api lint-web test test-api test-web test-unit test-integration storybook test-storybook
+.PHONY: dev migrate seed seed-demo lint lint-api lint-web test test-api test-web test-unit test-integration storybook test-storybook
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -12,6 +12,16 @@ dev:
 # --build: uses the migrations in the working tree. Alembic connects directly to PostgreSQL (ADR-0003).
 migrate:
 	docker compose run --rm --build api alembic upgrade head
+
+## Apply the reference seeds to the local Compose database (idempotent; run `make migrate` first).
+# Same image and direct connection as `make migrate` (ADR-0003); never migrates.
+seed:
+	docker compose run --rm --build api python -m app.seeds
+
+## Generate synthetic es_MX demo data on the host (refused unless APP_ENV is local or dev; needs .env).
+# Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.
+seed-demo:
+	cd apps/api && uv run --env-file ../../.env python -m tests.factories.demo
 
 ## Lint both apps (check only, never modifies files). Fails if either part fails.
 lint: lint-api lint-web

@@ -144,20 +144,21 @@ def short_lived_engine(dsn: str, **kwargs: Any) -> AsyncEngine:
     )
 
 
+async def run_sql_async(dsn: str, sql: str, *, autocommit: bool = False) -> list[Any]:
+    """:func:`run_sql` for async tests (inside their event loop)."""
+    options = {"isolation_level": "AUTOCOMMIT"} if autocommit else {}
+    engine = short_lived_engine(dsn, **options)
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(text(sql))
+            return list(result.all()) if result.returns_rows else []
+    finally:
+        await engine.dispose()
+
+
 def run_sql(dsn: str, sql: str, *, autocommit: bool = False) -> list[Any]:
     """Run one statement in its own connection and return all rows (if any)."""
-
-    async def _run() -> list[Any]:
-        options = {"isolation_level": "AUTOCOMMIT"} if autocommit else {}
-        engine = short_lived_engine(dsn, **options)
-        try:
-            async with engine.begin() as conn:
-                result = await conn.execute(text(sql))
-                return list(result.all()) if result.returns_rows else []
-        finally:
-            await engine.dispose()
-
-    return asyncio.run(_run())
+    return asyncio.run(run_sql_async(dsn, sql, autocommit=autocommit))
 
 
 @pytest.fixture

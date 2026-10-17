@@ -22,6 +22,8 @@ dev = [
     "mypy>=2.4.0",
     "testcontainers>=4.15.0",
     "pytest-cov>=7.1.0",
+    "factory-boy>=3.3.3",
+    "faker>=40.43.0",
 ]
 
 [tool.uv]

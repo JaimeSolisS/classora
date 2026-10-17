@@ -4,6 +4,9 @@ Applies the ``unit`` / ``integration`` marker from each test's directory. Every
 test must live under ``tests/unit/`` or ``tests/integration/``. A test anywhere
 else is a collection error, so it cannot escape both ``-m`` selections.
 
+Every test also starts with Factory Boy and Faker reseeded to
+``FACTORY_SEED``, so generated data never depends on test order.
+
 Also isolates every test from the developer's shell: the variables that
 ``Settings`` reads are removed and the cached settings are cleared, so tests
 set exactly the configuration they need.
@@ -16,6 +19,9 @@ from pathlib import Path
 import pytest
 
 from app.core.config import env_var_names, get_settings
+from tests.factories.base import reseed
+
+FACTORY_SEED = 20261017
 
 TESTS_ROOT = Path(__file__).parent
 MARKER_BY_DIRECTORY = {
@@ -53,6 +59,11 @@ def isolated_settings_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def reseeded_factories() -> None:
+    reseed(FACTORY_SEED)
 
 
 @pytest.fixture

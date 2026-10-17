@@ -79,6 +79,27 @@ runs migrations, so run `make migrate` after `make dev` on a new checkout and
 again whenever you pull new migrations. Running it when the database is already
 up to date changes nothing.
 
+### Seed data
+
+```bash
+make seed       # reference data
+make seed-demo  # synthetic demo data (local and dev only)
+```
+
+`make seed` applies the reference data every environment needs. Run
+`make migrate` first: it refuses to run on a database with pending migrations.
+It is safe to repeat; a second run changes nothing.
+
+`make seed-demo` runs on the host (with the API's development dependencies, via
+`uv`) and needs `.env`. It applies the reference data and then generates
+synthetic Spanish (Mexico) demo data. It never uses real personal data, and it
+refuses to run unless `APP_ENV` is `local` or `dev`. Running it again adds more
+demo data; to start over, run `docker compose down -v`, then `make dev`,
+`make migrate` and `make seed-demo`.
+
+No reference seeds or demo generators exist yet, so both commands currently
+write nothing; they fill in as features are added.
+
 ## Configuration
 
 `.env.example` documents every variable with safe local placeholders; copy it
@@ -89,8 +110,9 @@ missing or invalid value; `docker compose logs api` shows a short
 
 The API uses two database URLs: `DATABASE_URL` is the pooled one (through
 PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
-migrations). Inside Compose both are built from the `POSTGRES_*` values; the
-values in `.env` only matter when you run the API or Alembic on the host.
+migrations and seeds). Inside Compose both are built from the `POSTGRES_*`
+values; the values in `.env` only matter when you run the API, Alembic or
+`make seed-demo` on the host.
 
 If your `.env` was copied before a variable was added, refresh it from
 `.env.example` (for example, copy it again).
