@@ -4,11 +4,11 @@
 **Canonical product and architecture specification (`_docs/spec.md`)**  
 **Version:** 1.2 — 2026-10-16  
 **Status:** Requirements and architecture baseline; implementation not started. Detailed schema, API contracts and wireframes remain pending.  
-**Companion guide:** `Classora_FULLREADME.md` (AI-assisted delivery workflow; not a substitute for product requirements).
+**Companion guides:** `_docs/guides/agent-driven-guide.md` and `_docs/guides/full-guide.md` (AI-assisted delivery workflow; not a substitute for product requirements).
 
 > **Source of truth:** This document consolidates the project decisions discussed in the Classora planning conversation. Later corrections supersede earlier choices (notably: **no Redis or Celery; self-hosted PostgreSQL on EC2; independently deployed DEV and PROD; Procrastinate with PostgreSQL for background and periodic jobs**). Proposed entities and implementation details are identified as design starting points, not approved schema.
 >
-> **Document boundary:** This specification defines **what Classora must do and the technical constraints**. Agent roles, prompts, grooming, and the day-to-day delivery process belong to `Classora_FULLREADME.md`, `AGENTS.md` and `_docs/process.md`.
+> **Document boundary:** This specification defines **what Classora must do and the technical constraints**. Agent roles, prompts, grooming, and the day-to-day delivery process belong to `_docs/guides/agent-driven-guide.md`, `_docs/guides/full-guide.md`, `AGENTS.md` and `_docs/process.md`.
 
 ## 1. Product vision and boundaries
 
@@ -218,7 +218,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 
 ## 11. Canonical monorepo layout
 
-The repository structure below is **identical to the one in `Classora_FULLREADME.md` (Part 3, §11)**. The playbook is the canonical reference for folder organization; future changes to this tree must be reflected in both documents.
+The repository structure below is **identical to the one in `_docs/guides/full-guide.md` (Part 3, §11)**. The playbook is the canonical reference for folder organization; future changes to this tree must be reflected in both documents.
 
 ```text
 classora/

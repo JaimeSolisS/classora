@@ -47,3 +47,5 @@ suite with pytest through uv.
 
 - [Product specification](_docs/spec.md)
 - [Architecture](_docs/architecture.md)
+- [Agent instructions](AGENTS.md)
+- [Delivery process](_docs/process.md) (agent workflow and contribution guidance)

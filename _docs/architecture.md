@@ -267,7 +267,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED**. None of them is APPROVED.  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Only ISSUE-G1 (in part) is accepted.  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -278,10 +278,10 @@ Every **Resolution** below is **PROPOSED**. None of them is APPROVED.
   - The spec names `Classora_FULLREADME.md` as the companion guide and says the tree is "identical to … Part 3, §11". That file does not exist. The guides live in `_docs/guides/` (`full-guide.md`, `agent-driven-guide.md`, `prompt-driven-guide.md`).
   - The spec's tree omits the root `README.md` and `_docs/task-template.md`, but §11's prose mentions `task-template.md`. The agent-driven guide includes both, plus `_docs/team/{pm,software-engineer,qa-engineer}.md`.
   - `full-guide.md` runs `mkdir -p classora/_docs/{architecture,adr,team}`, which creates an `architecture/` **directory** next to `architecture.md`.
-- **Resolution — PROPOSED:**
-  - Update the spec header and §11 to point at `_docs/guides/`.
-  - Add `README.md`, `_docs/task-template.md` and `_docs/guides/` to the canonical tree.
-  - Remove `architecture` from the `mkdir` command in `full-guide.md`.
+- **Resolution — ACCEPTED in part** (human decision on GitHub issue #2, M1-02; no ADR):
+  - ACCEPTED: Update the spec header and §11 to point at `_docs/guides/`.
+  - PROPOSED: Add `README.md`, `_docs/task-template.md` and `_docs/guides/` to the canonical tree.
+  - ACCEPTED: Remove `architecture` from the `mkdir` command in `full-guide.md`.
 
 #### ISSUE-G2 — "Session" names two different entities (C)
 - **Spec:** §12 lists `Session` under both Identity (login session) and Scheduling (class occurrence).

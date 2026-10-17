@@ -31,7 +31,7 @@ The functional scope and architecture have already been discussed and agreed. **
 Keep the consolidated specification in the repository before coding:
 
 ```bash
-mkdir -p classora/_docs/{architecture,adr,team}
+mkdir -p classora/_docs/{adr,team}
 cd classora
 # Copy the existing Classora specification into _docs/spec.md
 ```
