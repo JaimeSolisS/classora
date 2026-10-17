@@ -1,11 +1,14 @@
 # Classora — Tutoring Center Management Platform
 
 **Product name:** Classora  
-**Consolidated functional and technical specification**  
-**Version:** 1.0 — 2026-10-16  
-**Status:** Scope and architecture decisions captured; detailed database schema and implementation pending.
+**Canonical product and architecture specification (`_docs/spec.md`)**  
+**Version:** 1.2 — 2026-10-16  
+**Status:** Requirements and architecture baseline; implementation not started. Detailed schema, API contracts and wireframes remain pending.  
+**Companion guide:** `Classora_FULLREADME.md` (AI-assisted delivery workflow; not a substitute for product requirements).
 
-> This document consolidates the 115 functional-scoping decisions and subsequent architecture decisions discussed in the conversation. Later corrections supersede earlier choices (notably: no Redis or Celery; self-hosted PostgreSQL on EC2; DEV and PROD both deployed). Design suggestions below are clearly distinguished from decisions.
+> **Source of truth:** This document consolidates the project decisions discussed in the Classora planning conversation. Later corrections supersede earlier choices (notably: **no Redis or Celery; self-hosted PostgreSQL on EC2; independently deployed DEV and PROD; Procrastinate with PostgreSQL for background and periodic jobs**). Proposed entities and implementation details are identified as design starting points, not approved schema.
+>
+> **Document boundary:** This specification defines **what Classora must do and the technical constraints**. Agent roles, prompts, grooming, and the day-to-day delivery process belong to `Classora_FULLREADME.md`, `AGENTS.md` and `_docs/process.md`.
 
 ## 1. Product vision and boundaries
 
@@ -213,44 +216,52 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 - UI component catalog in Storybook; centrally defined design tokens.
 - Architecture documented in Markdown with diagrams and ADRs.
 
-## 11. Proposed monorepo layout
+## 11. Canonical monorepo layout
+
+The repository structure below is **identical to the one in `Classora_FULLREADME.md` (Part 3, §11)**. The playbook is the canonical reference for folder organization; future changes to this tree must be reflected in both documents.
 
 ```text
 classora/
 ├── apps/
-│   ├── web/                 # React + Vite + TypeScript
-│   └── api/                 # FastAPI; same codebase used by Procrastinate worker
+│   ├── web/                  # React, Vite, TypeScript
+│   │   └── src/features/     # by business feature
+│   └── api/                  # FastAPI + Procrastinate codebase
 │       ├── app/
 │       │   ├── core/
-│       │   ├── modules/
-│       │   │   ├── identity/
-│       │   │   ├── students/
-│       │   │   ├── tutors/
-│       │   │   ├── scheduling/
-│       │   │   ├── courses/
-│       │   │   ├── academics/
-│       │   │   ├── billing/
-│       │   │   ├── payroll/
-│       │   │   ├── finance/
-│       │   │   ├── documents/
-│       │   │   └── notifications/
-│       │   └── workflows/
+│       │   ├── modules/      # identity, scheduling, academics, etc.
+│       │   └── workflows/    # cross-domain application operations
 │       ├── migrations/
 │       └── tests/
-├── packages/
-│   └── api-client/          # OpenAPI-generated TypeScript client
+├── packages/api-client/     # generated from FastAPI OpenAPI
 ├── infrastructure/
 │   ├── terraform/
 │   ├── docker/
+│   ├── observability/
 │   └── scripts/
-├── docs/
-│   ├── architecture/
+├── _docs/
+│   ├── architecture.md
+│   ├── spec.md
+│   ├── data-model.md
+│   ├── api.md
+│   ├── design-system.md
+│   ├── testing-guidelines.md
+│   ├── process.md
 │   ├── adr/
-│   └── requirements/
+│   └── team/
+├── e2e/
 ├── .github/workflows/
 ├── compose.yaml
-└── Makefile
+├── Makefile
+├── AGENTS.md
+└── CLAUDE.md
 ```
+
+- `_docs/` is the documentation directory; do **not** create a parallel `docs/` tree.
+- `apps/web/` holds the React application, organized by business feature; `apps/api/` holds the FastAPI modular monolith and the code shared by the separate Procrastinate worker container.
+- `packages/api-client/` contains the TypeScript client generated from the OpenAPI contract.
+- `infrastructure/observability/` contains the dedicated monitoring stack; `infrastructure/terraform/` manages independently sized DEV, PROD, and monitoring infrastructure.
+- `e2e/` holds cross-application Playwright tests; `AGENTS.md` and `CLAUDE.md` provide coding-agent entry points.
+- `_docs/team/`, `_docs/process.md`, and `_docs/task-template.md` support the AI-assisted delivery workflow. These are **process documents**, not substitutes for the product requirements in this file.
 
 ## 12. Core database domain inventory (design starting point)
 
@@ -296,6 +307,115 @@ The detailed schema is **not designed yet**. Candidate entities:
 - **Sentry hosting** and specifics of self-hosted telemetry ingestion/retention need integration validation.
 - **Detailed database schema, exact API contracts, UX wireframes, and user stories** are the next deliverables; this is the accepted requirements/architecture baseline, not implementation-ready DDL.
 
+
+## 15. Core workflows and verifiable acceptance scenarios
+
+The scenarios below translate the approved capabilities into checkable end-to-end behavior. They are **acceptance test starting points**, not a claim that the application is implemented.
+
+### W1. Tutor assignment and class scheduling
+
+1. An administrator selects an individual, group or course session, a student/cohort, subject, date/time and classroom if applicable.
+2. The backend checks student, tutor, room, approved qualification, availability, enrollment/capacity and relevant policies. A conflicting booking must not be silently created.
+3. The administrator selects an eligible tutor; the assignment is offered to that tutor for acceptance or decline.
+4. An accepted assignment appears on authorized student, guardian and tutor calendars. A declined assignment returns to an actionable administrative state.
+5. A recurring series can be modified for a single occurrence or future occurrences without rewriting already completed session history.
+6. Overrides that the policy permits require authorization, a reason and an auditable record.
+
+### W2. Tutoring request from a student or parent
+
+1. A linked guardian or authenticated student requests an individual session using the available slots UI.
+2. The request is **pending**, not an enrollment or confirmed booking; it does not create confirmed calendar occupancy by itself.
+3. An administrator reviews the request, chooses a qualifying tutor and confirms or rejects it.
+4. The requestor sees the final status in the application. Access controls prevent requests for unlinked children.
+
+### W3. Session closeout to payroll
+
+1. A tutor records attendance, actual hours and a lesson summary for an assigned session.
+2. Submission creates a pending approval item; no unapproved hours enter finalized payroll.
+3. The authorized academic reviewer approves or requests correction.
+4. Approved hours enter the relevant tutor payroll calculation using **the effective compensation rules for that service date**.
+5. Once payroll is approved/finalized, prior entries remain traceable; later corrections produce a new adjustment rather than silently changing a finalized period.
+
+### W4. Billing, payments and family accounting
+
+1. Enrollment, a billable class, package purchase or recurring tuition event creates the correct charge only once, even if a background job is retried.
+2. Charges retain the applicable historical price and discounts even when the price catalog later changes.
+3. Finance staff record an external payment, optionally partial, and allocate it across charges for one or more linked children in a family.
+4. Outstanding balances equal posted charges/adjustments less valid allocations and refunds; duplicate payment submissions cannot silently double-post.
+5. Changes to classes or enrollment generate policy-appropriate credits or adjustments; posted transactions are reversed/adjusted, never quietly rewritten.
+6. Families see only their authorized charges, payment history, receipts and balances.
+
+### W5. Academic record visibility
+
+1. A tutor posts an internal session note and optionally publishes parent-facing learning information.
+2. An administrator approves a progress report before its visibility changes to approved-for-family.
+3. Parents can access approved reports, permitted grades and assignments for linked children only—not confidential internal notes or other families' data.
+4. Tutor access to historical records follows the approved current-assignment and read-only former-student rules.
+
+### W6. File submission and release
+
+1. Authorized users request a presigned upload, constrained by type, size, quota and record access.
+2. File metadata begins in a pending/unreleased state until server-side validation and malware scanning succeeds.
+3. Only approved viewers obtain download access. Unauthorized URLs/requests cannot expose another family's or tutor's files.
+4. Deletion moves eligible files into recoverable storage for the configured retention period; permanent deletion follows policy.
+
+### W7. Background jobs and operational recovery
+
+1. The FastAPI API and Procrastinate worker run as **separate containers**, sharing the same backend code and PostgreSQL environment.
+2. Periodic billing and reminder tasks enqueue repeatably without creating duplicate business transactions.
+3. Jobs persist across process restarts according to the PostgreSQL-backed queue; failed jobs expose status and support permitted retry.
+4. Tests validate retries, idempotency and concurrent processing for financial operations.
+
+### W8. CI/CD and rollback
+
+1. Every pull request runs the required lint, types, tests, security scans and infrastructure checks relevant to changed files.
+2. Merge to `develop` deploys to **DEV** automatically after checks; production does not deploy from that event.
+3. A release promoted to **PROD** uses the same ECR **immutable digest** validated in DEV and requires the approved GitHub workflow.
+4. A failing readiness check stops the rollout and reverts the application image when feasible; migrations are **not** automatically reversed.
+5. Database backup-and-restore tests and PITR drills must demonstrate recoverability before production reliance.
+
+## 16. Cross-cutting data and integrity requirements
+
+- **Money:** Financial calculations must use exact decimal-safe representations; do not use binary floating point for charges, allocations, compensation or balances. The exact storage/value-object strategy remains a schema-level implementation detail, not a recorded choice.
+- **Time:** Store instants as UTC-aware timestamps; capture the center's configured time zone for scheduling, local date boundaries, recurrence and due dates. Never infer class dates solely from UTC dates.
+- **Identifiers and relations:** UUID keys, unique/check constraints and foreign keys; represent guardian-child links and tutor qualifications explicitly.
+- **Permissions:** Server-side role + record-level checks in API endpoints, generated files, background jobs and presigned links. Never rely on frontend route guards alone.
+- **Historical truth:** Use effective-dated catalog values, immutable posted financial activity, payroll locks, audit events and correction entries so past reports remain explainable.
+- **Consistency:** Use transactions/idempotency for charge generation, payment allocations, payroll approvals and asynchronous retries. Database constraints—not frontend checks alone—protect business invariants.
+- **Search and performance:** Index predictable access paths (user, family, schedule, billing status, academic period), test query performance, and cap export sizes or run exports asynchronously.
+- **Privacy:** Retention and deletion must respect required financial/audit records while minimizing exposure of minors' personal and educational data.
+
+## 17. Scope traceability and delivery artifacts
+
+The following artifacts should derive from this specification; they **must not silently override it**:
+
+| Artifact | Purpose | Owner / governance |
+|---|---|---|
+| `_docs/spec.md` | Product requirements and accepted technical constraints | Change only after a deliberate scope/architecture decision |
+| `_docs/architecture.md` | Detailed components, deployment diagram and ADR references | Document tradeoffs and implementation consequences |
+| `_docs/data-model.md` | Final entities, FK relationships, invariants, indexes and migration strategy | Schema review before implementing financial workflows |
+| `openapi.yaml` or generated OpenAPI | Versioned frontend/backend contract; generate typed client | Endpoint contract tests and CI drift detection |
+| `_docs/design-system.md` | Role-adaptive layouts, tokens, accessibility, components | UI review and consistent implementations |
+| `_docs/testing-guidelines.md` | Test fixtures, permission matrix, E2E and financial invariants | QA and CI checks |
+| `_docs/process.md` | GitHub Issues, grooming, implementation, QA and release steps | Separate development-playbook concern |
+| `AGENTS.md` | Concise coding-agent project entry point | Links to spec and task-relevant guidance |
+
+**Definition of done for an issue:** Checkable acceptance criteria pass; corresponding tests exist; affected permissions, financial invariants and audit trails are exercised; generated API contract stays in sync; migrations are safe; user-facing states and errors are handled; required documentation is updated. The workflow guide expands on the PM → Engineer → QA sequence.
+
+## 18. Clarifications deliberately left open
+
+These are **not permission to change the product scope**. They need explicit implementation decisions or verification before their related work is marked complete:
+
+1. Exact PostgreSQL table names, relationship cardinalities, finance ledger conventions, monetary rounding approach and storage precision.
+2. Exact authentication account-recovery delivery mechanism without introducing general outbound email notifications.
+3. Whether/how Sentry is hosted or consolidated with the selected monitoring stack.
+4. Details of rate-limit enforcement without Redis, and operation of SSE/`LISTEN/NOTIFY` in the chosen container process topology.
+5. Concrete workflow for malware scanning, preview generation and safe presigned-download authorization.
+6. FullCalendar licensing implications if premium scheduler/resource features are required.
+7. Resource sizing and deploy interruption tolerance on a single small EC2 host; load testing and recovery time objectives.
+8. Distribution-specific CloudFront origin authentication and secret exposure controls during SSM-based deployments.
+9. Compliance/legal retention and guardian consent wording for the actual operating jurisdiction.
+
 ---
 
-*Prepared from the complete requirements and architecture decision discussion through the final selection of Procrastinate periodic jobs.*
+*Classora specification v1.2. Product scope reflects the prior approved functional decisions; additional workflows are derived testable interpretations. No application code or production infrastructure is claimed to have been deployed.*
