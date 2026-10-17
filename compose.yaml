@@ -1,72 +1,44 @@
-# Local development stack. Values come from .env (copy .env.example).
-# The postgres:18 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
+# Local development entry point (make dev, make migrate, plain `docker compose ...`).
+# Values come from .env (copy .env.example).
+#
+# The services are defined in two stack files, split the way the hosts run them
+# (architecture §9.1, _docs/adr/0003-database-connection-topology.md):
+#   infrastructure/docker/compose.data.yaml  db, pgbouncer
+#   infrastructure/docker/compose.app.yaml   api, web
+# Locally they run as ONE Compose project ("classora", same db-data volume).
+# Each service here pulls its definition in with `extends:` (Compose `include:`
+# needs v2.20+, and the development host runs v2.19). `extends:` keeps each
+# file's settings, including depends_on inside a stack; only the dependency
+# between the stacks (api waits for pgbouncer) is added here.
+# Host ports for db and pgbouncer come only from compose.override.yaml, which
+# `docker compose` loads automatically next to this file.
 name: classora
 
 services:
   db:
-    image: postgres:18
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - db-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-      start_period: 5s
+    extends:
+      file: infrastructure/docker/compose.data.yaml
+      service: db
+
+  pgbouncer:
+    extends:
+      file: infrastructure/docker/compose.data.yaml
+      service: pgbouncer
 
   api:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/api.Dockerfile
-    # API settings from .env (validated at startup; see .env.example). An unset
-    # variable is passed empty, which the API treats as missing or unset.
-    environment:
-      APP_ENV: ${APP_ENV:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
-      STORAGE_REGION: ${STORAGE_REGION:-}
-      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
-    ports:
-      - "127.0.0.1:8000:8000"
-    # Lets `docker compose up --wait` (make dev) return only once the API serves requests.
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-      start_period: 5s
+    extends:
+      file: infrastructure/docker/compose.app.yaml
+      service: api
+    # API -> PgBouncer -> PostgreSQL: `docker compose up --wait` returns only
+    # when the whole path is up.
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
   web:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/web.Dockerfile
-    environment:
-      # Read only by vite.config.ts (dev proxy for /health and /api); never reaches client code.
-      API_PROXY_TARGET: http://api:8000
-    ports:
-      - "127.0.0.1:5173:5173"
-    # Lets `docker compose up --wait` (make dev) return only once the page is served.
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(async (r) => process.exit(r.ok && (await r.text()).includes('id=\"root\"') ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-      start_period: 5s
-    depends_on:
-      api:
-        condition: service_healthy
+    extends:
+      file: infrastructure/docker/compose.app.yaml
+      service: web
 
 volumes:
   db-data:

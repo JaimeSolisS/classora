@@ -1,0 +1,54 @@
+# App stack: API and web (architecture §9.1,
+# _docs/adr/0003-database-connection-topology.md). The data stack is compose.data.yaml.
+# Locally both stacks run as one Compose project through the root compose.yaml.
+# Host ports for db and pgbouncer belong ONLY in the local developer override
+# (root compose.override.yaml); the api and web ports below stay here.
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api.Dockerfile
+    # API settings from .env (validated at startup; see .env.example). An unset
+    # variable is passed empty, which the API treats as missing or unset.
+    environment:
+      APP_ENV: ${APP_ENV:-}
+      # Pooled: request traffic goes through PgBouncer (transaction mode).
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}
+      # Direct: Alembic (and later LISTEN and the worker) bypass PgBouncer.
+      DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_REGION: ${STORAGE_REGION:-}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Lets `docker compose up --wait` (make dev) return only once the API serves requests.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/web.Dockerfile
+    environment:
+      # Read only by vite.config.ts (dev proxy for /health and /api); never reaches client code.
+      API_PROXY_TARGET: http://api:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    # Lets `docker compose up --wait` (make dev) return only once the page is served.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(async (r) => process.exit(r.ok && (await r.text()).includes('id=\"root\"') ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    depends_on:
+      api:
+        condition: service_healthy

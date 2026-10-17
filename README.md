@@ -10,7 +10,8 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 
 **Pre-alpha.** Only the local development foundation exists so far: a FastAPI
 API with liveness and readiness health checks, backed by a local PostgreSQL
-container whose schema is managed with Alembic migrations, and a React +
+container (reached through PgBouncer) whose schema is managed with Alembic
+migrations, and a React +
 TypeScript + Vite placeholder page that shows whether the API is live. The web
 app has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook) and a light/dark/system theme
@@ -32,12 +33,13 @@ cp .env.example .env
 make dev
 ```
 
-`make dev` builds the images and starts PostgreSQL, the API and the web app in
-the background, and returns once all three are healthy. Then open:
+`make dev` builds the images and starts PostgreSQL, PgBouncer, the API and the
+web app in the background, and returns once all of them are healthy. The API
+reaches PostgreSQL through PgBouncer (connection pooling). Then open:
 
 - Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up)
 - Liveness: <http://127.0.0.1:8000/health/live>
-- Readiness (includes PostgreSQL): <http://127.0.0.1:8000/health/ready>
+- Readiness (includes PgBouncer and PostgreSQL): <http://127.0.0.1:8000/health/ready>
 
 The web app calls the API on its own origin: the Vite dev server proxies
 `/health` and `/api` to the API. The Compose web service has no hot reload; for
@@ -47,6 +49,23 @@ to `http://127.0.0.1:8000`.
 Stop the stack with `docker compose down` (data is kept in a named volume;
 `docker compose down -v` deletes it).
 
+### Compose layout
+
+The services are split into two stack files, the way the servers run them:
+
+- Data stack, `infrastructure/docker/compose.data.yaml`: PostgreSQL (`db`) and
+  PgBouncer (`pgbouncer`).
+- App stack, `infrastructure/docker/compose.app.yaml`: the API (`api`) and the
+  web app (`web`).
+
+Locally, the root `compose.yaml` combines both into one Compose project, so
+plain `docker compose` commands (`ps`, `logs api`, `exec db psql ...`,
+`stop`/`start`, `down`) work from the repository root. The stack files publish
+no host ports for PostgreSQL or PgBouncer; only the local developer override,
+`compose.override.yaml` (loaded automatically), publishes them on `127.0.0.1`:
+PostgreSQL on `POSTGRES_PORT` (default 5432) and PgBouncer on `PGBOUNCER_PORT`
+(default 6432).
+
 ### Database migrations
 
 ```bash
@@ -54,7 +73,8 @@ make migrate
 ```
 
 `make migrate` applies the Alembic migrations to the local Compose database
-(it starts the database if it is not running). Neither `make dev` nor the API
+(it starts the database if it is not running). Migrations connect to PostgreSQL
+directly, not through PgBouncer. Neither `make dev` nor the API
 runs migrations, so run `make migrate` after `make dev` on a new checkout and
 again whenever you pull new migrations. Running it when the database is already
 up to date changes nothing.
@@ -65,14 +85,21 @@ up to date changes nothing.
 to `.env` as shown above. `.env` is git-ignored and must never be committed.
 The API validates its configuration when it starts and refuses to start on a
 missing or invalid value; `docker compose logs api` shows a short
-`Configuration error` message naming each bad variable. If your `.env` was
-copied before a variable was added, refresh it from `.env.example` (for
-example, copy it again).
+`Configuration error` message naming each bad variable.
+
+The API uses two database URLs: `DATABASE_URL` is the pooled one (through
+PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
+migrations). Inside Compose both are built from the `POSTGRES_*` values; the
+values in `.env` only matter when you run the API or Alembic on the host.
+
+If your `.env` was copied before a variable was added, refresh it from
+`.env.example` (for example, copy it again).
 
 ## Running tests
 
 Docker must be running: API integration tests start a throwaway PostgreSQL
-container with [Testcontainers](https://testcontainers.com/). The Compose
+container (and a PgBouncer container built from this repository) with
+[Testcontainers](https://testcontainers.com/). The Compose
 stack and `.env` are not needed.
 
 ```bash

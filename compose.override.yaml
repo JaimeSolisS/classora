@@ -1,0 +1,12 @@
+# Local developer override, loaded automatically by `docker compose` with
+# compose.yaml. It is the ONLY place that publishes host ports for PostgreSQL
+# and PgBouncer, and only on 127.0.0.1 (never 0.0.0.0 or ::). The stack files
+# in infrastructure/docker/ publish none.
+services:
+  db:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  pgbouncer:
+    ports:
+      - "127.0.0.1:${PGBOUNCER_PORT:-6432}:6432"

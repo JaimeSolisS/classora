@@ -50,7 +50,12 @@ class Settings(BaseSettings):
     )
 
     app_env: AppEnv
+    # Pooled URL (through PgBouncer): the API's request engine (ADR-0003).
     database_url: SecretStr
+    # Direct URL to PostgreSQL: Alembic now, and later the LISTEN connection and
+    # the worker (ADR-0003). Required, never derived from DATABASE_URL, so a
+    # missing value can never silently send them through PgBouncer.
+    database_direct_url: SecretStr
     session_cookie_secure: bool = True
     storage_bucket: NonEmptyStr | None = None
     storage_region: NonEmptyStr | None = None
@@ -72,7 +77,7 @@ class Settings(BaseSettings):
         # Process environment only: no .env file and no secrets directory.
         return (init_settings, env_settings)
 
-    @field_validator("database_url")
+    @field_validator("database_url", "database_direct_url")
     @classmethod
     def _check_database_url(cls, value: SecretStr) -> SecretStr:
         # Messages never include the value: it contains the password.

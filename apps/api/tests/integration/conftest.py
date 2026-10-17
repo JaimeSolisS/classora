@@ -13,6 +13,12 @@ just for that test and dropped with ``FORCE`` afterwards) or ``tables_url``
 created). Tests therefore share no data and can run in any order. Only the
 read-only readiness tests use the container's default database.
 
+PgBouncer (M1-08): the tests that need it ask for ``pgbouncer_url``. That
+builds the image from ``infrastructure/docker/pgbouncer`` and starts it once
+per session next to the PostgreSQL container (reached as ``db``, like in
+Compose), in transaction mode with a small server pool
+(``PGBOUNCER_POOL_SIZE``). Other integration tests talk to PostgreSQL directly.
+
 Async tests run on the anyio pytest plugin (``pytest.mark.anyio``, asyncio
 backend). Setup and checks that run outside a test's event loop use
 ``run_sql`` / ``asyncio.run`` with a short-lived ``NullPool`` engine.
@@ -22,6 +28,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -29,6 +36,9 @@ from pydantic import SecretStr
 from sqlalchemy import make_url, pool, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.core.container import DockerContainer
+from testcontainers.core.image import DockerImage
+from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from app.core.config import Settings
 from app.core.db import async_database_url
@@ -44,6 +54,12 @@ os.environ.setdefault("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.
 # Must match the db image in compose.yaml.
 # Pin set by _docs/adr/0001-runtime-version-pins.md (accepted).
 POSTGRES_IMAGE = "postgres:18"
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+PGBOUNCER_BUILD_CONTEXT = REPO_ROOT / "infrastructure" / "docker" / "pgbouncer"
+# Server connections per database/user pair in the test PgBouncer. Smaller than
+# the concurrency the tests use, so server connections must be shared.
+PGBOUNCER_POOL_SIZE = 5
 
 
 @pytest.fixture
@@ -69,8 +85,57 @@ def database_url(postgres_container: PostgresContainer) -> str:
     return postgres_container.get_connection_url(driver=None)
 
 
-def settings_for(dsn: str) -> Settings:
-    return Settings(app_env="local", database_url=SecretStr(dsn))
+@pytest.fixture(scope="session")
+def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
+    """Plain ``postgresql://`` DSN of the container's default database, through
+    a Testcontainers PgBouncer built from the committed image and config."""
+    user = postgres_container.username
+    password = postgres_container.password
+    dbname = postgres_container.dbname
+    # The committed config, with only the server pool size lowered.
+    command = (
+        f"sed 's/^default_pool_size = .*/default_pool_size = {PGBOUNCER_POOL_SIZE}/'"
+        " /etc/pgbouncer/pgbouncer.ini > /tmp/pgbouncer.ini"
+        f" && grep -q '^default_pool_size = {PGBOUNCER_POOL_SIZE}$' /tmp/pgbouncer.ini"
+        " && exec pgbouncer /tmp/pgbouncer.ini"
+    )
+    # PgBouncer reaches the session PostgreSQL container by its address on the
+    # default bridge network, under the name ``db`` its config uses. (Attaching
+    # the running PostgreSQL container to a second network broke connections
+    # through its published port on Docker Desktop.)
+    postgres_ip = postgres_container.get_docker_client().bridge_ip(
+        postgres_container.get_wrapped_container().id
+    )
+    with DockerImage(
+        path=PGBOUNCER_BUILD_CONTEXT, tag="classora-pgbouncer-test:latest"
+    ) as image:
+        container = (
+            DockerContainer(str(image))
+            .with_kwargs(extra_hosts={"db": postgres_ip})
+            .with_env("POSTGRES_USER", user)
+            .with_env("POSTGRES_PASSWORD", password)
+            .with_env("POSTGRES_DB", dbname)
+            .with_command(["sh", "-c", command])
+            .with_exposed_ports(6432)
+            .waiting_for(LogMessageWaitStrategy("process up"))
+        )
+        with container:
+            host = container.get_container_host_ip()
+            port = container.get_exposed_port(6432)
+            yield f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+
+def settings_for(dsn: str, *, direct_dsn: str | None = None) -> Settings:
+    """Settings for ``dsn``; the direct URL is ``dsn`` too unless given.
+
+    Most integration tests talk to the Testcontainers PostgreSQL directly, so
+    both URLs point at it. The PgBouncer tests pass the pooler as ``dsn``.
+    """
+    return Settings(
+        app_env="local",
+        database_url=SecretStr(dsn),
+        database_direct_url=SecretStr(direct_dsn or dsn),
+    )
 
 
 def short_lived_engine(dsn: str, **kwargs: Any) -> AsyncEngine:

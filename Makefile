@@ -4,7 +4,7 @@
 # a global install, and never stops for a download prompt.
 PNPM := COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm
 
-## Build the images and start db, api and web in the background (idempotent).
+## Build the images and start db, pgbouncer, api and web in the background (idempotent).
 dev:
 	docker compose up -d --build --wait
 

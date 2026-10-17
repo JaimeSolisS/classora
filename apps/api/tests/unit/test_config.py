@@ -26,10 +26,17 @@ ENV_EXAMPLE = API_ROOT.parents[1] / ".env.example"
 
 DB_PASSWORD = "Db-S3cret-pw-77"
 DB_USER = "cfg_user"
-VALID_DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@db.example:5432/classora"
+VALID_DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@pooler.example:6432/classora"
+DIRECT_PASSWORD = "Direct-S3cret-pw-55"
+DIRECT_DSN = f"postgresql://{DB_USER}:{DIRECT_PASSWORD}@db.example:5432/classora"
 STORAGE_SECRET = "Storage-S3cret-key-88"
 
-MINIMAL_ENV = {"APP_ENV": "local", "DATABASE_URL": VALID_DSN}
+DATABASE_URL_NAMES = ["DATABASE_URL", "DATABASE_DIRECT_URL"]
+MINIMAL_ENV = {
+    "APP_ENV": "local",
+    "DATABASE_URL": VALID_DSN,
+    "DATABASE_DIRECT_URL": DIRECT_DSN,
+}
 FULL_ENV = {
     **MINIMAL_ENV,
     "APP_ENV": "prod",
@@ -40,14 +47,15 @@ FULL_ENV = {
     "STORAGE_ACCESS_KEY_ID": "access-key-id",
     "STORAGE_SECRET_ACCESS_KEY": STORAGE_SECRET,
 }
-SECRETS = (VALID_DSN, DB_PASSWORD, STORAGE_SECRET)
+SECRETS = (VALID_DSN, DB_PASSWORD, DIRECT_DSN, DIRECT_PASSWORD, STORAGE_SECRET)
 
-# Variables that compose.yaml interpolates from .env; not read by the API.
+# Variables that the Compose files interpolate from .env; not read by the API.
 COMPOSE_ONLY_VARIABLES = {
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_DB",
     "POSTGRES_PORT",
+    "PGBOUNCER_PORT",
 }
 
 
@@ -81,6 +89,7 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
 
     assert settings.app_env == "local"
     assert settings.database_url.get_secret_value() == VALID_DSN
+    assert settings.database_direct_url.get_secret_value() == DIRECT_DSN
     assert settings.session_cookie_secure is True
     assert settings.storage_bucket is None
     assert settings.storage_region is None
@@ -133,19 +142,35 @@ def test_get_settings_is_cached(monkeypatch):
 # --- missing ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["APP_ENV", "DATABASE_URL"])
+@pytest.mark.parametrize("name", ["APP_ENV", *DATABASE_URL_NAMES])
 def test_missing_required_variable(monkeypatch, name):
     env = {k: v for k, v in MINIMAL_ENV.items() if k != name}
 
     message = config_error(monkeypatch, env)
 
     assert "missing" in line_for(message, name)
+    for secret in SECRETS:
+        assert secret not in message
 
 
-def test_empty_database_url_counts_as_missing(monkeypatch):
-    message = config_error(monkeypatch, {**MINIMAL_ENV, "DATABASE_URL": ""})
+@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+def test_empty_database_url_counts_as_missing(monkeypatch, name):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, name: ""})
 
-    assert "missing" in line_for(message, "DATABASE_URL")
+    assert "missing" in line_for(message, name)
+
+
+def test_direct_url_has_no_fallback_to_database_url(monkeypatch):
+    # Only DATABASE_URL set: DATABASE_DIRECT_URL is never derived from it.
+    env = {"APP_ENV": "local", "DATABASE_URL": VALID_DSN}
+
+    message = config_error(monkeypatch, env)
+
+    assert "is required but missing or empty" in line_for(
+        message, "DATABASE_DIRECT_URL"
+    )
+    assert VALID_DSN not in message
+    assert DB_PASSWORD not in message
 
 
 # --- invalid ----------------------------------------------------------------
@@ -159,12 +184,13 @@ def test_invalid_app_env_lists_allowed_values(monkeypatch):
         assert allowed in line
 
 
-def test_non_postgresql_scheme_is_rejected(monkeypatch):
+@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+def test_non_postgresql_scheme_is_rejected(monkeypatch, name):
     dsn = f"mysql://{DB_USER}:{DB_PASSWORD}@db/x"
 
-    message = config_error(monkeypatch, {**MINIMAL_ENV, "DATABASE_URL": dsn})
+    message = config_error(monkeypatch, {**MINIMAL_ENV, name: dsn})
 
-    assert "scheme must be 'postgresql'" in line_for(message, "DATABASE_URL")
+    assert "scheme must be 'postgresql'" in line_for(message, name)
     assert DB_PASSWORD not in message
     assert DB_USER not in message
 
@@ -178,10 +204,11 @@ def test_non_postgresql_scheme_is_rejected(monkeypatch):
         (f"postgresql://{DB_USER}:{DB_PASSWORD}@[db.example/classora", "valid URL"),
     ],
 )
-def test_dsn_without_host_or_database_is_rejected(monkeypatch, dsn, reason):
-    message = config_error(monkeypatch, {**MINIMAL_ENV, "DATABASE_URL": dsn})
+@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+def test_dsn_without_host_or_database_is_rejected(monkeypatch, dsn, reason, name):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, name: dsn})
 
-    assert reason in line_for(message, "DATABASE_URL")
+    assert reason in line_for(message, name)
     assert DB_PASSWORD not in message
 
 
@@ -241,6 +268,7 @@ def test_all_errors_are_reported_together(monkeypatch):
         {
             "APP_ENV": "staging",
             "DATABASE_URL": "",
+            "DATABASE_DIRECT_URL": "ftp://x/y",
             "SESSION_COOKIE_SECURE": "maybe",
             "STORAGE_ENDPOINT_URL": "ftp://x",
             "STORAGE_SECRET_ACCESS_KEY": STORAGE_SECRET,
@@ -250,6 +278,7 @@ def test_all_errors_are_reported_together(monkeypatch):
     for name in (
         "APP_ENV",
         "DATABASE_URL",
+        "DATABASE_DIRECT_URL",
         "SESSION_COOKIE_SECURE",
         "STORAGE_ENDPOINT_URL",
         "STORAGE_SECRET_ACCESS_KEY",
@@ -264,6 +293,7 @@ def test_error_message_has_no_input_echo_or_traceback(monkeypatch):
         {
             "APP_ENV": "prod",
             "DATABASE_URL": f"mysql://{DB_USER}:{DB_PASSWORD}@db/x",
+            "DATABASE_DIRECT_URL": f"mysql://{DB_USER}:{DIRECT_PASSWORD}@db/x",
             "SESSION_COOKIE_SECURE": "false",
             "STORAGE_SECRET_ACCESS_KEY": STORAGE_SECRET,
         },
@@ -286,6 +316,7 @@ def test_repr_and_str_mask_secrets(monkeypatch):
 
     for rendered in (repr(settings), str(settings)):
         assert DB_PASSWORD not in rendered
+        assert DIRECT_PASSWORD not in rendered
         assert STORAGE_SECRET not in rendered
 
 
@@ -338,7 +369,24 @@ def test_startup_exits_non_zero_when_required_variable_missing():
     assert result.returncode != 0
     assert "Configuration error" in output
     assert "DATABASE_URL" in output
+    assert "DATABASE_DIRECT_URL" in output
     assert "Traceback" not in output
+
+
+def test_startup_exits_non_zero_when_direct_url_is_invalid():
+    result = run_api(
+        {
+            "APP_ENV": "local",
+            "DATABASE_URL": VALID_DSN,
+            "DATABASE_DIRECT_URL": f"mysql://{DB_USER}:{DIRECT_PASSWORD}@db/x",
+        }
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "DATABASE_DIRECT_URL: scheme must be 'postgresql'" in output
+    for forbidden in (*SECRETS, DB_USER, "Traceback"):
+        assert forbidden not in output
 
 
 # --- .env.example drift (C3) -----------------------------------------------
@@ -383,6 +431,7 @@ def test_settings_reads_exactly_the_documented_variables():
     assert env_var_names() == {
         "APP_ENV",
         "DATABASE_URL",
+        "DATABASE_DIRECT_URL",
         "SESSION_COOKIE_SECURE",
         "STORAGE_BUCKET",
         "STORAGE_REGION",

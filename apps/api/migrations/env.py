@@ -1,8 +1,9 @@
 """Alembic environment: online migrations with the async engine (asyncpg).
 
-The database URL comes from ``get_settings()`` (``DATABASE_URL``), never from
-``alembic.ini``. Alembic connects directly to PostgreSQL (ADR-0003) with its
-own short-lived engine (``NullPool``), not the API's.
+The database URL comes from ``get_settings()`` (``DATABASE_DIRECT_URL``), never
+from ``DATABASE_URL`` or ``alembic.ini``. Alembic connects directly to
+PostgreSQL, bypassing PgBouncer (ADR-0003), with its own short-lived engine
+(``NullPool``), not the API's.
 
 The target metadata comes from ``app.core.model_registry``, the one place that
 imports every model module. Revision IDs are sequential four-digit numbers in
@@ -16,10 +17,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import ConfigurationError, get_settings
-from app.core.db import async_database_url, engine_options
+from app.core.db import async_direct_database_url, create_direct_engine
 from app.core.model_registry import target_metadata
 
 config = context.config
@@ -41,7 +41,7 @@ def _database_url() -> str:
         # Same short message as the API: no traceback, no secret.
         print(exc, file=sys.stderr)
         raise SystemExit(1) from None
-    return async_database_url(settings).render_as_string(hide_password=False)
+    return async_direct_database_url(settings).render_as_string(hide_password=False)
 
 
 def _run_migrations(connection: Connection) -> None:
@@ -51,9 +51,7 @@ def _run_migrations(connection: Connection) -> None:
 
 
 async def _run_async_migrations() -> None:
-    engine = create_async_engine(
-        _database_url(), poolclass=pool.NullPool, **engine_options()
-    )
+    engine = create_direct_engine(_database_url(), poolclass=pool.NullPool)
     try:
         async with engine.connect() as connection:
             await connection.run_sync(_run_migrations)

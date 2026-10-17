@@ -36,6 +36,7 @@ SENSITIVE_KEY_FRAGMENTS: tuple[str, ...] = (
     "credential",
     "dsn",
     "database_url",
+    "database_direct_url",
 )
 REDACTED = "[REDACTED]"
 

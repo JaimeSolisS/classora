@@ -22,7 +22,9 @@ def app(app_env: None) -> FastAPI:
     app = create_app()
     # Before the lifespan runs, so the engine is built from this DSN.
     app.dependency_overrides[get_settings] = lambda: Settings(
-        app_env="local", database_url=SecretStr(UNREACHABLE_DSN)
+        app_env="local",
+        database_url=SecretStr(UNREACHABLE_DSN),
+        database_direct_url=SecretStr(UNREACHABLE_DSN),
     )
     return app
 
@@ -72,9 +74,11 @@ def test_ready_503_within_5_seconds_when_database_never_answers(app_env):
         silent.listen(8)
         port = silent.getsockname()[1]
         app = create_app()
+        silent_dsn = SecretStr(f"postgresql://u:pw@127.0.0.1:{port}/db")
         app.dependency_overrides[get_settings] = lambda: Settings(
             app_env="local",
-            database_url=SecretStr(f"postgresql://u:pw@127.0.0.1:{port}/db"),
+            database_url=silent_dsn,
+            database_direct_url=silent_dsn,
         )
         with TestClient(app) as test_client:
             started = time.monotonic()
@@ -107,3 +111,14 @@ def test_ready_503_does_not_leak_connection_details(client):
         "Traceback",
     ):
         assert secret not in exposed
+
+
+def test_ready_timeout_leaves_room_for_closing_a_cancelled_connection():
+    # Behind PgBouncer with PostgreSQL down, the check is cancelled at
+    # READY_TIMEOUT_SECONDS and SQLAlchemy may wait up to 2 s more to close the
+    # connection; the 503 must still come within 5 s (M1-08 E4).
+    from app.core.db import CONNECT_TIMEOUT_SECONDS
+    from app.core.health import READY_TIMEOUT_SECONDS
+
+    assert CONNECT_TIMEOUT_SECONDS <= READY_TIMEOUT_SECONDS
+    assert READY_TIMEOUT_SECONDS + 2 <= 4

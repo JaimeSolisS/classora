@@ -140,8 +140,16 @@ def test_sensitive_key_rule():
         "credential",
         "dsn",
         "database_url",
+        "database_direct_url",
     }
-    for key in ("DATABASE_URL", "X-Api-Key", "Set-Cookie", "refreshToken", "db_dsn"):
+    for key in (
+        "DATABASE_URL",
+        "DATABASE_DIRECT_URL",
+        "X-Api-Key",
+        "Set-Cookie",
+        "refreshToken",
+        "db_dsn",
+    ):
         assert is_sensitive_key(key), key
     for key in ("user_id", "path", "status", "request_id"):
         assert not is_sensitive_key(key), key
@@ -231,6 +239,7 @@ def test_uvicorn_process_writes_only_json_lines():
             "PATH": os.environ.get("PATH", ""),
             "APP_ENV": "local",
             "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
+            "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

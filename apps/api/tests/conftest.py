@@ -59,10 +59,10 @@ def isolated_settings_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def app_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """A minimal valid environment so ``create_app()`` passes its startup check.
 
-    The DSN is a placeholder; tests that need a database override
+    The DSNs are placeholders; tests that need a database override
     ``get_settings`` with their own ``Settings``.
     """
+    placeholder = "postgresql://placeholder:placeholder@127.0.0.1:1/placeholder"
     monkeypatch.setenv("APP_ENV", "local")
-    monkeypatch.setenv(
-        "DATABASE_URL", "postgresql://placeholder:placeholder@127.0.0.1:1/placeholder"
-    )
+    monkeypatch.setenv("DATABASE_URL", placeholder)
+    monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)

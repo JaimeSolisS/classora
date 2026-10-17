@@ -16,9 +16,12 @@ from app.core.errors import AppError
 
 router = APIRouter(prefix="/health", tags=["health"])
 
-# Upper bound for the whole check (pool checkout, connect and query). The
-# engine's connect timeout (app.core.db) is shorter.
-READY_TIMEOUT_SECONDS = 4.0
+# Upper bound for the whole check (pool checkout, connect and query); the
+# engine's connect timeout (app.core.db) is not longer. When PgBouncer is up but
+# PostgreSQL is not, the query waits inside PgBouncer until this timeout cancels
+# it, and SQLAlchemy then takes up to 2 more seconds to close that connection,
+# so the 503 still comes well within 5 seconds.
+READY_TIMEOUT_SECONDS = 2.0
 
 
 class DatabaseUnavailableError(AppError):

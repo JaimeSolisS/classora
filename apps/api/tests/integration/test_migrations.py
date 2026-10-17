@@ -11,7 +11,7 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Connection
 
-from app.core.db import async_database_url
+from app.core.db import async_direct_database_url
 from app.core.model_registry import target_metadata
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 
@@ -22,7 +22,7 @@ def alembic_config(dsn: str | None = None) -> Config:
     config = Config(str(API_ROOT / "alembic.ini"))
     config.attributes["configure_logging"] = False
     if dsn is not None:
-        config.attributes["database_url"] = async_database_url(
+        config.attributes["database_url"] = async_direct_database_url(
             settings_for(dsn)
         ).render_as_string(hide_password=False)
     return config
@@ -99,9 +99,11 @@ def test_metadata_matches_migrations(fresh_database_url):
     assert metadata_diff(fresh_database_url) == []
 
 
-def test_env_reads_the_url_from_settings(fresh_database_url, monkeypatch):
+def test_env_reads_the_direct_url_from_settings(fresh_database_url, monkeypatch):
     monkeypatch.setenv("APP_ENV", "local")
-    monkeypatch.setenv("DATABASE_URL", fresh_database_url)
+    # Closed port: migrating through DATABASE_URL would fail.
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:pw@127.0.0.1:1/unused")
+    monkeypatch.setenv("DATABASE_DIRECT_URL", fresh_database_url)
 
     command.upgrade(alembic_config(), "head")
 

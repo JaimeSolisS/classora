@@ -1,0 +1,45 @@
+# Data stack: PostgreSQL and PgBouncer (architecture §9.1,
+# _docs/adr/0003-database-connection-topology.md). The app stack is compose.app.yaml.
+# Locally both stacks run as one Compose project through the root compose.yaml.
+# Host ports for db and pgbouncer belong ONLY in the local developer override
+# (root compose.override.yaml); this file never publishes them.
+# The postgres:18 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  # Transaction-mode pooler for API request traffic. It logs in to PostgreSQL as
+  # POSTGRES_USER; its auth file is generated from these values at container start.
+  pgbouncer:
+    build:
+      context: pgbouncer
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    # Healthy only when a query through PgBouncer reaches PostgreSQL.
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql -h 127.0.0.1 -p 6432 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -tAqc 'SELECT 1' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
