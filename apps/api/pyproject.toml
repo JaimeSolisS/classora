@@ -1,0 +1,25 @@
+[project]
+name = "classora-api"
+version = "0.1.0"
+description = "Classora FastAPI backend"
+# Provisional pin (Python 3.14), pending ratification at the M1-06 / ADR-0001 decision gate.
+# Keep in sync with .python-version and infrastructure/docker/api.Dockerfile.
+requires-python = "==3.14.*"
+dependencies = [
+    "fastapi>=0.143.3",
+    "uvicorn>=0.54.0",
+    "asyncpg>=0.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "httpx>=0.28.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
