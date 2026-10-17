@@ -1,6 +1,8 @@
 # Classora — Implementation Task Import List
 
-> **TEMPORARY IMPORT MATERIAL.** This file seeds GitHub Issues. Once the issues are created and cross-checked, GitHub Issues become the **only** active backlog. At that point, archive or delete this file (see `_docs/guides/agent-driven-guide.md` §2).
+> **ARCHIVED — 2026-10-16. Do not edit or plan from this file.** All 156 tasks were imported as GitHub Issues [#1–#156](https://github.com/JaimeSolisS/classora/issues), with the task ID in each title (for example, `[M1-01]` = #1). Each milestone `M1`–`M10` became a GitHub milestone. **GitHub Issues are now the only active backlog.** This file is kept only as the import record and for the global constraints in §0.3, which the issues link to.
+>
+> ~~**TEMPORARY IMPORT MATERIAL.**~~ This file seeds GitHub Issues. Once the issues are created and cross-checked, GitHub Issues become the **only** active backlog. At that point, archive or delete this file (see `_docs/guides/agent-driven-guide.md` §2).
 >
 > **Derived from:** `_docs/spec.md` v1.2 and `_docs/architecture.md` (draft, 2026-10-16).  
 > **Scope:** This list adds no product scope. Every task traces to a spec section. The architecture document's §10 resolutions are **PROPOSED**. Tasks that depend on one are blocked by an explicit **decision gate** task until the related ADR is approved.  
