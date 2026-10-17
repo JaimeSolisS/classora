@@ -9,16 +9,21 @@ from typing import Annotated
 
 import asyncpg
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
 
 from app.core.config import Settings, get_settings
+from app.core.errors import AppError
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 CONNECT_TIMEOUT_SECONDS = 2.0
 QUERY_TIMEOUT_SECONDS = 2.0
 
-PROBLEM_JSON = "application/problem+json"
+
+class DatabaseUnavailableError(AppError):
+    # Deliberately generic: no DSN, host, driver error text or traceback.
+    status = 503
+    code = "database_unavailable"
+    detail = "Database is not reachable."
 
 
 def get_database_url(settings: Annotated[Settings, Depends(get_settings)]) -> str:
@@ -49,23 +54,11 @@ async def live() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/ready", response_model=None)
+@router.get("/ready")
 async def ready(
     database_url: str = Depends(get_database_url),
-) -> dict[str, str] | JSONResponse:
+) -> dict[str, str]:
     """The process is up and PostgreSQL answers ``SELECT 1``."""
-    if await _database_is_reachable(database_url):
-        return {"status": "ok"}
-    # RFC 9457 Problem Details. Deliberately generic: no DSN, host, driver
-    # error text or traceback. request_id is added with the shared handler (M1-09).
-    return JSONResponse(
-        status_code=503,
-        media_type=PROBLEM_JSON,
-        content={
-            "type": "about:blank",
-            "title": "Service Unavailable",
-            "status": 503,
-            "code": "database_unavailable",
-            "detail": "Database is not reachable.",
-        },
-    )
+    if not await _database_is_reachable(database_url):
+        raise DatabaseUnavailableError()
+    return {"status": "ok"}

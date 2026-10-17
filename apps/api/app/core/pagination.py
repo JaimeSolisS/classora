@@ -1,0 +1,137 @@
+"""Offset and cursor pagination helpers (architecture §4.4).
+
+Offset pagination is for ordinary tables::
+
+    @router.get("/things")
+    async def list_things(page: OffsetPagination) -> OffsetPage[Thing]:
+        ...
+        return OffsetPage(
+            items=items, total=total, limit=page.limit, offset=page.offset
+        )
+
+Cursor (keyset) pagination is for large histories. The cursor is an opaque
+base64url string of a JSON array: the sort key values **plus a unique
+tiebreaker** (for example ``[created_at, id]``). Fetch up to ``limit + 1`` rows
+ordered by that key, strictly after the decoded position, then call
+:func:`build_cursor_page`. These helpers are pure Python; applying them to
+SQLAlchemy queries comes with the first consumer.
+"""
+
+import base64
+import binascii
+import json
+import math
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Annotated, Any
+
+from fastapi import Depends, Query
+from pydantic import BaseModel
+
+from app.core.errors import AppError
+
+DEFAULT_LIMIT = 25
+MAX_LIMIT = 100
+
+CursorValue = str | int | float | bool | None
+
+
+class InvalidCursorError(AppError):
+    status = 400
+    code = "invalid_cursor"
+    detail = "The pagination cursor is not valid."
+
+
+@dataclass(frozen=True)
+class OffsetParams:
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True)
+class CursorParams:
+    limit: int
+    cursor: str | None
+
+
+Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
+
+
+def offset_params(
+    limit: Limit = DEFAULT_LIMIT, offset: Annotated[int, Query(ge=0)] = 0
+) -> OffsetParams:
+    return OffsetParams(limit=limit, offset=offset)
+
+
+def cursor_params(
+    limit: Limit = DEFAULT_LIMIT, cursor: str | None = None
+) -> CursorParams:
+    return CursorParams(limit=limit, cursor=cursor)
+
+
+OffsetPagination = Annotated[OffsetParams, Depends(offset_params)]
+CursorPagination = Annotated[CursorParams, Depends(cursor_params)]
+
+
+class OffsetPage[T](BaseModel):
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
+
+
+class CursorPage[T](BaseModel):
+    items: list[T]
+    next_cursor: str | None
+
+
+def _reject_constant(value: str) -> Any:
+    raise ValueError(value)
+
+
+def encode_cursor(position: Sequence[CursorValue]) -> str:
+    """Opaque, URL-safe cursor for a keyset position (sort values + tiebreaker)."""
+    raw = json.dumps(list(position), separators=(",", ":"), allow_nan=False)
+    return base64.urlsafe_b64encode(raw.encode()).rstrip(b"=").decode("ascii")
+
+
+def decode_cursor(cursor: str, *, length: int) -> tuple[CursorValue, ...]:
+    """Decode a cursor made by :func:`encode_cursor`.
+
+    Raises :class:`InvalidCursorError` (400) for anything that is not base64url
+    JSON of an array of ``length`` scalars. The cursor value is never echoed.
+    """
+    try:
+        data = cursor.encode("ascii")
+        raw = base64.b64decode(
+            data + b"=" * (-len(data) % 4), altchars=b"-_", validate=True
+        )
+        position = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant)
+    except UnicodeError, binascii.Error, ValueError:
+        raise InvalidCursorError() from None
+    if (
+        not isinstance(position, list)
+        or len(position) != length
+        or not all(_is_scalar(value) for value in position)
+    ):
+        raise InvalidCursorError()
+    return tuple(position)
+
+
+def _is_scalar(value: object) -> bool:
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return value is None or isinstance(value, str | int | bool)
+
+
+def build_cursor_page[T](
+    rows: Sequence[T],
+    *,
+    limit: int,
+    key: Callable[[T], Sequence[CursorValue]],
+) -> CursorPage[T]:
+    """Page from up to ``limit + 1`` fetched rows; ``key`` gives a row's position."""
+    items = list(rows[:limit])
+    has_more = len(rows) > limit
+    next_cursor = encode_cursor(key(items[-1])) if has_more and items else None
+    return CursorPage[T](items=items, next_cursor=next_cursor)

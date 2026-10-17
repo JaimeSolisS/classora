@@ -10,7 +10,9 @@ import sys
 from fastapi import FastAPI
 
 from app.core.config import ConfigurationError, get_settings
+from app.core.conventions import install_conventions
 from app.core.health import router as health_router
+from app.core.logging import configure_logging
 
 
 def create_app() -> FastAPI:
@@ -21,6 +23,8 @@ def create_app() -> FastAPI:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from None
 
-    app = FastAPI(title="Classora API")
+    configure_logging()
+    app = FastAPI(title="Classora API", debug=False)
+    install_conventions(app)
     app.include_router(health_router)
     return app

@@ -1,0 +1,185 @@
+"""Problem Details for every error kind (A1-A6) and production wiring (D1)."""
+
+import re
+
+from fastapi.testclient import TestClient
+
+from app.core.errors import AppError, VersionConflictError
+from app.main import create_app
+from tests.unit.conventions_app import LEAK_MARKER
+
+PROBLEM_JSON = "application/problem+json"
+
+
+def assert_problem(response, status: int, code: str) -> dict:
+    assert response.status_code == status
+    assert response.headers["content-type"] == PROBLEM_JSON
+    body = response.json()
+    assert body["type"] == "about:blank"
+    assert body["status"] == status
+    assert body["code"] == code
+    assert re.fullmatch(r"[a-z0-9]+(_[a-z0-9]+)*", body["code"])
+    assert body["request_id"] == response.headers["x-request-id"]
+    return body
+
+
+# --- A3 validation ------------------------------------------------------------
+
+
+def test_body_validation_error_has_field_errors_without_input(client: TestClient):
+    response = client.post("/signup", json={"password": "s3cret-value", "age": "x"})
+
+    body = assert_problem(response, 422, "validation_error")
+    assert body["title"] == "Unprocessable Content"
+    assert body["errors"] == [
+        {
+            "path": ["body", "age"],
+            "code": "int_parsing",
+            "message": (
+                "Input should be a valid integer, unable to parse string as an integer"
+            ),
+        }
+    ]
+    assert "s3cret-value" not in response.text
+    for item in body["errors"]:
+        assert set(item) == {"path", "code", "message"}
+
+
+def test_nested_body_path_includes_list_index(client: TestClient):
+    response = client.post("/orders", json={"items": [{"amount": -1}]})
+
+    body = assert_problem(response, 422, "validation_error")
+    assert body["errors"][0]["path"] == ["body", "items", 0, "amount"]
+    assert body["errors"][0]["code"] == "greater_than_equal"
+
+
+def test_missing_body_field(client: TestClient):
+    response = client.post("/signup", json={"age": 3})
+
+    body = assert_problem(response, 422, "validation_error")
+    assert body["errors"][0]["path"] == ["body", "password"]
+    assert body["errors"][0]["code"] == "missing"
+
+
+def test_malformed_json_body(client: TestClient):
+    response = client.post(
+        "/signup",
+        content=b'{"password": "s3cret-value", ',
+        headers={"content-type": "application/json"},
+    )
+
+    body = assert_problem(response, 422, "validation_error")
+    assert body["errors"][0]["code"] == "json_invalid"
+    assert body["errors"][0]["path"][0] == "body"
+    assert "s3cret-value" not in response.text
+
+
+def test_query_path_and_header_validation(client: TestClient):
+    query = assert_problem(client.get("/query?limit=0"), 422, "validation_error")
+    assert query["errors"][0]["path"] == ["query", "limit"]
+    assert query["errors"][0]["code"] == "greater_than_equal"
+
+    missing = assert_problem(client.get("/query"), 422, "validation_error")
+    assert missing["errors"][0]["path"] == ["query", "limit"]
+    assert missing["errors"][0]["code"] == "missing"
+
+    path = assert_problem(client.get("/path/abc"), 422, "validation_error")
+    assert path["errors"][0]["path"] == ["path", "number"]
+    assert path["errors"][0]["code"] == "int_parsing"
+
+    header = assert_problem(
+        client.get("/header", headers={"x-count": "many"}), 422, "validation_error"
+    )
+    assert header["errors"][0]["path"] == ["header", "x-count"]
+
+
+# --- A4 framework HTTP errors -------------------------------------------------
+
+
+def test_unknown_path_is_404_problem(client: TestClient):
+    response = client.get("/nope", headers={"X-Request-ID": "qa-404"})
+
+    body = assert_problem(response, 404, "not_found")
+    assert body["title"] == "Not Found"
+    assert body["request_id"] == "qa-404"
+
+
+def test_wrong_method_is_405_problem_with_allow_header(client: TestClient):
+    response = client.post("/health/live")
+
+    body = assert_problem(response, 405, "method_not_allowed")
+    assert body["title"] == "Method Not Allowed"
+    assert response.headers["allow"] == "GET"
+
+
+def test_http_exception_keeps_headers_and_hides_detail(client: TestClient):
+    response = client.get("/http-exception")
+
+    body = assert_problem(response, 418, "i_m_a_teapot")
+    assert response.headers["x-extra"] == "kept"
+    assert "detail" not in body
+    assert "internal detail" not in response.text
+
+
+# --- A2 / A6 AppError ---------------------------------------------------------
+
+
+def test_app_error_subclass_renders_its_status_code_and_detail(client: TestClient):
+    body = assert_problem(client.get("/app-error"), 423, "thing_locked")
+
+    assert body["title"] == "Locked"
+    assert body["detail"] == "The thing is locked."
+    assert "errors" not in body
+
+
+def test_app_error_with_field_errors(client: TestClient):
+    body = assert_problem(client.get("/app-error-fields"), 500, "internal_error")
+
+    assert body["detail"] == "Custom detail."
+    assert body["errors"] == [
+        {"path": ["body", "name"], "code": "taken", "message": "Taken."}
+    ]
+
+
+def test_version_conflict_is_409(client: TestClient):
+    body = assert_problem(client.get("/conflict"), 409, "version_conflict")
+
+    assert body["title"] == "Conflict"
+    assert body["detail"] == VersionConflictError.detail
+    assert issubclass(VersionConflictError, AppError)
+
+
+# --- A5 / E2 unhandled exceptions --------------------------------------------
+
+
+def test_unhandled_exception_is_generic_500_without_leak(client: TestClient):
+    response = client.get("/boom")
+
+    body = assert_problem(response, 500, "internal_error")
+    assert body["title"] == "Internal Server Error"
+    assert body["detail"] == "An unexpected error occurred."
+    exposed = response.text + " ".join(f"{k}: {v}" for k, v in response.headers.items())
+    for forbidden in (LEAK_MARKER, "RuntimeError", "Traceback"):
+        assert forbidden not in exposed
+
+
+# --- D1 production wiring -----------------------------------------------------
+
+
+def test_production_app_has_only_health_and_docs_routes(app_env: None):
+    app = create_app()
+
+    assert app.debug is False
+    assert set(app.openapi()["paths"]) == {"/health/live", "/health/ready"}
+    top_level = {getattr(r, "path", None) for r in app.routes} - {None}
+    assert top_level == {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+    with TestClient(app) as client:
+        for path in ("/health/live", "/openapi.json"):
+            assert client.get(path).status_code == 200
+
+
+def test_production_app_renders_404_problem(app_env: None):
+    with TestClient(create_app()) as client:
+        response = client.get("/nope")
+
+    assert_problem(response, 404, "not_found")
