@@ -16,6 +16,9 @@ COPY apps/api/pyproject.toml apps/api/uv.lock apps/api/.python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY apps/api/app ./app
+# Alembic runs from this image (`make migrate`); the API never migrates itself.
+COPY apps/api/alembic.ini ./
+COPY apps/api/migrations ./migrations
 
 ENV PATH="/app/.venv/bin:$PATH"
 

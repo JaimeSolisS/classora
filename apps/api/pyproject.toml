@@ -10,6 +10,8 @@ dependencies = [
     "uvicorn>=0.54.0",
     "asyncpg>=0.32.0",
     "pydantic-settings>=2.16.0",
+    "sqlalchemy[asyncio]>=2.1.5",
+    "alembic>=1.20.0",
 ]
 
 [dependency-groups]
@@ -49,8 +51,3 @@ select = ["E", "W", "F", "I", "B", "UP"]
 strict = true
 python_version = "3.14"
 
-# asyncpg ships no py.typed marker. Narrow override; goes away when readiness
-# moves to the SQLAlchemy engine (M1-07).
-[[tool.mypy.overrides]]
-module = ["asyncpg", "asyncpg.*"]
-ignore_missing_imports = true

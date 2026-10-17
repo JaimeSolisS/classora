@@ -7,16 +7,18 @@ unauthenticated infrastructure probes and must never expose internal details.
 import asyncio
 from typing import Annotated
 
-import asyncpg
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.core.config import Settings, get_settings
+from app.core.db import get_engine
 from app.core.errors import AppError
 
 router = APIRouter(prefix="/health", tags=["health"])
 
-CONNECT_TIMEOUT_SECONDS = 2.0
-QUERY_TIMEOUT_SECONDS = 2.0
+# Upper bound for the whole check (pool checkout, connect and query). The
+# engine's connect timeout (app.core.db) is shorter.
+READY_TIMEOUT_SECONDS = 4.0
 
 
 class DatabaseUnavailableError(AppError):
@@ -26,26 +28,14 @@ class DatabaseUnavailableError(AppError):
     detail = "Database is not reachable."
 
 
-def get_database_url(settings: Annotated[Settings, Depends(get_settings)]) -> str:
-    """Return the database DSN from the validated settings."""
-    return settings.database_url.get_secret_value()
-
-
-async def _database_is_reachable(dsn: str) -> bool:
+async def _database_is_reachable(engine: AsyncEngine) -> bool:
     try:
-        conn = await asyncpg.connect(dsn, timeout=CONNECT_TIMEOUT_SECONDS)
+        async with asyncio.timeout(READY_TIMEOUT_SECONDS):
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
     except Exception:
         return False
-    try:
-        await conn.fetchval("SELECT 1", timeout=QUERY_TIMEOUT_SECONDS)
-        return True
-    except Exception:
-        return False
-    finally:
-        try:
-            await asyncio.wait_for(conn.close(), timeout=QUERY_TIMEOUT_SECONDS)
-        except Exception:
-            conn.terminate()
+    return True
 
 
 @router.get("/live")
@@ -55,10 +45,8 @@ async def live() -> dict[str, str]:
 
 
 @router.get("/ready")
-async def ready(
-    database_url: str = Depends(get_database_url),
-) -> dict[str, str]:
-    """The process is up and PostgreSQL answers ``SELECT 1``."""
-    if not await _database_is_reachable(database_url):
+async def ready(engine: Annotated[AsyncEngine, Depends(get_engine)]) -> dict[str, str]:
+    """The process is up and PostgreSQL answers ``SELECT 1`` (pooled engine)."""
+    if not await _database_is_reachable(engine):
         raise DatabaseUnavailableError()
     return {"status": "ok"}

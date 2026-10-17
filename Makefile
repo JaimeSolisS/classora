@@ -1,4 +1,4 @@
-.PHONY: dev lint lint-api lint-web test test-api test-web test-unit test-integration
+.PHONY: dev migrate lint lint-api lint-web test test-api test-web test-unit test-integration
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -7,6 +7,11 @@ PNPM := COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm
 ## Build the images and start db, api and web in the background (idempotent).
 dev:
 	docker compose up -d --build --wait
+
+## Apply Alembic migrations to the local Compose database (starts db if needed; make dev never migrates).
+# --build: uses the migrations in the working tree. Alembic connects directly to PostgreSQL (ADR-0003).
+migrate:
+	docker compose run --rm --build api alembic upgrade head
 
 ## Lint both apps (check only, never modifies files). Fails if either part fails.
 lint: lint-api lint-web

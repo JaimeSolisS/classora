@@ -1,3 +1,5 @@
+import socket
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -17,7 +19,12 @@ UNREACHABLE_DSN = (
 
 @pytest.fixture
 def app(app_env: None) -> FastAPI:
-    return create_app()
+    app = create_app()
+    # Before the lifespan runs, so the engine is built from this DSN.
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="local", database_url=SecretStr(UNREACHABLE_DSN)
+    )
+    return app
 
 
 @pytest.fixture
@@ -27,12 +34,6 @@ def client(app: FastAPI) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
-def use_unreachable_database(app: FastAPI) -> None:
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        app_env="local", database_url=SecretStr(UNREACHABLE_DSN)
-    )
-
-
 def test_live_returns_ok(client):
     response = client.get("/health/live")
 
@@ -40,9 +41,7 @@ def test_live_returns_ok(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_ready_returns_problem_details_when_database_unreachable(app, client):
-    use_unreachable_database(app)
-
+def test_ready_returns_problem_details_when_database_unreachable(client):
     response = client.get("/health/ready")
 
     assert response.status_code == 503
@@ -52,11 +51,49 @@ def test_ready_returns_problem_details_when_database_unreachable(app, client):
     assert body["title"] == "Service Unavailable"
     assert body["status"] == 503
     assert body["code"] == "database_unavailable"
+    assert body["detail"] == "Database is not reachable."
 
 
-def test_ready_503_does_not_leak_connection_details(app, client):
-    use_unreachable_database(app)
+def test_ready_uses_the_lifespan_engine(app, client):
+    # One engine per process, built from the (overridden) settings.
+    engine = app.state.engine
+    assert engine.url.drivername == "postgresql+asyncpg"
+    assert engine.url.database == "leakcheck_db"
 
+    assert client.get("/health/ready").status_code == 503
+    assert engine.pool.checkedout() == 0
+
+
+def test_ready_503_within_5_seconds_when_database_never_answers(app_env):
+    # A listener that accepts TCP connections but never speaks the protocol:
+    # the bounded connect timeout turns it into a 503 instead of a hang.
+    with socket.socket() as silent:
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(8)
+        port = silent.getsockname()[1]
+        app = create_app()
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            app_env="local",
+            database_url=SecretStr(f"postgresql://u:pw@127.0.0.1:{port}/db"),
+        )
+        with TestClient(app) as test_client:
+            started = time.monotonic()
+            response = test_client.get("/health/ready")
+            elapsed = time.monotonic() - started
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "database_unavailable"
+    assert elapsed < 5
+
+
+def test_app_starts_without_database_and_never_connects(app):
+    # Creating the app and its engine opens no connection (A3).
+    with TestClient(app) as test_client:
+        assert test_client.get("/health/live").status_code == 200
+        assert app.state.engine.pool.checkedout() == 0
+
+
+def test_ready_503_does_not_leak_connection_details(client):
     response = client.get("/health/ready")
 
     assert response.status_code == 503

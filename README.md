@@ -10,8 +10,9 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 
 **Pre-alpha.** Only the local development foundation exists so far: a FastAPI
 API with liveness and readiness health checks, backed by a local PostgreSQL
-container, and a React + TypeScript + Vite placeholder page that shows whether
-the API is live. No product features are implemented yet.
+container whose schema is managed with Alembic migrations, and a React +
+TypeScript + Vite placeholder page that shows whether the API is live. No
+product features are implemented yet.
 
 ## Prerequisites
 
@@ -43,6 +44,18 @@ to `http://127.0.0.1:8000`.
 
 Stop the stack with `docker compose down` (data is kept in a named volume;
 `docker compose down -v` deletes it).
+
+### Database migrations
+
+```bash
+make migrate
+```
+
+`make migrate` applies the Alembic migrations to the local Compose database
+(it starts the database if it is not running). Neither `make dev` nor the API
+runs migrations, so run `make migrate` after `make dev` on a new checkout and
+again whenever you pull new migrations. Running it when the database is already
+up to date changes nothing.
 
 ## Configuration
 

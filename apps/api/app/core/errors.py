@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import get_request_id
+from app.core.models import StaleVersionError
 
 PROBLEM_JSON = "application/problem+json"
 INTERNAL_ERROR_DETAIL = "An unexpected error occurred."
@@ -136,6 +137,12 @@ async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(exc.status, exc.code, exc.detail, errors=exc.errors)
 
 
+async def _stale_version_handler(request: Request, exc: Exception) -> JSONResponse:
+    # The database layer's version conflict (app.core.models) renders as 409.
+    error = VersionConflictError()
+    return problem_response(error.status, error.code, error.detail)
+
+
 async def _validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
     return problem_response(
@@ -156,5 +163,6 @@ async def _http_exception_handler(request: Request, exc: Exception) -> JSONRespo
 
 def install_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error_handler)
+    app.add_exception_handler(StaleVersionError, _stale_version_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
