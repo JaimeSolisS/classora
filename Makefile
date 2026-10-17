@@ -1,4 +1,4 @@
-.PHONY: dev migrate lint lint-api lint-web test test-api test-web test-unit test-integration
+.PHONY: dev migrate lint lint-api lint-web test test-api test-web test-unit test-integration storybook test-storybook
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -48,3 +48,16 @@ test-unit:
 ## Run only the API integration tests (Testcontainers PostgreSQL; Docker must be running).
 test-integration:
 	cd apps/api && uv run pytest -m integration
+
+## Install from the lockfile, then run Storybook on http://127.0.0.1:6006 (host only,
+## no browser is opened). Fails instead of moving to another port when 6006 is taken.
+storybook:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/web storybook
+
+## Install from the lockfile and the headless Chromium (downloaded on first run only),
+## then run every story with its play function and the axe check, in light and dark.
+test-storybook:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/web exec playwright install --only-shell chromium
+	$(PNPM) --filter @classora/web test-storybook

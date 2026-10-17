@@ -11,8 +11,10 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 **Pre-alpha.** Only the local development foundation exists so far: a FastAPI
 API with liveness and readiness health checks, backed by a local PostgreSQL
 container whose schema is managed with Alembic migrations, and a React +
-TypeScript + Vite placeholder page that shows whether the API is live. No
-product features are implemented yet.
+TypeScript + Vite placeholder page that shows whether the API is live. The web
+app has its design system foundation (central design tokens, Tailwind CSS,
+shadcn/ui components catalogued in Storybook) and a light/dark/system theme
+switch. No product features are implemented yet.
 
 ## Prerequisites
 
@@ -81,6 +83,15 @@ make test-unit         # API unit tests only (no Docker needed)
 make test-integration  # API integration tests only
 ```
 
+Storybook story tests run separately, on the host:
+
+```bash
+make test-storybook    # every story in headless Chromium, with axe checks in light and dark
+```
+
+The first run downloads the Playwright headless Chromium (about 100 MB); later
+runs reuse it.
+
 Each API run prints a terminal coverage report for the API (`app/`), with
 branch coverage and missing lines. `make test` does not start the Compose database,
 and it can run while `make dev` is up.
@@ -101,9 +112,22 @@ run both parts regardless.
 To build the web app: `corepack pnpm --filter @classora/web build` (output in
 `apps/web/dist/`).
 
+## Storybook
+
+```bash
+make storybook
+```
+
+Opens the component catalog at <http://127.0.0.1:6006> (no browser is opened
+for you). The toolbar switches stories between light and dark. It fails
+instead of using another port when 6006 is taken. To build a static copy:
+`corepack pnpm --filter @classora/web build-storybook` (output in
+`apps/web/storybook-static/`).
+
 ## Documentation
 
 - [Product specification](_docs/spec.md)
 - [Architecture](_docs/architecture.md)
+- [Design system](_docs/design-system.md) (tokens, theming, accessibility rules)
 - [Agent instructions](AGENTS.md)
 - [Delivery process](_docs/process.md) (agent workflow and contribution guidance)

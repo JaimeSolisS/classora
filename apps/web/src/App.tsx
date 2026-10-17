@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { ThemeProvider } from '@/theme/ThemeProvider';
+import { ThemeSwitcher } from '@/theme/ThemeSwitcher';
+import { useTheme } from '@/theme/use-theme';
 
 // Placeholder page. The plain fetch and English-only strings are a temporary
 // exception: M1-12 moves the call to the generated API client and M1-15
@@ -39,6 +42,11 @@ async function checkApi(signal: AbortSignal): Promise<ApiStatus> {
   }
 }
 
+function AppThemeSwitcher() {
+  const { choice, setChoice } = useTheme();
+  return <ThemeSwitcher value={choice} onValueChange={setChoice} />;
+}
+
 export default function App() {
   const [status, setStatus] = useState<ApiStatus>('checking');
 
@@ -62,9 +70,12 @@ export default function App() {
   }, []);
 
   return (
-    <main>
-      <h1>Classora</h1>
-      <p role="status">{STATUS_TEXT[status]}</p>
-    </main>
+    <ThemeProvider>
+      <main className="flex flex-col items-start gap-4 p-4">
+        <h1 className="text-2xl font-semibold">Classora</h1>
+        <p role="status">{STATUS_TEXT[status]}</p>
+        <AppThemeSwitcher />
+      </main>
+    </ThemeProvider>
   );
 }

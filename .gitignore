@@ -33,6 +33,7 @@ build/
 node_modules/
 .vite/
 coverage/
+storybook-static/
 *.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
