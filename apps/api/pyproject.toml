@@ -15,6 +15,10 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "httpx>=0.28.1",
+    "ruff>=0.17.1",
+    "mypy>=2.4.0",
+    "testcontainers>=4.15.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.uv]
@@ -23,3 +27,29 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = [
+    "--strict-markers",
+    "--cov=app",
+    "--cov-branch",
+    "--cov-report=term-missing",
+]
+markers = [
+    "unit: fast tests with no external services (applied to tests/unit/)",
+    "integration: tests against a Testcontainers PostgreSQL (applied to tests/integration/)",
+]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+
+# asyncpg ships no py.typed marker. Narrow override; goes away when readiness
+# moves to the SQLAlchemy engine (M1-07).
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true

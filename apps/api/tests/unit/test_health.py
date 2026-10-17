@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,7 +6,9 @@ from app.main import app
 
 # Closed local port: connection is refused immediately.
 UNREACHABLE_PASSWORD = "not-a-real-secret-pw"
-UNREACHABLE_DSN = f"postgresql://leakcheck_user:{UNREACHABLE_PASSWORD}@127.0.0.1:1/leakcheck_db"
+UNREACHABLE_DSN = (
+    f"postgresql://leakcheck_user:{UNREACHABLE_PASSWORD}@127.0.0.1:1/leakcheck_db"
+)
 
 
 @pytest.fixture
@@ -20,16 +20,6 @@ def client():
 
 def test_live_returns_ok(client):
     response = client.get("/health/live")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-
-def test_ready_returns_ok_against_real_database(client):
-    if not os.environ.get("DATABASE_URL"):
-        pytest.fail("DATABASE_URL must point at the Compose db service (see .env.example)")
-
-    response = client.get("/health/ready")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -56,5 +46,12 @@ def test_ready_503_does_not_leak_connection_details(client):
 
     assert response.status_code == 503
     exposed = response.text + " ".join(f"{k}: {v}" for k, v in response.headers.items())
-    for secret in (UNREACHABLE_DSN, UNREACHABLE_PASSWORD, "leakcheck_user", "leakcheck_db", "127.0.0.1", "Traceback"):
+    for secret in (
+        UNREACHABLE_DSN,
+        UNREACHABLE_PASSWORD,
+        "leakcheck_user",
+        "leakcheck_db",
+        "127.0.0.1",
+        "Traceback",
+    ):
         assert secret not in exposed

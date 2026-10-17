@@ -36,12 +36,28 @@ Stop the stack with `docker compose down` (data is kept in a named volume;
 
 ## Running tests
 
+Docker must be running: integration tests start a throwaway PostgreSQL
+container with [Testcontainers](https://testcontainers.com/). The Compose
+stack and `.env` are not needed.
+
 ```bash
-make test
+make test              # all API tests (unit + integration) with a coverage report
+make test-unit         # unit tests only (no Docker needed)
+make test-integration  # integration tests only
 ```
 
-`make test` starts the PostgreSQL container if needed and runs the API test
-suite with pytest through uv.
+Each run prints a terminal coverage report for the API (`app/`), with branch
+coverage and missing lines. `make test` does not start the Compose database,
+and it can run while `make dev` is up.
+
+## Linting and type checks
+
+```bash
+make lint
+```
+
+`make lint` runs Ruff (lint and format check) and mypy (strict) on the API. It
+only checks and never modifies files.
 
 ## Documentation
 
