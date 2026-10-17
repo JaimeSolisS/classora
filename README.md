@@ -44,6 +44,16 @@ to `http://127.0.0.1:8000`.
 Stop the stack with `docker compose down` (data is kept in a named volume;
 `docker compose down -v` deletes it).
 
+## Configuration
+
+`.env.example` documents every variable with safe local placeholders; copy it
+to `.env` as shown above. `.env` is git-ignored and must never be committed.
+The API validates its configuration when it starts and refuses to start on a
+missing or invalid value; `docker compose logs api` shows a short
+`Configuration error` message naming each bad variable. If your `.env` was
+copied before a variable was added, refresh it from `.env.example` (for
+example, copy it again).
+
 ## Running tests
 
 Docker must be running: API integration tests start a throwaway PostgreSQL

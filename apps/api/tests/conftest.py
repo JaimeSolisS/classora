@@ -1,12 +1,21 @@
-"""Apply the ``unit`` / ``integration`` marker from each test's directory.
+"""Shared test setup.
 
-Every test must live under ``tests/unit/`` or ``tests/integration/``. A test
-anywhere else is a collection error, so it cannot escape both ``-m`` selections.
+Applies the ``unit`` / ``integration`` marker from each test's directory. Every
+test must live under ``tests/unit/`` or ``tests/integration/``. A test anywhere
+else is a collection error, so it cannot escape both ``-m`` selections.
+
+Also isolates every test from the developer's shell: the variables that
+``Settings`` reads are removed and the cached settings are cleared, so tests
+set exactly the configuration they need.
 """
 
+import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+
+from app.core.config import env_var_names, get_settings
 
 TESTS_ROOT = Path(__file__).parent
 MARKER_BY_DIRECTORY = {
@@ -32,3 +41,28 @@ def pytest_collection_modifyitems(
             "Tests must live in tests/unit/ or tests/integration/. Misplaced: "
             + ", ".join(misplaced)
         )
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    names = env_var_names()
+    # Settings matches names case-insensitively, so drop lowercase spellings too.
+    for key in list(os.environ):
+        if key.upper() in names:
+            monkeypatch.delenv(key)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def app_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A minimal valid environment so ``create_app()`` passes its startup check.
+
+    The DSN is a placeholder; tests that need a database override
+    ``get_settings`` with their own ``Settings``.
+    """
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://placeholder:placeholder@127.0.0.1:1/placeholder"
+    )

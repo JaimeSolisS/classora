@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.143.3",
     "uvicorn>=0.54.0",
     "asyncpg>=0.32.0",
+    "pydantic-settings>=2.16.0",
 ]
 
 [dependency-groups]

@@ -5,11 +5,13 @@ unauthenticated infrastructure probes and must never expose internal details.
 """
 
 import asyncio
-import os
+from typing import Annotated
 
 import asyncpg
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+
+from app.core.config import Settings, get_settings
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -19,9 +21,9 @@ QUERY_TIMEOUT_SECONDS = 2.0
 PROBLEM_JSON = "application/problem+json"
 
 
-def get_database_url() -> str | None:
-    """Return the database DSN. Read per request so nothing is cached."""
-    return os.environ.get("DATABASE_URL")
+def get_database_url(settings: Annotated[Settings, Depends(get_settings)]) -> str:
+    """Return the database DSN from the validated settings."""
+    return settings.database_url.get_secret_value()
 
 
 async def _database_is_reachable(dsn: str) -> bool:
@@ -49,10 +51,10 @@ async def live() -> dict[str, str]:
 
 @router.get("/ready", response_model=None)
 async def ready(
-    database_url: str | None = Depends(get_database_url),
+    database_url: str = Depends(get_database_url),
 ) -> dict[str, str] | JSONResponse:
     """The process is up and PostgreSQL answers ``SELECT 1``."""
-    if database_url and await _database_is_reachable(database_url):
+    if await _database_is_reachable(database_url):
         return {"status": "ok"}
     # RFC 9457 Problem Details. Deliberately generic: no DSN, host, driver
     # error text or traceback. request_id is added with the shared handler (M1-09).
