@@ -6,3 +6,5 @@
 **/*.pyc
 **/.pytest_cache
 **/node_modules
+**/dist
+**/coverage

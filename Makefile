@@ -1,22 +1,45 @@
-.PHONY: dev lint test test-unit test-integration
+.PHONY: dev lint lint-api lint-web test test-api test-web test-unit test-integration
 
-## Build the API image and start db + api in the background (idempotent).
+# pnpm runs through Corepack (pinned by packageManager in package.json), never
+# a global install, and never stops for a download prompt.
+PNPM := COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm
+
+## Build the images and start db, api and web in the background (idempotent).
 dev:
 	docker compose up -d --build --wait
 
-## Lint, format-check and type-check the API (check only, never modifies files).
-lint:
+## Lint both apps (check only, never modifies files). Fails if either part fails.
+lint: lint-api lint-web
+
+## Lint, format-check and type-check the API.
+lint-api:
 	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run mypy app
+
+## Install from the lockfile, then ESLint, Prettier check and tsc for the web app.
+## `pnpm install` fails on a Node major other than engines.node (engineStrict).
+lint-web:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/web lint
+	$(PNPM) --filter @classora/web format:check
+	$(PNPM) --filter @classora/web typecheck
+
+## Run all tests for both apps. Fails if either part fails.
+test: test-api test-web
 
 ## Run all API tests (unit + integration) with one coverage report.
 ## Integration tests start a throwaway Testcontainers PostgreSQL; Docker must be running.
-test:
+test-api:
 	cd apps/api && uv run pytest
 
-## Run only the unit tests (no Docker needed).
+## Install from the lockfile, then run the web Vitest suite once (no watch mode).
+test-web:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/web test
+
+## Run only the API unit tests (no Docker needed).
 test-unit:
 	cd apps/api && uv run pytest -m unit
 
-## Run only the integration tests (Testcontainers PostgreSQL; Docker must be running).
+## Run only the API integration tests (Testcontainers PostgreSQL; Docker must be running).
 test-integration:
 	cd apps/api && uv run pytest -m integration

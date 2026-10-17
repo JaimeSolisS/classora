@@ -1,0 +1,7 @@
+packages:
+  - apps/web
+  - packages/api-client
+
+# Fail `pnpm install` when the running Node does not match engines.node in the
+# root package.json (Node 24, a provisional pin pending M1-06 / ADR-0001).
+engineStrict: true

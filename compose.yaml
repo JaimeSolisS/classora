@@ -39,5 +39,25 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    environment:
+      # Read only by vite.config.ts (dev proxy for /health and /api); never reaches client code.
+      API_PROXY_TARGET: http://api:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    # Lets `docker compose up --wait` (make dev) return only once the page is served.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(async (r) => process.exit(r.ok && (await r.text()).includes('id=\"root\"') ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   db-data:
