@@ -1,0 +1,264 @@
+# Pull request quality gates. Every check is one `make` target, so a red step
+# is reproduced locally with the same command (see README "Continuous
+# integration"). Runtime versions come from the ADR-0001 pin files: Node from
+# .nvmrc, Python from the apps/api pin file (read by uv), pnpm from packageManager
+# (Corepack), PostgreSQL from POSTGRES_IMAGE in the integration conftest.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels its older run. Push and manual runs
+# get a group of their own (the run id), so they are never cancelled or replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Pull requests: compare the PR head with its merge base on the base
+      # branch. Push and manual runs: run every group.
+      - name: Detect changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            bash .github/scripts/changes.sh "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
+          else
+            printf 'api=true\nweb=true\n' | tee -a "$GITHUB_OUTPUT"
+          fi
+
+  api-lint:
+    name: api-lint
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # An out-of-date apps/api/uv.lock fails instead of being rewritten.
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: make lint-api
+        run: make lint-api
+
+  api-test:
+    name: api-test
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      # Integration tests use the runner's Docker through Testcontainers; no
+      # Compose stack, no .env.
+      - name: make test-unit
+        run: make test-unit
+
+      - name: make test-migrations
+        run: make test-migrations
+
+      - name: make test-integration
+        run: make test-integration
+
+  web:
+    name: web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: make lint-web
+        run: make lint-web
+
+      - name: make test-web
+        run: make test-web
+
+      - name: make build-web
+        run: make build-web
+
+  web-storybook:
+    name: web-storybook
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Read the Playwright version from the lockfile
+        id: playwright
+        run: |
+          version=$(sed -n -E 's/^  playwright@([0-9][^:]*):$/\1/p' pnpm-lock.yaml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error::playwright not found in pnpm-lock.yaml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
+      # CI only: the browser and its OS packages. On a cache hit only the OS
+      # packages are installed. `make test-storybook` then finds the browser.
+      - name: Install Playwright Chromium
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+          CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+        run: |
+          corepack pnpm install --frozen-lockfile
+          if [ "$CACHE_HIT" = "true" ]; then
+            corepack pnpm --filter @classora/web exec playwright install-deps chromium
+          else
+            corepack pnpm --filter @classora/web exec playwright install --with-deps --only-shell chromium
+          fi
+
+      - name: make test-storybook
+        run: make test-storybook
+
+  # The one required status check (repository ruleset on develop and main).
+  # Downstream jobs join its `needs` and the result check below: the OpenAPI
+  # drift job (#12), security scanning (#11) and E2E (#18) if they live in this
+  # workflow.
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [changes, api-lint, api-test, web, web-storybook]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN_API: ${{ needs.changes.outputs.api }}
+          RUN_WEB: ${{ needs.changes.outputs.web }}
+          API_LINT: ${{ needs.api-lint.result }}
+          API_TEST: ${{ needs.api-test.result }}
+          WEB: ${{ needs.web.result }}
+          WEB_STORYBOOK: ${{ needs.web-storybook.result }}
+        run: |
+          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB)"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::changes finished with result '$CHANGES'"
+            exit 1
+          fi
+          fail=0
+          # check <job> <result> <whether the changes job turned it on>
+          check() {
+            echo "$1: $2"
+            case "$2" in
+              success) ;;
+              skipped)
+                if [ "$3" != "false" ]; then
+                  echo "::error::$1 was skipped although its paths changed"
+                  fail=1
+                fi
+                ;;
+              *)
+                echo "::error::$1 finished with result '$2'"
+                fail=1
+                ;;
+            esac
+          }
+          check api-lint "$API_LINT" "$RUN_API"
+          check api-test "$API_TEST" "$RUN_API"
+          check web "$WEB" "$RUN_WEB"
+          check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
+          exit "$fail"

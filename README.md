@@ -130,6 +130,7 @@ make test-api          # all API tests with a coverage report
 make test-web          # web component tests (Vitest, no Docker needed)
 make test-unit         # API unit tests only (no Docker needed)
 make test-integration  # API integration tests only
+make test-migrations   # API migration checks only (upgrade, round trip, no model drift)
 ```
 
 Storybook story tests run separately, on the host:
@@ -158,7 +159,7 @@ dependencies from the committed lockfile first, so no manual `pnpm install` is
 needed. `make lint` and `make test` fail if either app fails; use `make -k` to
 run both parts regardless.
 
-To build the web app: `corepack pnpm --filter @classora/web build` (output in
+To build the web app for production: `make build-web` (output in
 `apps/web/dist/`).
 
 ## Storybook
@@ -172,6 +173,26 @@ for you). The toolbar switches stories between light and dark. It fails
 instead of using another port when 6006 is taken. To build a static copy:
 `corepack pnpm --filter @classora/web build-storybook` (output in
 `apps/web/storybook-static/`).
+
+## Continuous integration
+
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
+every pull request to `develop` or `main` and on pushes to both. Each check is
+one `make` target, so a failing check can be reproduced locally with the same
+command:
+
+| CI job | Local command |
+| --- | --- |
+| `api-lint` | `make lint-api` |
+| `api-test` | `make test-unit`, `make test-migrations`, `make test-integration` |
+| `web` | `make lint-web`, `make test-web`, `make build-web` |
+| `web-storybook` | `make test-storybook` |
+
+Pull requests run only the jobs their changed files can affect (API jobs for
+`apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
+files; both for `Makefile` and workflow changes; neither for documentation).
+`ci-required` is the one required check: it reports on every pull request and
+fails if any job that ran failed or was cancelled.
 
 ## Documentation
 

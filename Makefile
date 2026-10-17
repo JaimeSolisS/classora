@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed seed-demo lint lint-api lint-web test test-api test-web test-unit test-integration storybook test-storybook
+.PHONY: dev migrate seed seed-demo lint lint-api lint-web test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -58,6 +58,15 @@ test-unit:
 ## Run only the API integration tests (Testcontainers PostgreSQL; Docker must be running).
 test-integration:
 	cd apps/api && uv run pytest -m integration
+
+## Run only the migration tests: upgrade from empty, single head, round trip, no model drift (Docker).
+test-migrations:
+	cd apps/api && uv run pytest tests/integration/test_migrations.py
+
+## Install from the lockfile, then build the web app for production (output in apps/web/dist/).
+build-web:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/web build
 
 ## Install from the lockfile, then run Storybook on http://127.0.0.1:6006 (host only,
 ## no browser is opened). Fails instead of moving to another port when 6006 is taken.
