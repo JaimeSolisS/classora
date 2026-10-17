@@ -1,10 +1,13 @@
 """Offset and cursor pagination helpers (C1-C6)."""
 
+import asyncio
 import base64
+import json
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core import pagination
 from app.core.pagination import (
     InvalidCursorError,
     build_cursor_page,
@@ -75,7 +78,7 @@ def fetch(rows: list[tuple[int, int]], cursor: str | None, limit: int):
     """Keyset query over an ordered list: rows after the cursor, limit + 1."""
     after = rows
     if cursor is not None:
-        position = decode_cursor(cursor, length=2)
+        position = decode_cursor(cursor, types=(int, int))
         after = [r for r in rows if r > position]
     return build_cursor_page(after[: limit + 1], limit=limit, key=key)
 
@@ -137,7 +140,7 @@ def test_cursor_is_opaque_url_safe_and_round_trips():
     assert set(cursor) <= set(
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     )
-    assert decode_cursor(cursor, length=2) == ("2026-10-17T10:00:00+00:00", 42)
+    assert decode_cursor(cursor, types=(str, int)) == ("2026-10-17T10:00:00+00:00", 42)
 
 
 def test_cursor_endpoint_walks_all_rows(client: TestClient):
@@ -151,6 +154,56 @@ def test_cursor_endpoint_walks_all_rows(client: TestClient):
         if cursor is None:
             break
     assert seen == [row.id for row in ROWS]
+
+
+def test_decode_checks_exact_types_and_nullable_keys():
+    assert decode_cursor(encode_cursor([None, 7]), types=((str, type(None)), int)) == (
+        None,
+        7,
+    )
+    assert decode_cursor(encode_cursor([2.5, 7]), types=(float, int)) == (2.5, 7)
+    assert decode_cursor(encode_cursor([True, 7]), types=(bool, int)) == (True, 7)
+
+
+def test_deeply_nested_cursor_is_rejected_even_without_length_cap(monkeypatch):
+    with pytest.raises(InvalidCursorError):
+        decode_cursor(DEEP_CURSOR, types=(int, int))
+
+    monkeypatch.setattr(pagination, "MAX_CURSOR_LENGTH", len(DEEP_CURSOR))
+    with pytest.raises(InvalidCursorError):
+        decode_cursor(DEEP_CURSOR, types=(int, int))
+
+
+def test_deeply_nested_cursor_over_http_is_400(test_app):
+    # httpx refuses a query this long (uvicorn accepts it), so call the app directly.
+    messages: list[dict] = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/cursor",
+        "raw_path": b"/cursor",
+        "query_string": f"cursor={DEEP_CURSOR}".encode(),
+        "root_path": "",
+        "headers": [],
+        "client": ("testclient", 1),
+        "server": ("testserver", 80),
+        "state": {},
+    }
+    asyncio.run(test_app(scope, receive, send))
+
+    assert messages[0]["status"] == 400
+    body = json.loads(b"".join(m.get("body", b"") for m in messages[1:]))
+    assert body["code"] == "invalid_cursor"
 
 
 # --- C5 invalid cursor --------------------------------------------------------
@@ -173,16 +226,30 @@ INVALID_CURSORS = [
     b64(b"[NaN, 2]"),
     "w6k",  # non-ASCII after decoding is fine, but this is not JSON
     "café",
+    # Wrong value types for (int, int): bool is not accepted as int.
+    b64(b'["x", "y"]'),
+    b64(b"[1.5, 2]"),
+    b64(b"[true, 2]"),
+    b64(b"[1, null]"),
+    b64(b"[1e999, 2]"),
+    # Too long: rejected before decoding.
+    b64(b"[1, 2]") + "A" * 1100,
 ]
+# Decodes to 30,000 nested "[": RecursionError in json.loads without the cap.
+DEEP_CURSOR = b64(b"[" * 30000 + b"]" * 30000)
 
 
-@pytest.mark.parametrize("cursor", INVALID_CURSORS)
+def cursor_id(cursor: str) -> str:
+    return cursor if len(cursor) <= 40 else f"{cursor[:20]}...({len(cursor)} chars)"
+
+
+@pytest.mark.parametrize("cursor", INVALID_CURSORS, ids=cursor_id)
 def test_decode_rejects_malformed_cursor(cursor: str):
     with pytest.raises(InvalidCursorError):
-        decode_cursor(cursor, length=2)
+        decode_cursor(cursor, types=(int, int))
 
 
-@pytest.mark.parametrize("cursor", INVALID_CURSORS)
+@pytest.mark.parametrize("cursor", INVALID_CURSORS, ids=cursor_id)
 def test_malformed_cursor_is_400_without_echo(client: TestClient, cursor: str):
     response = client.get("/cursor", params={"cursor": cursor})
 

@@ -149,10 +149,8 @@ def build_test_app() -> FastAPI:
     async def cursor(page: CursorPagination) -> CursorPage[Row]:
         rows = ROWS
         if page.cursor is not None:
-            rank, row_id = decode_cursor(page.cursor, length=2)
-            if not isinstance(rank, int) or not isinstance(row_id, int):
-                raise ValueError("unexpected cursor values")
-            rows = [r for r in ROWS if (r.rank, r.id) > (rank, row_id)]
+            position = decode_cursor(page.cursor, types=(int, int))
+            rows = [r for r in ROWS if (r.rank, r.id) > position]
         return build_cursor_page(
             rows[: page.limit + 1], limit=page.limit, key=lambda r: (r.rank, r.id)
         )

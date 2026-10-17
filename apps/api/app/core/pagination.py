@@ -34,6 +34,8 @@ DEFAULT_LIMIT = 25
 MAX_LIMIT = 100
 
 CursorValue = str | int | float | bool | None
+# Longer cursors are rejected before decoding (a real one is far shorter).
+MAX_CURSOR_LENGTH = 1024
 
 
 class InvalidCursorError(AppError):
@@ -95,33 +97,46 @@ def encode_cursor(position: Sequence[CursorValue]) -> str:
     return base64.urlsafe_b64encode(raw.encode()).rstrip(b"=").decode("ascii")
 
 
-def decode_cursor(cursor: str, *, length: int) -> tuple[CursorValue, ...]:
+def decode_cursor(
+    cursor: str, *, types: Sequence[type | tuple[type, ...]]
+) -> tuple[CursorValue, ...]:
     """Decode a cursor made by :func:`encode_cursor`.
 
-    Raises :class:`InvalidCursorError` (400) for anything that is not base64url
-    JSON of an array of ``length`` scalars. The cursor value is never echoed.
+    ``types`` gives the expected type of each position element, for example
+    ``(str, int)`` for ``[created_at, id]``; add ``type(None)`` for a nullable
+    sort key. Types match exactly, so ``true`` is not accepted as an ``int``.
+
+    Raises :class:`InvalidCursorError` (400) for anything else: longer than
+    :data:`MAX_CURSOR_LENGTH`, not base64url, not JSON, or not an array of
+    ``len(types)`` values of those types. The cursor value is never echoed.
     """
+    if len(cursor) > MAX_CURSOR_LENGTH:
+        raise InvalidCursorError()
     try:
         data = cursor.encode("ascii")
         raw = base64.b64decode(
             data + b"=" * (-len(data) % 4), altchars=b"-_", validate=True
         )
         position = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant)
-    except UnicodeError, binascii.Error, ValueError:
+    except UnicodeError, binascii.Error, ValueError, RecursionError:
         raise InvalidCursorError() from None
     if (
         not isinstance(position, list)
-        or len(position) != length
-        or not all(_is_scalar(value) for value in position)
+        or len(position) != len(types)
+        or not all(
+            _has_type(value, expected)
+            for value, expected in zip(position, types, strict=True)
+        )
     ):
         raise InvalidCursorError()
     return tuple(position)
 
 
-def _is_scalar(value: object) -> bool:
-    if isinstance(value, float):
-        return math.isfinite(value)
-    return value is None or isinstance(value, str | int | bool)
+def _has_type(value: object, expected: type | tuple[type, ...]) -> bool:
+    allowed = expected if isinstance(expected, tuple) else (expected,)
+    if type(value) not in allowed:
+        return False
+    return not isinstance(value, float) or math.isfinite(value)
 
 
 def build_cursor_page[T](
