@@ -267,7 +267,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Only ISSUE-G1 (in part) is accepted.  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -327,15 +327,15 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Onl
   - PgBouncer's usual **transaction pooling** mode breaks `LISTEN` (it is session-scoped) and conflicts with asyncpg's prepared-statement cache.
   - Procrastinate's worker relies on `LISTEN/NOTIFY` and advisory locks.
   - Alembic migrations may need session-level features.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0003, 2026-10-17): see [ADR-0003](adr/0003-database-connection-topology.md), which also records the approved details for API-side job deferral, worker business sessions and the Procrastinate schema path.
   - The API's request traffic goes through PgBouncer in transaction mode. Disable asyncpg statement caching (`prepared_statement_cache_size=0` / `statement_cache_size=0`) and use unique prepared-statement names.
-  - The **SSE listener connection**, the **Procrastinate worker** and **Alembic** connect directly to PostgreSQL on the internal Docker network. An alternative is a separate PgBouncer pool in session mode.
+  - The **SSE listener connection**, the **Procrastinate worker** and **Alembic** connect directly to PostgreSQL on the internal Docker network. An alternative, a separate PgBouncer pool in session mode, was considered and rejected (ADR-0003).
   - PgBouncer runs in the **data stack**.
   - Size `max_connections` for the micro instance (see ISSUE-I8).
 
 #### ISSUE-D2 — Money representation and rounding (M; spec §18.1 open)
 - **Spec:** §16 "decimal-safe", strategy left open.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0004, 2026-10-17): see [ADR-0004](adr/0004-money-time-and-date-representation.md).
   - Store amounts as `NUMERIC(14,2)` in MXN. Use `NUMERIC(14,4)` for intermediate rates such as per-minute compensation.
   - Use Python `Decimal` end to end.
   - Round half-up to the centavo **per line item**. Totals are sums of rounded lines.
@@ -346,7 +346,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Onl
 - **Problem:**
   - Birthdates, due dates, holidays, payroll period bounds, academic periods and effective dates are calendar dates, not instants.
   - Recurrence must be defined in local wall-clock time.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0004, 2026-10-17): see [ADR-0004](adr/0004-money-time-and-date-representation.md).
   - Use `DATE` for calendar dates.
   - Recurrence rules store a local `TIME`, a duration and a `TZID`.
   - Materialized class sessions store `starts_at` and `ends_at` as `TIMESTAMPTZ`.
@@ -383,16 +383,16 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Onl
 
 #### ISSUE-D7 — Version pins (M)
 - **Problem:** The spec pins no major versions.
-- **Resolution — PROPOSED:** Pin PostgreSQL 18 (native `uuidv7()` gives index-friendly UUID keys), Python 3.14, Node 24 LTS and pnpm. Record the pins in ADR-0001 and in `.tool-versions` or equivalent files.
+- **Resolution — ACCEPTED** (ADR-0001, 2026-10-17): see [ADR-0001](adr/0001-runtime-version-pins.md). Pin PostgreSQL 18 (native `uuidv7()` gives index-friendly UUID keys), Python 3.14, Node 24 LTS and pnpm. Record the pins in ADR-0001 and in `.tool-versions` or equivalent files.
 
 ### 10.4 Background jobs
 
 #### ISSUE-J1 — Procrastinate driver and transactional enqueue (C/M)
 - **Spec:** §10 asyncpg for the ORM and Procrastinate for jobs.
 - **Problem:**
-  - Procrastinate's connectors are psycopg-based. At the time of writing it has no asyncpg connector; verify this against the pinned version.
+  - Procrastinate's connectors are psycopg-based. Verified on 2026-10-17 against the pinned version, Procrastinate 3.10.0: it has psycopg 3 connectors and no asyncpg connector (ADR-0003 §Verification).
   - Because of that, enqueueing a job is not atomic with the business transaction that triggered it.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0003, 2026-10-17): see [ADR-0003](adr/0003-database-connection-topology.md).
   - Accept psycopg 3 as a dependency used only by Procrastinate.
   - Enqueue jobs **after commit**.
   - Make every job idempotent (ISSUE-J4).
@@ -401,7 +401,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Onl
 #### ISSUE-J2 — Where the "periodic scheduler" runs (A)
 - **Spec:** §10 "dedicated worker container; periodic scheduler".
 - **Problem:** It is unclear whether this means a separate scheduler container. In Procrastinate, periodic tasks are deferred by the worker process itself, with database-level deduplication.
-- **Resolution — PROPOSED:** Run periodic deferral inside the `worker` container and add no extra container. Every periodic task uses a `queueing_lock` and an idempotent business key.
+- **Resolution — ACCEPTED** (ADR-0003, 2026-10-17): see [ADR-0003](adr/0003-database-connection-topology.md). Run periodic deferral inside the `worker` container and add no extra container. Every periodic task uses a `queueing_lock` and an idempotent business key.
 
 #### ISSUE-J3 — Failed-job visibility and retry UI (M)
 - **Spec:** §9 "failed background tasks visible with retry controls".
@@ -751,14 +751,14 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Onl
 
 ## 11. Proposed ADR backlog
 
-These ADRs would record the accepted resolutions. All of them are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0003 and ADR-0004 are **Accepted**. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
-| 0001 | Runtime version pins | D7 |
+| [0001](adr/0001-runtime-version-pins.md) | Runtime version pins — **Accepted** | D7 |
 | 0002 | Module boundaries and the reporting module | A1, A2 |
-| 0003 | Database connection topology (PgBouncer, direct connections) | D1, N1, J1 |
-| 0004 | Money, time and date representation | D2, D3 |
+| [0003](adr/0003-database-connection-topology.md) | Database connection topology (PgBouncer, direct connections) and background jobs — **Accepted** | D1, J1, J2 (N1 stays PROPOSED apart from the direct `LISTEN` connection) |
+| [0004](adr/0004-money-time-and-date-representation.md) | Money, time and date representation — **Accepted** | D2, D3 |
 | 0005 | Scheduling invariants, overrides and recurrence | D4, SC1–SC3 |
 | 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
 | 0007 | Authentication, sessions, recovery and delegated permissions | S1–S7 |

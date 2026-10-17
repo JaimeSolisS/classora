@@ -1,5 +1,5 @@
 # Local development image for the FastAPI service. Build context: repository root.
-# Python 3.14 is a provisional pin pending the M1-06 / ADR-0001 decision gate.
+# The Python 3.14 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
 # Keep in sync with apps/api/.python-version and apps/api/pyproject.toml.
 FROM python:3.14-slim
 

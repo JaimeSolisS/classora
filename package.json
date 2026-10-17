@@ -1,7 +1,7 @@
 {
   "name": "classora",
   "private": true,
-  "//": "Node 24 and pnpm 12.14.0 are provisional pins pending the M1-06 / ADR-0001 decision gate. Keep engines.node in sync with .nvmrc and infrastructure/docker/web.Dockerfile.",
+  "//": "The Node 24 and pnpm 12.14.0 pins are set by _docs/adr/0001-runtime-version-pins.md (accepted). Keep engines.node in sync with .nvmrc and infrastructure/docker/web.Dockerfile.",
   "packageManager": "pnpm@12.14.0",
   "engines": {
     "node": ">=24 <25"

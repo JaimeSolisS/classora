@@ -23,7 +23,8 @@ from testcontainers.community.postgres import PostgresContainer
 # (for example rootless Docker).
 os.environ.setdefault("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
 
-# Must match the db image in compose.yaml. Provisional pin pending M1-06 / ADR-0001.
+# Must match the db image in compose.yaml.
+# Pin set by _docs/adr/0001-runtime-version-pins.md (accepted).
 POSTGRES_IMAGE = "postgres:18"
 
 
