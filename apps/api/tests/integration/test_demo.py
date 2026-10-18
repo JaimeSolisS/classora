@@ -97,10 +97,25 @@ def test_without_generators_only_reference_seeds_run(migrated_url, env_for, caps
     ]
 
 
-def test_registered_command_with_nothing_registered(migrated_url, env_for, capsys):
+def test_registered_command_applies_the_registered_reference_seeds(
+    migrated_url, env_for, capsys
+):
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        "identity.permissions: 19 inserted, 0 updated",
+        "identity.roles: 7 inserted, 0 updated",
+        "identity.role_permissions: 43 inserted, 0 updated",
+        "No demo generators are registered.",
+    ]
+
+
+def test_nothing_registered(migrated_url, env_for, capsys):
+    env_for("local", migrated_url)
+
+    assert demo.main([], seeds=()) == 0
 
     assert capsys.readouterr().out.splitlines() == [
         "No reference seeds are registered.",

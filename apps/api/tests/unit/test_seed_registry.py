@@ -8,8 +8,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.models import StandardColumns
+from app.modules.identity.models import User, UserDelegation, UserRole
+from app.modules.identity.permissions import PERMISSIONS, ROLE_CODES, ROLE_PERMISSIONS
 from app.seeds import runner
 from app.seeds.registry import REFERENCE_SEEDS, UpsertSeed
+from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult, upsert_rows
 from tests.integration.models import SeedReference, VersionedSeedReference
 
@@ -68,6 +71,36 @@ def test_registry_is_an_ordered_tuple():
     assert isinstance(REFERENCE_SEEDS, tuple)
 
 
+def test_identity_seeds_are_registered_in_dependency_order():
+    assert [seed.name for seed in REFERENCE_SEEDS][:3] == [
+        "identity.permissions",
+        "identity.roles",
+        "identity.role_permissions",
+    ]
+
+
+def test_identity_seed_rows_come_from_the_catalog_constants():
+    permissions, roles, role_permissions = REFERENCE_SEEDS[:3]
+
+    assert isinstance(permissions, UpsertSeed)
+    assert isinstance(roles, UpsertSeed)
+    assert list(permissions.rows) == [
+        {"code": p.code, "delegable": p.delegable} for p in PERMISSIONS
+    ]
+    assert list(roles.rows) == [{"code": code} for code in ROLE_CODES]
+    assert isinstance(role_permissions, RolePermissionsSeed)
+    assert role_permissions.mapping is ROLE_PERMISSIONS
+
+
+def test_no_reference_seed_writes_identity_users_or_credentials():
+    # F5 (M1-17 rule): reference seeds never create accounts or credentials.
+    for seed in REFERENCE_SEEDS:
+        model = getattr(seed, "model", None)
+        assert model not in {User, UserRole, UserDelegation}
+        for row in getattr(seed, "rows", ()):
+            assert not any("password" in key for key in row)
+
+
 @pytest.mark.anyio
 async def test_duplicate_natural_key_raises_before_any_sql():
     rows = [{"code": "a", "label": "A"}, {"code": "a", "label": "Otra"}]
@@ -122,12 +155,23 @@ def test_summary_lists_names_and_counts_only():
     assert lines == ["roles: 2 inserted, 1 updated"]
 
 
+def test_summary_shows_deleted_only_when_non_zero():
+    lines = runner.seed_summary(
+        [
+            ("a", UpsertResult(inserted=0, updated=0, deleted=1)),
+            ("b", UpsertResult(inserted=1, updated=0, deleted=0)),
+        ]
+    )
+
+    assert lines == ["a: 0 inserted, 0 updated, 1 deleted", "b: 1 inserted, 0 updated"]
+
+
 def test_summary_of_an_empty_registry():
     assert runner.seed_summary([]) == ["No reference seeds are registered."]
 
 
 def test_alembic_heads_reads_the_migration_scripts():
-    assert runner.alembic_heads() == {"0002"}
+    assert runner.alembic_heads() == {"0003"}
 
 
 def test_configuration_error_exits_1_without_traceback(capsys):

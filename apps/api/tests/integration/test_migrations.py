@@ -1,4 +1,4 @@
-"""Alembic history (M1-07 C5-C8, M1-16 B): each test migrates its own fresh database."""
+"""Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4); each test uses a fresh database."""
 
 import asyncio
 from pathlib import Path
@@ -57,7 +57,16 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0002"
+HEAD = "0003"
+
+IDENTITY_TABLES = [
+    "permissions",
+    "role_permissions",
+    "roles",
+    "user_delegations",
+    "user_roles",
+    "users",
+]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -91,6 +100,9 @@ def test_history_is_linear_with_one_head():
     procrastinate = script.get_revision("0002")
     assert procrastinate.down_revision == "0001"
     assert Path(procrastinate.path).name == "0002_procrastinate_3_10_0.py"
+    identity = script.get_revision("0003")
+    assert identity.down_revision == "0002"
+    assert Path(identity.path).name == "0003_identity_users_roles_permissions.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -104,7 +116,8 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
     command.upgrade(alembic_config(fresh_database_url), "head")
 
     assert version_nums(fresh_database_url) == [HEAD]
-    # The Procrastinate schema needs no extension beyond plpgsql.
+    # Neither the Procrastinate schema nor identity needs an extension beyond
+    # plpgsql (usernames are normalized and CHECKed, not citext).
     extensions = run_sql(fresh_database_url, "SELECT extname FROM pg_extension")
     assert [row.extname for row in extensions] == ["plpgsql"]
     tables = run_sql(
@@ -112,10 +125,55 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema = 'public' ORDER BY table_name",
     )
-    assert [row.table_name for row in tables] == [
-        "alembic_version",
-        *PROCRASTINATE_TABLES,
-    ]
+    assert [row.table_name for row in tables] == sorted(
+        ["alembic_version", *IDENTITY_TABLES, *PROCRASTINATE_TABLES]
+    )
+
+
+def public_tables(dsn: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public'",
+    )
+    return {row.table_name for row in rows}
+
+
+def test_downgrade_to_0002_drops_exactly_the_identity_tables(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0002")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(IDENTITY_TABLES)
+
+    command.downgrade(config, "0002")
+
+    assert version_nums(fresh_database_url) == ["0002"]
+    assert public_tables(fresh_database_url) == before
+
+
+def test_identity_foreign_keys_never_cascade(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    tables = ", ".join(f"'{table}'" for table in IDENTITY_TABLES)
+    rows = run_sql(
+        fresh_database_url,
+        # Table names are test constants, never user input.
+        "SELECT conname, confdeltype::text, confupdtype::text FROM pg_constraint "  # noqa: S608
+        f"WHERE contype = 'f' AND conrelid::regclass::text IN ({tables})",
+    )
+    # r = RESTRICT, a = NO ACTION; never c (CASCADE), n (SET NULL), d (SET DEFAULT).
+    assert len(rows) == 7
+    assert {(row.confdeltype, row.confupdtype) for row in rows} == {("r", "a")}
+    assert {row.conname for row in rows} == {
+        "fk_role_permissions_permission_id_permissions",
+        "fk_role_permissions_role_id_roles",
+        "fk_user_roles_user_id_users",
+        "fk_user_roles_role_id_roles",
+        "fk_user_delegations_user_id_users",
+        "fk_user_delegations_permission_id_permissions",
+        "fk_user_delegations_granted_by_user_id_users",
+    }
 
 
 def test_downgrade_base_then_upgrade_head(fresh_database_url):
