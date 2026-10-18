@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.16.0",
     "sqlalchemy[asyncio]>=2.1.5",
     "alembic>=1.20.0",
+    "procrastinate>=3.10.0,<4",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "factory-boy>=3.3.3",
     "faker>=40.43.0",
+    "psycopg[binary]>=3.3.6",
 ]
 
 [tool.uv]

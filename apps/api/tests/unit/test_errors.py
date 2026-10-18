@@ -2,6 +2,7 @@
 
 import re
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.errors import AppError, VersionConflictError
@@ -166,7 +167,11 @@ def test_unhandled_exception_is_generic_500_without_leak(client: TestClient):
 # --- D1 production wiring -----------------------------------------------------
 
 
-def test_production_app_has_only_health_and_docs_routes(app_env: None):
+def test_production_app_has_only_health_and_docs_routes(
+    app_env: None, monkeypatch: pytest.MonkeyPatch
+):
+    # APP_ENV=prod: the local/DEV demo job route is not mounted (M1-16 D4).
+    monkeypatch.setenv("APP_ENV", "prod")
     app = create_app()
 
     assert app.debug is False

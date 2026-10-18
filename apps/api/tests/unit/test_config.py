@@ -438,6 +438,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "STORAGE_ENDPOINT_URL",
         "STORAGE_ACCESS_KEY_ID",
         "STORAGE_SECRET_ACCESS_KEY",
+        "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
     }
 
 

@@ -1,7 +1,16 @@
-# Local development image for the FastAPI service. Build context: repository root.
+# Local development image for the FastAPI service and the background worker
+# (the `worker` service runs this same image with another command). Build
+# context: repository root.
 # The Python 3.14 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
 # Keep in sync with apps/api/.python-version and apps/api/pyproject.toml.
 FROM python:3.14-slim
+
+# libpq for psycopg (used only by Procrastinate, ADR-0003): Debian's runtime
+# library, OS-patched and visible to image scanners. The psycopg[binary] wheel
+# is a dev-only dependency, so the --no-dev install below does not contain it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /usr/local/bin/uv
 
@@ -24,5 +33,6 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
+# The worker service overrides this with `python -m app.worker`.
 # --no-access-log: app.access writes one JSON access line per request instead.
 CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

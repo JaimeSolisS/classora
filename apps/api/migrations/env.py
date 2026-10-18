@@ -7,7 +7,9 @@ PostgreSQL, bypassing PgBouncer (ADR-0003), with its own short-lived engine
 
 The target metadata comes from ``app.core.model_registry``, the one place that
 imports every model module. Revision IDs are sequential four-digit numbers in
-one linear history (see ``alembic.ini``).
+one linear history (see ``alembic.ini``). Autogenerate ignores Procrastinate's
+``procrastinate_*`` objects (``include_name``), which their own revisions create
+from committed SQL (ADR-0003).
 """
 
 import asyncio
@@ -20,7 +22,7 @@ from sqlalchemy.engine import Connection
 
 from app.core.config import ConfigurationError, get_settings
 from app.core.db import async_direct_database_url, create_direct_engine
-from app.core.model_registry import target_metadata
+from app.core.model_registry import include_name, target_metadata
 
 config = context.config
 
@@ -45,7 +47,11 @@ def _database_url() -> str:
 
 
 def _run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_name=include_name,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

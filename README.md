@@ -11,7 +11,8 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 **Pre-alpha.** Only the local development foundation exists so far: a FastAPI
 API with liveness and readiness health checks, backed by a local PostgreSQL
 container (reached through PgBouncer) whose schema is managed with Alembic
-migrations, and a React +
+migrations, a background worker for queued and periodic jobs (Procrastinate),
+and a React +
 TypeScript + Vite placeholder page that shows whether the API is live. The web
 app has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook) and a light/dark/system theme
@@ -33,9 +34,10 @@ cp .env.example .env
 make dev
 ```
 
-`make dev` builds the images and starts PostgreSQL, PgBouncer, the API and the
-web app in the background, and returns once all of them are healthy. The API
-reaches PostgreSQL through PgBouncer (connection pooling). Then open:
+`make dev` builds the images and starts PostgreSQL, PgBouncer, the API, the
+background worker and the web app in the background, and returns once all of
+them are healthy. The API reaches PostgreSQL through PgBouncer (connection
+pooling). Then open:
 
 - Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up)
 - Liveness: <http://127.0.0.1:8000/health/live>
@@ -46,6 +48,13 @@ The web app calls the API on its own origin: the Vite dev server proxies
 that, run `corepack pnpm --filter @classora/web dev` on the host, which proxies
 to `http://127.0.0.1:8000`.
 
+The background worker (`worker`, built from the same image as the API) runs
+queued and periodic jobs. It processes jobs only after `make migrate` (below)
+has created its tables; until then it waits and logs that it needs
+`make migrate`. Follow its logs with `docker compose logs -f worker`. In local
+and dev, `curl -X POST http://127.0.0.1:8000/api/v1/dev/demo-jobs` queues a
+demo job to check that the worker runs it.
+
 Stop the stack with `docker compose down` (data is kept in a named volume;
 `docker compose down -v` deletes it).
 
@@ -55,11 +64,11 @@ The services are split into two stack files, the way the servers run them:
 
 - Data stack, `infrastructure/docker/compose.data.yaml`: PostgreSQL (`db`) and
   PgBouncer (`pgbouncer`).
-- App stack, `infrastructure/docker/compose.app.yaml`: the API (`api`) and the
-  web app (`web`).
+- App stack, `infrastructure/docker/compose.app.yaml`: the API (`api`), the
+  background worker (`worker`) and the web app (`web`).
 
 Locally, the root `compose.yaml` combines both into one Compose project, so
-plain `docker compose` commands (`ps`, `logs api`, `exec db psql ...`,
+plain `docker compose` commands (`ps`, `logs api`, `logs worker`, `exec db psql ...`,
 `stop`/`start`, `down`) work from the repository root. The stack files publish
 no host ports for PostgreSQL or PgBouncer; only the local developer override,
 `compose.override.yaml` (loaded automatically), publishes them on `127.0.0.1`:
@@ -104,13 +113,15 @@ write nothing; they fill in as features are added.
 
 `.env.example` documents every variable with safe local placeholders; copy it
 to `.env` as shown above. `.env` is git-ignored and must never be committed.
-The API validates its configuration when it starts and refuses to start on a
-missing or invalid value; `docker compose logs api` shows a short
-`Configuration error` message naming each bad variable.
+The API and the worker validate their configuration when they start and refuse
+to start on a missing or invalid value; `docker compose logs api` (or
+`logs worker`) shows a short `Configuration error` message naming each bad
+variable. `WORKER_SHUTDOWN_TIMEOUT_SECONDS` (default 20, 1 to 30) sets how long
+a stopping worker lets running jobs finish before aborting them.
 
 The API uses two database URLs: `DATABASE_URL` is the pooled one (through
 PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
-migrations and seeds). Inside Compose both are built from the `POSTGRES_*`
+migrations, seeds and the worker). Inside Compose both are built from the `POSTGRES_*`
 values; the values in `.env` only matter when you run the API, Alembic or
 `make seed-demo` on the host.
 

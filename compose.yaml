@@ -4,12 +4,13 @@
 # The services are defined in two stack files, split the way the hosts run them
 # (architecture §9.1, _docs/adr/0003-database-connection-topology.md):
 #   infrastructure/docker/compose.data.yaml  db, pgbouncer
-#   infrastructure/docker/compose.app.yaml   api, web
+#   infrastructure/docker/compose.app.yaml   api, worker, web
 # Locally they run as ONE Compose project ("classora", same db-data volume).
 # Each service here pulls its definition in with `extends:` (Compose `include:`
 # needs v2.20+, and the development host runs v2.19). `extends:` keeps each
-# file's settings, including depends_on inside a stack; only the dependency
-# between the stacks (api waits for pgbouncer) is added here.
+# file's settings, including depends_on inside a stack; only the dependencies
+# between the stacks (api waits for pgbouncer, worker waits for db) are added
+# here.
 # Host ports for db and pgbouncer come only from compose.override.yaml, which
 # `docker compose` loads automatically next to this file.
 name: classora
@@ -33,6 +34,15 @@ services:
     # when the whole path is up.
     depends_on:
       pgbouncer:
+        condition: service_healthy
+
+  worker:
+    extends:
+      file: infrastructure/docker/compose.app.yaml
+      service: worker
+    # The worker connects directly to PostgreSQL (ADR-0003), never PgBouncer.
+    depends_on:
+      db:
         condition: service_healthy
 
   web:

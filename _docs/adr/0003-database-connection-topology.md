@@ -117,7 +117,7 @@ uv run --isolated --no-project --python 3.14 --with "procrastinate==3.10.0" --wi
 ```
 
 - Full schema: `procrastinate/sql/schema.sql`. Queries: `procrastinate/sql/queries.sql`.
-- Versioned migration SQL: `procrastinate/sql/migrations/` (40 files, from `00.00.00_01_initial.sql` to `03.04.00_50_post_add_retry_failed_job_procedure.sql`), plus `procrastinate/sql/future_migrations/`.
+- Versioned migration SQL: `procrastinate/sql/migrations/` (38 `.sql` files; 40 entries counting `__init__.py` and `__pycache__`; from `00.00.00_01_initial.sql` to `03.04.00_50_post_add_retry_failed_job_procedure.sql`), plus `procrastinate/sql/future_migrations/`.
 - `procrastinate.schema.SchemaManager` exposes `get_schema()` and `get_migrations_path()`. The CLI offers `procrastinate schema [--apply] [--read] [--migrations-path]`, so an Alembic revision can read the shipped SQL without the worker applying it.
 
 **5. Default install and libpq (note for M1-16).** The default install (`procrastinate==3.10.0` only) imports psycopg's pure-Python implementation, which needs the system libpq. On the macOS host and in `python:3.14-slim` without libpq, `import procrastinate` fails with `ImportError: no pq wrapper available … libpq library not found`. In `python:3.14-slim` with `libpq5` installed it imports and works:
@@ -149,7 +149,7 @@ This is a psycopg runtime requirement, not a Procrastinate limitation. How the A
 - psycopg 3 joins asyncpg as a second PostgreSQL driver, limited to Procrastinate. Code review (and any later import check) must keep `psycopg` out of application and ORM code.
 - A crash between commit and enqueue leaves work without a job until a sweeper finds it, so sweepers and idempotent jobs are required, not optional.
 - Procrastinate upgrades are Alembic changes: each upgrade must add a revision with that version's migration SQL.
-- M1-16 adds Procrastinate and psycopg to `apps/api/pyproject.toml` and `apps/api/uv.lock` with the versions above, and decides how libpq is provided (Verification step 5).
+- M1-16 adds Procrastinate and psycopg to `apps/api/pyproject.toml` and `apps/api/uv.lock` with the versions above, and decides how libpq is provided (Verification step 5). Outcome (M1-16, #16 E1): Debian's `libpq5` in the API/worker image; `psycopg[binary]` only as a dev dependency for host tests and CI.
 - Still open:
   - `max_connections` and pool sizing for the micro instance (ISSUE-I8, M10-04);
   - SSE fan-out details beyond the direct `LISTEN` connection (ISSUE-N1, still PROPOSED);

@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     storage_secret_access_key: SecretStr | None = Field(
         default=None, validate_default=True
     )
+    # Worker (M1-16): seconds a stopping worker waits for running jobs before
+    # aborting them. Capped at 30 so Compose's stop_grace_period (40 s) never
+    # kills the worker before Procrastinate's own timeout ends.
+    worker_shutdown_timeout_seconds: int = Field(default=20, ge=1, le=30)
 
     @classmethod
     def settings_customise_sources(

@@ -197,7 +197,8 @@ def test_empty_database_is_refused(fresh_database_url, env_for, capsys):
 
 def test_pending_migration_is_refused(migrated_url, env_for, capsys, monkeypatch):
     env_for(migrated_url)
-    monkeypatch.setattr(runner, "alembic_heads", lambda: {"0002"})
+    # The scripts' head is a revision the database does not have yet.
+    monkeypatch.setattr(runner, "alembic_heads", lambda: {"9999"})
 
     assert runner.main(seeds=[TEST_REFERENCE_SEED]) == 1
 
