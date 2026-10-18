@@ -101,7 +101,7 @@ The candidate modules mirror the spec §12 domain inventory:
 | `documents` | Files, folders, access grants, tags, quotas, recycle bin |
 | `administration` | Approval inbox, notifications, audit events, business settings, imports |
 
-Where reporting and analytics code lives: → ISSUE-A2.
+Reporting and analytics code lives in a read-only `reporting` module (ISSUE-A2, accepted in [ADR-0002](adr/0002-module-boundaries-and-reporting.md)).
 
 Each module has the same internal layout (the file names are a convention, not mandated by the spec):
 
@@ -116,9 +116,9 @@ modules/<domain>/
   tasks.py         # Procrastinate tasks owned by the module
 ```
 
-### 4.2 Cross-module rules (approved pattern, PROPOSED enforcement → ISSUE-A1)
+### 4.2 Cross-module rules (approved pattern; boundary rule and enforcement accepted in [ADR-0002](adr/0002-module-boundaries-and-reporting.md))
 
-- A module may call another module **only through that module's `service.py`**.
+- A module may call another module **only through that module's `service.py`** (or use its `schemas.py` types). An `ast`-based pytest check enforces this ([ADR-0002](adr/0002-module-boundaries-and-reporting.md)).
 - Operations that change state in several modules (for example: confirm a booking request → create sessions → post charges → notify) live in `app/workflows/` and run inside **one Unit of Work** (one database transaction).
 - There is **no in-process event bus**. Orchestration is explicit, as required by "application-level cross-module orchestration".
 
@@ -126,7 +126,7 @@ modules/<domain>/
 
 1. Caddy receives the request from CloudFront and forwards `/api/*` to the API.
 2. Middleware assigns or propagates a **request ID** and starts an OTel span.
-3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check (→ ISSUE-S3).
+3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)).
 4. The route dependency resolves the current user and checks the **role permission**.
 5. The service loads the target record(s) and runs the **record-level policy** (ownership, guardian link, tutor assignment).
 6. The Unit of Work commits. Audit events, notifications and optimistic-version increments are written in the same transaction.
@@ -169,7 +169,7 @@ Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic
 - Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links.
 - User states: `pending`, `active`, `suspended`, `archived`.
 
-Open points: → ISSUE-S1, S2, S4, S5, S6, S7.
+Accepted details (ISSUE-G2, S1, S2, S4, S5, S6, S7): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Rate limits (ISSUE-S3): see [ADR-0008](adr/0008-rate-limiting-without-redis.md).
 
 ### 7.2 Notifications (approved)
 
@@ -267,7 +267,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -286,7 +286,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-G2 — "Session" names two different entities (C)
 - **Spec:** §12 lists `Session` under both Identity (login session) and Scheduling (class occurrence).
 - **Problem:** The duplicate name will collide in ORM class names, API paths and conversation.
-- **Resolution — PROPOSED:** Use `AuthSession` (identity) and `ClassSession` (scheduling). In the API, use `/api/v1/class-sessions`.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Use `AuthSession` / `auth_sessions` (identity) and `ClassSession` / `class_sessions` (scheduling). In the API, use `/api/v1/class-sessions`.
 
 ### 10.2 Application structure
 
@@ -295,16 +295,16 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Problem:**
   - No rule says whether modules may import each other's ORM models or join across module tables.
   - No mechanism enforces the boundary.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0002, 2026-10-18): see [ADR-0002](adr/0002-module-boundaries-and-reporting.md).
   - Cross-table **foreign keys** are allowed in the database.
-  - Python code imports another module only through its `service.py` or schema types.
-  - Read-heavy joins across modules are allowed only in `workflows/` and in reporting queries (ISSUE-A2).
-  - Enforce this with an import-linter-style CI check. This adds a dev-only tool, which needs approval; otherwise fall back to code review.
+  - Python code imports another module only through its `service.py` or `schemas.py`. Modules never import `app.workflows`.
+  - Joins across modules are allowed only in `app/workflows/` and in the `reporting` module (ISSUE-A2).
+  - Enforcement: a pytest test that reads imports with the standard-library `ast` module, run by `make test-api` and CI, added in #20 (M2-02). No new dependency. An import-linter CI check was considered and rejected (ADR-0002).
 
 #### ISSUE-A2 — Home for analytics, dashboards and exports (A)
 - **Spec:** §8 analytics, dashboards, saved reports, exports. §12 has no reporting domain.
 - **Problem:** Reports read across almost every module, and none of the twelve domains owns them.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0002, 2026-10-18): see [ADR-0002](adr/0002-module-boundaries-and-reporting.md). Built in M8.
   - Add a read-only `reporting` module that owns saved report setups and dashboard widget preferences.
   - It runs read-only SQL across module tables and never writes to other modules.
   - Heavy exports run as worker jobs.
@@ -511,20 +511,21 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 ### 10.7 Identity, security and privacy
 
 #### ISSUE-S1 — Account recovery and activation without email (M; spec §18.2 open)
-- **Resolution — PROPOSED:**
-  - Invitations and password resets use **single-use, time-limited tokens** (24 h, stored hashed).
-  - An authorized staff member generates the token in the app and shows it as a link or QR code. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
-  - Self-registration requests stay `pending` until an administrator approves them.
-  - Alternative, which would be a **scope change**: transactional-only email (for example, Amazon SES) restricted to authentication messages.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md), which also records who may reset whom, the Owner bootstrap and reset commands, and the self-registration rules.
+  - Invitations and password resets use **single-use, time-limited tokens** (32 random bytes, 24 h, stored only as a SHA-256 hash). A new token invalidates any unredeemed token of the same kind; a used or expired token returns `410`.
+  - An authorized staff member generates the token in the app and shows it once as a link and a QR code. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
+  - Self-registration requests (Parent/Guardian or Student only) stay `pending` until an administrator approves them.
+  - Considered and rejected: transactional-only email (for example, Amazon SES) restricted to authentication messages, which would be a **scope change** to spec §1 and §14.
 
 #### ISSUE-S2 — "Authorized Administrator" and multi-role users (A)
 - **Spec:** §2 predefined roles. §7 "Owner or authorized Administrator". §12 lists `UserRole`.
 - **Problem:**
   - "Authorized" implies per-user grants beyond the fixed roles.
   - `UserRole` implies a user can hold several roles, for example a tutor who is also a parent.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
   - Permission sets per role are fixed in code and seeded.
-  - The Owner can grant a small, enumerated set of **delegable permissions** to individual administrators: `payroll.finalize`, `schedule.override`, `finance.refund.approve`, `user.role.assign`.
+  - The Owner can grant a small, enumerated set of **delegable permissions** to individual administrators: `payroll.finalize`, `schedule.override`, `finance.refund.approve`, `user.admin_role.assign`.
+  - Administrators assign and remove Academic Coordinator, Finance Staff, Tutor, Student and Parent/Guardian. Only an Owner or a holder of `user.admin_role.assign` assigns Administrator. Only an Owner assigns Owner (not delegable). An invitation that carries a role counts as assigning it. The last active Owner cannot be removed or suspended.
   - A user may hold several roles, and their effective permissions are the union.
   - Record-level policies still apply. For example, a tutor-parent sees their own children as a guardian and their students as a tutor.
 
@@ -533,35 +534,35 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Problem:**
   - FastAPI in-memory limits are per process.
   - Behind CloudFront, the client IP must come from `CloudFront-Viewer-Address`/`X-Forwarded-For`, trusted only from CloudFront.
-- **Resolution — PROPOSED:**
-  - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes.
-  - **General API:** a coarse in-process limit per worker process.
-  - Caddy trusts forwarded headers only from CloudFront ranges.
-  - A Caddy rate-limit module is optional and would ride on the custom build from ISSUE-I3.
+- **Resolution — ACCEPTED** (ADR-0008, 2026-10-18): see [ADR-0008](adr/0008-rate-limiting-without-redis.md) for the thresholds and the client-IP rule.
+  - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes. Over the limit: `429` with `Retry-After`; no permanent lockout.
+  - **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES` (empty by default; Caddy in AWS); only then the right-most untrusted `X-Forwarded-For` entry. Caddy derives that header from CloudFront's viewer address (M9-09).
+  - **General API:** none in M2. A coarse in-process limit per worker process follows in #163 (M10-09, Phase 1 local hardening).
+  - A Caddy rate-limit module is not required.
 
 #### ISSUE-S4 — Session and CSRF parameters (M)
-- **Resolution — PROPOSED:**
-  - The cookie is `__Host-classora_session`: `Secure`, `HttpOnly`, `SameSite=Lax`. Only a SHA-256 hash of the token is stored.
-  - Staff sessions: 30-minute idle timeout, 12-hour absolute. Family and tutor sessions: 7-day idle, 30-day absolute.
-  - CSRF uses a synchronizer token issued with the session and sent in the `X-CSRF-Token` header. The server also checks `Origin`.
-  - A user's sessions are revoked when the user is suspended or archived, changes password, or changes role.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
+  - The cookie is `__Host-classora_session`: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`. The token is 32 random bytes; only its SHA-256 hash is stored. A local-only setting uses `classora_session` without `Secure` for plain-HTTP development and is refused outside the local environment.
+  - Staff sessions (Owner, Administrator, Academic Coordinator, Finance Staff): 30-minute idle timeout, 12-hour absolute. Family and tutor sessions: 7-day idle, 30-day absolute. Several roles: the strictest class applies.
+  - CSRF uses a synchronizer token issued with the session, stored hashed, returned by `POST /api/v1/auth/login` and `GET /api/v1/auth/me`, kept in memory by the SPA and sent in the `X-CSRF-Token` header. The server also requires `Origin` to equal the app origin (`403` otherwise).
+  - A new session ID is issued on every login. A user's sessions are revoked when the user is suspended or archived, changes role, or has a password reset. A self-service password change revokes the other sessions and rotates the current one.
 
 #### ISSUE-S5 — List of sensitive actions requiring reauthentication (A)
-- **Resolution — PROPOSED:**
-  - Actions: role and permission changes, user suspension or archival, payroll finalization, refunds and reversals, financial corrections, retention/permanent-deletion actions, business-settings changes to payment methods or time zone, bulk exports of personal data.
-  - Reauthentication stays valid for 5 minutes on the session.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
+  - Actions: role, permission and delegation changes (including invitations for staff roles), user suspension or archival, issuing password-reset tokens, payroll finalization, refunds and reversals, financial corrections, retention/permanent-deletion actions, business-settings changes to payment methods or time zone, bulk exports of personal data.
+  - Reauthentication stays valid for 5 minutes on the session, not extended by activity. A self-service password change asks for the current password instead.
 
 #### ISSUE-S6 — Guardian access to adult students (A)
 - **Spec:** §2 "Parents access only linked children… as permitted". §9 privacy and minors' data.
 - **Problem:** Students can be university students who are adults. The spec does not say who controls guardian visibility once a student is 18.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). The 18th birthday is computed in the center's time zone, and the birthdate is required on the student profile.
   - Minors: linked guardians have default access.
   - Students aged 18 or older: academic visibility for guardians requires a recorded student consent.
   - Billing visibility follows the **family billing account** regardless of age.
   - Legal wording is still open (spec §18.9).
 
 #### ISSUE-S7 — Student account creation for minors (A)
-- **Resolution — PROPOSED:** Creating a login for a minor student requires a linked guardian's **consent record** (who, when, which privacy-notice version).
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Creating a login for a minor student requires a linked guardian's **consent record** (who, when, which privacy-notice version, scope and method). Revoking it suspends the student's login. No minimum age.
 
 ### 10.8 Notifications
 
@@ -751,18 +752,18 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0003, ADR-0004 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0007, ADR-0008 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
 | [0001](adr/0001-runtime-version-pins.md) | Runtime version pins — **Accepted** | D7 |
-| 0002 | Module boundaries and the reporting module | A1, A2 |
+| [0002](adr/0002-module-boundaries-and-reporting.md) | Module boundaries and the reporting module — **Accepted** | A1, A2 |
 | [0003](adr/0003-database-connection-topology.md) | Database connection topology (PgBouncer, direct connections) and background jobs — **Accepted** | D1, J1, J2 (N1 stays PROPOSED apart from the direct `LISTEN` connection) |
 | [0004](adr/0004-money-time-and-date-representation.md) | Money, time and date representation — **Accepted** | D2, D3 |
 | 0005 | Scheduling invariants, overrides and recurrence | D4, SC1–SC3 |
 | 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
-| 0007 | Authentication, sessions, recovery and delegated permissions | S1–S7 |
-| 0008 | Rate limiting without Redis | S3 |
+| [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
+| [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
 | 0009 | File scanning, release and previews | FL1–FL3 |
 | 0010 | Edge: CloudFront origin auth, TLS, SPA serving | I2–I4 |
 | 0011 | Release promotion and single-host deployment | I5, I6, I10 |
@@ -774,4 +775,4 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0003, ADR-0004 and ADR
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline), SC2 (makeup after closures), S1 (recovery delivery), S5, S6, X2 (premium calendar), O1 (third-party data processing) and L2 (retention periods).
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline), SC2 (makeup after closures), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar), O1 (third-party data processing) and L2 (retention periods).
