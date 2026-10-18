@@ -5,3 +5,5 @@ check its commands/links for accuracy. Do not edit production code or
 quietly fix acceptance criteria. Post QA: PASS or QA: FAIL with checkboxes,
 reproduction steps, test commands/results, and README verification.
 Any missing README gate or inaccurate affected README instructions = FAIL.
+
+Testing rules QA checks against (layers, fixtures, permission matrix, financial invariants, E2E, accessibility, mutation checks): [`_docs/testing-guidelines.md`](../testing-guidelines.md).

@@ -1,0 +1,219 @@
+# Classora testing guidelines
+
+The rules every task follows when it adds or changes tests, and that QA checks
+before a PASS (spec §10 Quality, §17). This document describes what exists
+today. Where a later task adds something, the section names the owning task;
+it does not decide anything that task or its ADR owns.
+
+## Test layers
+
+| Layer | What belongs here | Where the files live | Marker or project | Local command | CI job |
+|---|---|---|---|---|---|
+| API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-test` |
+| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` | `api-test` |
+| Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-test` |
+| Web unit and component | Hooks, stores, formatters, the API call wrapper, routing, rendered components in jsdom, translation catalogs. | `apps/web/src/**/*.test.{ts,tsx}`, `packages/api-client/src/**/*.test.ts` | Vitest project `unit` (web); the api-client package's own Vitest run | `make test-web` | `web` |
+| Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
+| E2E | Cross-application flows in a real browser against the full Compose stack (web → API → PgBouncer → PostgreSQL, worker running), plus the axe scan of each route. | `e2e/tests/` | Playwright project `chromium` | `make e2e` | `e2e` |
+
+`make test` runs the API (unit and integration) and the web unit tests. It
+does not run the Storybook story tests or E2E.
+
+### Choosing a layer
+
+- Test a rule at the lowest layer that can prove it. A business rule,
+  a validation, an authorization decision or a financial invariant is tested
+  in the API (unit or integration), never only through E2E.
+- Authorization (role and record level) is always tested against the API with
+  a real database: a hidden UI control proves nothing (spec §16).
+- E2E covers flows that cross the browser, the web app and the API: a user
+  completes a workflow, the screens show the server's result. Each E2E test
+  replaces many manual clicks, not an API test.
+- A component's states (loading, empty, error, disabled) and its accessibility
+  are covered by stories, not by E2E.
+
+## Fixtures and test data
+
+### Integration isolation (M1-07)
+
+- One Testcontainers PostgreSQL per pytest session, started only when an
+  integration test needs it, on a random host port. It never uses the Compose
+  `db` or its volume.
+- A test that writes data or runs migrations asks for `fresh_database_url` (an
+  empty database created for that test and dropped afterwards) or
+  `tables_url` (the same, with the test-only tables). Tests share no data and
+  pass in any order. Only read-only checks use the container's default
+  database.
+- Tests that need the pooler ask for `pgbouncer_url` (transaction mode, small
+  server pool, built from the committed image and config).
+- Writes go through the Unit of Work (`app.core.uow.UnitOfWork`). Tests never
+  call `commit()` themselves and never commit outside a Unit of Work; a test
+  that checks rollback lets the Unit of Work roll back.
+- `tests/conftest.py` removes every variable `Settings` reads from the
+  environment before each test. A test sets exactly the configuration it needs
+  (`app_env`, `settings_for(...)`).
+
+### Factories (M1-17)
+
+- Every model factory extends `ClassoraFactory` (`apps/api/tests/factories/base.py`).
+- Persist with `await persist(session, Factory)` or
+  `await persist_batch(session, Factory, n)`. They flush and never commit.
+  `Factory.create()` and `Factory()` raise; `Factory.build()` builds without
+  the database.
+- Data is reproducible: `reseed(n)` seeds Factory Boy and Faker, and an
+  autouse fixture reseeds before every test. Never depend on a value relative
+  to "today"; use fixed date ranges.
+- Faker uses the `es_MX` locale. Emails come only from `reserved_email()`
+  (`example.com`, `example.org`, `example.net`), never from Faker's email
+  providers.
+- Types follow ADR-0004: money is a `Decimal` with exactly 2 places
+  (`money()`), never built from a `float`; calendar values are `date`
+  (`calendar_date()`); instants are timezone-aware UTC `datetime` (`instant()`).
+
+### Reference seeds and demo data
+
+| | Reference seeds | Demo data |
+|---|---|---|
+| Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
+| Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
+| Idempotent | Yes (upsert on a key) | No (a rerun adds rows) |
+| Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
+| Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
+| Never | Creates user accounts or credentials | Runs in PROD |
+
+### Synthetic data only (architecture ISSUE-I7)
+
+- All test, seed, demo and E2E data is synthetic. Never copy DEV or PROD data
+  into a test, a fixture, a seed or a bug report.
+- No real names, emails, phone numbers or identifiers (CURP, RFC, ...). A
+  factory that adds phone numbers or national identifiers documents, next to
+  the declaration, how its values are fictitious.
+
+### Time
+
+- A test whose result depends on the current date or time sets it explicitly
+  (a fixed instant passed in, or fake timers). It never relies on the real
+  clock or the host time zone.
+- Such tests include at least one `America/Mexico_City` case (the center's
+  default zone, ADR-0004). Where local dates, recurrence or due dates are
+  involved, add cases at local midnight and around historic DST transition
+  dates (Mexico City observed DST until October 2022) and for a zone that
+  still has DST.
+- The web unit tests run under `Pacific/Kiritimati` (UTC+14) by default, so a
+  helper that leaks the host zone fails. E2E runs in `America/Mexico_City`.
+
+## Permission-matrix approach
+
+These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization
+tests") and §16. M2-03 builds the matrix framework and decides the matrix file
+location and format.
+
+- Every endpoint task adds at least one allowed test and one denied test.
+- A machine-readable matrix (role × endpoint × expected outcome) lives in the
+  test suite. A route with no matrix entry fails CI.
+- Record-level (IDOR) tests are separate from role checks: a user with the
+  right role asks for another family's, tutor's or student's record.
+- A denial returns `403` with Problem Details (`_docs/api.md`). A record that
+  exists but is not visible to the caller returns `404`, the same as a record
+  that does not exist.
+- Background jobs, generated files and presigned links are checked as well,
+  not only endpoints (M10-01 sweeps them all).
+
+## Financial invariant tests
+
+M6-18 (billing) and M7-07 (payroll) own the suites; every financial task
+follows these rules.
+
+- `Decimal` only, never `float`, in code and in tests. Round half-up per line
+  item (ADR-0004). Assert exact `Decimal` values, never approximate ones.
+- The balance equation (W4.4): outstanding balance = posted charges and
+  adjustments − valid allocations and refunds.
+- A charge is created only once, even when the job that creates it is retried
+  (W4.1, W7.2). Tests run the job twice and count rows.
+- Posted records are corrected only through adjustments or reversals, never
+  rewritten (W4.5). Tests check that the original row is unchanged.
+- Duplicate or concurrent submissions never double-post (W4.4, W7.4). These
+  tests use real concurrent sessions against the Testcontainers PostgreSQL,
+  not mocks.
+- Randomized operation sequences are reproducible: the test prints its seed
+  and accepts it as input. A property-based testing library is **not**
+  approved; adding one needs approval first.
+
+## E2E data rules
+
+- E2E runs only against the isolated E2E Compose project (`classora-e2e`,
+  started by `make e2e`). It never runs against a developer's `make dev`
+  database, DEV or PROD.
+- Every run starts from an empty volume, then runs the migrations, then the
+  reference seeds, then the demo command with the fixed seed (`--seed 1`).
+- Tests do not depend on each other or on the order they run in, and they
+  pass with Playwright's parallel workers. Data a test changes is created by
+  that test, with a unique per-test suffix. Tests never depend on a
+  Faker-generated value by position.
+- Named fixtures that tests read (for example one account per role, from M2)
+  are added by their domain task as deterministic demo generators with
+  documented keys. The task that adds them also lists them in this section.
+  Named E2E fixtures: none yet.
+- Only synthetic data is used. Committed E2E credentials are placeholders that
+  work only in the local or CI E2E stack.
+
+## E2E authoring rules
+
+- Use role-based or label-based locators first (`getByRole`, `getByLabel`).
+  Use `data-testid` only where no accessible role or name is stable.
+- Read UI text from the web app's translation catalogs
+  (`e2e/tests/support/catalog.ts`) instead of repeating strings.
+- Use web-first assertions (`await expect(locator).toBeVisible()`). No fixed
+  sleeps (`waitForTimeout`).
+- No retries: a test that fails once is a failure. `test.only` fails the run in
+  CI (`forbidOnly`).
+- The time zone (`America/Mexico_City`) and the locale (`es-MX`) are fixed in
+  `e2e/playwright.config.ts`. M1-15 adds the per-language runs.
+- Viewports: desktop Chromium only. A task that names "mobile viewport" adds a
+  project.
+- A new route gets an axe scan (next section).
+- A failing run keeps the trace (`trace.zip`), a screenshot and the Compose
+  logs in `e2e/test-results/`. Open a trace with
+  `corepack pnpm --filter @classora/e2e exec playwright show-trace <file>`.
+
+## Accessibility tests
+
+- Target: WCAG 2.2 AA (spec §10, `_docs/design-system.md`).
+- Both layers test the WCAG 2.0, 2.1 and 2.2 level A and AA rules (axe tags
+  `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`), in light and dark:
+  Storybook for components (`make test-storybook`; axe's default rule set,
+  which includes these tags) and E2E for routes (`make e2e`; exactly these
+  tags, through `@axe-core/playwright`). A scan passes only with zero
+  violations.
+- No rule is disabled globally.
+- A per-test exclusion needs a reason comment in the test and a line in the
+  list below (story-level exceptions are listed in `_docs/design-system.md`).
+- The manual keyboard and screen-reader audit belongs to M10-03.
+
+E2E axe exceptions: none.
+
+## Quality practice
+
+### New issue checklist
+
+Spec §17 definition of done, mapped to the tests a change needs:
+
+| Change | Tests it adds |
+|---|---|
+| Endpoint | Integration tests for success and Problem Details errors; one allowed and one denied test per role rule; an IDOR test for record access; a matrix entry (from M2-03); `make check-api-client` in sync. |
+| Financial change | The invariant tests above, including retry and concurrency cases, with exact `Decimal` assertions. |
+| UI screen | Unit tests for its logic; stories for loading, empty and error states in light and dark (axe); es and en text; an E2E test when it completes a cross-application flow, with an axe scan of the route. |
+| Migration | `make test-migrations` passes (upgrade, single head, round trip, no drift); the change is expand-and-contract compatible with the previous image. |
+| Job | Idempotency (run twice), retry and failure behavior, and the record-level checks the job enforces. |
+
+### Mutation check
+
+QA proves that a new test can fail: break the behavior it covers (for example
+remove the authorization check, change the rounding, drop an `alt`), run the
+narrowest command that contains the test, record the failing output, then
+restore the code and record the green run. Mutations are never committed.
+
+### W1–W8 traceability
+
+M10-06 fills in this section (one row per W1–W8 scenario and the tests that
+cover it).

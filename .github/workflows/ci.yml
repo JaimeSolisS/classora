@@ -34,6 +34,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
       client: ${{ steps.filter.outputs.client }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +54,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             bash .github/scripts/changes.sh "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
           else
-            printf 'api=true\nweb=true\nclient=true\n' | tee -a "$GITHUB_OUTPUT"
+            printf 'api=true\nweb=true\nclient=true\ne2e=true\n' | tee -a "$GITHUB_OUTPUT"
           fi
 
   api-lint:
@@ -257,6 +258,101 @@ jobs:
       - name: make check-api-client
         run: make check-api-client
 
+  # Playwright E2E (smoke and axe) against the isolated classora-e2e Compose
+  # stack, built, migrated and seeded by `make e2e` (no .env; values from
+  # .env.example). On failure the traces, screenshots, HTML report and Compose
+  # logs are uploaded as the `e2e-report` artifact.
+  e2e:
+    name: e2e
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # The demo step of `make e2e` runs on the host with the API dev dependencies.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      # Same version (and cache key) as web-storybook: @playwright/test in e2e/
+      # is pinned to the playwright version of apps/web.
+      - name: Read the Playwright version from the lockfile
+        id: playwright
+        run: |
+          version=$(sed -n -E 's/^  playwright@([0-9][^:]*):$/\1/p' pnpm-lock.yaml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error::playwright not found in pnpm-lock.yaml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
+      # CI only: the browser and its OS packages. On a cache hit only the OS
+      # packages are installed. `make e2e` then finds the browser.
+      - name: Install Playwright Chromium
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+          CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+        run: |
+          corepack pnpm install --frozen-lockfile
+          if [ "$CACHE_HIT" = "true" ]; then
+            corepack pnpm --filter @classora/e2e exec playwright install-deps chromium
+          else
+            corepack pnpm --filter @classora/e2e exec playwright install --with-deps --only-shell chromium
+          fi
+
+      - name: make lint-e2e
+        run: make lint-e2e
+
+      - name: make e2e
+        run: make e2e
+
+      # Failure only: Playwright traces and screenshots, the HTML report and
+      # compose.log (synthetic data; .env.example placeholder values only).
+      - name: Upload the E2E report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 7
+          if-no-files-found: warn
+
   # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
   # any file (documentation included) must turn every pull request red. The
   # scanner versions are pinned in the Makefile only.
@@ -325,12 +421,12 @@ jobs:
 
   # The one required status check (repository ruleset on develop and main).
   # Path-filtered jobs may be skipped when their paths did not change; the
-  # security jobs always run, so a skipped security job is a failure. E2E (#18)
-  # joins `needs` and the result check below if it lives in this workflow.
+  # security jobs always run, so a skipped security job is a failure. `e2e` is
+  # path-filtered like the others (skipped only when changes set e2e=false).
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-test, web, web-storybook, api-client, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-test, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -340,17 +436,19 @@ jobs:
           RUN_API: ${{ needs.changes.outputs.api }}
           RUN_WEB: ${{ needs.changes.outputs.web }}
           RUN_CLIENT: ${{ needs.changes.outputs.client }}
+          RUN_E2E: ${{ needs.changes.outputs.e2e }}
           API_LINT: ${{ needs.api-lint.result }}
           API_TEST: ${{ needs.api-test.result }}
           WEB: ${{ needs.web.result }}
           WEB_STORYBOOK: ${{ needs.web-storybook.result }}
           API_CLIENT: ${{ needs.api-client.result }}
+          E2E: ${{ needs.e2e.result }}
           SECURITY_DEPS: ${{ needs.security-deps.result }}
           # Index syntax, so a grep for repository-secret references stays empty.
           SECURITY_SECRETS: ${{ needs['security-secrets'].result }}
           SECURITY_SAST: ${{ needs.security-sast.result }}
         run: |
-          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT)"
+          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT, e2e=$RUN_E2E)"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes finished with result '$CHANGES'"
             exit 1
@@ -381,6 +479,7 @@ jobs:
           check web "$WEB" "$RUN_WEB"
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
           check api-client "$API_CLIENT" "$RUN_CLIENT"
+          check e2e "$E2E" "$RUN_E2E"
           # Always-on jobs: "skipped" is a failure.
           check security-deps "$SECURITY_DEPS" always
           check security-secrets "$SECURITY_SECRETS" always

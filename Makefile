@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed seed-demo lint lint-api lint-web test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -48,8 +48,8 @@ seed:
 seed-demo:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.demo
 
-## Lint both apps (check only, never modifies files). Fails if either part fails.
-lint: lint-api lint-web
+## Lint both apps and the E2E tests (check only, never modifies files). Fails if any part fails.
+lint: lint-api lint-web lint-e2e
 
 ## Lint, format-check and type-check the API.
 lint-api:
@@ -67,7 +67,13 @@ lint-web:
 	$(PNPM) --filter @classora/api-client format:check
 	$(PNPM) --filter @classora/api-client typecheck
 
-## Run all tests for both apps. Fails if either part fails.
+## Install from the lockfile, then tsc (strict) and the Prettier check on the E2E tests (e2e/).
+lint-e2e:
+	$(PNPM) install --frozen-lockfile
+	$(PNPM) --filter @classora/e2e typecheck
+	$(PNPM) --filter @classora/e2e format:check
+
+## Run all tests for both apps (not E2E). Fails if either part fails.
 test: test-api test-web
 
 ## Run all API tests (unit + integration) with one coverage report.
@@ -110,6 +116,13 @@ test-storybook:
 	$(PNPM) install --frozen-lockfile
 	$(PNPM) --filter @classora/web exec playwright install --only-shell chromium
 	$(PNPM) --filter @classora/web test-storybook
+
+## Playwright E2E (smoke and axe) against an isolated, freshly migrated and seeded Compose
+## stack (project classora-e2e, own ports and volume; always torn down, E2E_KEEP=1 keeps it).
+## Needs Docker, uv and Node 24, not .env; runs while `make dev` is up (e2e/scripts/run.sh).
+e2e:
+	$(PNPM) install --frozen-lockfile
+	e2e/scripts/run.sh
 
 ## Regenerate the API contract: export the OpenAPI document, then the TypeScript client types.
 ## Run after any API change and commit the result. Needs uv and Node 24; no Docker, database or .env.

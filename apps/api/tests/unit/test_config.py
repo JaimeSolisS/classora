@@ -56,6 +56,8 @@ COMPOSE_ONLY_VARIABLES = {
     "POSTGRES_DB",
     "POSTGRES_PORT",
     "PGBOUNCER_PORT",
+    "API_PORT",
+    "WEB_PORT",
 }
 
 

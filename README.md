@@ -77,7 +77,8 @@ plain `docker compose` commands (`ps`, `logs api`, `logs worker`, `exec db psql 
 no host ports for PostgreSQL or PgBouncer; only the local developer override,
 `compose.override.yaml` (loaded automatically), publishes them on `127.0.0.1`:
 PostgreSQL on `POSTGRES_PORT` (default 5432) and PgBouncer on `PGBOUNCER_PORT`
-(default 6432).
+(default 6432). The API and web ports are set in the app stack file, also on
+`127.0.0.1`: `API_PORT` (default 8000) and `WEB_PORT` (default 5173).
 
 ### Database migrations
 
@@ -157,22 +158,47 @@ make test-storybook    # every story in headless Chromium, with axe checks in li
 The first run downloads the Playwright headless Chromium (about 100 MB); later
 runs reuse it.
 
+End-to-end tests (Playwright) run against their own Compose stack:
+
+```bash
+make e2e               # smoke and accessibility (axe) tests in headless Chromium, light and dark
+```
+
+`make e2e` builds and starts a separate Compose project, `classora-e2e`, on its
+own ports (web 15173, API 18000, PostgreSQL 15432, PgBouncer 16432) with an empty
+volume, applies the migrations, the reference seeds and the demo data
+(`--seed 1`), runs the tests and always removes the stack again (`down -v`).
+It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
+can run while `make dev` is up without touching that stack or its data. A
+failed run leaves Playwright traces, screenshots and the Compose logs
+(`compose.log`) in `e2e/test-results/` and an HTML report in
+`e2e/playwright-report/`. Open a trace with
+`corepack pnpm --filter @classora/e2e exec playwright show-trace e2e/test-results/<test>/trace.zip`.
+To keep the stack up for debugging, run `E2E_KEEP=1 make e2e`; the command it
+prints removes it afterwards.
+
 Each API run prints a terminal coverage report for the API (`app/`), with
 branch coverage and missing lines. `make test` does not start the Compose database,
-and it can run while `make dev` is up.
+and it can run while `make dev` is up. `make test` does not run the Storybook or
+E2E tests.
+
+Rules for writing tests (layers, fixtures and test data, authorization and
+financial invariant tests, E2E and accessibility) are in
+[`_docs/testing-guidelines.md`](_docs/testing-guidelines.md).
 
 ## Linting and type checks
 
 ```bash
-make lint      # both apps
+make lint      # both apps and the E2E tests
 make lint-api  # Ruff (lint and format check) and mypy (strict) on the API
 make lint-web  # ESLint, Prettier check and TypeScript (strict) on the web app and the API client
+make lint-e2e  # TypeScript (strict) and Prettier check on the E2E tests (e2e/)
 ```
 
 Lint targets only check and never modify files. The web targets install
 dependencies from the committed lockfile first, so no manual `pnpm install` is
-needed. `make lint` and `make test` fail if either app fails; use `make -k` to
-run both parts regardless.
+needed. `make lint` and `make test` fail if any part fails; use `make -k` to
+run every part regardless.
 
 To build the web app for production: `make build-web` (output in
 `apps/web/dist/`).
@@ -218,13 +244,16 @@ command:
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |
+| `e2e` | `make lint-e2e`, `make e2e` (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
 
 Pull requests run only the jobs their changed files can affect (API jobs for
 `apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
-files; both for `Makefile` and workflow changes; neither for documentation).
+files; the `e2e` job for changes to either app, its packages, `e2e/`, the Compose
+and Docker files, the Node toolchain files or `.env.example`; all of them for
+`Makefile` and workflow changes; none for documentation).
 The `api-client` drift check runs whenever the API or web jobs run. The three
 security jobs run on every pull request and push, documentation included.
 `ci-required` is the one required check: it reports on every pull request and
@@ -249,5 +278,6 @@ request.
 - [Architecture](_docs/architecture.md)
 - [Design system](_docs/design-system.md) (tokens, theming, accessibility rules)
 - [API conventions](_docs/api.md) (paths, errors, pagination, versions, client workflow)
+- [Testing guidelines](_docs/testing-guidelines.md) (test layers, fixtures, permission matrix, financial invariants, E2E, accessibility)
 - [Agent instructions](AGENTS.md)
 - [Delivery process](_docs/process.md) (agent workflow and contribution guidance)

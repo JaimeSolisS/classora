@@ -5,3 +5,5 @@ Run tests, commit changes, and comment the exact changes and commands/results.
 Review root README.md, update reader-facing content only if needed,
 verify any changed commands/links, and post a README verdict.
 DO NOT close the issue or claim independent QA PASS.
+
+Testing rules (layers, fixtures, permission matrix, financial invariants, E2E, accessibility): [`_docs/testing-guidelines.md`](../testing-guidelines.md).
