@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Decide which CI job groups a pull request needs (used by the `changes` job in
 # .github/workflows/ci.yml). Compares <head> with its merge base on <base>
-# (`git diff base...head`) and prints `api=true|false` and `web=true|false`.
+# (`git diff base...head`) and prints `api=true|false`, `web=true|false` and
+# `client=true|false`.
 #
 # Run it locally against any two refs:
 #   bash .github/scripts/changes.sh <base-ref> <head-ref>
@@ -11,6 +12,9 @@
 #   web: apps/web/**, packages/**, package.json, pnpm-lock.yaml,
 #        pnpm-workspace.yaml, .npmrc, .nvmrc
 #   all (api and web): .github/workflows/**, .github/scripts/**, Makefile
+#   client (the OpenAPI drift check): true when api or web is true. An API
+#        change can change the document; a packages/** or lockfile change
+#        (generator version) can change the generated client.
 # Anything else (docs, README, Compose, other infrastructure, e2e) runs neither.
 set -euo pipefail
 
@@ -38,5 +42,11 @@ while IFS= read -r file; do
   esac
 done <<<"$files"
 
+client=false
+if [ "$api" = true ] || [ "$web" = true ]; then
+  client=true
+fi
+
 echo "api=$api"
 echo "web=$web"
+echo "client=$client"

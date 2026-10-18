@@ -5,14 +5,15 @@ unauthenticated infrastructure probes and must never expose internal details.
 """
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.db import get_engine
-from app.core.errors import AppError
+from app.core.errors import AppError, problem_response_doc
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -31,6 +32,12 @@ class DatabaseUnavailableError(AppError):
     detail = "Database is not reachable."
 
 
+class HealthStatus(BaseModel):
+    """The success body of both health probes."""
+
+    status: Literal["ok"]
+
+
 async def _database_is_reachable(engine: AsyncEngine) -> bool:
     try:
         async with asyncio.timeout(READY_TIMEOUT_SECONDS):
@@ -42,14 +49,17 @@ async def _database_is_reachable(engine: AsyncEngine) -> bool:
 
 
 @router.get("/live")
-async def live() -> dict[str, str]:
+async def live() -> HealthStatus:
     """The process is up. Never touches the database."""
-    return {"status": "ok"}
+    return HealthStatus(status="ok")
 
 
-@router.get("/ready")
-async def ready(engine: Annotated[AsyncEngine, Depends(get_engine)]) -> dict[str, str]:
+@router.get(
+    "/ready",
+    responses={503: problem_response_doc("The database is not reachable.")},
+)
+async def ready(engine: Annotated[AsyncEngine, Depends(get_engine)]) -> HealthStatus:
     """The process is up and PostgreSQL answers ``SELECT 1`` (pooled engine)."""
     if not await _database_is_reachable(engine):
         raise DatabaseUnavailableError()
-    return {"status": "ok"}
+    return HealthStatus(status="ok")

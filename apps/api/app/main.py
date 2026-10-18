@@ -11,11 +11,16 @@ migrations (``make migrate``).
 
 The demo job route (``/api/v1/dev/demo-jobs``) exists only when ``APP_ENV`` is
 ``local`` or ``dev``.
+
+:func:`build_app` assembles the app (metadata, conventions, routers) without
+reading settings; ``create_app()`` and the OpenAPI export
+(``app.core.openapi``) both use it, so the exported document describes the
+same routes as the running app.
 """
 
 import sys
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -46,6 +51,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
 
 
+# OpenAPI ``info``: fixed in code (never from git or the date), so the exported
+# document is deterministic.
+API_TITLE = "Classora API"
+API_VERSION = "0.1.0"
+
+
+def build_app(
+    *,
+    lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
+    include_dev_routes: bool = False,
+) -> FastAPI:
+    """The app without settings validation: metadata, conventions, routers.
+
+    ``include_dev_routes`` mounts the local/DEV demo job route; the exported
+    contract (``app.core.openapi``) never includes it.
+    """
+    app = FastAPI(title=API_TITLE, version=API_VERSION, debug=False, lifespan=lifespan)
+    install_conventions(app)
+    app.include_router(health_router)
+    if include_dev_routes:
+        app.include_router(demo_jobs_router)
+    return app
+
+
 def create_app() -> FastAPI:
     try:
         settings = get_settings()
@@ -55,9 +84,7 @@ def create_app() -> FastAPI:
         raise SystemExit(1) from None
 
     configure_logging()
-    app = FastAPI(title="Classora API", debug=False, lifespan=lifespan)
-    install_conventions(app)
-    app.include_router(health_router)
-    if settings.app_env in DEMO_ENVIRONMENTS:
-        app.include_router(demo_jobs_router)
-    return app
+    return build_app(
+        lifespan=lifespan,
+        include_dev_routes=settings.app_env in DEMO_ENVIRONMENTS,
+    )

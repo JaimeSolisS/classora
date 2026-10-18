@@ -13,7 +13,8 @@ API with liveness and readiness health checks, backed by a local PostgreSQL
 container (reached through PgBouncer) whose schema is managed with Alembic
 migrations, a background worker for queued and periodic jobs (Procrastinate),
 and a React +
-TypeScript + Vite placeholder page that shows whether the API is live. The web
+TypeScript + Vite placeholder page that shows whether the API is live, calling
+it through a typed client generated from the API's OpenAPI document. The web
 app has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook) and a light/dark/system theme
 switch. No product features are implemented yet.
@@ -138,7 +139,7 @@ stack and `.env` are not needed.
 ```bash
 make test              # all tests: API (unit + integration) then web (Vitest)
 make test-api          # all API tests with a coverage report
-make test-web          # web component tests (Vitest, no Docker needed)
+make test-web          # web and API client tests (Vitest, no Docker needed)
 make test-unit         # API unit tests only (no Docker needed)
 make test-integration  # API integration tests only
 make test-migrations   # API migration checks only (upgrade, round trip, no model drift)
@@ -162,7 +163,7 @@ and it can run while `make dev` is up.
 ```bash
 make lint      # both apps
 make lint-api  # Ruff (lint and format check) and mypy (strict) on the API
-make lint-web  # ESLint, Prettier check and TypeScript (strict) on the web app
+make lint-web  # ESLint, Prettier check and TypeScript (strict) on the web app and the API client
 ```
 
 Lint targets only check and never modify files. The web targets install
@@ -172,6 +173,21 @@ run both parts regardless.
 
 To build the web app for production: `make build-web` (output in
 `apps/web/dist/`).
+
+## API client
+
+The web app calls the API through `@classora/api-client`
+(`packages/api-client`), a typed client generated from the API's OpenAPI
+document. After any API change, regenerate it and commit the result:
+
+```bash
+make api-client        # export packages/api-client/openapi.json, then regenerate the client types
+make check-api-client  # regenerate and fail if packages/api-client differs from the commit (CI drift check)
+```
+
+Both need uv and Node 24, but not Docker, a database or `.env`. API conventions
+(paths, Problem Details errors, pagination, versions) are in
+[`_docs/api.md`](_docs/api.md).
 
 ## Storybook
 
@@ -198,10 +214,12 @@ command:
 | `api-test` | `make test-unit`, `make test-migrations`, `make test-integration` |
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
+| `api-client` | `make check-api-client` |
 
 Pull requests run only the jobs their changed files can affect (API jobs for
 `apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
 files; both for `Makefile` and workflow changes; neither for documentation).
+The `api-client` drift check runs whenever the API or web jobs run.
 `ci-required` is the one required check: it reports on every pull request and
 fails if any job that ran failed or was cancelled.
 
@@ -210,5 +228,6 @@ fails if any job that ran failed or was cancelled.
 - [Product specification](_docs/spec.md)
 - [Architecture](_docs/architecture.md)
 - [Design system](_docs/design-system.md) (tokens, theming, accessibility rules)
+- [API conventions](_docs/api.md) (paths, errors, pagination, versions, client workflow)
 - [Agent instructions](AGENTS.md)
 - [Delivery process](_docs/process.md) (agent workflow and contribution guidance)

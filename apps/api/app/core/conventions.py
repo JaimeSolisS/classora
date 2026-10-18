@@ -6,11 +6,15 @@ test-only ``FastAPI()`` app to mount their own routes.
 
 from fastapi import FastAPI
 
-from app.core.errors import install_exception_handlers
+from app.core.errors import (
+    install_exception_handlers,
+    install_problem_details_openapi,
+)
 from app.core.middleware import RequestContextMiddleware
 
 
 def install_conventions(app: FastAPI) -> None:
-    """Problem Details handlers, request ID, access log and 500 handling."""
+    """Problem Details handlers and schema, request ID, access log, 500s."""
     install_exception_handlers(app)
+    install_problem_details_openapi(app)
     app.add_middleware(RequestContextMiddleware)

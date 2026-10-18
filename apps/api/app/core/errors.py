@@ -21,11 +21,12 @@ their traceback instead (see ``app.core.middleware``).
 import re
 from collections.abc import Mapping, Sequence
 from http import HTTPStatus
-from typing import Any, ClassVar, TypedDict
+from typing import Any, ClassVar, Literal, NotRequired, TypedDict
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ConfigDict, TypeAdapter, with_config
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import get_request_id
@@ -33,14 +34,32 @@ from app.core.models import StaleVersionError
 
 PROBLEM_JSON = "application/problem+json"
 INTERNAL_ERROR_DETAIL = "An unexpected error occurred."
+PROBLEM_DETAILS_REF = "#/components/schemas/ProblemDetails"
 
 
+@with_config(ConfigDict(extra="forbid"))
 class FieldError(TypedDict):
     """One field-level error: location, Pydantic error type and message."""
 
     path: list[str | int]
     code: str
     message: str
+
+
+# The single source of the ProblemDetails schema in the OpenAPI document
+# (install_problem_details_openapi). tests/unit/test_openapi.py validates real
+# problem_response output against it. Docstrings become schema descriptions.
+@with_config(ConfigDict(extra="forbid"))
+class ProblemDetails(TypedDict):
+    """The body of every error response (RFC 9457 Problem Details)."""
+
+    type: Literal["about:blank"]
+    title: str
+    status: int
+    code: str
+    request_id: str
+    detail: NotRequired[str]
+    errors: NotRequired[list[FieldError]]
 
 
 class AppError(Exception):
@@ -159,6 +178,53 @@ async def _http_exception_handler(request: Request, exc: Exception) -> JSONRespo
     return problem_response(
         exc.status_code, status_code_name(exc.status_code), headers=exc.headers
     )
+
+
+def problem_details_schemas() -> dict[str, Any]:
+    """``ProblemDetails`` and ``FieldError`` as OpenAPI component schemas."""
+    schema = TypeAdapter(ProblemDetails).json_schema(
+        ref_template="#/components/schemas/{model}"
+    )
+    definitions: dict[str, Any] = schema.pop("$defs", {})
+    return {**definitions, "ProblemDetails": schema}
+
+
+def problem_response_doc(description: str) -> dict[str, Any]:
+    """An entry for a route's ``responses=``: a Problem Details error."""
+    return {
+        "description": description,
+        "content": {PROBLEM_JSON: {"schema": {"$ref": PROBLEM_DETAILS_REF}}},
+    }
+
+
+def _use_problem_details(document: dict[str, Any]) -> dict[str, Any]:
+    # FastAPI documents every 422 with its own HTTPValidationError schema, which
+    # this API never returns: the handler above renders Problem Details.
+    for operations in document.get("paths", {}).values():
+        for operation in operations.values():
+            responses = operation.get("responses", {})
+            if "422" in responses:
+                responses["422"] = problem_response_doc("Validation Error")
+    schemas: dict[str, Any] = document.setdefault("components", {}).setdefault(
+        "schemas", {}
+    )
+    for name in ("HTTPValidationError", "ValidationError"):
+        schemas.pop(name, None)
+    schemas.update(problem_details_schemas())
+    document["components"]["schemas"] = dict(sorted(schemas.items()))
+    return document
+
+
+def install_problem_details_openapi(app: FastAPI) -> None:
+    """Make the app's OpenAPI document describe errors as Problem Details."""
+    build_default = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            app.openapi_schema = _use_problem_details(build_default())
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 def install_exception_handlers(app: FastAPI) -> None:

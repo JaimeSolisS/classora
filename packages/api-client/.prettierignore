@@ -1,0 +1,5 @@
+# Written by `make api-client`; never formatted or hand-edited.
+openapi.json
+src/generated/
+node_modules/
+coverage/

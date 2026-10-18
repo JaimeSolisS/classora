@@ -44,20 +44,24 @@ afterEach(() => {
 });
 
 describe('App API status', () => {
-  it('shows the product name and checks the relative /health/live URL', async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse(200, { status: 'ok' })),
-    );
+  it('shows the product name and checks /health/live on the same origin', async () => {
+    const fetchMock = vi.fn((request: Request) => {
+      void request;
+      return Promise.resolve(jsonResponse(200, { status: 'ok' }));
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await renderApp();
 
     expect(container.querySelector('h1')?.textContent).toBe('Classora');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]).toEqual([
-      '/health/live',
-      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
-    ]);
+    // The API client passes one Request object to fetch.
+    const request = fetchMock.mock.calls[0]![0];
+    const url = new URL(request.url);
+    expect(request.method).toBe('GET');
+    expect(url.pathname).toBe('/health/live');
+    expect(url.origin).toBe(window.location.origin);
+    expect(request.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('shows "API: checking…" while the request is pending', async () => {
@@ -120,9 +124,9 @@ describe('App API status', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
-        (_url: string, init: RequestInit) =>
+        (request: Request) =>
           new Promise<Response>((_resolve, reject) => {
-            init.signal?.addEventListener('abort', () =>
+            request.signal.addEventListener('abort', () =>
               reject(new DOMException('Aborted', 'AbortError')),
             );
           }),

@@ -33,6 +33,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
+      client: ${{ steps.filter.outputs.client }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,7 +53,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             bash .github/scripts/changes.sh "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
           else
-            printf 'api=true\nweb=true\n' | tee -a "$GITHUB_OUTPUT"
+            printf 'api=true\nweb=true\nclient=true\n' | tee -a "$GITHUB_OUTPUT"
           fi
 
   api-lint:
@@ -213,14 +214,56 @@ jobs:
       - name: make test-storybook
         run: make test-storybook
 
+  # OpenAPI drift check: regenerates openapi.json and the TypeScript client
+  # from the API code and fails if they differ from the committed files.
+  api-client:
+    name: api-client
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: make check-api-client
+        run: make check-api-client
+
   # The one required status check (repository ruleset on develop and main).
-  # Downstream jobs join its `needs` and the result check below: the OpenAPI
-  # drift job (#12), security scanning (#11) and E2E (#18) if they live in this
-  # workflow.
+  # Downstream jobs join its `needs` and the result check below: security
+  # scanning (#11) and E2E (#18) if they live in this workflow.
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-test, web, web-storybook]
+    needs: [changes, api-lint, api-test, web, web-storybook, api-client]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -229,12 +272,14 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           RUN_API: ${{ needs.changes.outputs.api }}
           RUN_WEB: ${{ needs.changes.outputs.web }}
+          RUN_CLIENT: ${{ needs.changes.outputs.client }}
           API_LINT: ${{ needs.api-lint.result }}
           API_TEST: ${{ needs.api-test.result }}
           WEB: ${{ needs.web.result }}
           WEB_STORYBOOK: ${{ needs.web-storybook.result }}
+          API_CLIENT: ${{ needs.api-client.result }}
         run: |
-          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB)"
+          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT)"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes finished with result '$CHANGES'"
             exit 1
@@ -261,4 +306,5 @@ jobs:
           check api-test "$API_TEST" "$RUN_API"
           check web "$WEB" "$RUN_WEB"
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
+          check api-client "$API_CLIENT" "$RUN_CLIENT"
           exit "$fail"

@@ -1,12 +1,12 @@
+import { createApiClient } from '@classora/api-client';
 import { useEffect, useState } from 'react';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { ThemeSwitcher } from '@/theme/ThemeSwitcher';
 import { useTheme } from '@/theme/use-theme';
 
-// Placeholder page. The plain fetch and English-only strings are a temporary
-// exception: M1-12 moves the call to the generated API client and M1-15
-// externalizes the strings.
-const HEALTH_URL = '/health/live';
+// Placeholder page. The English-only strings are a temporary exception until
+// M1-15 externalizes them.
+const api = createApiClient();
 const TIMEOUT_MS = 5000;
 
 type ApiStatus = 'checking' | 'live' | 'unreachable';
@@ -28,15 +28,12 @@ function isLiveBody(body: unknown): boolean {
 
 async function checkApi(signal: AbortSignal): Promise<ApiStatus> {
   try {
-    const response = await fetch(HEALTH_URL, {
+    const { data, response } = await api.GET('/health/live', {
       headers: { Accept: 'application/json' },
       signal,
     });
-    if (!response.ok) {
-      return 'unreachable';
-    }
-    const body: unknown = await response.json();
-    return isLiveBody(body) ? 'live' : 'unreachable';
+    // The generated types are not runtime validation: check the body too.
+    return response.ok && isLiveBody(data) ? 'live' : 'unreachable';
   } catch {
     return 'unreachable';
   }
