@@ -198,7 +198,7 @@ Open points: → ISSUE-D3, ISSUE-X1.
 
 - Important records get audit events with actor, action, timestamp, prior values and new values.
 
-Open point: → ISSUE-A3.
+Decision: → ISSUE-A3 (accepted on issue #22).
 
 ## 8. Frontend architecture (approved)
 
@@ -267,7 +267,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -312,12 +312,13 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-A3 — How audit events are captured (M)
 - **Spec:** §9 audit trail (actor, action, timestamp, prior/new values).
 - **Problem:** The spec does not choose between database triggers and application-level capture. It also does not say which records count as "important" or how sensitive fields are treated.
-- **Resolution — PROPOSED:**
-  - Capture audit events at the application level inside the Unit of Work, so the actor and request ID are always available. A SQLAlchemy flush hook computes field diffs for models marked `Audited`.
-  - Store diffs as JSONB.
-  - Never store password hashes, tokens or file contents. Mask other secrets.
-  - Initial audited set: financial records, payroll, attendance corrections, schedule overrides, role and permission changes, user state changes, consent, settings, academic report approvals.
-  - Audit rows are append-only. Revoke UPDATE and DELETE on the audit table from the application database role.
+- **Resolution — ACCEPTED** (human decision on GitHub issue #22, M2-04, 2026-10-18, owner JaimeSolisS; no ADR):
+  - **Placement.** Capture lives in `app/core/audit.py`, shared infrastructure that every module and the Unit of Work may import (ADR-0002): the `AuditEvent` model, the `Audited` marker, the flush hook and `record_audit_event`. Events are written in the same transaction as the change, so they roll back with it, and a failed audit write fails the change.
+  - **What is captured.** Automatic `create`, `update`, `delete`, `soft_delete` and `restore` events for models marked `Audited`, with JSONB diffs `{column: {old, new}}`. Explicit dotted events (for example `identity.owner_bootstrapped`) for actions that are not column changes. Each event records the actor (the request's principal, or the `actor_id` of a job or command; `NULL` for none), the time and the request ID. ORM bulk statements on audited tables are refused because they skip the hook.
+  - **Excluded and masked fields.** `__audit_exclude__` columns never appear (password hashes, tokens, file contents). `__audit_mask__` columns appear only as `"[masked]"`. A test fails any audited model with an unlisted `password|token|secret|hash` or binary column.
+  - **Audited set.** M2-04 audits `users`, `user_roles` and `user_delegations` (role assignments, delegations and user state changes). Role and permission reference data is not audited. Each later issue marks its own models: financial records, payroll, attendance corrections, schedule overrides, consent, settings, academic report approvals.
+  - **Append-only.** `audit_events` has `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers that raise SQLSTATE 42501 for every role, because the local, test and CI role is a superuser and a `REVOKE` would not bind it. Follow-up #165 adds a least-privilege runtime role so that a `REVOKE` applies as well.
+  - **Read endpoint.** `GET /api/v1/audit-events` in the `administration` module, for holders of `audit.view`: newest first, cursor-paginated, filtered by record, actor and time range.
 
 ### 10.3 Data layer
 

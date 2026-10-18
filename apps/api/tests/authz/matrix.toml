@@ -31,6 +31,13 @@
 #   allow = ["owner", "administrator"]
 
 [[route]]
+method = "GET"
+path = "/api/v1/audit-events"
+access = "permission"
+permission = "audit.view"
+allow = ["owner", "administrator"]
+
+[[route]]
 method = "POST"
 path = "/api/v1/dev/demo-jobs"
 access = "public"

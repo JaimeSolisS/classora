@@ -16,13 +16,15 @@ Commands (one subparser each; #30 adds ``reset-owner-password``):
        environment. Apply the password policy.
     5. In one Unit of Work, under a transaction-scoped advisory lock, check
        again that no Owner exists, then create the user (``active``, Argon2id
-       hash) with the ``owner`` role.
+       hash) with the ``owner`` role. The same transaction writes the audit
+       events (#22): the automatic ``create`` events of the ``users`` and
+       ``user_roles`` rows and ``identity.owner_bootstrapped`` (actor
+       ``NULL``, ``details`` ``{"source": "cli"}``). The hash is never audited.
     6. Print one line naming the username; log ``owner_bootstrapped`` (user id
        and username). The password and its hash are never printed or logged.
 
     Runs in every ``APP_ENV``, including ``prod`` (go-live needs it). Exit 0 on
-    success, 1 on any refusal. The audit event for this command arrives with
-    the audit infrastructure (#22).
+    success, 1 on any refusal; a refusal writes nothing, audit rows included.
 """
 
 import argparse
@@ -37,6 +39,7 @@ from typing import TextIO
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.core.audit import record_audit_event
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.db import create_sessionmaker
 from app.core.logging import configure_logging
@@ -63,6 +66,9 @@ logger = logging.getLogger("app.cli")
 # serializes concurrent bootstrap-owner runs. Any fixed bigint works; no other
 # code uses this one. (The ASCII bytes of "CLASOWNR".)
 BOOTSTRAP_OWNER_LOCK_KEY = 0x434C41534F574E52
+
+# The explicit audit event of a successful run (ADR-0007, D12; #20 E1).
+OWNER_BOOTSTRAPPED_EVENT = "identity.owner_bootstrapped"
 
 ROLES_NOT_SEEDED_MESSAGE = (
     "The owner role does not exist: run `make seed` first (after `make migrate`)."
@@ -128,6 +134,13 @@ async def _create_owner(
         await session.flush()
         session.add(UserRole(user_id=user.id, role_id=role_id))
         await session.flush()
+        record_audit_event(
+            session,
+            action=OWNER_BOOTSTRAPPED_EVENT,
+            record_type=User.__tablename__,
+            record_id=user.id,
+            details={"source": "cli"},
+        )
         return user.id
 
 

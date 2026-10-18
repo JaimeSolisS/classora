@@ -47,10 +47,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description The audit log, newest first, filtered by record, actor and time range.
+         */
+        get: operations["list_events_api_v1_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AuditChange
+         * @description One column's value before and after the change (null when there is none).
+         */
+        AuditChange: {
+            /** Old */
+            old: unknown;
+            /** New */
+            new: unknown;
+        };
+        /**
+         * AuditEventListItem
+         * @description One audit event; the actor and the record are given by id.
+         */
+        AuditEventListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** Action */
+            action: string;
+            /** Record Type */
+            record_type: string | null;
+            /** Record Id */
+            record_id: string | null;
+            /** Changes */
+            changes: {
+                [key: string]: components["schemas"]["AuditChange"];
+            } | null;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /** Request Id */
+            request_id: string | null;
+        };
+        /** CursorPage[AuditEventListItem] */
+        CursorPage_AuditEventListItem_: {
+            /** Items */
+            items: components["schemas"]["AuditEventListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /**
          * FieldError
          * @description One field-level error: location, Pydantic error type and message.
@@ -146,6 +217,75 @@ export interface operations {
             };
             /** @description The database is not reachable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_audit_events_get: {
+        parameters: {
+            query?: {
+                /** @description Table name, with record_id. */
+                record_type?: string | null;
+                /** @description Record id, with record_type. */
+                record_id?: string | null;
+                /** @description Events written by this user. */
+                actor_id?: string | null;
+                /** @description Inclusive lower bound. */
+                occurred_from?: string | null;
+                /** @description Exclusive upper bound. */
+                occurred_to?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_AuditEventListItem_"];
+                };
+            };
+            /** @description The pagination cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -31,6 +31,7 @@ from app.core.demo_jobs import router as demo_jobs_router
 from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
+from app.modules.administration.router import router as administration_router
 
 
 @asynccontextmanager
@@ -70,6 +71,7 @@ def build_app(
     app = FastAPI(title=API_TITLE, version=API_VERSION, debug=False, lifespan=lifespan)
     install_conventions(app)
     app.include_router(health_router)
+    app.include_router(administration_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
     return app

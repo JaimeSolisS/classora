@@ -37,6 +37,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Maps every model (and registers the audit flush hooks of app.core.audit)
+# before any session from this module is used.
+import app.core.model_registry  # noqa: F401
 from app.core.config import Settings
 
 ASYNC_DRIVER = "postgresql+asyncpg"

@@ -35,10 +35,10 @@ def test_matrix_file_is_sorted_by_path_then_method():
     assert order_problems(load_matrix()) == []
 
 
-def test_initial_matrix_lists_the_existing_routes():
-    entries = load_matrix()
-
-    assert {(e.method, e.path) for e in entries} == {
+def test_matrix_lists_the_infrastructure_routes():
+    # A subset check: every issue that adds a route adds its own entry.
+    entries = {(e.method, e.path): e for e in load_matrix()}
+    public_routes = {
         ("GET", "/health/live"),
         ("GET", "/health/ready"),
         ("POST", "/api/v1/dev/demo-jobs"),
@@ -47,7 +47,11 @@ def test_initial_matrix_lists_the_existing_routes():
         ("GET", "/docs/oauth2-redirect"),
         ("GET", "/redoc"),
     }
-    assert all(e.access == "public" and e.reason for e in entries)
+
+    assert public_routes <= set(entries)
+    assert all(
+        entries[key].access == "public" and entries[key].reason for key in public_routes
+    )
 
 
 def test_matrix_file_has_a_how_to_header():

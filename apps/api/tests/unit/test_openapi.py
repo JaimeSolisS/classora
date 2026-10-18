@@ -43,8 +43,12 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
     assert document["openapi"].startswith("3.1")
     assert document["info"] == {"title": API_TITLE, "version": API_VERSION}
     assert document["info"]["title"] == "Classora API"
-    # A8: only the two root health paths; never the dev-only demo route.
-    assert set(document["paths"]) == {"/health/live", "/health/ready"}
+    # A8: never the dev-only demo route.
+    assert set(document["paths"]) == {
+        "/health/live",
+        "/health/ready",
+        "/api/v1/audit-events",
+    }
 
 
 def test_two_exports_are_byte_identical(no_configuration, tmp_path):

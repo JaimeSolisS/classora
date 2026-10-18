@@ -167,7 +167,7 @@ def test_unhandled_exception_is_generic_500_without_leak(client: TestClient):
 # --- D1 production wiring -----------------------------------------------------
 
 
-def test_production_app_has_only_health_and_docs_routes(
+def test_production_app_has_no_demo_route(
     app_env: None, monkeypatch: pytest.MonkeyPatch
 ):
     # APP_ENV=prod: the local/DEV demo job route is not mounted (M1-16 D4).
@@ -175,7 +175,11 @@ def test_production_app_has_only_health_and_docs_routes(
     app = create_app()
 
     assert app.debug is False
-    assert set(app.openapi()["paths"]) == {"/health/live", "/health/ready"}
+    assert set(app.openapi()["paths"]) == {
+        "/health/live",
+        "/health/ready",
+        "/api/v1/audit-events",
+    }
     top_level = {getattr(r, "path", None) for r in app.routes} - {None}
     assert top_level == {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
     with TestClient(app) as client:
