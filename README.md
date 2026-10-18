@@ -172,8 +172,9 @@ It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
 can run while `make dev` is up without touching that stack or its data. A
 failed run leaves Playwright traces, screenshots and the Compose logs
 (`compose.log`) in `e2e/test-results/` and an HTML report in
-`e2e/playwright-report/`. Open a trace with
-`corepack pnpm --filter @classora/e2e exec playwright show-trace e2e/test-results/<test>/trace.zip`.
+`e2e/playwright-report/`. Open a trace from the repository root with
+`corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`
+(the command runs in `e2e/`, so the path is relative to `e2e/`).
 To keep the stack up for debugging, run `E2E_KEEP=1 make e2e`; the command it
 prints removes it afterwards.
 

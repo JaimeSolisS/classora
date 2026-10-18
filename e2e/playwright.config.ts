@@ -10,6 +10,8 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:15173';
 
 export default defineConfig({
   testDir: 'tests',
+  // Loads the app once before the tests (warms the Vite dev server).
+  globalSetup: './global-setup.ts',
   outputDir: 'test-results',
   // Tests are independent of each other and of their order.
   fullyParallel: true,

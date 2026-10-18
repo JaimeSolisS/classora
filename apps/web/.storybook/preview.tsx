@@ -54,8 +54,26 @@ const preview: Preview = {
   decorators: [withTheme, withLocale],
   parameters: {
     // Axe violations fail the story test (`make test-storybook`), which runs
-    // every story once per theme.
-    a11y: { test: 'error' },
+    // every story once per theme. The rules: WCAG 2.0/2.1/2.2 A and AA (the
+    // same tags as the E2E scans, _docs/testing-guidelines.md) plus axe's
+    // best practices. Listing the tags also turns on rules axe leaves off by
+    // default, such as target-size (WCAG 2.2, SC 2.5.8).
+    a11y: {
+      test: 'error',
+      options: {
+        runOnly: {
+          type: 'tag',
+          values: [
+            'wcag2a',
+            'wcag2aa',
+            'wcag21a',
+            'wcag21aa',
+            'wcag22aa',
+            'best-practice',
+          ],
+        },
+      },
+    },
   },
 };
 

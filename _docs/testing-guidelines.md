@@ -173,17 +173,20 @@ follows these rules.
   project.
 - A new route gets an axe scan (next section).
 - A failing run keeps the trace (`trace.zip`), a screenshot and the Compose
-  logs in `e2e/test-results/`. Open a trace with
-  `corepack pnpm --filter @classora/e2e exec playwright show-trace <file>`.
+  logs in `e2e/test-results/`. Open a trace from the repository root with
+  `corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`
+  (the command runs in `e2e/`, so the path is relative to `e2e/`).
 
 ## Accessibility tests
 
 - Target: WCAG 2.2 AA (spec §10, `_docs/design-system.md`).
-- Both layers test the WCAG 2.0, 2.1 and 2.2 level A and AA rules (axe tags
+- Both layers run the WCAG 2.0, 2.1 and 2.2 level A and AA rules (axe tags
   `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`), in light and dark:
-  Storybook for components (`make test-storybook`; axe's default rule set,
-  which includes these tags) and E2E for routes (`make e2e`; exactly these
-  tags, through `@axe-core/playwright`). A scan passes only with zero
+  Storybook for components (`make test-storybook`; these tags plus
+  `best-practice`, set as `runOnly` in `apps/web/.storybook/preview.tsx`) and
+  E2E for routes (`make e2e`; exactly these tags, through
+  `@axe-core/playwright`). Selecting the tags also runs rules axe leaves off
+  by default, such as `target-size` (WCAG 2.2). A scan passes only with zero
   violations.
 - No rule is disabled globally.
 - A per-test exclusion needs a reason comment in the test and a line in the
