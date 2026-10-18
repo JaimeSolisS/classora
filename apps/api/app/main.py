@@ -88,3 +88,5 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         include_dev_routes=settings.app_env in DEMO_ENVIRONMENTS,
     )
+
+import os
