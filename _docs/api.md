@@ -82,6 +82,7 @@ Codes in use today:
 | `validation_error` | 422 | Request validation (body, query, path, headers). |
 | `not_found` | 404 | Unknown path, or a record that is missing or not visible to the caller (no `detail`). |
 | `authentication_required` | 401 | No signed-in user on an `authenticated()` or `require()` route. |
+| `invalid_credentials` | 401 | `POST /api/v1/auth/login` did not succeed, for any reason (the same body whether or not the account exists). |
 | `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
@@ -136,6 +137,32 @@ implemented by M2-03 in `apps/api/app/core/authz.py`.
 - **Lists filter.** A list endpoint never answers `403` or `404` for items the
   caller may not see; its query returns only what the same policy allows.
 - `401`/`403`/`404` bodies never name the permission, role, record or user.
+
+### Sessions
+
+Implemented by M2-05 (ADR-0007 D7, D8) in `apps/api/app/modules/identity/`.
+
+- **Endpoints:**
+  - `POST /api/v1/auth/login` (public): body `{"username", "password"}`.
+    `200` sets the session cookie and returns the signed-in user
+    (`id`, `username`, `display_name`, sorted `roles` and `permissions`). Any
+    failure is `401 invalid_credentials` with one fixed body, whether or not
+    the account exists.
+  - `POST /api/v1/auth/logout` (`authenticated()`): revokes the current session
+    only, clears the cookie, `204`.
+  - `GET /api/v1/auth/me` (`authenticated()`): the same body as login.
+- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and no
+  `Max-Age` yet (a browser-session cookie). With `SESSION_COOKIE_SECURE=true`
+  (the default, every deployed environment) it is `__Host-classora_session`
+  with `Secure`; with `false` (allowed only when `APP_ENV=local`, for plain-HTTP
+  local runs) it is `classora_session` without `Secure`. The API reads only
+  the current mode's name.
+- **Token:** 32 random bytes in unpadded base64url. The server stores only its
+  SHA-256 hash, so the token is never stored, logged, audited or returned in a
+  body.
+- **Rotation:** every login issues a new session; a live session on the
+  request's cookie is revoked, and a token supplied by the client is never
+  adopted.
 
 ## Request IDs
 

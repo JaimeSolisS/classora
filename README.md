@@ -19,8 +19,10 @@ layer; its home page shows whether the API is live,
 calling it through a typed client generated from the API's OpenAPI document.
 It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
-switch, and Spanish and English UI text with a language switch. No product
-features are implemented yet.
+switch, and Spanish and English UI text with a language switch. The API has
+username and password login with server-side sessions (an HTTP-only session
+cookie); there is no login screen yet. No other product features are
+implemented yet.
 
 ## Prerequisites
 
@@ -112,8 +114,12 @@ demo data; to start over, run `docker compose down -v`, then `make dev`,
 `make migrate` and `make seed-demo`.
 
 The reference data currently consists of the user roles and their
-permissions. No demo generators exist yet, so `make seed-demo` adds only that
-reference data.
+permissions. The demo data currently consists of one demo Owner account,
+`demo.owner` with the password `classora-demo-owner`. This password is a
+development placeholder: the account is created only when `APP_ENV` is `local`
+(a `dev` run skips it), and a second run leaves it as it is.
+`make bootstrap-owner` (below) is refused once any Owner exists, so locally use
+either the demo Owner or `make bootstrap-owner`, not both.
 
 ### First Owner account
 
@@ -124,7 +130,25 @@ make bootstrap-owner USERNAME=<name>
 `make bootstrap-owner` creates the first Owner account (the center's top-level
 administrator). Run `make migrate` and `make seed` first. It prompts twice for
 the password, which must have at least 12 characters, and works only while no
-Owner account exists. Logging in arrives with a later feature.
+Owner account exists.
+
+### Logging in locally
+
+The web login screen arrives with a later feature. Until then, log in against
+the API and keep the session cookie, for example with the demo Owner:
+
+```bash
+curl -s -c cookies.txt -H 'Content-Type: application/json' \
+  -H 'Origin: http://127.0.0.1:5173' \
+  -d '{"username": "demo.owner", "password": "classora-demo-owner"}' \
+  http://127.0.0.1:8000/api/v1/auth/login
+curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/auth/me
+```
+
+Login returns the signed-in user and sets the session cookie;
+`GET /api/v1/auth/me` returns the same user, roles and permissions, and
+`POST /api/v1/auth/logout` ends the session. A failed login always answers
+`401 invalid_credentials`.
 
 ## Configuration
 
@@ -135,6 +159,13 @@ to start on a missing or invalid value; `docker compose logs api` (or
 `logs worker`) shows a short `Configuration error` message naming each bad
 variable. `WORKER_SHUTDOWN_TIMEOUT_SECONDS` (default 20, 1 to 30) sets how long
 a stopping worker lets running jobs finish before aborting them.
+
+`SESSION_COOKIE_SECURE=false` (the `.env.example` value) is for local plain
+HTTP only: it switches the session cookie to `classora_session` without the
+`Secure` flag, and the API refuses to start with it unless `APP_ENV=local`.
+Every other environment uses the default, `true` (`__Host-classora_session`,
+`Secure`). An older `.env` still has `SESSION_COOKIE_SECURE=true`; refresh it
+from `.env.example`.
 
 The API uses two database URLs: `DATABASE_URL` is the pooled one (through
 PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
@@ -173,7 +204,7 @@ runs reuse it.
 End-to-end tests (Playwright) run against their own Compose stack:
 
 ```bash
-make e2e               # smoke and accessibility (axe) tests in headless Chromium, light and dark
+make e2e               # smoke, accessibility (axe, light and dark) and session-cookie tests in headless Chromium
 ```
 
 `make e2e` builds and starts a separate Compose project, `classora-e2e`, on its

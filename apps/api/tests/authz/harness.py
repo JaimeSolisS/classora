@@ -7,8 +7,22 @@
 - :func:`matrix_cases` and :func:`run_case` are the runtime check: one request
   per entry and actor (anonymous, each role, and an Administrator holding the
   delegation for a delegable permission).
-- :func:`principal_for` builds an actor's :class:`Principal` from a real
-  database user. It is the single place #23 changes to real logins.
+- :func:`matrix_user_for` creates an actor's real, active database user (the
+  #20 factory helper, password :data:`TEST_USER_PASSWORD`) and loads its
+  :class:`Principal`.
+
+How a case signs in (``run_case(..., sign_in=...)``):
+
+- ``"login"`` (the default; the real-app matrix,
+  ``tests/integration/test_permission_matrix.py`` E4): the actor logs in
+  through ``POST /api/v1/auth/login`` before **every** case and sends that
+  fresh session's cookie, so the logout case never invalidates a later case.
+  ``get_current_principal`` is not overridden.
+- ``"override"`` (the self-test on the sample app of
+  ``tests/unit/authz_app.py``, E5, which has no login route): the actor's
+  principal replaces ``get_current_principal`` for the request.
+
+Anonymous sends no cookie and uses the real dependency in both modes.
 """
 
 import re
@@ -16,6 +30,7 @@ import tomllib
 from collections import Counter
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
+from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any, Literal
 
@@ -35,9 +50,10 @@ from app.modules.identity.permissions import (
     PERMISSION_CODES,
     ROLE_CODES,
 )
-from tests.factories.identity import persist_user
+from tests.factories.identity import TEST_USER_PASSWORD, persist_user
 
 MATRIX_PATH = Path(__file__).with_name("matrix.toml")
+LOGIN_PATH = "/api/v1/auth/login"
 
 ACCESS_KINDS = ("public", "authenticated", "permission")
 ENTRY_FIELDS = frozenset(
@@ -422,22 +438,74 @@ def check_response(case: Case, response: Response) -> list[str]:
     return problems
 
 
+SignIn = Literal["login", "override"]
+
+
+@dataclass(frozen=True)
+class MatrixUser:
+    """A real, active database user who is one actor."""
+
+    username: str
+    principal: Principal
+
+
+class LoginFailedError(AssertionError):
+    """The harness could not sign an actor in."""
+
+
+def login_cookie(client: TestClient, username: str) -> str:
+    """Log ``username`` in through the API; the ``Cookie`` header to send.
+
+    Parses the raw ``Set-Cookie`` header (a ``Secure`` cookie is not sent back
+    over ``http://`` by an HTTP client's jar) and leaves the client's own cookie
+    jar empty.
+    """
+    client.cookies.clear()
+    response = client.post(
+        LOGIN_PATH, json={"username": username, "password": TEST_USER_PASSWORD}
+    )
+    client.cookies.clear()
+    if response.status_code != 200:
+        raise LoginFailedError(f"login as {username}: got {response.status_code}")
+    [header] = response.headers.get_list("set-cookie")
+    cookie = SimpleCookie()
+    cookie.load(header)
+    [(name, morsel)] = cookie.items()
+    return f"{name}={morsel.value}"
+
+
 def run_case(
     client: TestClient,
     case: Case,
-    principals: Mapping[Actor, Principal],
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
 ) -> list[str]:
     """Send the case's request as its actor and return its problems.
 
-    The actor's principal replaces :func:`get_current_principal` for this
-    request; anonymous uses the real dependency.
+    ``sign_in="login"``: a fresh login per case (cookie sent by hand).
+    ``sign_in="override"``: the actor's principal replaces
+    :func:`get_current_principal` for this request.
     """
     app = client.app
     assert isinstance(app, FastAPI)
+    if sign_in == "login":
+        headers = {}
+        if case.actor != ANONYMOUS:
+            headers["Cookie"] = login_cookie(client, users[case.actor].username)
+        client.cookies.clear()
+        response = client.request(
+            str(case.entry.method),
+            request_path(app, case.entry),
+            json=case.entry.json,
+            headers=headers,
+        )
+        client.cookies.clear()
+        return check_response(case, response)
     overrides = app.dependency_overrides
     previous = overrides.pop(get_current_principal, None)
     if case.actor != ANONYMOUS:
-        principal = principals[case.actor]
+        principal = users[case.actor].principal
         overrides[get_current_principal] = lambda: principal
     try:
         response = client.request(
@@ -455,23 +523,29 @@ def run_case(
 def run_cases(
     client: TestClient,
     cases: Iterable[Case],
-    principals: Mapping[Actor, Principal],
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
 ) -> list[str]:
-    return [problem for case in cases for problem in run_case(client, case, principals)]
+    return [
+        problem
+        for case in cases
+        for problem in run_case(client, case, users, sign_in=sign_in)
+    ]
 
 
-# --- Principals from real users ----------------------------------------------------
+# --- Real users ----------------------------------------------------------------------
 
 
-async def principal_for(session: AsyncSession, actor: Actor) -> Principal:
-    """The principal of a new active user who is ``actor``.
+async def matrix_user_for(session: AsyncSession, actor: Actor) -> MatrixUser:
+    """A new active user who is ``actor``, with its loaded principal.
 
-    Creates the user with the #20 factory helper (one role, plus the
-    delegation if any) and loads it with ``identity.service.load_principal``.
-    #23 changes this one function to log in for real.
+    Created with the #20 factory helper (one role, plus the delegation if any;
+    password :data:`TEST_USER_PASSWORD`) and loaded with
+    ``identity.service.load_principal``. Flushes only.
     """
     if actor.role is None:
-        raise ValueError("anonymous has no principal")
+        raise ValueError("anonymous has no user")
     user = await persist_user(
         session,
         roles=[actor.role],
@@ -479,15 +553,21 @@ async def principal_for(session: AsyncSession, actor: Actor) -> Principal:
     )
     principal = await identity.load_principal(session, user.id)
     assert principal is not None
-    return principal
+    return MatrixUser(username=user.username, principal=principal)
 
 
-async def principals_for(
+async def matrix_users_for(
     session: AsyncSession, actors: Iterable[Actor]
-) -> dict[Actor, Principal]:
-    """:func:`principal_for` for every non-anonymous actor (flushes only)."""
+) -> dict[Actor, MatrixUser]:
+    """:func:`matrix_user_for` for every non-anonymous actor (flushes only)."""
     return {
-        actor: await principal_for(session, actor)
+        actor: await matrix_user_for(session, actor)
         for actor in actors
         if actor != ANONYMOUS
     }
+
+
+async def principal_for(session: AsyncSession, actor: Actor) -> Principal:
+    """The principal of a new active user who is ``actor`` (for tests that
+    override ``get_current_principal`` instead of logging in)."""
+    return (await matrix_user_for(session, actor)).principal

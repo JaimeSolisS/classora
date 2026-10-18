@@ -1,4 +1,5 @@
-"""Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4); each test uses a fresh database."""
+"""Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3); each test uses a
+fresh database."""
 
 import asyncio
 from pathlib import Path
@@ -57,7 +58,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0004"
+HEAD = "0005"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -67,6 +68,8 @@ IDENTITY_TABLES = [
     "user_roles",
     "users",
 ]
+
+AUTH_TABLES = ["auth_sessions"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -106,6 +109,9 @@ def test_history_is_linear_with_one_head():
     audit = script.get_revision("0004")
     assert audit.down_revision == "0003"
     assert Path(audit.path).name == "0004_audit_events.py"
+    auth_sessions = script.get_revision("0005")
+    assert auth_sessions.down_revision == "0004"
+    assert Path(auth_sessions.path).name == "0005_identity_auth_sessions.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -129,7 +135,13 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
         "WHERE table_schema = 'public' ORDER BY table_name",
     )
     assert [row.table_name for row in tables] == sorted(
-        ["alembic_version", "audit_events", *IDENTITY_TABLES, *PROCRASTINATE_TABLES]
+        [
+            "alembic_version",
+            "audit_events",
+            *AUTH_TABLES,
+            *IDENTITY_TABLES,
+            *PROCRASTINATE_TABLES,
+        ]
     )
 
 
@@ -167,7 +179,7 @@ def test_downgrade_to_0003_drops_exactly_the_audit_objects(fresh_database_url):
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0003")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0004")
     assert public_tables(fresh_database_url) - before == {"audit_events"}
     assert tuple(run_sql(fresh_database_url, AUDIT_OBJECTS)[0]) == (1, 2)
 
@@ -178,6 +190,71 @@ def test_downgrade_to_0003_drops_exactly_the_audit_objects(fresh_database_url):
     assert tuple(run_sql(fresh_database_url, AUDIT_OBJECTS)[0]) == (0, 0)
     command.upgrade(config, "head")
     assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_downgrade_to_0004_drops_exactly_auth_sessions(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0004")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(AUTH_TABLES)
+
+    command.downgrade(config, "0004")
+
+    assert version_nums(fresh_database_url) == ["0004"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_auth_sessions_columns_constraints_and_index(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = run_sql(
+        fresh_database_url,
+        "SELECT column_name, data_type, is_nullable, column_default"
+        " FROM information_schema.columns WHERE table_name = 'auth_sessions'",
+    )
+    by_name = {row.column_name: row for row in columns}
+    assert set(by_name) == {
+        "id",
+        "created_at",
+        "updated_at",
+        "user_id",
+        "token_hash",
+        "last_seen_at",
+        "revoked_at",
+    }
+    assert (by_name["token_hash"].data_type, by_name["token_hash"].is_nullable) == (
+        "bytea",
+        "NO",
+    )
+    assert by_name["user_id"].is_nullable == "NO"
+    assert by_name["last_seen_at"].data_type == "timestamp with time zone"
+    assert by_name["last_seen_at"].is_nullable == "NO"
+    assert by_name["last_seen_at"].column_default == "now()"
+    assert by_name["revoked_at"].data_type == "timestamp with time zone"
+    assert by_name["revoked_at"].is_nullable == "YES"
+    constraints = run_sql(
+        fresh_database_url,
+        "SELECT conname, contype::text, pg_get_constraintdef(oid) AS def,"
+        " confdeltype::text FROM pg_constraint"
+        " WHERE conrelid = 'auth_sessions'::regclass AND contype <> 'n'"
+        " ORDER BY conname",  # PostgreSQL 18 also lists NOT NULL ('n')
+    )
+    assert {(row.conname, row.contype) for row in constraints} == {
+        ("ck_auth_sessions_token_hash_length", "c"),
+        ("fk_auth_sessions_user_id_users", "f"),
+        ("pk_auth_sessions", "p"),
+        ("uq_auth_sessions_token_hash", "u"),
+    }
+    [fk] = [row for row in constraints if row.contype == "f"]
+    assert fk.confdeltype == "r"  # RESTRICT, never CASCADE
+    indexes = run_sql(
+        fresh_database_url,
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'auth_sessions'",
+    )
+    assert "ix_auth_sessions_user_id" in {row.indexname for row in indexes}
 
 
 def test_audit_events_has_the_three_keyset_indexes(fresh_database_url):

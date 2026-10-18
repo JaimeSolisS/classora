@@ -13,7 +13,8 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 4. In **one** Unit of Work: check the Alembic head (as ``make seed``), apply the
    reference seeds, then run every generator in :data:`DEMO_GENERATORS` in
    order. Everything is committed, or nothing.
-5. Print generator names and row counts, never generated values.
+5. Print generator names and row counts (or ``skipped (<reason>)``), never
+   generated values.
 
 Demo data is not idempotent: a rerun adds rows or fails atomically (for
 example on a unique conflict). Reset with ``docker compose down -v``, then
@@ -45,7 +46,8 @@ from app.seeds.runner import (
     seed_summary,
 )
 from app.seeds.upsert import UpsertResult
-from tests.factories.base import reseed
+from tests.factories.base import GeneratorSkipped, reseed
+from tests.factories.identity import DemoOwnerGenerator
 
 ALLOWED_APP_ENVS = frozenset({"local", "dev"})
 DEFAULT_SEED = 1
@@ -53,24 +55,27 @@ NO_GENERATORS_MESSAGE = "No demo generators are registered."
 
 
 class DemoGenerator(Protocol):
-    """Writes demo rows with domain factories; returns the number of rows."""
+    """Writes demo rows with domain factories; returns the number of rows, or
+    :class:`~tests.factories.base.GeneratorSkipped` when it writes nothing on
+    purpose."""
 
     @property
     def name(self) -> str: ...
 
-    async def generate(self, session: AsyncSession) -> int: ...
+    async def generate(self, session: AsyncSession) -> int | GeneratorSkipped: ...
 
 
-DEMO_GENERATORS: tuple[DemoGenerator, ...] = ()
+DEMO_GENERATORS: tuple[DemoGenerator, ...] = (DemoOwnerGenerator(),)
 """Every demo generator, in order. Domain tasks append generators that use
-their factories (``persist`` / ``persist_batch``; never commit). Empty until the
-first domain factories arrive."""
+their factories (``persist`` / ``persist_batch``; never commit).
+
+- ``identity.demo_owner`` (#23): the demo Owner, ``APP_ENV=local`` only."""
 
 
 @dataclass
 class DemoResult:
     seeds: list[tuple[str, UpsertResult]] = field(default_factory=list)
-    generators: list[tuple[str, int]] = field(default_factory=list)
+    generators: list[tuple[str, int | GeneratorSkipped]] = field(default_factory=list)
 
 
 def refusal(app_env: str) -> str | None:
@@ -104,7 +109,13 @@ def summary(result: DemoResult) -> list[str]:
     lines = seed_summary(result.seeds)
     if not result.generators:
         return [*lines, NO_GENERATORS_MESSAGE]
-    return [*lines, *(f"{name}: {rows} rows" for name, rows in result.generators)]
+    return [*lines, *(_generator_line(name, rows) for name, rows in result.generators)]
+
+
+def _generator_line(name: str, rows: int | GeneratorSkipped) -> str:
+    if isinstance(rows, GeneratorSkipped):
+        return f"{name}: skipped ({rows.reason})"
+    return f"{name}: {rows} rows"
 
 
 async def _run(

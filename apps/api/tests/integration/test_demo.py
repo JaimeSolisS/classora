@@ -88,7 +88,7 @@ def test_same_seed_generates_the_same_data(migrated_url, env_for):
 def test_without_generators_only_reference_seeds_run(migrated_url, env_for, capsys):
     env_for("local", migrated_url)
 
-    assert demo.main([], seeds=[TEST_REFERENCE_SEED]) == 0
+    assert demo.main([], seeds=[TEST_REFERENCE_SEED], generators=()) == 0
 
     assert counts(migrated_url) == (3, 0)
     assert capsys.readouterr().out.splitlines() == [
@@ -108,14 +108,14 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "identity.permissions: 19 inserted, 0 updated",
         "identity.roles: 7 inserted, 0 updated",
         "identity.role_permissions: 43 inserted, 0 updated",
-        "No demo generators are registered.",
+        "identity.demo_owner: 1 rows",
     ]
 
 
 def test_nothing_registered(migrated_url, env_for, capsys):
     env_for("local", migrated_url)
 
-    assert demo.main([], seeds=()) == 0
+    assert demo.main([], seeds=(), generators=()) == 0
 
     assert capsys.readouterr().out.splitlines() == [
         "No reference seeds are registered.",

@@ -1,0 +1,85 @@
+"""``/api/v1/auth``: login, logout and the signed-in user (#23).
+
+The session lives in an HTTP-only cookie (``app.modules.identity.sessions``);
+the server stores only the token's hash.
+"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.authz import AUTH_RESPONSES, Principal, authenticated, public
+from app.core.config import Settings, get_settings
+from app.core.db import get_sessionmaker
+from app.core.errors import problem_response_doc
+from app.core.uow import UnitOfWorkDep
+from app.modules.identity import auth, sessions
+from app.modules.identity.errors import InvalidCredentialsError
+from app.modules.identity.schemas import LoginRequest, SessionUser
+
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+LOGIN_PUBLIC_REASON = (
+    "Signing in needs no session; CSRF protection for login is the Origin"
+    " check plus SameSite (#24)"
+)
+
+
+@router.post(
+    "/login",
+    dependencies=[public(reason=LOGIN_PUBLIC_REASON)],
+    responses={401: problem_response_doc("The username or password is incorrect.")},
+)
+async def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    uow: UnitOfWorkDep,
+    sessionmaker: Annotated[
+        async_sessionmaker[AsyncSession], Depends(get_sessionmaker)
+    ],
+    settings: SettingsDep,
+) -> SessionUser:
+    """Sign in with a username and password; sets the session cookie.
+
+    Every login issues a new session; a live session on the request's cookie
+    is revoked. Any failure is the same ``401 invalid_credentials``.
+    """
+    result = await auth.login(
+        uow.session,
+        request,
+        settings,
+        username=body.username,
+        password=body.password,
+    )
+    if isinstance(result, auth.LoginFailure):
+        # Committed on its own: the 401 rolls the request's Unit of Work back.
+        await auth.record_failed_login(sessionmaker, result)
+        raise InvalidCredentialsError()
+    sessions.set_session_cookie(response, settings, result.token)
+    return auth.session_user(result.user, result.principal)
+
+
+@router.post("/logout", status_code=204, responses=AUTH_RESPONSES)
+async def logout(
+    principal: Annotated[Principal, authenticated()],
+    request: Request,
+    response: Response,
+    uow: UnitOfWorkDep,
+    settings: SettingsDep,
+) -> None:
+    """Sign out: revoke the current session and clear the cookie."""
+    await auth.logout(uow.session, request, settings, principal)
+    sessions.clear_session_cookie(response, settings)
+
+
+@router.get("/me", responses=AUTH_RESPONSES)
+async def me(
+    principal: Annotated[Principal, authenticated()],
+    uow: UnitOfWorkDep,
+) -> SessionUser:
+    """The signed-in user, their roles and their effective permissions."""
+    return await auth.current_session_user(uow.session, principal)

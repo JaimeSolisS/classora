@@ -127,16 +127,20 @@ def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
             yield f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 
-def settings_for(dsn: str, *, direct_dsn: str | None = None) -> Settings:
+def settings_for(
+    dsn: str, *, direct_dsn: str | None = None, session_cookie_secure: bool = True
+) -> Settings:
     """Settings for ``dsn``; the direct URL is ``dsn`` too unless given.
 
     Most integration tests talk to the Testcontainers PostgreSQL directly, so
     both URLs point at it. The PgBouncer tests pass the pooler as ``dsn``.
+    ``session_cookie_secure=False`` selects the local session cookie (#23).
     """
     return Settings(
         app_env="local",
         database_url=SecretStr(dsn),
         database_direct_url=SecretStr(direct_dsn or dsn),
+        session_cookie_secure=session_cookie_secure,
     )
 
 
