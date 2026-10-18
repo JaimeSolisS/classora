@@ -1,0 +1,25 @@
+{
+  "apiStatus": {
+    "checking": "API: checking…",
+    "live": "API: live",
+    "unreachable": "API: unreachable"
+  },
+  "theme": {
+    "label": "Theme",
+    "options": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
+  "language": {
+    "label": "Language",
+    "options": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "dialog": {
+    "close": "Close"
+  }
+}

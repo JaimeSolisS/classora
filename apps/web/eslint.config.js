@@ -24,6 +24,31 @@ export default defineConfig([
       },
     },
   },
+  // Time guard (spec §16, ADR-0004): local dates come from src/lib/time.ts,
+  // never from the UTC date of a Date. Only time.ts and tests may use these.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/time.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        ...['getUTCDate', 'getUTCMonth', 'getUTCFullYear'].map((property) => ({
+          property,
+          message:
+            'Do not derive calendar dates from UTC: use toLocalDate/todayInZone from src/lib/time.ts.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression > MemberExpression.callee[property.name=/^(slice|substring|substr)$/][object.type='CallExpression'][object.callee.property.name='toISOString']",
+          message:
+            'Do not slice toISOString() to get a date or time: use src/lib/time.ts.',
+        },
+      ],
+    },
+  },
   {
     files: ['**/*.js'],
     extends: [js.configs.recommended],

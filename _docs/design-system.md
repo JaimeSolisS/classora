@@ -84,8 +84,86 @@ from `tokens.css` and checks them in both themes:
 - M2-18 moves the preference to the user's profile in the database; the local
   `classora.theme` value is what it migrates.
 - Code: `apps/web/src/theme/` (`theme.ts`, `ThemeProvider.tsx`, `use-theme.ts`,
-  `ThemeSwitcher.tsx`). The switcher labels are English-only until M1-15
-  externalizes UI text.
+  `ThemeSwitcher.tsx`). The switcher labels come from the translation
+  catalogs (see "Text, dates and money").
+
+## Text, dates and money
+
+Rules for every user-visible string, date and amount in `apps/web`
+(spec §16, [ADR-0004](adr/0004-money-time-and-date-representation.md)).
+
+### Translated text
+
+- Every user-visible string comes from the react-i18next catalogs in
+  Spanish (`es`) and English (`en`). Only the brand name "Classora" may stay a
+  literal.
+- Catalogs: `apps/web/src/i18n/locales/{es,en}/{common,errors}.json`, bundled
+  with the app (no network request, no Suspense fallback). Namespaces:
+  `common` (app text, switchers, shared component text; the default) and
+  `errors` (error messages).
+- Keys are semantic and nested by area (`apiStatus.live`,
+  `theme.options.dark`), never the source sentence. Use `{{name}}`
+  placeholders for interpolation and i18next plural suffixes (`_one`,
+  `_many`, `_other`; Spanish also needs `_many`).
+- To add a string: add the key to **both** languages, then use
+  `t('key')` (or `t('errors:key')`). Keys are typed from the Spanish catalog,
+  so a misspelled key fails `tsc` in `make lint-web`. `make test-web` runs the
+  missing-key check (`src/i18n/check.ts`), which fails on a namespace or key
+  present in one language only, an empty or non-string value, different
+  placeholders, or a missing plural category.
+- React escapes interpolated values. Translations are never rendered as raw
+  HTML; rich text uses the `Trans` component.
+- Language choice: the value stored in `localStorage` under
+  `classora.language` (`es` or `en`), else the first `navigator.languages`
+  entry whose primary subtag is `es` or `en`, else `es`. Unknown stored
+  values and a throwing `localStorage` fall back the same way. It is applied
+  in `main.tsx` before the first render; switching updates the text in place
+  with no reload or remount. M2-18 migrates `classora.language` to the user's
+  profile.
+- `<html lang>` always matches the active language (`index.html` ships
+  `lang="es"`). The language switcher shows the endonyms "Español" and
+  "English", each with its own `lang` attribute.
+- Storybook has a `locale` toolbar (`es` by default, `en`). Stories of app
+  components (the switchers) render through the catalogs. Sample copy in
+  generic component stories (button labels, table rows) is fixture data and
+  may stay English.
+
+### Dates and times (`apps/web/src/lib/time.ts`)
+
+- **Instants** (sessions, timestamps) are ISO 8601 strings with an offset or
+  `Z`. Show them with `formatInstant(instant, { timeZone, language, style })`
+  (`date`, `time`, `dateTime`; Spanish uses 24-hour time). Get their calendar
+  date with `toLocalDate(instant, timeZone)`, never from the UTC date.
+- **Calendar dates** (`DATE` columns) are `LocalDate` strings, `YYYY-MM-DD`.
+  Show them with `formatLocalDate(localDate, { language })`: it never goes
+  through `new Date('YYYY-MM-DD')` or a zone conversion, so every viewer sees
+  the same day. `todayInZone(timeZone)` gives today's date in a zone.
+- **Center time zone:** `DEFAULT_CENTER_TIME_ZONE` (`America/Mexico_City`) is
+  the one source until M3-01 replaces it with the business setting. Every
+  helper takes the zone as a required argument; nothing uses the browser's
+  zone. In components, `useFormatters()` (`src/lib/formatters.ts`) binds the
+  active language and the center zone.
+- **Local to instant:** `localDateTimeToInstant(localDate, 'HH:mm', timeZone)`
+  and `localDayBounds(localDate, timeZone)` (end exclusive, so 23- and 25-hour
+  days work). DST follows Temporal's `'compatible'` rule: a time in a
+  spring-forward gap moves forward by the gap, and an ambiguous fall-back
+  time takes the earlier instant.
+- Parsing is strict: an instant without an offset, an impossible date, a
+  wrong shape or an unknown zone throws a `RangeError`.
+- ESLint bans `getUTCDate`, `getUTCMonth`, `getUTCFullYear` and
+  `.toISOString().slice/substring/substr` outside `time.ts` and tests. Unit
+  tests run under a non-UTC host zone (`Pacific/Kiritimati`) unless `TZ` is
+  set.
+
+### Money (`apps/web/src/lib/money.ts`)
+
+- Amounts are decimal strings from the API (`NUMERIC(14,2)`, MXN), never
+  numbers. `formatMoney('1250.00')` gives `$1,250.00` with
+  `Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })` in both
+  UI languages.
+- No `Number()`, `parseFloat` or other numeric conversion of an amount, and no
+  money arithmetic in the frontend. Input outside `-?\d{1,12}(\.\d{1,2})?`
+  throws a `RangeError` (it is never rounded); `-0.00` shows as `$0.00`.
 
 ## Accessibility rules for components
 

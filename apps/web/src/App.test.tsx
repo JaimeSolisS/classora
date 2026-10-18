@@ -2,6 +2,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { applyLanguage, i18n } from './i18n';
+import { LANGUAGE_STORAGE_KEY } from './i18n/language';
 
 // Tell React this is a test environment so act() flushes updates.
 (
@@ -30,7 +32,19 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function buttonNamed(name: string): HTMLButtonElement {
+  const found = [...container.querySelectorAll('button')].find(
+    (b) => b.textContent === name,
+  );
+  if (!found) {
+    throw new Error(`No button "${name}"`);
+  }
+  return found;
+}
+
 beforeEach(() => {
+  // Each test sets its language explicitly; these tests read English text.
+  applyLanguage('en');
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -41,6 +55,7 @@ afterEach(() => {
   container.remove();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  window.localStorage.clear();
 });
 
 describe('App API status', () => {
@@ -143,5 +158,61 @@ describe('App API status', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(statusText()).toBe('API: unreachable');
+  });
+});
+
+describe('App language', () => {
+  it.each([
+    ['es', 'API: activa', 'Tema', 'Idioma'],
+    ['en', 'API: live', 'Theme', 'Language'],
+  ] as const)(
+    'renders the page and both switchers in %s on the first render',
+    async (language, status, themeLabel, languageLabel) => {
+      applyLanguage(language);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'ok' }))),
+      );
+
+      await renderApp();
+
+      expect(statusText()).toBe(status);
+      const groups = [...container.querySelectorAll('[role="group"]')].map(
+        (g) => g.getAttribute('aria-label'),
+      );
+      expect(groups).toEqual([themeLabel, languageLabel]);
+      expect(document.documentElement.lang).toBe(language);
+      // No raw catalog key ever reaches the screen.
+      expect(container.textContent).not.toMatch(
+        /apiStatus\.|theme\.|language\.|common:/,
+      );
+    },
+  );
+
+  it('switches language in place: no remount, status kept, stored', async () => {
+    applyLanguage('es');
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(jsonResponse(200, { status: 'ok' })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await renderApp();
+    const heading = container.querySelector('h1');
+    expect(statusText()).toBe('API: activa');
+    expect(buttonNamed('Claro')).toBeTruthy();
+
+    act(() => buttonNamed('English').click());
+
+    expect(i18n.language).toBe('en');
+    expect(statusText()).toBe('API: live');
+    expect(buttonNamed('Light')).toBeTruthy();
+    expect(document.documentElement.lang).toBe('en');
+    expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
+    // Same DOM node and no second health check: the app was not remounted.
+    expect(container.querySelector('h1')).toBe(heading);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    act(() => buttonNamed('Español').click());
+    expect(statusText()).toBe('API: activa');
+    expect(document.documentElement.lang).toBe('es');
   });
 });

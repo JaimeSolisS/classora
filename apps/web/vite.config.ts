@@ -26,6 +26,9 @@ function storybookProject(theme: 'light' | 'dark') {
   };
 }
 
+// UTC+14: the local date differs from the UTC date for most of the day.
+const DEFAULT_TEST_TIME_ZONE = 'Pacific/Kiritimati';
+
 // API_PROXY_TARGET is read here only (it is not VITE_-prefixed, so it never
 // reaches client code). The SPA calls relative URLs and the dev server
 // forwards them, so the browser sees one origin and the API needs no CORS.
@@ -55,6 +58,10 @@ export default defineConfig(({ mode }) => {
             name: 'unit',
             environment: 'jsdom',
             include: ['src/**/*.test.{ts,tsx}'],
+            // Unit tests run under a host time zone far from UTC by default,
+            // so a helper that leaks the host zone fails here and in CI.
+            // An explicit TZ (e.g. `TZ=UTC make test-web`) takes precedence.
+            env: { TZ: env.TZ || DEFAULT_TEST_TIME_ZONE },
             // Vitest replaces CSS with an empty module by default; the token
             // contrast test reads tokens.css as raw text.
             css: { include: [/tokens\.css/] },

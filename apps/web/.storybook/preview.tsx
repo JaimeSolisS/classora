@@ -1,4 +1,6 @@
 import type { Decorator, Preview } from '@storybook/react-vite';
+import { applyLanguage, i18n } from '@/i18n';
+import { isLanguage } from '@/i18n/language';
 import { applyTheme } from '@/theme/theme';
 import '@/styles/index.css';
 
@@ -6,6 +8,18 @@ import '@/styles/index.css';
 // uses (src/theme/theme.ts), so every story can be checked in both themes.
 const withTheme: Decorator = (Story, context) => {
   applyTheme(context.globals.theme === 'dark' ? 'dark' : 'light');
+  return <Story />;
+};
+
+// Applies the toolbar language through the app's i18n instance, which also
+// sets <html lang>. Generic component stories keep English sample copy
+// (fixture data); stories of app components render through the catalogs.
+const withLocale: Decorator = (Story, context) => {
+  const locale: unknown = context.globals.locale;
+  const language = isLanguage(locale) ? locale : 'es';
+  if (i18n.language !== language) {
+    applyLanguage(language);
+  }
   return <Story />;
 };
 
@@ -23,9 +37,21 @@ const preview: Preview = {
         dynamicTitle: true,
       },
     },
+    locale: {
+      description: 'UI language',
+      toolbar: {
+        title: 'Language',
+        icon: 'globe',
+        items: [
+          { value: 'es', title: 'Español' },
+          { value: 'en', title: 'English' },
+        ],
+        dynamicTitle: true,
+      },
+    },
   },
-  initialGlobals: { theme: 'light' },
-  decorators: [withTheme],
+  initialGlobals: { theme: 'light', locale: 'es' },
+  decorators: [withTheme, withLocale],
   parameters: {
     // Axe violations fail the story test (`make test-storybook`), which runs
     // every story once per theme.

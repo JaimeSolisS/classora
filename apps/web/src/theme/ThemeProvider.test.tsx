@@ -1,6 +1,7 @@
 import { act, useEffect, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyLanguage } from '@/i18n';
 import { STORAGE_KEY, applyTheme, readStoredChoice } from './theme';
 import { ThemeProvider } from './ThemeProvider';
 import { ThemeSwitcher } from './ThemeSwitcher';
@@ -93,6 +94,8 @@ function pressed(name: string): string | null {
 }
 
 beforeEach(() => {
+  // These tests read the English labels; one test below checks Spanish.
+  applyLanguage('en');
   mounts = 0;
   localStorage.clear();
   applyTheme('light');
@@ -211,5 +214,22 @@ describe('ThemeProvider', () => {
     render();
     expect(pressed('System')).toBe('true');
     expect(htmlIsDark()).toBe(false);
+  });
+});
+
+describe('ThemeSwitcher labels', () => {
+  it.each([
+    ['es', 'Tema', ['Claro', 'Oscuro', 'Sistema']],
+    ['en', 'Theme', ['Light', 'Dark', 'System']],
+  ] as const)('come from the %s catalog', (language, label, options) => {
+    applyLanguage(language);
+    render();
+    expect(
+      container.querySelector('[role="group"]')?.getAttribute('aria-label'),
+    ).toBe(label);
+    const names = [...container.querySelectorAll('[role="group"] button')].map(
+      (b) => b.textContent,
+    );
+    expect(names).toEqual(options);
   });
 });

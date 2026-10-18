@@ -1,0 +1,25 @@
+{
+  "apiStatus": {
+    "checking": "API: comprobando…",
+    "live": "API: activa",
+    "unreachable": "API: sin conexión"
+  },
+  "theme": {
+    "label": "Tema",
+    "options": {
+      "light": "Claro",
+      "dark": "Oscuro",
+      "system": "Sistema"
+    }
+  },
+  "language": {
+    "label": "Idioma",
+    "options": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "dialog": {
+    "close": "Cerrar"
+  }
+}

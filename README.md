@@ -16,8 +16,9 @@ and a React +
 TypeScript + Vite placeholder page that shows whether the API is live, calling
 it through a typed client generated from the API's OpenAPI document. The web
 app has its design system foundation (central design tokens, Tailwind CSS,
-shadcn/ui components catalogued in Storybook) and a light/dark/system theme
-switch. No product features are implemented yet.
+shadcn/ui components catalogued in Storybook), a light/dark/system theme
+switch, and Spanish and English UI text with a language switch. No product
+features are implemented yet.
 
 ## Prerequisites
 
@@ -139,7 +140,7 @@ stack and `.env` are not needed.
 ```bash
 make test              # all tests: API (unit + integration) then web (Vitest)
 make test-api          # all API tests with a coverage report
-make test-web          # web and API client tests (Vitest, no Docker needed)
+make test-web          # web and API client tests (Vitest, no Docker needed; includes the es/en translation-key check)
 make test-unit         # API unit tests only (no Docker needed)
 make test-integration  # API integration tests only
 make test-migrations   # API migration checks only (upgrade, round trip, no model drift)

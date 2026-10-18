@@ -1,13 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import type { ThemeChoice } from './theme';
-
-// English-only labels are an interim exception until M1-15 externalizes UI
-// text (M1-14 E3).
-const OPTIONS: { value: ThemeChoice; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
-];
+import { THEME_CHOICES, type ThemeChoice } from './theme';
 
 interface ThemeSwitcherProps {
   value: ThemeChoice;
@@ -17,20 +10,25 @@ interface ThemeSwitcherProps {
 // A labelled group of toggle buttons. Each button is reachable with Tab and
 // activated with Enter or Space; aria-pressed exposes the current choice.
 export function ThemeSwitcher({ value, onValueChange }: ThemeSwitcherProps) {
+  const { t } = useTranslation();
   return (
-    <div role="group" aria-label="Theme" className="inline-flex gap-1">
-      {OPTIONS.map((option) => {
-        const selected = option.value === value;
+    <div
+      role="group"
+      aria-label={t('theme.label')}
+      className="inline-flex gap-1"
+    >
+      {THEME_CHOICES.map((choice) => {
+        const selected = choice === value;
         return (
           <Button
-            key={option.value}
+            key={choice}
             type="button"
             size="sm"
             variant={selected ? 'default' : 'outline'}
             aria-pressed={selected}
-            onClick={() => onValueChange(option.value)}
+            onClick={() => onValueChange(choice)}
           >
-            {option.label}
+            {t(`theme.options.${choice}`)}
           </Button>
         );
       })}

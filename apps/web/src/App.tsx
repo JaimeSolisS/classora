@@ -1,21 +1,18 @@
 import { createApiClient } from '@classora/api-client';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
+import { useLanguage } from '@/i18n/use-language';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { ThemeSwitcher } from '@/theme/ThemeSwitcher';
 import { useTheme } from '@/theme/use-theme';
 
-// Placeholder page. The English-only strings are a temporary exception until
-// M1-15 externalizes them.
+// Placeholder page. #13 replaces it with the app shell and moves both
+// switchers into the shell header.
 const api = createApiClient();
 const TIMEOUT_MS = 5000;
 
 type ApiStatus = 'checking' | 'live' | 'unreachable';
-
-const STATUS_TEXT: Record<ApiStatus, string> = {
-  checking: 'API: checking…',
-  live: 'API: live',
-  unreachable: 'API: unreachable',
-};
 
 function isLiveBody(body: unknown): boolean {
   return (
@@ -44,7 +41,13 @@ function AppThemeSwitcher() {
   return <ThemeSwitcher value={choice} onValueChange={setChoice} />;
 }
 
+function AppLanguageSwitcher() {
+  const { language, setLanguage } = useLanguage();
+  return <LanguageSwitcher value={language} onValueChange={setLanguage} />;
+}
+
 export default function App() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<ApiStatus>('checking');
 
   useEffect(() => {
@@ -70,8 +73,11 @@ export default function App() {
     <ThemeProvider>
       <main className="flex flex-col items-start gap-4 p-4">
         <h1 className="text-2xl font-semibold">Classora</h1>
-        <p role="status">{STATUS_TEXT[status]}</p>
-        <AppThemeSwitcher />
+        <p role="status">{t(`apiStatus.${status}`)}</p>
+        <div className="flex flex-wrap gap-4">
+          <AppThemeSwitcher />
+          <AppLanguageSwitcher />
+        </div>
       </main>
     </ThemeProvider>
   );
