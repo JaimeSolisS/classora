@@ -135,6 +135,55 @@ These are backlog **creation** prompts, not permission to implement every task.
 
 Introduce CI, tests and database resilience early rather than deferring everything to the final milestone.
 
+### Delivery sequence: local first, then monitoring, then AWS
+
+The milestone numbers above group the work by topic. They are not the order of delivery. Classora is delivered in four phases. First the full application runs locally, then its monitoring runs locally, then it is deployed to AWS DEV, and finally to PROD. Within a phase, follow the issue dependencies. Do not start a phase until the previous one is done, unless the owner says otherwise.
+
+**Phase 1 — Full application running locally (`make dev`)**
+
+1. M1 — Foundation and local developer experience (done 2026-10-18).
+2. M2 — Identity, access and families.
+3. M3 — Catalog, tutors, approvals and notifications.
+4. M4 — Scheduling and courses.
+5. M5 — Academics and documents.
+6. M6 — Billing and payments.
+7. M7 — Payroll, expenses and financial reporting.
+8. M8 — Administration, analytics and internationalization.
+9. Local hardening from M10: M10-01 authorization sweep, M10-03 accessibility audit and M10-07 privacy and legal retention review. These depend only on M2–M8.
+
+Exit criterion: every role can complete its main flows on the local Compose stack, and CI is green on `develop`.
+
+**Phase 2 — Monitoring running locally**
+
+1. M9-01 — decision gate (ADR-0010 to ADR-0014). It is documentation only and also fixes the telemetry and error-tracking choices.
+2. M9-13 (local part) — a local observability stack in Compose: OTel Collector, Prometheus, Loki, Tempo and Grafana, with the same configuration the monitoring host will use later.
+3. M9-14 — API, worker and PostgreSQL telemetry sent to the local collector.
+4. M9-15 — dashboards and alerts provisioned as code and checked in local Grafana. The backup panel and its alerts wait for M9-12 in Phase 3.
+5. M9-16 — error tracking as decided in M9-01.
+
+Exit criterion: `make dev` together with the observability stack shows logs, metrics, traces and errors for the local application in Grafana.
+
+Backlog change needed before Phase 2: M9-13 to M9-15 are currently groomed for the AWS monitoring host. M9-13 depends on M9-04, and M9-15 depends on M9-12. The PM must re-groom them, or split off local issues, before Phase 2 starts.
+
+**Phase 3 — AWS DEV**
+
+1. M9-02 Terraform bootstrap and GitHub OIDC → M9-03 Terraform PR plans.
+2. M9-04 DEV network, compute and storage → M9-05 ECR → M9-06 image build and publish on `develop`.
+3. M9-07 secrets in Parameter Store → M9-08 host runtime → M9-09 edge Caddy → M9-10 CloudFront and DNS.
+4. M9-11 DEV deployment through SSM with readiness gate and rollback.
+5. M9-12 backups, WAL archiving and DEV restore drill.
+6. M9-13 (AWS part) — the monitoring EC2 host, reusing the Phase 2 configuration, with the DEV agents pointed at it. Then the backup panel and alerts from M9-15.
+
+Exit criterion: merges to `develop` deploy to DEV automatically, and DEV is monitored and backed up.
+
+**Phase 4 — AWS PROD and go-live**
+
+1. M9-17 PROD environment and promotion workflow → M9-18 operational runbooks.
+2. M10-02 security review, M10-04 load and sizing on the micro target, M10-05 PROD restore and PITR drill, M10-06 end-to-end coverage of W1–W8. All of them need M9-17.
+3. M10-08 go-live checklist.
+
+Exit criterion: the go-live checklist is signed off by the owner.
+
 ## 5. Issue template (`_docs/task-template.md`)
 
 ```markdown
@@ -273,6 +322,12 @@ Stop after this issue unless I explicitly request another.
 ```
 
 Do not assume a `/goal` command exists: looping commands depend on the installed agent harness and its capabilities. Do not allow autonomous direct PROD deploys, destructive migrations or financial data edits without explicit human approval.
+
+\*\*PROMPT:
+
+```
+/goal work through issues M1-01 to M1-04
+```
 
 ## 9. Example issue: tutor availability
 
