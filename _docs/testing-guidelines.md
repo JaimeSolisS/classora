@@ -66,6 +66,10 @@ does not run the Storybook story tests or E2E.
 - Faker uses the `es_MX` locale. Emails come only from `reserved_email()`
   (`example.com`, `example.org`, `example.net`), never from Faker's email
   providers.
+- Users come from `UserFactory` / `persist_user(session, roles=[...],
+  delegations=[...])` (`apps/api/tests/factories/identity.py`) on a database
+  with the reference seeds applied (`seeded_url`). Every factory user shares one
+  precomputed Argon2id hash of the test-only `TEST_USER_PASSWORD`.
 - Types follow ADR-0004: money is a `Decimal` with exactly 2 places
   (`money()`), never built from a `float`; calendar values are `date`
   (`calendar_date()`); instants are timezone-aware UTC `datetime` (`instant()`).
@@ -79,6 +83,7 @@ does not run the Storybook story tests or E2E.
 | Idempotent | Yes (upsert on a key) | No (a rerun adds rows) |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
+| Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
 | Never | Creates user accounts or credentials | Runs in PROD |
 
 ### Synthetic data only (architecture ISSUE-I7)

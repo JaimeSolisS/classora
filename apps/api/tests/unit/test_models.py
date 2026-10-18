@@ -38,10 +38,18 @@ def test_base_metadata_uses_the_naming_convention():
     }
 
 
-def test_app_metadata_has_no_tables_yet():
-    # Domain tables arrive with their own migrations (C9).
+def test_app_metadata_holds_only_the_registered_domain_tables():
+    # Domain tables arrive with their own migrations (C9); the first module is
+    # identity (M2-02).
     assert target_metadata is Base.metadata
-    assert Base.metadata.tables == {}
+    assert set(Base.metadata.tables) == {
+        "users",
+        "roles",
+        "permissions",
+        "role_permissions",
+        "user_roles",
+        "user_delegations",
+    }
 
 
 def test_generated_constraint_and_index_names_are_deterministic():

@@ -6,7 +6,8 @@
    (otherwise exit 1 with a ``make migrate`` hint, having written nothing), then
    apply every seed in :data:`~app.seeds.registry.REFERENCE_SEEDS` in order.
    Any error rolls the whole run back.
-3. Print one line per seed with its inserted and updated counts, never values.
+3. Print one line per seed with its inserted and updated counts (and deleted,
+   when non-zero), never values.
 
 Runs in every ``APP_ENV``: reference data is not demo data.
 
@@ -95,13 +96,19 @@ async def apply_seeds(
 
 
 def seed_summary(results: Sequence[tuple[str, UpsertResult]]) -> list[str]:
-    """One line per seed: its name and counts (never row values)."""
+    """One line per seed: its name and counts (never row values).
+
+    The deleted count appears only when it is non-zero.
+    """
     if not results:
         return [NO_SEEDS_MESSAGE]
-    return [
-        f"{name}: {result.inserted} inserted, {result.updated} updated"
-        for name, result in results
-    ]
+    lines = []
+    for name, result in results:
+        line = f"{name}: {result.inserted} inserted, {result.updated} updated"
+        if result.deleted:
+            line += f", {result.deleted} deleted"
+        lines.append(line)
+    return lines
 
 
 async def run_reference_seeds(

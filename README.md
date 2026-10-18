@@ -111,8 +111,20 @@ refuses to run unless `APP_ENV` is `local` or `dev`. Running it again adds more
 demo data; to start over, run `docker compose down -v`, then `make dev`,
 `make migrate` and `make seed-demo`.
 
-No reference seeds or demo generators exist yet, so both commands currently
-write nothing; they fill in as features are added.
+The reference data currently consists of the user roles and their
+permissions. No demo generators exist yet, so `make seed-demo` adds only that
+reference data.
+
+### First Owner account
+
+```bash
+make bootstrap-owner USERNAME=<name>
+```
+
+`make bootstrap-owner` creates the first Owner account (the center's top-level
+administrator). Run `make migrate` and `make seed` first. It prompts twice for
+the password, which must have at least 12 characters, and works only while no
+Owner account exists. Logging in arrives with a later feature.
 
 ## Configuration
 

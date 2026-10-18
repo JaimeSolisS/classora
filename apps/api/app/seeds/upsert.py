@@ -15,7 +15,8 @@
   :class:`~app.core.models.VersionedMixin` model, ``version + 1``.
 - An unchanged row is not touched at all, so a rerun changes nothing.
 - Rows missing from the input are never deleted, and columns the input does not
-  list are never changed.
+  list are never changed. (The one reconciling seed, ``identity.role_permissions``
+  in :mod:`app.seeds.role_permissions`, deletes outside this helper.)
 
 The helper never commits: the caller's Unit of Work does.
 """
@@ -37,10 +38,15 @@ MANAGED_COLUMNS = frozenset({"id", "created_at", "updated_at", "version"})
 
 @dataclass(frozen=True)
 class UpsertResult:
-    """How many rows one upsert inserted and updated (unchanged rows: neither)."""
+    """How many rows one seed inserted and updated (unchanged rows: neither).
+
+    ``deleted`` is used only by the reconciling ``identity.role_permissions``
+    seed; :func:`upsert_rows` never deletes.
+    """
 
     inserted: int = 0
     updated: int = 0
+    deleted: int = 0
 
 
 def _table_of(model: type[Any]) -> Table:

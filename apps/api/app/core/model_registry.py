@@ -8,6 +8,7 @@ for example::
     import app.modules.students.models  # noqa: F401
 """
 
+import app.modules.identity.models  # noqa: F401
 from app.core.models import Base
 
 target_metadata = Base.metadata

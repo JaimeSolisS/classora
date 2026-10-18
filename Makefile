@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -42,6 +42,13 @@ migrate:
 # Same image and direct connection as `make migrate` (ADR-0003); never migrates.
 seed:
 	docker compose run --rm --build api python -m app.seeds
+
+## Create the first Owner account: make bootstrap-owner USERNAME=<name> (prompts for the
+## password twice; refused once any Owner exists). Run `make migrate` and `make seed` first.
+# Same image and direct connection as `make seed` (ADR-0003); runs in every APP_ENV.
+bootstrap-owner:
+	@test -n "$(USERNAME)" || { echo "usage: make bootstrap-owner USERNAME=<name>" >&2; exit 2; }
+	docker compose run --rm --build api python -m app.cli bootstrap-owner --username "$(USERNAME)"
 
 ## Generate synthetic es_MX demo data on the host (refused unless APP_ENV is local or dev; needs .env).
 # Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.

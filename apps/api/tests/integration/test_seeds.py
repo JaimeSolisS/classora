@@ -213,8 +213,8 @@ def test_pending_migration_is_refused(migrated_url, env_for, capsys, monkeypatch
 def test_command_with_an_empty_registry(migrated_url, env_for, capsys):
     env_for(migrated_url)
 
-    assert runner.main() == 0
-    assert runner.main() == 0
+    assert runner.main(seeds=()) == 0
+    assert runner.main(seeds=()) == 0
 
     out = capsys.readouterr().out
     assert out.splitlines() == ["No reference seeds are registered."] * 2

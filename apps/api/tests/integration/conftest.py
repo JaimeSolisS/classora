@@ -10,7 +10,9 @@ Per-test isolation: a test that writes data or runs migrations asks for
 ``fresh_database_url`` (an empty database created in the session container
 just for that test and dropped with ``FORCE`` afterwards) or ``tables_url``
 (the same, with the test-only tables from ``tests/integration/models.py``
-created). Tests therefore share no data and can run in any order. Only the
+created), ``head_url`` (the same, migrated to the Alembic head) or
+``seeded_url`` (at head with every reference seed applied). Tests therefore
+share no data and can run in any order. Only the
 read-only readiness tests use the container's default database.
 
 PgBouncer (M1-08): the tests that need it ask for ``pgbouncer_url``. That
@@ -144,21 +146,36 @@ def short_lived_engine(dsn: str, **kwargs: Any) -> AsyncEngine:
     )
 
 
-async def run_sql_async(dsn: str, sql: str, *, autocommit: bool = False) -> list[Any]:
-    """:func:`run_sql` for async tests (inside their event loop)."""
+async def run_sql_async(
+    dsn: str,
+    sql: str,
+    params: dict[str, Any] | None = None,
+    *,
+    autocommit: bool = False,
+) -> list[Any]:
+    """:func:`run_sql` for async tests (inside their event loop).
+
+    ``params`` are bound to ``:name`` placeholders in ``sql``.
+    """
     options = {"isolation_level": "AUTOCOMMIT"} if autocommit else {}
     engine = short_lived_engine(dsn, **options)
     try:
         async with engine.begin() as conn:
-            result = await conn.execute(text(sql))
+            result = await conn.execute(text(sql), params or {})
             return list(result.all()) if result.returns_rows else []
     finally:
         await engine.dispose()
 
 
-def run_sql(dsn: str, sql: str, *, autocommit: bool = False) -> list[Any]:
+def run_sql(
+    dsn: str,
+    sql: str,
+    params: dict[str, Any] | None = None,
+    *,
+    autocommit: bool = False,
+) -> list[Any]:
     """Run one statement in its own connection and return all rows (if any)."""
-    return asyncio.run(run_sql_async(dsn, sql, autocommit=autocommit))
+    return asyncio.run(run_sql_async(dsn, sql, params, autocommit=autocommit))
 
 
 @pytest.fixture
@@ -190,3 +207,30 @@ def tables_url(fresh_database_url: str) -> str:
 
     asyncio.run(_create())
     return fresh_database_url
+
+
+@pytest.fixture
+def head_url(fresh_database_url: str) -> str:
+    """A fresh database migrated to the Alembic head (no reference data)."""
+    from alembic import command
+
+    from tests.integration.test_migrations import alembic_config
+
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    return fresh_database_url
+
+
+@pytest.fixture
+def seeded_url(head_url: str) -> str:
+    """A fresh database at head with every reference seed applied."""
+    from app.seeds import runner
+
+    async def _seed() -> None:
+        engine = runner.create_seed_engine(settings_for(head_url))
+        try:
+            await runner.run_reference_seeds(engine)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_seed())
+    return head_url
