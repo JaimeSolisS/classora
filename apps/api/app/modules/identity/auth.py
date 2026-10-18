@@ -10,8 +10,11 @@ parameters changed (D5), a live session on the request's cookie is revoked
 (rotation; a client token is never adopted), a new session is created and
 ``identity.login_succeeded`` is written.
 
-On failure the caller writes ``identity.login_failed`` with
-:func:`record_failed_login` in its **own** committed Unit of Work, then raises
+On failure the caller first rolls the request's transaction back (the
+attempt writes nothing, and its connection returns to the pool), then writes
+``identity.login_failed`` with :func:`record_failed_login` in its **own**
+committed Unit of Work, so a failed login never holds two connections; then
+it raises
 :class:`~app.modules.identity.errors.InvalidCredentialsError`, which rolls the
 request's Unit of Work back. The submitted username is never stored (people
 type passwords into it); neither is the password.
@@ -141,7 +144,11 @@ async def login(
 async def record_failed_login(
     sessionmaker: async_sessionmaker[AsyncSession], failure: LoginFailure
 ) -> None:
-    """Write ``identity.login_failed`` in its own Unit of Work and commit it."""
+    """Write ``identity.login_failed`` in its own Unit of Work and commit it.
+
+    The caller must have released its own transaction first (one connection
+    per request at a time).
+    """
     details: dict[str, str] = {"reason": failure.reason}
     if failure.state is not None:
         details["state"] = failure.state

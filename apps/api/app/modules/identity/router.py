@@ -56,6 +56,11 @@ async def login(
         password=body.password,
     )
     if isinstance(result, auth.LoginFailure):
+        # The failed attempt writes nothing, so end the request's transaction
+        # first: its connection goes back to the pool before the event's own
+        # Unit of Work takes one. A failed login never holds two connections
+        # (otherwise concurrent failures could exhaust the PgBouncer pool).
+        await uow.session.rollback()
         # Committed on its own: the 401 rolls the request's Unit of Work back.
         await auth.record_failed_login(sessionmaker, result)
         raise InvalidCredentialsError()
