@@ -31,3 +31,13 @@ def include_name(name: str | None, type_: str, parent_names: object) -> bool:
             "foreign_key_constraint",
         }
     return True
+
+
+from sqlalchemy.orm import Mapped, mapped_column  # noqa: E402
+
+from app.core.models import Model  # noqa: E402
+
+
+class H2Throwaway(Model):
+    __tablename__ = "h2_throwaway"
+    note: Mapped[str] = mapped_column()
