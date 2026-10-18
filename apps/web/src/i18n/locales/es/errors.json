@@ -7,6 +7,8 @@
   "database_unavailable": "El servicio no está disponible por el momento. Inténtalo en unos minutos.",
   "invalid_cursor": "La lista cambió. Vuelve a cargarla desde el principio.",
   "version_conflict": "Alguien más modificó este registro. Recárgalo e inténtalo de nuevo.",
+  "authentication_required": "Inicia sesión para continuar.",
+  "permission_denied": "No tienes permiso para realizar esta acción.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

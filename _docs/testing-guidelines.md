@@ -110,19 +110,55 @@ does not run the Storybook story tests or E2E.
 ## Permission-matrix approach
 
 These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization
-tests") and §16. M2-03 builds the matrix framework and decides the matrix file
-location and format.
+tests") and §16. M2-03 built the framework (`apps/api/app/core/authz.py`,
+`apps/api/tests/authz/`); `_docs/api.md` "Authentication and authorization"
+describes the route declarations and the 401/403/404 rule.
 
 - Every endpoint task adds at least one allowed test and one denied test.
-- A machine-readable matrix (role × endpoint × expected outcome) lives in the
-  test suite. A route with no matrix entry fails CI.
+- **The matrix** is `apps/api/tests/authz/matrix.toml` (read with the
+  standard-library `tomllib`). One `[[route]]` table per method and path
+  template, kept sorted by path, then method:
+
+  ```toml
+  [[route]]
+  method = "GET"
+  path = "/api/v1/users"
+  access = "permission"            # or "public" (needs reason) / "authenticated"
+  permission = "user.view"         # the code the route's require() names
+  allow = ["owner", "administrator"]
+  # optional: path_params = { user_id = "..." }, json = { ... }
+  ```
+
+  Every role not in `allow` is expected to get `403 permission_denied`;
+  anonymous gets `401 authentication_required` for `authenticated` and
+  `permission` entries. The file's header comment explains how to add an entry.
+- **Static check** (unit, `tests/unit/test_permission_matrix_static.py`):
+  every route of `build_app(include_dev_routes=True)` has exactly one entry
+  and exactly one access declaration, and they agree; stale entries, unknown
+  permissions or roles, a `public` entry without a reason and a protected
+  route that does not document its `401`/`403` all fail, each listed as
+  `METHOD path: reason`.
+- **Runtime check** (integration, `tests/integration/test_permission_matrix.py`):
+  one test per entry and actor (`METHOD path as role`): anonymous, each of the
+  seven roles, and, for a delegable permission, an Administrator holding that
+  delegation (no separate entry needed). Every `401`/`403` must be Problem
+  Details with the expected `code`. Principals come from real users in a
+  migrated, seeded Testcontainers database through one harness function,
+  `principal_for` in `tests/authz/harness.py`; it is the seam that switches to
+  real logins when login exists.
+- Unit tests of a route declaration use a test-only app and override
+  `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the
-  right role asks for another family's, tutor's or student's record.
+  right role asks for another family's, tutor's or student's record. Use
+  `assert_same_not_found(hidden_response, missing_response)` from
+  `tests/authz/assertions.py`: both are `404 not_found` with identical bodies
+  apart from `request_id` and the same headers.
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
-  that does not exist.
+  that does not exist. Record policies (`can_<action>_<resource>`) are
+  unit-tested per role.
 - Background jobs, generated files and presigned links are checked as well,
-  not only endpoints (M10-01 sweeps them all).
+  not only endpoints (M10-01 sweeps them all); they use `ensure_permission`.
 
 ## Financial invariant tests
 
@@ -208,7 +244,7 @@ Spec §17 definition of done, mapped to the tests a change needs:
 
 | Change | Tests it adds |
 |---|---|
-| Endpoint | Integration tests for success and Problem Details errors; one allowed and one denied test per role rule; an IDOR test for record access; a matrix entry (from M2-03); `make check-api-client` in sync. |
+| Endpoint | Integration tests for success and Problem Details errors; one allowed and one denied test per role rule; an IDOR test for record access; a matrix entry in `tests/authz/matrix.toml`; `make check-api-client` in sync. |
 | Financial change | The invariant tests above, including retry and concurrency cases, with exact `Decimal` assertions. |
 | UI screen | Unit tests for its logic; stories for loading, empty and error states in light and dark (axe); es and en text; an E2E test when it completes a cross-application flow, with an axe scan of the route. |
 | Migration | `make test-migrations` passes (upgrade, single head, round trip, no drift); the change is expand-and-contract compatible with the previous image. |

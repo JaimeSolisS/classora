@@ -1,0 +1,74 @@
+# Permission matrix (M2-03): every API route and who may call it.
+#
+# Read by tests/authz/harness.py with the standard-library tomllib.
+# - tests/unit/test_permission_matrix_static.py checks it against the routes of
+#   build_app(include_dev_routes=True): every route has exactly one entry and
+#   one access rule, and they agree.
+# - tests/integration/test_permission_matrix.py sends one request per entry and
+#   role (plus anonymous, plus a delegated Administrator for delegable
+#   permissions) and checks the outcome.
+#
+# Adding an entry: one [[route]] table per method and path template (as FastAPI
+# writes it, for example "/api/v1/users/{user_id}"). Keep the entries sorted by
+# path, then method (a test enforces it).
+#
+#   access = "public"         needs `reason` (why anyone may call it).
+#   access = "authenticated"  any signed-in user; anonymous gets 401.
+#   access = "permission"     needs `permission` (a catalog code, the one the
+#                             route's require() names) and `allow` (role
+#                             codes). Every other role gets 403
+#                             permission_denied, anonymous gets 401.
+#   Optional: `path_params` (values for the path template; default: a fixed
+#   UUID, or 1 for an int parameter) and `json` (a request body).
+#
+# Example:
+#
+#   [[route]]
+#   method = "GET"
+#   path = "/api/v1/users"
+#   access = "permission"
+#   permission = "user.view"
+#   allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/dev/demo-jobs"
+access = "public"
+reason = "Local/DEV-only demo job route; never mounted outside local or dev"
+json = { outcome = "succeed" }
+
+[[route]]
+method = "GET"
+path = "/docs"
+access = "public"
+reason = "FastAPI Swagger UI; not forwarded by Caddy (/api/* only) or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/docs/oauth2-redirect"
+access = "public"
+reason = "FastAPI Swagger UI helper; not forwarded by Caddy or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/health/live"
+access = "public"
+reason = "Liveness probe (architecture §9.3)"
+
+[[route]]
+method = "GET"
+path = "/health/ready"
+access = "public"
+reason = "Readiness probe (architecture §9.3)"
+
+[[route]]
+method = "GET"
+path = "/openapi.json"
+access = "public"
+reason = "FastAPI OpenAPI document; not forwarded by Caddy or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/redoc"
+access = "public"
+reason = "FastAPI ReDoc; not forwarded by Caddy or the Vite proxy"

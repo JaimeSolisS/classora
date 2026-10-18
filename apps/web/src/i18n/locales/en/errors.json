@@ -7,6 +7,8 @@
   "database_unavailable": "The service is temporarily unavailable. Please try again in a few minutes.",
   "invalid_cursor": "The list has changed. Load it again from the start.",
   "version_conflict": "Someone else changed this record. Reload it and try again.",
+  "authentication_required": "Sign in to continue.",
+  "permission_denied": "You don't have permission to do this.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

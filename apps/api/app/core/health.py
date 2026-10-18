@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.core.authz import public
 from app.core.db import get_engine
 from app.core.errors import AppError, problem_response_doc
 
@@ -48,7 +49,7 @@ async def _database_is_reachable(engine: AsyncEngine) -> bool:
     return True
 
 
-@router.get("/live")
+@router.get("/live", dependencies=[public(reason="Liveness probe (architecture §9.3)")])
 async def live() -> HealthStatus:
     """The process is up. Never touches the database."""
     return HealthStatus(status="ok")
@@ -56,6 +57,7 @@ async def live() -> HealthStatus:
 
 @router.get(
     "/ready",
+    dependencies=[public(reason="Readiness probe (architecture §9.3)")],
     responses={503: problem_response_doc("The database is not reachable.")},
 )
 async def ready(engine: Annotated[AsyncEngine, Depends(get_engine)]) -> HealthStatus:
