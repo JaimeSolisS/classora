@@ -25,6 +25,7 @@ from procrastinate import App, JobContext, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 from pydantic import BaseModel, ConfigDict
 
+from app.core.authz import public
 from app.core.errors import AppError
 from app.core.jobs import get_job_app, ids_only
 
@@ -118,7 +119,15 @@ class DemoJobResponse(BaseModel):
 router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
 
 
-@router.post("/demo-jobs", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/demo-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        public(
+            reason="Local/DEV-only demo job route, never mounted outside local or dev"
+        )
+    ],
+)
 async def create_demo_job(
     job_app: Annotated[App, Depends(get_job_app)],
     body: Annotated[DemoJobRequest | None, Body()] = None,

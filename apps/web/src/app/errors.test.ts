@@ -21,6 +21,8 @@ const API_CODES = [
   'database_unavailable',
   'invalid_cursor',
   'version_conflict',
+  'authentication_required',
+  'permission_denied',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

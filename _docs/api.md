@@ -80,7 +80,9 @@ Codes in use today:
 | Code | Status | Source |
 | ---- | ------ | ------ |
 | `validation_error` | 422 | Request validation (body, query, path, headers). |
-| `not_found` | 404 | Unknown path. |
+| `not_found` | 404 | Unknown path, or a record that is missing or not visible to the caller (no `detail`). |
+| `authentication_required` | 401 | No signed-in user on an `authenticated()` or `require()` route. |
+| `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
 | `internal_error` | 500 | Any unexpected exception. |
@@ -90,6 +92,50 @@ Codes in use today:
 
 The local/DEV demo job route also uses `demo_job_already_queued` (409); it is
 not part of the contract.
+
+## Authentication and authorization
+
+Approved (spec §2, §16, ADR-0007 D4, architecture §4.3 steps 4-5);
+implemented by M2-03 in `apps/api/app/core/authz.py`.
+
+- **Every route declares who may call it**, with exactly one of:
+  - `public(reason="...")`: anyone; the reason says why.
+  - `authenticated()`: any signed-in user; yields the `Principal`.
+  - `require("<permission>")`: holders of one permission code from the
+    catalog (`app/modules/identity/permissions.py`); yields the `Principal`.
+
+  Each works in `dependencies=[...]` on a route or router, or as an annotated
+  parameter (`principal: Annotated[Principal, require("user.view")]`). Declare
+  it before any other dependency. Protected routes pass
+  `responses=AUTH_RESPONSES` (`authenticated()`) or
+  `responses=PERMISSION_RESPONSES` (`require()`), so the OpenAPI document lists
+  their `401`/`403`. The permission matrix (`_docs/testing-guidelines.md`)
+  fails CI for a route without a declaration.
+- **The current user** comes only from `get_current_principal`. A `Principal`
+  holds the user id, role codes and effective permissions, never a secret.
+  Services, workflows and jobs check a permission outside a route with
+  `ensure_permission(principal, permission)`.
+- **Check order.** Without a signed-in user the answer is `401
+  authentication_required`; without the permission it is `403
+  permission_denied`. Both come before path, query and body validation, so an
+  unauthorized caller never sees a `422`. Exception: a body that is not
+  parseable JSON gets `422` before any check (FastAPI parses it first); that
+  response reveals nothing.
+- **Records: 404, not 403, for what the caller may not see.** Services apply
+  record policies with `authorize_record(record, can_view=..., can_act=...)`:
+  - missing, or `can_view` false: `404 not_found` (`RecordNotFoundError`), the
+    same body as an unknown path. A domain never raises its own 404 for a
+    record that is missing or hidden;
+  - visible but `can_act` false: `403 permission_denied` (the caller may see
+    the record, so this reveals nothing new).
+- **Policies** are pure, synchronous functions in the module's
+  `permissions.py`, named `can_<action>_<resource>(principal, record, ...)`.
+  The service loads the facts they need (assignments, guardian links) and
+  passes them in. A user with several roles is allowed when any of the roles
+  allows it.
+- **Lists filter.** A list endpoint never answers `403` or `404` for items the
+  caller may not see; its query returns only what the same policy allows.
+- `401`/`403`/`404` bodies never name the permission, role, record or user.
 
 ## Request IDs
 

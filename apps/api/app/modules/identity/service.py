@@ -7,6 +7,8 @@
   :func:`resolve_permissions` (pure), :func:`may_assign_role`, the role codes
   and :data:`STAFF_ROLES` (D4; ``permissions.py``).
 - Delegation: :func:`grant_delegation` and :func:`revoke_delegation`.
+- Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
+  of an active user; #23 calls it after resolving a session).
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -19,6 +21,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz import Principal
 from app.modules.identity.errors import (
     DelegationForbiddenError,
     DelegationTargetInvalidError,
@@ -73,6 +76,7 @@ __all__ = [
     "effective_permissions",
     "grant_delegation",
     "hash_password",
+    "load_principal",
     "may_assign_role",
     "needs_rehash",
     "normalize_username",
@@ -148,6 +152,22 @@ async def effective_permissions(
     )
     return resolve_permissions(
         state, roles, set(delegated), role_permissions=role_permissions
+    )
+
+
+async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal | None:
+    """The :class:`Principal` of an ``active`` user, or ``None``.
+
+    ``None`` for an unknown user or one whose state is not ``active``.
+    Otherwise the user's role codes and :func:`effective_permissions`.
+    Never commits.
+    """
+    if await _user_state(session, user_id) != ACTIVE:
+        return None
+    return Principal(
+        user_id=user_id,
+        roles=frozenset(await _user_roles(session, user_id)),
+        permissions=await effective_permissions(session, user_id),
     )
 
 
