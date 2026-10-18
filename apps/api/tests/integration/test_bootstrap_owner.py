@@ -1,4 +1,4 @@
-"""``python -m app.cli bootstrap-owner`` against PostgreSQL (M2-02 H, E4)."""
+"""``python -m app.cli bootstrap-owner`` against PostgreSQL (M2-02 H, E4; M2-04 E3)."""
 
 import io
 import json
@@ -51,6 +51,16 @@ def user_count(dsn: str) -> int:
     return int(run_sql(dsn, "SELECT count(*) FROM users")[0][0])
 
 
+def audit_count(dsn: str) -> int:
+    return int(run_sql(dsn, "SELECT count(*) FROM audit_events")[0][0])
+
+
+AUDIT_ROWS = (
+    "SELECT action, record_type, record_id, actor_user_id, request_id, details,"
+    " changes::text AS changes FROM audit_events ORDER BY action, record_type"
+)
+
+
 def bootstrap(*args: str, **kwargs) -> int:
     return cli.main(["bootstrap-owner", *args], **kwargs)
 
@@ -85,7 +95,7 @@ def test_creates_the_first_owner(seeded_url, env_for, capsys, caplog, app_env):
         assert PASSWORD not in text
         assert password_hash not in text
 
-    # H3: one structured log line (the audit event arrives with #22).
+    # H3: one structured log line (kept next to the audit event of #22).
     records = [r for r in caplog.records if r.getMessage() == "owner_bootstrapped"]
     assert len(records) == 1
     user_id = run_sql(seeded_url, "SELECT id FROM users")[0][0]
@@ -97,6 +107,21 @@ def test_creates_the_first_owner(seeded_url, env_for, capsys, caplog, app_env):
     ]
     assert [line["message"] for line in json_lines] == ["owner_bootstrapped"]
     assert json_lines[0]["user_id"] == str(user_id)
+
+    # #22 E3: exactly three audit events, no actor, no request, no secret.
+    rows = run_sql(seeded_url, AUDIT_ROWS)
+    role_assignment_id = run_sql(seeded_url, "SELECT id FROM user_roles")[0][0]
+    assert [(r.action, r.record_type, r.record_id) for r in rows] == [
+        ("create", "user_roles", role_assignment_id),
+        ("create", "users", user_id),
+        ("identity.owner_bootstrapped", "users", user_id),
+    ]
+    assert all(r.actor_user_id is None and r.request_id is None for r in rows)
+    assert rows[2].details == {"source": "cli"}
+    for row in rows:
+        stored = f"{row.changes} {row.details}"
+        for secret in (PASSWORD, password_hash, "$argon2id$", "password"):
+            assert secret not in stored
 
 
 def test_display_name_option(seeded_url, env_for):
@@ -146,6 +171,7 @@ def test_second_run_is_refused(seeded_url, env_for, capsys):
     assert capsys.readouterr().err.strip() == cli.OWNER_EXISTS_MESSAGE
     assert [row.username for row in run_sql(seeded_url, OWNERS)] == ["first"]
     assert user_count(seeded_url) == 1
+    assert audit_count(seeded_url) == 3  # the first run's events only
 
 
 @pytest.mark.parametrize("state", ["suspended", "archived", "pending"])
@@ -164,6 +190,7 @@ def test_any_existing_owner_blocks_the_run(seeded_url, env_for, capsys, state):
 
     assert cli.OWNER_EXISTS_MESSAGE in capsys.readouterr().err
     assert user_count(seeded_url) == 1
+    assert audit_count(seeded_url) == 0
 
 
 def test_empty_database_is_refused(fresh_database_url, env_for, capsys):
@@ -184,6 +211,7 @@ def test_pending_migration_is_refused(seeded_url, env_for, capsys, monkeypatch):
 
     assert "make migrate" in capsys.readouterr().err
     assert user_count(seeded_url) == 0
+    assert audit_count(seeded_url) == 0
 
 
 def test_roles_not_seeded_is_refused(head_url, env_for, capsys):
@@ -195,6 +223,7 @@ def test_roles_not_seeded_is_refused(head_url, env_for, capsys):
     assert err.strip() == cli.ROLES_NOT_SEEDED_MESSAGE
     assert "make seed" in err
     assert user_count(head_url) == 0
+    assert audit_count(head_url) == 0
 
 
 @pytest.mark.parametrize("username", ["ab", "ana lopez", "josé", "Kelvin"])
@@ -206,6 +235,7 @@ def test_invalid_username_is_refused(seeded_url, env_for, capsys, username):
     err = capsys.readouterr().err
     assert "3 to 64 characters" in err
     assert user_count(seeded_url) == 0
+    assert audit_count(seeded_url) == 0
 
 
 @pytest.mark.parametrize(
@@ -228,6 +258,7 @@ def test_policy_violation_is_refused(seeded_url, env_for, capsys, password, mess
     assert message in captured.err
     assert password not in captured.err + captured.out
     assert user_count(seeded_url) == 0
+    assert audit_count(seeded_url) == 0
 
 
 def test_policy_violation_from_stdin(seeded_url, env_for, capsys):
@@ -244,6 +275,7 @@ def test_policy_violation_from_stdin(seeded_url, env_for, capsys):
     assert code == 1
     assert "at least 12 characters" in capsys.readouterr().err
     assert user_count(seeded_url) == 0
+    assert audit_count(seeded_url) == 0
 
 
 def test_confirmation_mismatch_is_refused(seeded_url, env_for, capsys):
@@ -258,6 +290,7 @@ def test_confirmation_mismatch_is_refused(seeded_url, env_for, capsys):
     assert captured.err.strip() == cli.MISMATCH_MESSAGE
     assert PASSWORD not in captured.err + captured.out
     assert user_count(seeded_url) == 0
+    assert audit_count(seeded_url) == 0
 
 
 def test_display_name_too_long_is_refused(seeded_url, env_for, capsys):
@@ -334,3 +367,4 @@ def test_concurrent_runs_create_exactly_one_owner(seeded_url, env_for):
     assert codes == [0, 1]
     assert len(run_sql(seeded_url, OWNERS)) == 1
     assert user_count(seeded_url) == 1
+    assert audit_count(seeded_url) == 3

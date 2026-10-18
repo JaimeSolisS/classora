@@ -14,6 +14,11 @@
   of a non-delegable permission.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
+
+``users``, ``user_roles`` and ``user_delegations`` are :class:`~app.core.audit.Audited`
+(#22): every change is an audit event, and ``password_hash`` is never stored in
+one. ``roles``, ``permissions`` and ``role_permissions`` are reference data
+fixed in code (ADR-0007) and are not audited.
 """
 
 import uuid
@@ -31,14 +36,16 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
 from app.modules.identity.permissions import USER_STATES
 
 USERNAME_PATTERN = "^[a-z0-9._-]{3,64}$"
 
 
-class User(VersionedMixin, Model):
+class User(Audited, VersionedMixin, Model):
     __tablename__ = "users"
+    __audit_exclude__ = frozenset({"password_hash"})
     __table_args__ = (
         CheckConstraint(f"username ~ '{USERNAME_PATTERN}'", name="username_format"),
         CheckConstraint("display_name ~ '[^[:space:]]'", name="display_name_not_blank"),
@@ -81,7 +88,7 @@ class RolePermission(Model):
     )
 
 
-class UserRole(Model):
+class UserRole(Audited, Model):
     __tablename__ = "user_roles"
     __table_args__ = (UniqueConstraint("user_id", "role_id"),)
 
@@ -94,7 +101,7 @@ class UserRole(Model):
     )
 
 
-class UserDelegation(Model):
+class UserDelegation(Audited, Model):
     __tablename__ = "user_delegations"
     __table_args__ = (
         UniqueConstraint("user_id", "permission_id"),

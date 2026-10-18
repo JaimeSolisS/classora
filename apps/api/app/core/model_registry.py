@@ -8,6 +8,7 @@ for example::
     import app.modules.students.models  # noqa: F401
 """
 
+import app.core.audit  # noqa: F401  (audit_events)
 import app.modules.identity.models  # noqa: F401
 from app.core.models import Base
 

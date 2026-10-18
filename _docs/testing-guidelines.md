@@ -160,6 +160,36 @@ describes the route declarations and the 401/403/404 rule.
 - Background jobs, generated files and presigned links are checked as well,
   not only endpoints (M10-01 sweeps them all); they use `ensure_permission`.
 
+## Audit
+
+M2-04 built the audit trail (`apps/api/app/core/audit.py`; architecture
+ISSUE-A3). Events are written in the same transaction as the change.
+
+- **Mark the model.** A model whose changes must be audited mixes in
+  `Audited` and lists its sensitive columns: `__audit_exclude__` for columns
+  that must never appear (password hashes, tokens, file contents) and
+  `__audit_mask__` for columns stored only as `"[masked]"`. The unit guard
+  (`tests/unit/test_audit_guard.py`) fails any audited model with an unlisted
+  `password|token|secret|hash` or binary column.
+- **Explicit events.** Actions that are not column changes use
+  `record_audit_event(session, action="<module>.<event>", ...)`: login
+  attempts, token issue and redemption, password changes and resets, and
+  overrides with a reason. Never put a password, a token or a hash in
+  `details` (a sensitive key is refused).
+- **Assert the events.** Every issue that audits something asserts its events
+  with `audit_events_for(session, record_type=..., record_id=..., action=...)`
+  and `assert_no_secret_in_audit(session, *secrets)` from
+  `apps/api/tests/audit/assertions.py`.
+- **ORM only.** Never change an audited table with raw SQL or Core
+  statements. ORM bulk `insert`/`update`/`delete` statements on an audited
+  table raise `AuditBypassError`; raw `text()` SQL cannot be detected and is
+  forbidden by this rule. Change rows with `session.add` / `session.delete`.
+- **Rollback.** An audit row rolls back with its transaction. An event that
+  must survive a failed request (for example a failed login) is written in a
+  transaction that commits.
+- `audit_events` is append-only: `UPDATE`, `DELETE` and `TRUNCATE` fail with
+  SQLSTATE `42501` for every role.
+
 ## Financial invariant tests
 
 M6-18 (billing) and M7-07 (payroll) own the suites; every financial task

@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import create_sessionmaker
@@ -142,7 +142,12 @@ async def test_delegation_stops_counting_when_the_administrator_role_goes(
         session, actor_id=owner.id, user_id=admin.id, permission="payroll.finalize"
     )
     # #31 removes the role; the delegation row may outlive it until cleanup.
-    await session.execute(delete(UserRole).where(UserRole.user_id == admin.id))
+    # Through the ORM: a bulk delete on an audited table is refused (#22 C7).
+    for user_role in await session.scalars(
+        select(UserRole).where(UserRole.user_id == admin.id)
+    ):
+        await session.delete(user_role)
+    await session.flush()
 
     assert await service.effective_permissions(session, admin.id) == frozenset()
     assert len(await delegations(session)) == 1

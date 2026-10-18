@@ -27,6 +27,10 @@ any dependency runs (FastAPI 0.143.3); that response reveals nothing.
 Protected routes pass :data:`AUTH_RESPONSES` or :data:`PERMISSION_RESPONSES`
 as ``responses=`` so the OpenAPI document lists the errors.
 
+**Audit actor.** ``authenticated()`` and ``require()`` record the principal
+as the request's audit actor (``app.core.audit``), so every audit event the
+request writes names it; a ``public()`` route records none.
+
 **Records.** Services check record-level policies with
 :func:`authorize_record`: a record that is missing or hidden from the caller is
 ``404 not_found`` (the same body as an unknown path); a visible record the
@@ -41,10 +45,11 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Final, Literal
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute, RouteContext
 
+from app.core.audit import record_request_actor
 from app.core.errors import AppError, problem_response_doc
 
 # --- Principal and errors --------------------------------------------------------
@@ -176,8 +181,12 @@ def public(*, reason: str) -> Any:
 def authenticated() -> Any:
     """Any signed-in user; yields the :class:`Principal`."""
 
-    async def authenticated_access(principal: CurrentPrincipal) -> Principal:
-        return _as_principal(principal)
+    async def authenticated_access(
+        request: Request, principal: CurrentPrincipal
+    ) -> Principal:
+        checked = _as_principal(principal)
+        record_request_actor(request, checked.user_id)
+        return checked
 
     return Depends(_mark(authenticated_access, AccessRule("authenticated")))
 
@@ -192,9 +201,12 @@ def require(permission: str) -> Any:
     if PERMISSION_CODE_PATTERN.fullmatch(permission) is None:
         raise ValueError(f"not a permission code: {permission!r}")
 
-    async def permission_access(principal: CurrentPrincipal) -> Principal:
+    async def permission_access(
+        request: Request, principal: CurrentPrincipal
+    ) -> Principal:
         checked = _as_principal(principal)
         ensure_permission(checked, permission)
+        record_request_actor(request, checked.user_id)
         return checked
 
     return Depends(

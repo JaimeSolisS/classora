@@ -57,7 +57,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0003"
+HEAD = "0004"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -103,6 +103,9 @@ def test_history_is_linear_with_one_head():
     identity = script.get_revision("0003")
     assert identity.down_revision == "0002"
     assert Path(identity.path).name == "0003_identity_users_roles_permissions.py"
+    audit = script.get_revision("0004")
+    assert audit.down_revision == "0003"
+    assert Path(audit.path).name == "0004_audit_events.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -126,7 +129,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
         "WHERE table_schema = 'public' ORDER BY table_name",
     )
     assert [row.table_name for row in tables] == sorted(
-        ["alembic_version", *IDENTITY_TABLES, *PROCRASTINATE_TABLES]
+        ["alembic_version", "audit_events", *IDENTITY_TABLES, *PROCRASTINATE_TABLES]
     )
 
 
@@ -143,13 +146,55 @@ def test_downgrade_to_0002_drops_exactly_the_identity_tables(fresh_database_url)
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0002")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0003")
     assert public_tables(fresh_database_url) - before == set(IDENTITY_TABLES)
+    command.upgrade(config, "head")
 
     command.downgrade(config, "0002")
 
     assert version_nums(fresh_database_url) == ["0002"]
     assert public_tables(fresh_database_url) == before
+
+
+AUDIT_OBJECTS = (
+    "SELECT (SELECT count(*) FROM pg_proc"
+    "        WHERE proname = 'audit_events_append_only') AS functions,"
+    " (SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'audit_events%') AS triggers"
+)
+
+
+def test_downgrade_to_0003_drops_exactly_the_audit_objects(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0003")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == {"audit_events"}
+    assert tuple(run_sql(fresh_database_url, AUDIT_OBJECTS)[0]) == (1, 2)
+
+    command.downgrade(config, "0003")
+
+    assert version_nums(fresh_database_url) == ["0003"]
+    assert public_tables(fresh_database_url) == before
+    assert tuple(run_sql(fresh_database_url, AUDIT_OBJECTS)[0]) == (0, 0)
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_audit_events_has_the_three_keyset_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    rows = run_sql(
+        fresh_database_url,
+        "SELECT indexname, indexdef FROM pg_indexes"
+        " WHERE tablename = 'audit_events' ORDER BY indexname",
+    )
+
+    assert {row.indexname: row.indexdef.split("USING btree ")[1] for row in rows} == {
+        "ix_audit_events_actor": "(actor_user_id, occurred_at, id)",
+        "ix_audit_events_occurred_at": "(occurred_at, id)",
+        "ix_audit_events_record": "(record_type, record_id, occurred_at, id)",
+        "pk_audit_events": "(id)",
+    }
 
 
 def test_identity_foreign_keys_never_cascade(fresh_database_url):

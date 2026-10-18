@@ -1,0 +1,95 @@
+"""The sensitive-column guard for audited models (M2-04 C4).
+
+Every mapped :class:`~app.core.audit.Audited` class (the application's, through
+``app.core.model_registry``, and the test-only ones) must list each column whose
+name matches ``password|token|secret|hash`` and each binary column in
+``__audit_exclude__`` or ``__audit_mask__``. This stops a later issue from
+adding, for example, ``reset_token_hash`` to an audited model and leaking it.
+"""
+
+from typing import Any
+
+from sqlalchemy import LargeBinary, MetaData, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+import app.core.model_registry  # noqa: F401  (maps every application model)
+from app.core.audit import Audited, audited_table_names, sensitive_column_problems
+from app.core.models import Base, StandardColumns
+from app.modules.identity.models import User, UserDelegation, UserRole
+from tests.integration.models import AuditedThing, TestBase
+
+
+def audited_classes(*bases: type[DeclarativeBase]) -> list[type[Any]]:
+    return sorted(
+        (
+            mapper.class_
+            for base in bases
+            for mapper in base.registry.mappers
+            if issubclass(mapper.class_, Audited)
+        ),
+        key=lambda cls: cls.__name__,
+    )
+
+
+def test_every_audited_model_lists_its_sensitive_columns():
+    classes = audited_classes(Base, TestBase)
+
+    problems = [p for cls in classes for p in sensitive_column_problems(cls)]
+
+    assert not problems, (
+        "Audited models with unlisted sensitive columns (add them to"
+        " __audit_exclude__ or __audit_mask__):\n" + "\n".join(problems)
+    )
+
+
+def test_the_guard_scans_the_real_audited_models():
+    # Guards against a guard that silently scans nothing.
+    assert audited_classes(Base) == [User, UserDelegation, UserRole]
+    assert AuditedThing in audited_classes(TestBase)
+    assert User.__audit_exclude__ == {"password_hash"}
+    assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(
+        audited_table_names()
+    )
+    assert not {"roles", "permissions", "role_permissions"} & audited_table_names()
+
+
+# --- Self-test on synthetic classes -------------------------------------------
+
+
+class GuardBase(DeclarativeBase):
+    metadata = MetaData()
+
+
+class Leaky(Audited, StandardColumns, GuardBase):
+    __tablename__ = "guard_leaky"
+
+    reset_token_hash: Mapped[str] = mapped_column(Text)
+    ApiSecret: Mapped[str] = mapped_column(Text)
+    user_password: Mapped[str] = mapped_column(String(10))
+    photo: Mapped[bytes] = mapped_column(LargeBinary)
+    note: Mapped[str] = mapped_column(Text)
+
+
+class Listed(Audited, StandardColumns, GuardBase):
+    __tablename__ = "guard_listed"
+    __audit_exclude__ = frozenset({"reset_token_hash", "photo"})
+    __audit_mask__ = frozenset({"ApiSecret", "user_password"})
+
+    reset_token_hash: Mapped[str] = mapped_column(Text)
+    ApiSecret: Mapped[str] = mapped_column(Text)
+    user_password: Mapped[str] = mapped_column(String(10))
+    photo: Mapped[bytes] = mapped_column(LargeBinary)
+    note: Mapped[str] = mapped_column(Text)
+
+
+def test_the_guard_reports_planted_violations():
+    assert sensitive_column_problems(Leaky) == [
+        "Leaky.reset_token_hash: sensitive name",
+        "Leaky.ApiSecret: sensitive name",
+        "Leaky.user_password: sensitive name",
+        "Leaky.photo: binary column",
+    ]
+
+
+def test_the_guard_accepts_excluded_and_masked_columns():
+    assert sensitive_column_problems(Listed) == []

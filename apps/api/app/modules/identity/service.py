@@ -17,8 +17,8 @@ import re
 import uuid
 from collections import defaultdict
 
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal
@@ -211,20 +211,40 @@ async def grant_delegation(
     Only an active Owner (``user.delegation.manage``) may grant, only a
     delegable permission, and only to a non-archived Administrator; otherwise
     a typed error is raised and nothing changes. Granting an existing
-    delegation is a no-op. Callers add reauthentication and audit (#31).
+    delegation is a no-op. A new delegation is written through the ORM, so it
+    is audited (``create`` on ``user_delegations``, #22). Callers add
+    reauthentication (#31).
     """
     permission_id = await _check_delegation(
         session, actor_id=actor_id, user_id=user_id, permission=permission
     )
-    await session.execute(
-        insert(UserDelegation)
-        .values(
-            user_id=user_id,
-            permission_id=permission_id,
-            granted_by_user_id=actor_id,
+    if await _delegation(session, user_id, permission_id) is not None:
+        return
+    try:
+        # A savepoint, so a concurrent grant of the same delegation (unique
+        # constraint) leaves the caller's transaction usable: still a no-op.
+        async with session.begin_nested():
+            session.add(
+                UserDelegation(
+                    user_id=user_id,
+                    permission_id=permission_id,
+                    granted_by_user_id=actor_id,
+                )
+            )
+    except IntegrityError:
+        return
+
+
+async def _delegation(
+    session: AsyncSession, user_id: uuid.UUID, permission_id: uuid.UUID
+) -> UserDelegation | None:
+    delegation: UserDelegation | None = await session.scalar(
+        select(UserDelegation).where(
+            UserDelegation.user_id == user_id,
+            UserDelegation.permission_id == permission_id,
         )
-        .on_conflict_do_nothing(index_elements=["user_id", "permission_id"])
     )
+    return delegation
 
 
 async def revoke_delegation(
@@ -236,14 +256,13 @@ async def revoke_delegation(
 ) -> None:
     """Remove a delegation (same rules as :func:`grant_delegation`).
 
-    Revoking a delegation that does not exist is a no-op.
+    Revoking a delegation that does not exist is a no-op. The row is deleted
+    through the ORM, so it is audited (``delete`` on ``user_delegations``).
     """
     permission_id = await _check_delegation(
         session, actor_id=actor_id, user_id=user_id, permission=permission
     )
-    await session.execute(
-        delete(UserDelegation).where(
-            UserDelegation.user_id == user_id,
-            UserDelegation.permission_id == permission_id,
-        )
-    )
+    delegation = await _delegation(session, user_id, permission_id)
+    if delegation is not None:
+        await session.delete(delegation)
+        await session.flush()
