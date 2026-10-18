@@ -1,0 +1,15 @@
+# Dependabot version updates (ADR-0016): GitHub Actions only, so the commit-SHA
+# pins of the approved actions in .github/workflows/ stay current. Python and npm
+# dependencies get no version-update PRs; vulnerable versions are caught by
+# `make audit-deps` in CI and by Dependabot alerts (a repository setting).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"

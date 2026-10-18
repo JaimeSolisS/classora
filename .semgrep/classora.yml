@@ -1,0 +1,31 @@
+# Classora's own Semgrep rules for `make sast` (ADR-0016), run next to the registry
+# packs. The registry's TypeScript/React rules for these patterns are WARNING (or
+# absent), which does not fail the build, so these are ERROR.
+# Suppress one occurrence only with `// nosemgrep: <rule-id>` and a reason.
+rules:
+  - id: classora-ts-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      eval() or new Function() runs a string as code (code injection). Parse the
+      data instead; there is no safe use in this code base.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: window.eval(...)
+      - pattern: globalThis.eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+
+  - id: classora-react-dangerously-set-inner-html
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      dangerouslySetInnerHTML with a non-constant value can inject HTML and script
+      (XSS). Render text through JSX instead.
+    patterns:
+      - pattern: '<$EL dangerouslySetInnerHTML={{__html: $X}} />'
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not: |
+                "..."

@@ -98,7 +98,8 @@ def _execute_script(sql: str) -> None:
     migration's transaction.
     """
     driver_connection = op.get_bind().connection.driver_connection
-    assert driver_connection is not None
+    # Type narrowing only: an open Alembic connection always has a driver connection.
+    assert driver_connection is not None  # noqa: S101
     await_only(driver_connection.execute(sql))
 
 

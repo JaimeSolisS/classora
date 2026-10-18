@@ -1,0 +1,8 @@
+# Trivy exceptions for `make scan-image` (ADR-0016). No entries means no exceptions.
+#
+# One CVE ID per line with an expiry date (Trivy stops ignoring it after that date),
+# and the reason on the comment line directly above, for example:
+#   # not reachable: the image never runs foo; no fixed Debian package yet
+#   CVE-2026-12345 exp:2026-12-31
+# An entry without a reason comment or exp: date, or whose date has passed, fails the
+# target. Each new entry is approved in the pull request that adds it.

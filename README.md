@@ -216,13 +216,30 @@ command:
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |
+| `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
+| `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
+| `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
 
 Pull requests run only the jobs their changed files can affect (API jobs for
 `apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
 files; both for `Makefile` and workflow changes; neither for documentation).
-The `api-client` drift check runs whenever the API or web jobs run.
+The `api-client` drift check runs whenever the API or web jobs run. The three
+security jobs run on every pull request and push, documentation included.
 `ci-required` is the one required check: it reports on every pull request and
-fails if any job that ran failed or was cancelled.
+fails if any job that ran failed or was cancelled, or if a security job was skipped.
+
+### Security scans
+
+```bash
+make security                # audit-deps, scan-secrets and sast, as in CI (needs Docker, uv, Node 24)
+make scan-image IMAGE=<ref>  # Trivy scan of a built image; fails on fixable CRITICAL findings
+```
+
+Scanner versions are pinned in the `Makefile`. When a scan fails, fix the
+cause (upgrade the dependency, remove the secret, change the code). If that is
+not possible, add an exception with a reason and a review date as described in
+[ADR-0016](_docs/adr/0016-ci-security-tooling.md); it is reviewed in the pull
+request.
 
 ## Documentation
 

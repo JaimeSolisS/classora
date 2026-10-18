@@ -49,7 +49,14 @@ markers = [
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP"]
+# S: flake8-bandit security rules (ADR-0016). Suppress one occurrence only with
+# `# noqa: S<nnn>` and a reason on the same or the previous line.
+select = ["E", "W", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest checks results with plain assert statements.
+# S105, S106: tests use fake, made-up credentials (DSN passwords, secrets) on purpose.
+"tests/**" = ["S101", "S105", "S106"]
 
 [tool.mypy]
 strict = true

@@ -1,0 +1,7 @@
+# pip-audit exceptions for `make audit-api` (ADR-0016). No entries means no exceptions.
+#
+# One vulnerability ID (PYSEC-, GHSA- or CVE-) per line, followed by a reason and a
+# review date, for example:
+#   GHSA-xxxx-xxxx-xxxx  # not reachable: we never call foo(); no fixed release yet, review-by 2026-12-31
+# An entry without a reason or review date, or whose review date has passed, fails the
+# target. Each new entry is approved in the pull request that adds it.

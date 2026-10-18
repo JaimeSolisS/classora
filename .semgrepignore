@@ -1,0 +1,15 @@
+# Paths Semgrep skips in `make sast` (ADR-0016). This file replaces Semgrep's
+# default ignore list, and `make sast` does not read .gitignore (so new, untracked
+# files are scanned too); list every dependency, build and generated path here.
+node_modules/
+dist/
+build/
+coverage/
+storybook-static/
+.venv/
+__pycache__/
+*.min.js
+
+# Generated from the API's OpenAPI document by `make api-client` (types only).
+packages/api-client/src/generated/
+packages/api-client/openapi.json

@@ -32,7 +32,8 @@ async def snapshot(dsn: str, table: str = "seed_references") -> dict[str, Any]:
     extra = "version" if table.startswith("versioned") else "note"
     rows = await run_sql_async(
         dsn,
-        f"SELECT code, id, label, {extra} AS extra, created_at, updated_at "
+        # Table and column names are test constants, never user input.
+        f"SELECT code, id, label, {extra} AS extra, created_at, updated_at "  # noqa: S608
         f"FROM {table} ORDER BY code",
     )
     return {row.code: row for row in rows}

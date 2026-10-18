@@ -52,9 +52,10 @@ def settings(jobs_url: str) -> Settings:
 
 
 async def job_rows(dsn: str, where: str = "true") -> list[Any]:
+    # The WHERE clause comes from the tests themselves, never from user input.
     return await run_sql_async(
         dsn,
-        "SELECT id, task_name, status::text AS status, attempts, args "
+        "SELECT id, task_name, status::text AS status, attempts, args "  # noqa: S608
         f"FROM procrastinate_jobs WHERE {where} ORDER BY id",
     )
 

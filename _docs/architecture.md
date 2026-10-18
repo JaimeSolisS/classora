@@ -751,7 +751,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0003 and ADR-0004 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0003, ADR-0004 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
@@ -770,6 +770,7 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0003 and ADR-0004 are 
 | 0013 | Backups and restore drills | I7 |
 | 0014 | Error tracking (Sentry decision) and telemetry collection | O1–O3 |
 | 0015 | Server-side i18n | X1 |
+| [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
 
 ## 12. Decisions that need the product owner rather than engineering
 

@@ -1,0 +1,22 @@
+# gitleaks configuration for `make scan-secrets` and `make scan-secrets-diff`
+# (ADR-0016). It keeps every default rule and only adds narrow exceptions.
+#
+# Each allowlist entry is scoped to one rule AND one path AND the exact match, and
+# carries a reason. History fixes may be scoped by commit instead. New entries are
+# approved in the pull request that adds them. A new fake value in a future commit
+# can also use an inline `gitleaks:allow` comment on its line, with a reason.
+
+title = "Classora gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Fake database passwords in the job-configuration unit test (M1-16, commit b214bf2).
+# They exist to prove that real credentials are never logged; they are not secrets.
+[[allowlists]]
+description = "Fake DSN passwords in the job-rules unit test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/api/tests/unit/test_job_rules\.py$''']
+regexTarget = "match"
+regexes = ['''^(POOLED|DIRECT)_PASSWORD = "(Pooled|Direct)-S3cret-pw-4[12]"$''']

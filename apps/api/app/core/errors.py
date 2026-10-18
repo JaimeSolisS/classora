@@ -152,7 +152,8 @@ def _validation_errors(exc: RequestValidationError) -> list[FieldError]:
 
 
 async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, AppError)
+    # Type narrowing only: the handler is registered for this exception type.
+    assert isinstance(exc, AppError)  # noqa: S101
     return problem_response(exc.status, exc.code, exc.detail, errors=exc.errors)
 
 
@@ -163,7 +164,8 @@ async def _stale_version_handler(request: Request, exc: Exception) -> JSONRespon
 
 
 async def _validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, RequestValidationError)
+    # Type narrowing only: the handler is registered for this exception type.
+    assert isinstance(exc, RequestValidationError)  # noqa: S101
     return problem_response(
         422,
         "validation_error",
@@ -173,7 +175,8 @@ async def _validation_error_handler(request: Request, exc: Exception) -> JSONRes
 
 
 async def _http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, StarletteHTTPException)
+    # Type narrowing only: the handler is registered for this exception type.
+    assert isinstance(exc, StarletteHTTPException)  # noqa: S101
     # exc.detail is not rendered: it is free text that may carry internal data.
     return problem_response(
         exc.status_code, status_code_name(exc.status_code), headers=exc.headers

@@ -257,13 +257,80 @@ jobs:
       - name: make check-api-client
         run: make check-api-client
 
+  # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
+  # any file (documentation included) must turn every pull request red. The
+  # scanner versions are pinned in the Makefile only.
+  security-deps:
+    name: security-deps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      # pnpm audit reads pnpm-lock.yaml only; nothing is installed.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: make audit-deps
+        run: make audit-deps
+
+  security-secrets:
+    name: security-secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: make scan-secrets
+        run: make scan-secrets
+
+      # Pull requests also report the PR's own commits separately.
+      - name: make scan-secrets-diff
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: make scan-secrets-diff BASE="$BASE_SHA" HEAD="$HEAD_SHA"
+
+  security-sast:
+    name: security-sast
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: make sast
+        run: make sast
+
   # The one required status check (repository ruleset on develop and main).
-  # Downstream jobs join its `needs` and the result check below: security
-  # scanning (#11) and E2E (#18) if they live in this workflow.
+  # Path-filtered jobs may be skipped when their paths did not change; the
+  # security jobs always run, so a skipped security job is a failure. E2E (#18)
+  # joins `needs` and the result check below if it lives in this workflow.
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-test, web, web-storybook, api-client]
+    needs: [changes, api-lint, api-test, web, web-storybook, api-client, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -278,6 +345,10 @@ jobs:
           WEB: ${{ needs.web.result }}
           WEB_STORYBOOK: ${{ needs.web-storybook.result }}
           API_CLIENT: ${{ needs.api-client.result }}
+          SECURITY_DEPS: ${{ needs.security-deps.result }}
+          # Index syntax, so a grep for repository-secret references stays empty.
+          SECURITY_SECRETS: ${{ needs['security-secrets'].result }}
+          SECURITY_SAST: ${{ needs.security-sast.result }}
         run: |
           echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT)"
           if [ "$CHANGES" != "success" ]; then
@@ -285,13 +356,16 @@ jobs:
             exit 1
           fi
           fail=0
-          # check <job> <result> <whether the changes job turned it on>
+          # check <job> <result> <whether the changes job turned it on, or "always">
           check() {
             echo "$1: $2"
             case "$2" in
               success) ;;
               skipped)
-                if [ "$3" != "false" ]; then
+                if [ "$3" = "always" ]; then
+                  echo "::error::$1 always runs but was skipped"
+                  fail=1
+                elif [ "$3" != "false" ]; then
                   echo "::error::$1 was skipped although its paths changed"
                   fail=1
                 fi
@@ -307,4 +381,8 @@ jobs:
           check web "$WEB" "$RUN_WEB"
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
           check api-client "$API_CLIENT" "$RUN_CLIENT"
+          # Always-on jobs: "skipped" is a failure.
+          check security-deps "$SECURITY_DEPS" always
+          check security-secrets "$SECURITY_SECRETS" always
+          check security-sast "$SECURITY_SAST" always
           exit "$fail"

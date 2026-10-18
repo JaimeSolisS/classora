@@ -221,7 +221,8 @@ def _free_port() -> int:
 
 def test_uvicorn_process_writes_only_json_lines():
     port = _free_port()
-    process = subprocess.Popen(
+    # Fixed argument list (this interpreter running uvicorn), no shell, no input.
+    process = subprocess.Popen(  # noqa: S603
         [
             sys.executable,
             "-m",
@@ -250,17 +251,19 @@ def test_uvicorn_process_writes_only_json_lines():
         deadline = time.monotonic() + 30
         while True:
             try:
-                urllib.request.urlopen(f"{base}/health/live", timeout=1)
+                # S310: a fixed http://127.0.0.1 URL to the server started above.
+                urllib.request.urlopen(f"{base}/health/live", timeout=1)  # noqa: S310
                 break
             except OSError:
                 if time.monotonic() > deadline or process.poll() is not None:
                     raise
                 time.sleep(0.1)
-        request = urllib.request.Request(
+        # S310: a fixed http://127.0.0.1 URL to the server started above.
+        request = urllib.request.Request(  # noqa: S310
             f"{base}/nope?q=1", headers={"X-Request-ID": "qa-proc"}
         )
         with pytest.raises(urllib.error.HTTPError) as exc_info:
-            urllib.request.urlopen(request, timeout=5)
+            urllib.request.urlopen(request, timeout=5)  # noqa: S310 (same fixed URL)
         assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
     finally:
         process.send_signal(signal.SIGINT)
