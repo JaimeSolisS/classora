@@ -30,3 +30,4 @@ const queryClient = createQueryClient();
 const router = createAppRouter();
 
 createRoot(container).render(<App router={router} queryClient={queryClient} />);
+// H1 throwaway: no-op comment

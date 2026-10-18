@@ -43,3 +43,4 @@ for (const path of ['/health/live', '/health/ready']) {
     expect(await response.json()).toEqual({ status: 'ok' });
   });
 }
+// H1 throwaway: no-op comment
