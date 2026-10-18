@@ -1,3 +1,20 @@
 {
-  "generic": "Something went wrong. Please try again."
+  "generic": "Something went wrong. Please try again.",
+  "validation_error": "Check the highlighted fields and try again.",
+  "not_found": "We couldn't find what you were looking for.",
+  "method_not_allowed": "This action isn't available.",
+  "internal_error": "Something went wrong on the server. Please try again later.",
+  "database_unavailable": "The service is temporarily unavailable. Please try again in a few minutes.",
+  "invalid_cursor": "The list has changed. Load it again from the start.",
+  "version_conflict": "Someone else changed this record. Reload it and try again.",
+  "bad_request": "We couldn't process the request. Check the data and try again.",
+  "unauthorized": "Your session isn't valid. Please sign in again.",
+  "forbidden": "You don't have permission to do this.",
+  "conflict": "This action conflicts with the current state. Reload and try again.",
+  "content_too_large": "What you sent is too large.",
+  "too_many_requests": "Too many attempts. Wait a moment and try again.",
+  "network_error": "Can't reach the server. Check your internet connection.",
+  "unexpected_response": "The server sent an unexpected response. Please try again.",
+  "client_error": "We couldn't complete the request.",
+  "server_error": "The server couldn't complete the request. Please try again later."
 }

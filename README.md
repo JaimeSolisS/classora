@@ -13,9 +13,11 @@ API with liveness and readiness health checks, backed by a local PostgreSQL
 container (reached through PgBouncer) whose schema is managed with Alembic
 migrations, a background worker for queued and periodic jobs (Procrastinate),
 and a React +
-TypeScript + Vite placeholder page that shows whether the API is live, calling
-it through a typed client generated from the API's OpenAPI document. The web
-app has its design system foundation (central design tokens, Tailwind CSS,
+TypeScript + Vite web app. The web app has a routed shell (a layout with
+navigation, a 404 page and central error handling) and a TanStack Query data
+layer; its home page shows whether the API is live,
+calling it through a typed client generated from the API's OpenAPI document.
+It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. No product
 features are implemented yet.

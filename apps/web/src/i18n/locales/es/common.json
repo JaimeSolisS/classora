@@ -21,5 +21,34 @@
   },
   "dialog": {
     "close": "Cerrar"
+  },
+  "shell": {
+    "skipToMain": "Saltar al contenido principal"
+  },
+  "nav": {
+    "label": "Navegación principal",
+    "toggle": "Menú",
+    "home": "Inicio"
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "message": "La página que buscas no existe o cambió de dirección.",
+    "backHome": "Volver al inicio"
+  },
+  "routeError": {
+    "title": "No pudimos mostrar esta página",
+    "message": "Ocurrió un error inesperado. Puedes volver al inicio o recargar la página.",
+    "home": "Ir al inicio",
+    "reload": "Recargar"
+  },
+  "appError": {
+    "title": "Algo salió mal",
+    "message": "La aplicación encontró un error inesperado. Recarga la página para continuar.",
+    "reload": "Recargar"
+  },
+  "feedback": {
+    "reference": "Referencia: <id>{{requestId}}</id>",
+    "retry": "Reintentar",
+    "loading": "Cargando…"
   }
 }

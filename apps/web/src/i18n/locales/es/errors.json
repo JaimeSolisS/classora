@@ -1,3 +1,20 @@
 {
-  "generic": "Algo salió mal. Inténtalo de nuevo."
+  "generic": "Algo salió mal. Inténtalo de nuevo.",
+  "validation_error": "Revisa los datos marcados e inténtalo de nuevo.",
+  "not_found": "No encontramos lo que buscas.",
+  "method_not_allowed": "Esta acción no está disponible.",
+  "internal_error": "Ocurrió un error en el servidor. Inténtalo más tarde.",
+  "database_unavailable": "El servicio no está disponible por el momento. Inténtalo en unos minutos.",
+  "invalid_cursor": "La lista cambió. Vuelve a cargarla desde el principio.",
+  "version_conflict": "Alguien más modificó este registro. Recárgalo e inténtalo de nuevo.",
+  "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
+  "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
+  "forbidden": "No tienes permiso para realizar esta acción.",
+  "conflict": "La acción entra en conflicto con el estado actual. Recarga e inténtalo de nuevo.",
+  "content_too_large": "El contenido enviado es demasiado grande.",
+  "too_many_requests": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+  "network_error": "No hay conexión con el servidor. Revisa tu conexión a internet.",
+  "unexpected_response": "El servidor respondió de forma inesperada. Inténtalo de nuevo.",
+  "client_error": "No pudimos completar la solicitud.",
+  "server_error": "El servidor no pudo completar la solicitud. Inténtalo más tarde."
 }

@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { createQueryClient } from './app/queryClient';
+import { createAppRouter } from './app/router';
 import { applyLanguage } from './i18n';
 import { resolveInitialLanguage } from './i18n/language';
 import './styles/index.css';
@@ -23,4 +25,8 @@ if (!container) {
   throw new Error('Missing #root element');
 }
 
-createRoot(container).render(<App />);
+// The app's single query client and router.
+const queryClient = createQueryClient();
+const router = createAppRouter();
+
+createRoot(container).render(<App router={router} queryClient={queryClient} />);

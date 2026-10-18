@@ -1,64 +1,41 @@
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import App from './App';
 import { applyLanguage, i18n } from './i18n';
 import { LANGUAGE_STORAGE_KEY } from './i18n/language';
+import {
+  buttonNamed,
+  jsonResponse,
+  mountApp,
+  renderApp,
+  type RenderedApp,
+} from './test/render-app';
 
-// Tell React this is a test environment so act() flushes updates.
-(
-  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
+// Home page (C5): the health check runs through TanStack Query and the
+// central API helper, rendered through the router with a fresh query client.
 
-let container: HTMLDivElement;
-let root: Root;
+let app: RenderedApp | undefined;
 
 function statusText(): string | null {
-  return container.querySelector('[role="status"]')?.textContent ?? null;
-}
-
-async function renderApp(): Promise<void> {
-  await act(async () => {
-    root.render(<App />);
-    // Let the stubbed fetch and response.json() promises settle.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-function buttonNamed(name: string): HTMLButtonElement {
-  const found = [...container.querySelectorAll('button')].find(
-    (b) => b.textContent === name,
-  );
-  if (!found) {
-    throw new Error(`No button "${name}"`);
-  }
-  return found;
+  return app?.container.querySelector('[role="status"]')?.textContent ?? null;
 }
 
 beforeEach(() => {
   // Each test sets its language explicitly; these tests read English text.
   applyLanguage('en');
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
+  // Failed health checks are reported to the console; keep the output clean.
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
+  app?.unmount();
+  app = undefined;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   window.localStorage.clear();
 });
 
-describe('App API status', () => {
+describe('Home page API status', () => {
   it('shows the product name and checks /health/live on the same origin', async () => {
     const fetchMock = vi.fn((request: Request) => {
       void request;
@@ -66,9 +43,10 @@ describe('App API status', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await renderApp();
+    app = await renderApp('/');
 
-    expect(container.querySelector('h1')?.textContent).toBe('Classora');
+    expect(app.container.querySelector('h1')?.textContent).toBe('Classora');
+    expect(document.title).toBe('Classora');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // The API client passes one Request object to fetch.
     const request = fetchMock.mock.calls[0]![0];
@@ -76,6 +54,7 @@ describe('App API status', () => {
     expect(request.method).toBe('GET');
     expect(url.pathname).toBe('/health/live');
     expect(url.origin).toBe(window.location.origin);
+    expect(request.headers.get('Accept')).toBe('application/json');
     expect(request.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -85,7 +64,7 @@ describe('App API status', () => {
       vi.fn(() => new Promise<Response>(() => {})),
     );
 
-    await renderApp();
+    app = await renderApp('/');
 
     expect(statusText()).toBe('API: checking…');
   });
@@ -96,20 +75,21 @@ describe('App API status', () => {
       vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'ok' }))),
     );
 
-    await renderApp();
+    app = await renderApp('/');
 
     expect(statusText()).toBe('API: live');
   });
 
-  it('shows "API: unreachable" for a 503 response', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(jsonResponse(503, { status: 'ok' }))),
+  it('shows "API: unreachable" for a 503 response, without retrying', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(jsonResponse(503, { status: 'ok' })),
     );
+    vi.stubGlobal('fetch', fetchMock);
 
-    await renderApp();
+    app = await renderApp('/');
 
     expect(statusText()).toBe('API: unreachable');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('shows "API: unreachable" for a 200 with an unexpected body', async () => {
@@ -118,7 +98,7 @@ describe('App API status', () => {
       vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'down' }))),
     );
 
-    await renderApp();
+    app = await renderApp('/');
 
     expect(statusText()).toBe('API: unreachable');
   });
@@ -129,7 +109,7 @@ describe('App API status', () => {
       vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
     );
 
-    await renderApp();
+    app = await renderApp('/');
 
     expect(statusText()).toBe('API: unreachable');
   });
@@ -148,7 +128,7 @@ describe('App API status', () => {
       ),
     );
 
-    act(() => root.render(<App />));
+    app = mountApp('/');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4999);
     });
@@ -157,11 +137,14 @@ describe('App API status', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
     expect(statusText()).toBe('API: unreachable');
   });
 });
 
-describe('App language', () => {
+describe('Home page language', () => {
   it.each([
     ['es', 'API: activa', 'Tema', 'Idioma'],
     ['en', 'API: live', 'Theme', 'Language'],
@@ -174,17 +157,17 @@ describe('App language', () => {
         vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'ok' }))),
       );
 
-      await renderApp();
+      app = await renderApp('/');
 
       expect(statusText()).toBe(status);
-      const groups = [...container.querySelectorAll('[role="group"]')].map(
-        (g) => g.getAttribute('aria-label'),
-      );
+      const groups = [
+        ...app.container.querySelectorAll('header [role="group"]'),
+      ].map((g) => g.getAttribute('aria-label'));
       expect(groups).toEqual([themeLabel, languageLabel]);
       expect(document.documentElement.lang).toBe(language);
       // No raw catalog key ever reaches the screen.
-      expect(container.textContent).not.toMatch(
-        /apiStatus\.|theme\.|language\.|common:/,
+      expect(app.container.textContent).not.toMatch(
+        /apiStatus\.|theme\.|language\.|nav\.|shell\.|common:|errors:/,
       );
     },
   );
@@ -195,23 +178,24 @@ describe('App language', () => {
       Promise.resolve(jsonResponse(200, { status: 'ok' })),
     );
     vi.stubGlobal('fetch', fetchMock);
-    await renderApp();
+    app = await renderApp('/');
+    const { container } = app;
     const heading = container.querySelector('h1');
     expect(statusText()).toBe('API: activa');
-    expect(buttonNamed('Claro')).toBeTruthy();
+    expect(buttonNamed(container, 'Claro')).toBeTruthy();
 
-    act(() => buttonNamed('English').click());
+    act(() => buttonNamed(container, 'English').click());
 
     expect(i18n.language).toBe('en');
     expect(statusText()).toBe('API: live');
-    expect(buttonNamed('Light')).toBeTruthy();
+    expect(buttonNamed(container, 'Light')).toBeTruthy();
     expect(document.documentElement.lang).toBe('en');
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
     // Same DOM node and no second health check: the app was not remounted.
     expect(container.querySelector('h1')).toBe(heading);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    act(() => buttonNamed('Español').click());
+    act(() => buttonNamed(container, 'Español').click());
     expect(statusText()).toBe('API: activa');
     expect(document.documentElement.lang).toBe('es');
   });

@@ -160,5 +160,16 @@ Approved (architecture ISSUE-X4, decided on issue #12).
   commit (including new or deleted files).
 - TanStack Query hooks are written by hand in each feature on top of the
   client; no hooks or Zod schemas are generated.
+- **Frontend data layer** (`apps/web/src/app/`): query and mutation
+  functions wrap every client call in `apiCall(() => api.GET(…))`
+  (`api.ts`), which returns `data` or throws an `ApiError` with `code`,
+  `status`, `requestId` and `fieldErrors`. A non-Problem response becomes
+  `unexpected_response` and a failed request `network_error`; an abort is
+  re-thrown as a cancellation. Query keys are arrays,
+  `[domain, resource, params]` (for example `['health', 'live']`). Queries
+  retry only `network_error` and 5xx responses, at most twice; a 4xx is never
+  retried. Mutations never retry, and financial mutations are never
+  optimistic. When an API task adds a new `code`, it adds the message key to
+  `errors.json` in both `es` and `en` and maps it in `errors.ts`.
 - The local/DEV demo job route (`/api/v1/dev/demo-jobs`) is served only when
   `APP_ENV` is `local` or `dev` and is not part of the exported document.

@@ -192,6 +192,32 @@ Rules for every user-visible string, date and amount in `apps/web`
 
 Story-level axe rule exceptions: none.
 
+## Feedback
+
+Loading and error primitives in `apps/web/src/components/feedback/`
+(Storybook: Feedback).
+
+- **`Spinner`:** an inline indicator for a short wait on one control (a
+  button that is submitting). It is decorative (`aria-hidden`) unless it gets
+  a `label`, which is screen-reader only or visible with `showLabel`. The
+  animation stops under `prefers-reduced-motion`.
+- **`LoadingState`:** a region whose content is loading, in a `page`
+  (heading and text lines) or `table` (rows) layout. It follows the Skeleton
+  rule above: `aria-busy="true"`, a visually hidden loading message and
+  `aria-hidden` skeleton shapes. Prefer it to a spinner for page content.
+- **`ErrorAlert`:** shows a failed request with `role="alert"`, the
+  `destructive` tokens and an `aria-hidden` icon. It shows the translated
+  message for the error's code and, when there is one, a "Reference" line
+  with the request ID in a selectable monospace element that users can quote
+  to support. Pass `onRetry` for a query error to show "Try again". The
+  server's `title` and `detail` are never shown.
+- Render errors are caught by the route error page (inside the layout), the
+  root error page and the app-level boundary. None of them shows the error
+  message or stack.
+- Error messages live in the `errors` namespace, keyed by the Problem
+  `code`, and are mapped in `apps/web/src/app/errors.ts` (unknown codes fall
+  back to `client_error`, `server_error` or `generic`).
+
 ## Role-adaptive layouts
 
 Layouts adapt to the role (spec §10, architecture §8). Tailwind's default

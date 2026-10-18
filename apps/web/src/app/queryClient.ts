@@ -1,0 +1,52 @@
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
+import { ApiError, CLIENT_ERROR_CODES } from './api';
+import { reportError } from './errors';
+
+/** Retries after the first failure: 3 attempts in total. */
+export const MAX_QUERY_RETRIES = 2;
+
+/**
+ * Query retry policy (spec §10 "safe retries"): retry only a network failure
+ * or a 5xx response, at most MAX_QUERY_RETRIES times, with TanStack Query's
+ * default exponential back-off. Never retry a 4xx, a cancellation or any
+ * value that is not an ApiError (a programming error).
+ */
+export function shouldRetryQuery(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  const { status } = error;
+  const retryable =
+    error.code === CLIENT_ERROR_CODES.network ||
+    (status !== undefined && status >= 500 && status < 600);
+  return retryable && failureCount < MAX_QUERY_RETRIES;
+}
+
+/**
+ * A new client with the app defaults. The app creates exactly one at
+ * startup; each test creates its own.
+ */
+export function createQueryClient(): QueryClient {
+  return new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error, query) =>
+        reportError(error, { source: 'query', queryKey: query.queryKey }),
+    }),
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) =>
+        reportError(error, {
+          source: 'mutation',
+          mutationKey: mutation.options.mutationKey,
+        }),
+    }),
+    defaultOptions: {
+      queries: { retry: shouldRetryQuery },
+      // Mutations never retry: a repeated write could apply twice. Financial
+      // mutations are never optimistic (architecture §8).
+      mutations: { retry: false },
+    },
+  });
+}
