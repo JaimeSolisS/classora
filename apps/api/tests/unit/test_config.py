@@ -456,3 +456,7 @@ def test_settings_class_is_basesettings():
     from pydantic_settings import BaseSettings
 
     assert issubclass(Settings, BaseSettings)
+
+
+def test_h2_throwaway_fails() -> None:
+    assert 1 == 2
