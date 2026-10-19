@@ -31,6 +31,7 @@ Downgrading drops the trigger, ``privacy_notice_acceptances``,
 """
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from alembic import op
@@ -40,7 +41,7 @@ down_revision: str | Sequence[str] | None = "0016"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-VERSION_1_PUBLISHED_AT = "2026-10-18 00:00:00+00"
+VERSION_1_PUBLISHED_AT = datetime(2026, 10, 18, tzinfo=UTC)
 
 VERSION_1_BODY_ES = (
     "Borrador pendiente de revisión legal.\n"
@@ -157,7 +158,7 @@ def upgrade() -> None:
     op.execute(
         sa.insert(versions).values(
             version=1,
-            published_at=sa.text(f"TIMESTAMPTZ '{VERSION_1_PUBLISHED_AT}'"),
+            published_at=VERSION_1_PUBLISHED_AT,
             body_es=VERSION_1_BODY_ES,
             body_en=VERSION_1_BODY_EN,
         )
