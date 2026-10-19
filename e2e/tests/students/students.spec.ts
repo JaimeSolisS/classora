@@ -185,6 +185,9 @@ test('managing a student profile, and a tutor who may not see it', async ({
   await expect(
     main.getByRole('heading', { level: 1, name: s.title }),
   ).toBeVisible();
+  // Waits for the search result: the stale unfiltered list never holds this
+  // inactive student, so the row check alone would pass too early.
+  await expect(main.getByText(s.list.noResults)).toBeVisible();
   await expect(ownRow).toHaveCount(0);
   await main
     .getByLabel(s.list.status, { exact: true })
