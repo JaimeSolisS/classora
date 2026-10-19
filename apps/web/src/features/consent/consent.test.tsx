@@ -370,6 +370,29 @@ describe('guardian (I2)', () => {
   });
 });
 
+describe('fresh data before revoking', () => {
+  it('reloads the overview, so a login activated meanwhile is warned about', async () => {
+    const stale = {
+      ...GUARDIAN_GIVEN,
+      login_state: 'pending' as const,
+      consents: [{ ...LAURA_LOGIN_CONSENT, suspends_login_on_revoke: false }],
+    };
+    const api = stub(PARENT, {
+      [CONSENTS]: [
+        () => jsonResponse(200, stale),
+        () => jsonResponse(200, GUARDIAN_GIVEN),
+      ],
+    });
+    app = await renderApp(`/students/${JOSE.id}`);
+    expect(api.calls(CONSENTS)).toHaveLength(1);
+
+    await click(buttonNamed(consents()!, 'Withdraw consent'));
+
+    expect(api.calls(CONSENTS)).toHaveLength(2);
+    expect(dialog()!.textContent).toContain("José's login will be suspended.");
+  });
+});
+
 describe('adult student (I2)', () => {
   it('shares with one guardian and stops sharing with another', async () => {
     const api = stub(ADULT_STUDENT, {

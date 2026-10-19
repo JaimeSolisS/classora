@@ -109,6 +109,7 @@ export function ConsentSection({
         await changed();
         return result;
       }}
+      onRefresh={async () => (await overview.refetch()).data}
     />
   );
 }
@@ -121,6 +122,12 @@ interface ConsentSectionViewProps {
   onRecord: (body: ConsentCreate) => Promise<void>;
   /** Revokes; rejects with the error to show. */
   onRevoke: (consentId: string) => Promise<ConsentRevocation>;
+  /**
+   * Reloads the overview before a revoke confirmation, so its suspension
+   * warning reflects the login's current state (it may have been activated
+   * since the overview loaded). Resolves to the fresh overview, if any.
+   */
+  onRefresh?: () => Promise<ConsentOverview | undefined>;
 }
 
 function guardianName(item: { given_names: string; family_names: string }) {
@@ -142,6 +149,7 @@ export function ConsentSectionView({
   studentName,
   onRecord,
   onRevoke,
+  onRefresh,
 }: ConsentSectionViewProps) {
   const { t } = useTranslation();
   const { formatInstant } = useFormatters();
@@ -160,6 +168,19 @@ export function ConsentSectionView({
   function start() {
     setError(null);
     setAnnouncement('');
+  }
+
+  /** Opens the revoke confirmation with the freshest copy of the record. */
+  async function confirmRevoke(record: ConsentRecordItem) {
+    start();
+    let current = record;
+    try {
+      const fresh = await onRefresh?.();
+      current = fresh?.consents.find((item) => item.id === record.id) ?? record;
+    } catch {
+      // Keep the loaded record; the server decides anyway.
+    }
+    setRevoking(current);
   }
 
   async function revoke() {
@@ -237,10 +258,7 @@ export function ConsentSectionView({
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              start();
-              setRevoking(given);
-            }}
+            onClick={() => void confirmRevoke(given)}
           >
             {t('consent.withdraw')}
           </Button>
@@ -290,10 +308,7 @@ export function ConsentSectionView({
                     variant="outline"
                     size="sm"
                     aria-label={`${t('consent.stopSharing')}: ${name}`}
-                    onClick={() => {
-                      start();
-                      setRevoking(shared);
-                    }}
+                    onClick={() => void confirmRevoke(shared)}
                   >
                     {t('consent.stopSharing')}
                   </Button>
@@ -352,10 +367,7 @@ export function ConsentSectionView({
               key={record.id}
               record={record}
               canRevoke={mode === 'staff' && record.can_revoke}
-              onRevoke={() => {
-                start();
-                setRevoking(record);
-              }}
+              onRevoke={() => void confirmRevoke(record)}
             />
           ))}
         </ul>
