@@ -108,6 +108,15 @@ Codes in use today:
 | `guardian_already_linked` | 409 | Linking a guardian who is already linked to this student (see Guardians and links). |
 | `family_member_conflict` | 409 | Adding a student or guardian profile who already belongs to another family; remove them from it first (see Families). |
 | `family_inactive` | 409 | Adding a member to an inactive family; reactivate it first (see Families). |
+| `student_profile_required` | 409 | Activating an account that holds `student` (invitation redemption, registration approval, reactivation, adding the role to an active account) while no student profile is linked to it; nothing changes (see Consent and student logins). |
+| `guardian_consent_required` | 409 | Activating a minor's student account, linking an active student account to a minor, or changing the birthdate of a student with an active login to a minor's, without a valid consent from a linked, active guardian; nothing changes. On the birthdate change the field error is on `["body","birthdate"]` (see Consent and student logins). |
+| `student_account_unavailable` | 422 | `PUT …/account` names an account that is unknown or archived; the field error is on `["body","user_id"]`. |
+| `student_account_in_use` | 409 | `PUT …/account` names an account already linked to another student profile. |
+| `consent_method_invalid` | 422 | A consent method the caller may not use (staff: `paper`/`in_person`; a guardian or a student: `in_app`); the field error is on `["body","method"]`. |
+| `consent_guardian_invalid` | 422 | A consent naming a guardian who isn't linked to the student or whose profile is inactive; the field error is on `["body","guardian_id"]`. |
+| `consent_not_applicable` | 422 | `student_login` for an adult or `guardian_academic_access` for a minor; the field error is on `["body","scope"]`. |
+| `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
+| `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -732,7 +741,7 @@ without a login.
 | ----- | ------ | ----- |
 | `GET /api/v1/students` | `require("student.view")`, list filtered by record policy | Query `q` (name search, see below), `status` (`active` (default), `inactive` or `all`), `education_level_id` (an unknown id gives an empty page), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `is_minor`, `school_grade`, `education_level` (`{id, name, is_active}` or `null`); never a birthdate or contact data. |
 | `POST /api/v1/students` | `require("student.manage")` | Body `{given_names, family_names, birthdate, email?, phone?, school_name?, school_grade?, education_level_id?, emergency_contacts: [{name, relationship, phone}] (1-5)}`. `201` with the detail. |
-| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `guardians` (#34), `family` (#172), `version`, `created_at`, `updated_at`. |
+| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `guardians` (#34), `family` (#172), `login` (#35), `version`, `created_at`, `updated_at`. |
 | `PATCH /api/v1/students/{student_id}` | `require("student.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `emergency_contacts` is the complete new list. |
 
 - **Who sees which student** (record policy, pure functions in
@@ -741,17 +750,19 @@ without a login.
   current assignments; assignments arrive with scheduling (M4), so until
   then tutors see none. Guardians see the students linked to their active
   guardian profile (#34, see Guardians and links) and a student user their
-  own profile (#35, none until then).
+  own profile (the one linked to their login, #35, whatever its
+  `is_active`; suspending the login is the access control).
   A student the caller may not see is `404 not_found`, exactly like a
   missing one, and the list leaves it out (never `403`/`404` for hidden
   rows).
 - **How much** (owner decision on #33, E2 (a)): `personal` (`birthdate`,
   `email`, `phone`, `emergency_contacts` in position order) is present only
   for full-access viewers: holders of `student.manage`, a linked guardian
-  of a **minor** (#34) and later the student themselves (#35). For Finance
-  Staff, assigned tutors and a linked guardian of an **adult** student
-  (until #35 records the student's consent, ADR-0007 D17; owner decision on
-  #34, E3 (a)) `personal` is `null`. `is_minor` (under 18 today in the center's
+  of a **minor** (#34), a linked guardian of an **adult** who gave that
+  guardian a `guardian_academic_access` consent (#35) and the student
+  themselves (#35). For Finance Staff, assigned tutors and a linked guardian
+  of an adult without that consent (ADR-0007 D17; owner decisions on #34,
+  E3 (a), and #35, E4 (a)) `personal` is `null`. `is_minor` (under 18 today in the center's
   time zone, ADR-0007 D17) is shown to every viewer.
 - **Search** (`q`, 1-100 characters, at most 5 words): ignores case and
   accents (`José` = `jose`, `Ñúñez` = `nunez`) and word order (`garcia jose`
@@ -780,8 +791,10 @@ without a login.
   `phone`, `school_name`, `school_grade` and `education_level_id`, and is
   `422` for any other field. Any change, a contacts-only one included,
   increments the profile's `version` once. Check order: `422` → `404` →
-  `409 version_conflict` → `422` (future birthdate,
-  `emergency_contact_unknown`, `education_level_unavailable`). A body that
+  `409 version_conflict` → `422` (future birthdate) → `409
+  guardian_consent_required` (a birthdate that makes a student with an
+  active login a minor without a valid consent, #35) → `422`
+  (`emergency_contact_unknown`, `education_level_unavailable`). A body that
   changes nothing returns `200` with no new version.
 - **No hard delete:** `is_active: false` deactivates and `true` reactivates;
   everything else is kept and the profile stays editable. Deletion and
@@ -837,8 +850,10 @@ guardian without one, ADR-0007 D18).
   Academic Coordinators, Finance Staff) see every profile. A guardian sees
   only their own **active** profile (the list has at most that one row;
   any other profile is `404`, like a missing one), and the students linked
-  to it: a **minor** in full, an **adult** with `personal: null` until #35
-  records the student's consent (owner decision on #34, E3 (a)). Tutors
+  to it: a **minor** in full, an **adult** with `personal: null` unless the
+  student gave this guardian a `guardian_academic_access` consent (owner
+  decisions on #34, E3 (a), and #35, E4 (a); see Consent and student
+  logins). Tutors
   and student users get `403` on the guardian routes.
 - **Access follows the links on the next request:** the guardian's facts are
   loaded on every request, never cached. Unlinking, deactivating the
@@ -850,10 +865,113 @@ guardian without one, ADR-0007 D18).
   names then given names) is a list only for viewers with a staff role and
   `guardian.view`; it is `null` for tutors, student users and linked
   guardians, so a guardian never sees the child's other guardians.
+- **Consent on unlinking and deactivation (#35):** unlinking a guardian
+  revokes their active consent records for that student (cause
+  `guardian_unlinked`); deactivating a profile keeps its records but they
+  stop counting. Either may suspend a minor's login (see Consent and
+  student logins).
 - **Audit:** automatic only (`guardians` and `student_guardians`
   `create`/`update`/`delete`, unmasked; an account link is an `update` of
   `user_id`); no named event and no `details`. `403`, `404`, `409`, `422`
   and a body that changes nothing write no event.
+
+### Consent and student logins
+
+Implemented by M2-17 (#35; ADR-0007 D17, D18; spec §2, §9, §16) in
+`apps/api/app/modules/families/` (`logins.py`, `consent.py`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `PUT /api/v1/students/{student_id}/account` | `require("family.manage")` + record policy | Body `{user_id: UUID or null, version}`. `200` with the student detail. `null` unlinks. |
+| `GET /api/v1/students/{student_id}/consents` | `require("consent.record")` + consent record policy | `200` with `{student_id, is_minor, login_state, current_notice_version, guardians, consents, can_record}`. |
+| `POST /api/v1/students/{student_id}/consents` | `require("consent.record")` + consent record policy | Body `{scope, guardian_id, method}`. `201` with the record. |
+| `POST /api/v1/students/{student_id}/consents/{consent_id}/revoke` | `require("consent.record")` + consent record policy | No body. `200` with `{consent, student_login_suspended}`. |
+
+- **Student logins:** a student profile is linked to at most one login
+  account (`students.user_id`, unique) and an account to at most one
+  profile. The account sees only that profile, in full, while it holds the
+  `student` role. Linking (`PUT …/account`): `422` → `404` → `409
+  version_conflict` → `422 student_account_unavailable` (unknown or
+  archived) → `409 student_account_in_use` → the gate for this student when
+  the account is `active` and holds `student` → the update (a `students`
+  `update` of `user_id`). Any non-archived account may be linked, even
+  without the `student` role (linking alone grants nothing); unlinking is
+  always allowed. `StudentDetail.login` (`{user_id, username, display_name,
+  state}`) is shown only to holders of `family.manage`, `null` for everyone
+  else.
+- **The gate** (ADR-0007 D18, #29 E3): an account holding `student` becomes
+  or stays `active` only when a student profile is linked to it (else `409
+  student_profile_required`) and that student is an adult today in the
+  center's time zone, or a minor with at least one **valid** `student_login`
+  consent: not revoked, from a guardian still linked to the student and
+  whose profile is active (owner decision on #35, E3 (a)); else `409
+  guardian_consent_required`. There is no minimum age. It runs inside
+  `identity.service.change_user_state(→ active)` and
+  `add_user_role("student")` on an active account, so invitation
+  redemption (the link stays usable), registration approval (the request
+  stays pending), reactivation and role changes all pass it, and a refusal
+  writes nothing. `identity` can't import `families` (ADR-0002), so
+  `identity` defines a `StudentLoginGate` hook that the API, the CLI and
+  the worker register; with none registered, activating a student fails
+  closed (`500`).
+- **Consent records:** each records the student, the guardian profile, the
+  scope, the method (`in_app`, `paper` or `in_person`), the privacy-notice
+  version current when it was given (#174; a later version doesn't
+  invalidate it), `granted_at` and who recorded it. Revocation sets
+  `revoked_at`, `revoked_by_user_id` and `revocation_cause` (`revoked` or
+  `guardian_unlinked`); records are never deleted. One active record per
+  student, guardian and scope (`409 consent_already_given`).
+  - `student_login` (minors only): the named guardian allows the student's
+    login.
+  - `guardian_academic_access` (adults only, **per guardian**, owner decision
+    on #35, E4 (a)): the adult student shares their academic records with
+    the named guardian, who then gets `full` access to the profile. A
+    guardian linked later gets nothing until the student consents for them.
+  - Who records what (D1): Owners and Administrators record either scope for
+    any linked, active guardian with method `paper` or `in_person`, see and
+    revoke every record. A guardian records `student_login` for their linked
+    minors as their own active profile (`in_app`), sees and revokes only the
+    records naming their own profile. A student records
+    `guardian_academic_access` for themselves (`in_app`) naming one of their
+    linked, active guardians, sees every record of their own student and
+    revokes its `guardian_academic_access` records. A student or a record
+    the caller can't reach is `404` (like a missing one); a visible record
+    they may not revoke is `403`. Check order of the `POST`: `422` → `404` →
+    `403` (scope) → `422 consent_method_invalid` → `403` (a guardian naming
+    another guardian) / `422 consent_guardian_invalid` → `422
+    consent_not_applicable` → `409 consent_already_given`.
+  - The overview lists the guardians the caller may name (staff and the
+    student: every linked guardian; a guardian: themselves only, never the
+    co-guardians), the visible records (active first, then the newest) with
+    `can_revoke` and `suspends_login_on_revoke`, and `can_record` (the scopes
+    the caller may record now, by role and age).
+- **Losing the basis suspends the login** (D18, owner decision on #35, E3
+  (a)): after a revocation, an unlink (which revokes the guardian's records
+  for that student) or a guardian profile deactivation, a minor's `active`
+  student login with no valid consent left is suspended in the same
+  transaction through `change_user_state(active → suspended)`: its sessions
+  end and `families.student_login_suspended` is written. Revoking one of two
+  valid consents keeps the login. Reactivating a guardian profile doesn't
+  reactivate the student; staff reactivate it, which passes the gate again.
+  An adult's login is never suspended this way. Lock order: the
+  last-active-Owner advisory lock (only when the login holds `owner`), the
+  user row, then the student row.
+- **`guardian_has_academic_access()`** (`families/permissions.py`) is the fact
+  later academic policies (M4-M5) must use for guardian reads: a linked
+  guardian of a minor, or of an adult with that guardian's
+  `guardian_academic_access` consent. Facts are loaded on every request,
+  never cached, so a revocation applies on the guardian's next request.
+  Billing visibility follows the family (#172), never consent.
+- **No reauthentication** for consent or account links (ADR-0007 D10 lists
+  staff suspension, not consent): a guardian's withdrawal can suspend a
+  student's login without a password prompt.
+- **Audit:** `consent_records` is audited with nothing excluded (a `create`
+  per record, an `update` per revocation). The named event
+  `families.student_login_suspended` has `record_type="users"`, the
+  student's account as `record_id` and `details` `{student_id, consent_id
+  (or null), cause}` (`consent_revoked`, `guardian_unlinked` or
+  `guardian_deactivated`). `403`, `404`, `409`, `422` and gate refusals
+  write nothing.
 
 ### Families
 

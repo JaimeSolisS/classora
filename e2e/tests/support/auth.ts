@@ -33,7 +33,10 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * createActiveUser), families/families.spec.ts 1 (the guardian; its account
  * is invited with the shared session, #172), auth/privacy-notice.spec.ts 3
  * (1 by createActiveUser), a11y/shell.spec.ts 2 (the privacy-notice scan,
- * 1 by createActiveUser; #174) = 44 attempts, 2 failures
+ * 1 by createActiveUser; #174), families/consent.spec.ts 4 (2 parents
+ * and 2 students; every account there is a self-registration approved by
+ * the Owner or an invitation, never createActiveUser; #35) = 48 attempts,
+ * 2 failures
  * for `demo.owner`. Keep the total well under both limits; never add a
  * setting that disables the limits.
  *
@@ -46,18 +49,22 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * students/students.spec.ts 1, families/guardians.spec.ts 1,
  * auth/privacy-notice.spec.ts 1 and a11y/shell.spec.ts 1 (all by
  * createActiveUser), families/families.spec.ts 1
- * (createGuardianAccountViaPage) = 16.
+ * (createGuardianAccountViaPage), families/consent.spec.ts 3 (the minor's
+ * invitation page: 1 lookup, 1 redemption refused by the consent gate and
+ * 1 that succeeds; #35) = 19.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 44;
+export const LOGIN_ATTEMPTS_PER_RUN = 48;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
-export const TOKEN_REDEMPTIONS_PER_RUN = 16;
+export const TOKEN_REDEMPTIONS_PER_RUN = 19;
 
 /**
  * Self-registration requests in one run (#169; `registration.ip` allows 10
- * per hour for the run's one IP): auth/registration.spec.ts sends 1.
+ * per hour for the run's one IP): auth/registration.spec.ts sends 1 and
+ * families/consent.spec.ts 3 (createApprovedAccount for two parents and the
+ * adult student, #35) = 4.
  */
-export const REGISTRATIONS_PER_RUN = 1;
+export const REGISTRATIONS_PER_RUN = 4;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

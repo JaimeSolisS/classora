@@ -7,7 +7,16 @@ import { api, csrfTokenOf } from './api';
 
 export async function createStudentViaApi(
   page: Page,
-  { givenNames, familyNames }: { givenNames: string; familyNames: string },
+  {
+    givenNames,
+    familyNames,
+    birthdate = '2013-02-14',
+  }: {
+    givenNames: string;
+    familyNames: string;
+    /** YYYY-MM-DD; the default makes a minor (#35 passes an adult's). */
+    birthdate?: string;
+  },
 ): Promise<string> {
   const me = await api(page, '/api/v1/auth/me');
   expect(me.status).toBe(200);
@@ -16,7 +25,7 @@ export async function createStudentViaApi(
     json: {
       given_names: givenNames,
       family_names: familyNames,
-      birthdate: '2013-02-14',
+      birthdate,
       school_grade: '1.º',
       emergency_contacts: [
         { name: 'Contacto E2E', relationship: 'Tía', phone: '55 0000 0001' },
