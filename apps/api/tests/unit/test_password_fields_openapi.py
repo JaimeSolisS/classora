@@ -21,7 +21,8 @@ PASSWORD_BODY_ALLOW_LIST = frozenset(
         "/api/v1/auth/password",
         "/api/v1/auth/invitation/redeem",
         "/api/v1/auth/password-reset/redeem",
-        # Self-registration (#169) joins this list when it lands.
+        # The requester's own new account (#169).
+        "/api/v1/auth/registrations",
     }
 )
 METHODS = ("get", "put", "post", "patch", "delete")

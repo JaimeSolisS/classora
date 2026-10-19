@@ -140,6 +140,15 @@ rate_limit = ["reauth.user"]
 
 [[route]]
 method = "POST"
+path = "/api/v1/auth/registrations"
+access = "public"
+reason = "The person has no account yet; the request stays pending until staff approve it (Origin check plus SameSite, #24)"
+# An empty body gets 422: nothing is written.
+json = {}
+rate_limit = ["registration.ip"]
+
+[[route]]
+method = "POST"
 path = "/api/v1/dev/demo-jobs"
 access = "public"
 reason = "Local/DEV-only demo job route; never mounted outside local or dev"
@@ -186,6 +195,29 @@ allow = ["owner", "administrator"]
 # them; reauth:none gets 403 reauth_required.
 json = {}
 reauth = "user.password_reset.issue"
+
+[[route]]
+method = "GET"
+path = "/api/v1/registration-requests"
+access = "permission"
+permission = "registration.review"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/registration-requests/{request_id}/approve"
+access = "permission"
+permission = "registration.review"
+allow = ["owner", "administrator"]
+# The placeholder id is no request: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/registration-requests/{request_id}/reject"
+access = "permission"
+permission = "registration.review"
+allow = ["owner", "administrator"]
+# The placeholder id is no request: 404 for the allowed roles.
 
 [[route]]
 method = "GET"

@@ -23,6 +23,7 @@
   "password_equals_username": "The password can't be the same as the username.",
   "current_password_invalid": "The current password is incorrect.",
   "user_not_active": "This account isn't active. If it's a pending invitation, create a new link in Invitations.",
+  "registration_already_decided": "This request has already been decided.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

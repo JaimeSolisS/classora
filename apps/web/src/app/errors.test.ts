@@ -37,6 +37,7 @@ const API_CODES = [
   'password_equals_username',
   'current_password_invalid',
   'user_not_active',
+  'registration_already_decided',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

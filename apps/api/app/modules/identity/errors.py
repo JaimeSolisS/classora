@@ -178,3 +178,17 @@ class UserNotActiveError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class RegistrationAlreadyDecidedError(AppError):
+    """Approving or rejecting a registration request that is no longer
+    pending, or whose user is no longer ``pending`` (#169). Takes no
+    arguments.
+    """
+
+    status = 409
+    code = "registration_already_decided"
+    detail = "This request has already been decided."
+
+    def __init__(self) -> None:
+        super().__init__()

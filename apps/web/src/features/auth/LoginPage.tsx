@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Link,
   Navigate,
   useLocation,
   useNavigate,
@@ -12,6 +13,7 @@ import { LoginForm, type LoginValues } from './LoginForm';
 import { LOGIN_NOTICE_KEYS, readLoginNotice } from './loginNotice';
 import { safeReturnPath } from './returnPath';
 import { SessionLoading } from './SessionLoading';
+import { TEXT_LINK_CLASS } from './textLink';
 import { useAuth } from './useSession';
 
 // /login (#28 B): a public page outside the guard. A signed-in visitor (also
@@ -81,6 +83,12 @@ function LoginScreen({ sessionExpired }: { sessionExpired: boolean }) {
       sessionExpired={expiredOnArrival}
       notice={pageNotice ? t(LOGIN_NOTICE_KEYS[pageNotice.notice]) : undefined}
       initialUsername={pageNotice?.username}
+      footer={
+        // Self-registration (#169 F1).
+        <Link to="/register" className={TEXT_LINK_CLASS}>
+          {t('auth.login.requestAccount')}
+        </Link>
+      }
     />
   );
 }

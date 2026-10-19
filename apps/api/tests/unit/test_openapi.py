@@ -61,6 +61,10 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/auth/password-reset/lookup",
         "/api/v1/auth/password-reset/redeem",
         "/api/v1/password-resets",
+        "/api/v1/auth/registrations",
+        "/api/v1/registration-requests",
+        "/api/v1/registration-requests/{request_id}/approve",
+        "/api/v1/registration-requests/{request_id}/reject",
     }
 
 

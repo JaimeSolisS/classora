@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,8 @@ interface PublicPageSignedInNoticeProps {
   message: string;
   /** Signs out (the #28 logout); rejects when the session may still be live. */
   onSignOut: () => Promise<void>;
+  /** When given, a link home with this text (already translated) comes first. */
+  homeLabel?: string;
 }
 
 // A public page that is meant for someone without a session (an invitation
@@ -22,6 +25,7 @@ export function PublicPageSignedInNotice({
   title,
   message,
   onSignOut,
+  homeLabel,
 }: PublicPageSignedInNoticeProps) {
   const { t } = useTranslation();
   const [error, setError] = useState<unknown>(null);
@@ -43,19 +47,25 @@ export function PublicPageSignedInNotice({
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="rounded-md border border-border p-3">{message}</p>
       {error ? <ErrorAlert error={error} /> : null}
-      <Button
-        type="button"
-        variant="outline"
-        className="self-start"
-        disabled={pending}
-        onClick={() => void signOut()}
-      >
-        {pending ? (
-          <Spinner label={t('auth.userMenu.signingOut')} showLabel />
-        ) : (
-          t('auth.userMenu.signOut')
-        )}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        {homeLabel ? (
+          <Button asChild>
+            <Link to="/">{homeLabel}</Link>
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={() => void signOut()}
+        >
+          {pending ? (
+            <Spinner label={t('auth.userMenu.signingOut')} showLabel />
+          ) : (
+            t('auth.userMenu.signOut')
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -15,7 +15,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
-from app.modules.identity.models import User, UserDelegation, UserRole
+from app.modules.identity.models import (
+    RegistrationRequest,
+    User,
+    UserDelegation,
+    UserRole,
+)
 from tests.integration.models import AuditedThing, TestBase
 
 
@@ -44,7 +49,12 @@ def test_every_audited_model_lists_its_sensitive_columns():
 
 def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
-    assert audited_classes(Base) == [User, UserDelegation, UserRole]
+    assert audited_classes(Base) == [
+        RegistrationRequest,
+        User,
+        UserDelegation,
+        UserRole,
+    ]
     assert AuditedThing in audited_classes(TestBase)
     assert User.__audit_exclude__ == {"password_hash"}
     assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(

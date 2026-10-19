@@ -63,7 +63,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0010"
+HEAD = "0011"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -78,6 +78,7 @@ AUTH_TABLES = ["auth_sessions"]
 
 RATE_LIMIT_TABLES = ["rate_limit_counters"]
 ACCOUNT_TOKEN_TABLES = ["account_tokens"]
+REGISTRATION_TABLES = ["registration_requests"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -135,6 +136,9 @@ def test_history_is_linear_with_one_head():
     reset_tokens = script.get_revision("0010")
     assert reset_tokens.down_revision == "0009"
     assert Path(reset_tokens.path).name == "0010_identity_password_reset_tokens.py"
+    registrations = script.get_revision("0011")
+    assert registrations.down_revision == "0010"
+    assert Path(registrations.path).name == "0011_identity_registration_requests.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -166,6 +170,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
+            *REGISTRATION_TABLES,
         ]
     )
 
@@ -663,7 +668,7 @@ def test_downgrade_to_0008_drops_exactly_account_tokens(fresh_database_url):
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0008")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0009")
     assert public_tables(fresh_database_url) - before == set(ACCOUNT_TOKEN_TABLES)
 
     command.downgrade(config, "0008")
@@ -779,3 +784,76 @@ def test_0010_widens_the_kind_check_and_downgrade_restores_it(fresh_database_url
     assert [r.kind for r in kinds] == ["invitation"]
     command.upgrade(config, "head")
     assert version_nums(fresh_database_url) == [HEAD]
+
+
+# --- 0011: registration_requests (#169 A) ------------------------------------------
+
+
+def test_downgrade_to_0010_drops_exactly_registration_requests(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0010")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(REGISTRATION_TABLES)
+
+    command.downgrade(config, "0010")
+
+    assert version_nums(fresh_database_url) == ["0010"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_registration_requests_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = run_sql(
+        fresh_database_url,
+        "SELECT column_name, data_type, is_nullable, column_default"
+        " FROM information_schema.columns"
+        " WHERE table_name = 'registration_requests'",
+    )
+    assert {(r.column_name, r.data_type, r.is_nullable) for r in columns} == {
+        ("id", "uuid", "NO"),
+        ("created_at", "timestamp with time zone", "NO"),
+        ("updated_at", "timestamp with time zone", "NO"),
+        ("user_id", "uuid", "NO"),
+        ("requested_role", "text", "NO"),
+        ("status", "text", "NO"),
+        ("decided_at", "timestamp with time zone", "YES"),
+        ("decided_by_user_id", "uuid", "YES"),
+    }
+    [status] = [r for r in columns if r.column_name == "status"]
+    assert status.column_default == "'pending'::text"
+    constraints = run_sql(
+        fresh_database_url,
+        "SELECT conname, contype::text, confdeltype::text"
+        " FROM pg_constraint WHERE conrelid = 'registration_requests'::regclass"
+        " AND contype <> 'n' ORDER BY conname",
+    )
+    assert [(r.conname, r.contype) for r in constraints] == [
+        ("ck_registration_requests_decided_iff_not_pending", "c"),
+        ("ck_registration_requests_requested_role_valid", "c"),
+        ("ck_registration_requests_status_valid", "c"),
+        ("fk_registration_requests_decided_by_user_id_users", "f"),
+        ("fk_registration_requests_user_id_users", "f"),
+        ("pk_registration_requests", "p"),
+        ("uq_registration_requests_user_id", "u"),
+    ]
+    # ON DELETE RESTRICT: archived users keep their history.
+    assert {r.confdeltype for r in constraints if r.contype == "f"} == {"r"}
+    indexes = run_sql(
+        fresh_database_url,
+        "SELECT indexname, indexdef FROM pg_indexes"
+        " WHERE tablename = 'registration_requests' ORDER BY indexname",
+    )
+    by_name = {r.indexname: r.indexdef for r in indexes}
+    assert set(by_name) == {
+        "ix_registration_requests_status_created_at_id",
+        "pk_registration_requests",
+        "uq_registration_requests_user_id",
+    }
+    assert (
+        "(status, created_at, id)"
+        in by_name["ix_registration_requests_status_created_at_id"]
+    )

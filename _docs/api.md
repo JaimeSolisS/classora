@@ -89,9 +89,10 @@ Codes in use today:
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
 | `current_password_invalid` | 403 | `POST /api/v1/auth/password` with a wrong current password (or a user without one). The session stays signed in (see Password reset and change). |
-| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
+| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption, self-registration); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
 | `token_invalid` | 410 | A one-time link (invitation or password reset) that is unknown, malformed, used, replaced or expired, of the other kind, or that can no longer be redeemed. One body for every case (see Invitations). |
-| `username_taken` | 409 | `POST /api/v1/invitations` with a username another user already has, in any state. |
+| `username_taken` | 409 | `POST /api/v1/invitations` or `POST /api/v1/auth/registrations` with a username another user already has, in any state. |
+| `registration_already_decided` | 409 | Approving or rejecting a registration request that was already approved or rejected, or whose account is no longer `pending` (see Registration requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `username_invalid` | 422 | A username that does not normalize to 3 to 64 characters from `a-z 0-9 . _ -`. |
 | `password_too_short`, `password_too_long`, `password_equals_username` | 422 | A new password that breaks the policy (12 to 128 characters, not the username; ADR-0007 D6). |
@@ -303,7 +304,7 @@ lockout: a window simply ends.
 | `login.username` | `POST /api/v1/auth/login` | 10 per 15 min | normalized submitted username, existing or not | failed attempts |
 | `reauth.user` | `POST /api/v1/auth/reauthenticate` and `POST /api/v1/auth/password` (the current-password check); one shared budget | 5 per 15 min | user | failed attempts |
 | `token_redemption.ip` | `POST /api/v1/auth/invitation/lookup`, `POST /api/v1/auth/invitation/redeem`, `POST /api/v1/auth/password-reset/lookup` and `POST /api/v1/auth/password-reset/redeem`; one shared budget | 20 per 15 min | client IP | every request |
-| `registration.ip` | self-registration request (#169) | 10 per hour | client IP | every request |
+| `registration.ip` | `POST /api/v1/auth/registrations` | 10 per hour | client IP | every request |
 
 - **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
   `:45`; the full hour for registration). Up to twice a limit can pass across
@@ -335,7 +336,7 @@ lockout: a window simply ends.
   `/64`. Uvicorn runs with `--no-proxy-headers`, so the app is the only place
   that reads the header. Keys are stored only as SHA-256 hashes; an hourly job
   deletes windows that ended more than an hour ago.
-- **Applying a policy to a new endpoint** (#29, #30): declare
+- **Applying a policy to a new endpoint** (#29, #30, #169): declare
   `rate_limit("<policy>", ...)` on the route (`dependencies=[...]` or
   `limiter: Annotated[RateLimiter, rate_limit(...)]`), pass
   `responses=RATE_LIMIT_RESPONSES`, add `rate_limit = ["<policy>", ...]` to the
@@ -396,6 +397,52 @@ in `apps/api/app/modules/identity/` (`tokens.py`, `invitations.py`,
   automatic `users` and `user_roles` events. `link_id` is the id of the
   `account_tokens` row, never the token or its hash. Failed requests write no
   event.
+
+### Registration requests
+
+Implemented by M2-11b (#169; spec §9, ADR-0007 D6, D7, D13) in
+`apps/api/app/modules/identity/` (`registrations.py`,
+`registrations_router.py`). No email is sent.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/auth/registrations` | `public()` | Body `{username, display_name, password, role}`, where `role` is `guardian` or `student` (anything else is `422 validation_error`). `202` with `{"status": "pending"}` and no ids. |
+| `GET /api/v1/registration-requests` | `require("registration.review")` | Query `status` (`pending` by default, `approved` or `rejected`); oldest first (`created_at`, then `id`); offset pagination. Items: `id`, `username`, `display_name`, `requested_role`, `status`, `submitted_at`, `decided_at`. No password data. |
+| `POST /api/v1/registration-requests/{request_id}/approve` | `require("registration.review")` | `200` with the item: the account becomes `active` with the requested role. |
+| `POST /api/v1/registration-requests/{request_id}/reject` | `require("registration.review")` | `200` with the item: the account is archived and its password hash is cleared. |
+
+- **Only Parent/Guardian or Student** can be requested; staff and tutors join
+  only by invitation. A request creates a `pending` user with the password's
+  Argon2id hash and **no role**, and a `pending` row in
+  `registration_requests`. A pending account cannot sign in (`401
+  invalid_credentials`, like any account that is not `active`).
+- **Order on submit:** a foreign `Origin` (`403 csrf_failed`, never counted)
+  → `registration.ip` (`429`, 10 per IP per hour) → body validation (`422`)
+  → `username_invalid` (`422`) → `409 username_taken` (any user in any state,
+  also a concurrent request for the same username) → the password policy
+  (`422`). Every request counts against the hourly budget, including `409`
+  and `422` answers, which bounds username probing.
+- **Approve and reject:** an Owner or Administrator confirms the person's
+  identity out of band first. The request is locked: an unknown id is `404
+  not_found`; a request that is no longer `pending`, or whose account is no
+  longer `pending`, is `409 registration_already_decided` (of two concurrent
+  decisions exactly one succeeds). Approval also needs the authority to
+  assign the requested role (`403 permission_denied`; both reviewing roles
+  have it), then adds the role and moves the account `pending → active`.
+  Rejection moves it `pending → archived` and clears the hash; the username
+  stays taken. Neither needs a reauthentication (ADR-0007 D10: approval
+  grants only Parent/Guardian or Student). The request records `decided_at`
+  and `decided_by_user_id`.
+- **Registration never links or enrolls anyone** (spec §9): it changes only
+  `users`, `user_roles`, `registration_requests`, `audit_events` and
+  `rate_limit_counters`. Linking a guardian to a student and enrollment stay
+  administrator actions.
+- **Audit:** `identity.registration_requested` (no actor),
+  `identity.registration_approved` and `identity.registration_rejected` (the
+  reviewer), each on the request (`record_type` `registration_requests`) with
+  `details` `user_id` and `requested_role`, plus the automatic `users`,
+  `user_roles` and `registration_requests` events. No event holds the
+  password or its hash. `404`, `409`, `422` and `429` write no event.
 
 ### Password reset and change
 

@@ -20,6 +20,9 @@
   an invitation (#29) or a password reset (#30) (``kind``). Only the SHA-256
   hash of the token is stored. A partial unique index allows at most one unused,
   unreplaced token per user and kind.
+- ``registration_requests``: self-registration requests (#169; ADR-0007 D13).
+  One per ``pending`` user created by the public registration route; an Owner
+  or Administrator approves or rejects it.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
@@ -31,6 +34,8 @@ either: it holds token hashes and changes on every login; login and logout
 write explicit events instead (``app.modules.identity.sessions``).
 ``account_tokens`` is not audited for the same reason; invitations write
 named events instead (``app.modules.identity.invitations``).
+``registration_requests`` holds no secret and is audited, next to the named
+events of ``app.modules.identity.registrations``.
 """
 
 import uuid
@@ -239,5 +244,60 @@ class AccountToken(Model):
         DateTime(timezone=True), nullable=True
     )
     issued_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+
+
+REGISTRATION_ROLES: tuple[str, ...] = ("guardian", "student")
+"""The roles a person may request by self-registration (ADR-0007 D13)."""
+
+REGISTRATION_STATUSES: tuple[str, ...] = ("pending", "approved", "rejected")
+
+
+class RegistrationRequest(Audited, Model):
+    """One self-registration request (#169; ADR-0007 D13). Audited: it holds
+    no secret (the password hash lives on the ``users`` row).
+
+    ``status`` is ``pending`` exactly while ``decided_at`` and
+    ``decided_by_user_id`` are both ``NULL``; a decided request has both (a
+    CHECK). One request per user.
+    """
+
+    __tablename__ = "registration_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "requested_role IN ({})".format(
+                ", ".join(f"'{r}'" for r in REGISTRATION_ROLES)
+            ),
+            name="requested_role_valid",
+        ),
+        CheckConstraint(
+            "status IN ({})".format(", ".join(f"'{s}'" for s in REGISTRATION_STATUSES)),
+            name="status_valid",
+        ),
+        CheckConstraint(
+            "(status = 'pending' AND decided_at IS NULL AND decided_by_user_id IS NULL)"
+            " OR (status <> 'pending' AND decided_at IS NOT NULL"
+            " AND decided_by_user_id IS NOT NULL)",
+            name="decided_iff_not_pending",
+        ),
+        # The review list: by status, oldest first.
+        Index(
+            "ix_registration_requests_status_created_at_id",
+            "status",
+            "created_at",
+            "id",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
+    )
+    requested_role: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

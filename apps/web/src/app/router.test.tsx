@@ -29,15 +29,15 @@ afterEach(() => {
 });
 
 describe('route tree', () => {
-  it('is layout → login, invite, reset and guard → home, pages and 404, nothing else', () => {
+  it('is layout → login, invite, reset, register and guard → home, pages and 404, nothing else', () => {
     expect(routes).toHaveLength(1);
     const [root] = routes;
     expect(root!.path).toBe('/');
     expect(root!.errorElement).toBeTruthy();
-    const [login, invite, reset, guard] = root!.children!;
-    expect(root!.children).toHaveLength(4);
-    // /login, /invite and /reset are the only pages outside the guard
-    // (#28 B1, #29 J1, #30 J1).
+    const [login, invite, reset, register, guard] = root!.children!;
+    expect(root!.children).toHaveLength(5);
+    // /login, /invite, /reset and /register are the only pages outside the
+    // guard (#28 B1, #29 J1, #30 J1, #169 F1).
     expect(login!.path).toBe('login');
     expect(login!.children).toBeUndefined();
     expect(invite!.path).toBe('invite');
@@ -46,6 +46,9 @@ describe('route tree', () => {
     expect(reset!.path).toBe('reset');
     expect(reset!.children).toBeUndefined();
     expect(reset!.errorElement).toBeTruthy();
+    expect(register!.path).toBe('register');
+    expect(register!.children).toBeUndefined();
+    expect(register!.errorElement).toBeTruthy();
     expect(guard!.id).toBe('guard');
     expect(guard!.path).toBeUndefined();
     expect(guard!.errorElement).toBeTruthy();
@@ -54,6 +57,7 @@ describe('route tree', () => {
       'index',
       'invitations',
       'password-resets',
+      'registration-requests',
       'account/password',
       '*',
     ]);
@@ -61,7 +65,8 @@ describe('route tree', () => {
     expect(children[2]!.handle).toEqual({
       permission: 'user.password_reset.issue',
     });
-    expect(children[3]!.handle).toBeUndefined();
+    expect(children[3]!.handle).toEqual({ permission: 'registration.review' });
+    expect(children[4]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
