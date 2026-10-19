@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.logging import REDACTED, SENSITIVE_KEY_FRAGMENTS, is_sensitive_key
+from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.unit.conventions_app import LEAK_MARKER, read_log_lines
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -239,6 +240,7 @@ def test_uvicorn_process_writes_only_json_lines():
         env={
             "PATH": os.environ.get("PATH", ""),
             "APP_ENV": "local",
+            "APP_ORIGIN": TEST_APP_ORIGIN,
             "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
             "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
         },

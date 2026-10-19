@@ -14,36 +14,47 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from httpx import Response
 
 from app.core.config import get_settings
+from app.core.csrf import csrf_token_for
 from app.core.db import create_sessionmaker
 from app.core.uow import UnitOfWork
 from app.main import build_app, lifespan
 from app.modules.identity import sessions
+from tests.authz.csrf import CSRF_HEADER, ORIGIN_HEADER
 from tests.factories.identity import TEST_USER_PASSWORD, persist_user
 from tests.integration.conftest import settings_for, short_lived_engine
 
 LOGIN = "/api/v1/auth/login"
 LOGOUT = "/api/v1/auth/logout"
 ME = "/api/v1/auth/me"
-ORIGIN = {"Origin": "http://127.0.0.1:5173"}
+ORIGIN = ORIGIN_HEADER
+"""Sent by :func:`auth_client` by default; kept for explicit per-request use."""
 
 
 @contextmanager
-def auth_client(url: str, *, secure: bool = False) -> Iterator[TestClient]:
+def auth_client(
+    url: str, *, secure: bool = False, routers: Iterable[APIRouter] = ()
+) -> Iterator[TestClient]:
     """A client of the real app; ``secure`` selects the ``__Host-`` cookie.
 
     In secure mode the base URL is ``https://`` so the client's cookie jar
-    sends the ``Secure`` cookie back.
+    sends the ``Secure`` cookie back. Every request carries the test app
+    origin (``Origin``) unless the test removes or replaces it (#24 F3).
     """
     app = build_app(lifespan=lifespan)
+    for router in routers:  # test-only routes on the real app
+        app.include_router(router)
     app.dependency_overrides[get_settings] = lambda: settings_for(
         url, session_cookie_secure=secure
     )
     base_url = "https://testserver" if secure else "http://testserver"
-    with TestClient(app, base_url=base_url, raise_server_exceptions=False) as client:
+    with TestClient(
+        app, base_url=base_url, raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as client:
         yield client
 
 
@@ -122,3 +133,14 @@ def token_of(cookie: SetCookie) -> bytes:
 def cookie_header(cookie: SetCookie) -> dict[str, str]:
     """A ``Cookie`` request header carrying ``cookie`` (sent by hand)."""
     return {"Cookie": f"{cookie.name}={cookie.value}"}
+
+
+def csrf_for(cookie: SetCookie) -> str:
+    """The CSRF token of the session in ``cookie`` (#24)."""
+    return csrf_token_for(token_of(cookie))
+
+
+def signed_headers(cookie: SetCookie) -> dict[str, str]:
+    """``Origin``, the session cookie and its ``X-CSRF-Token``: the headers of
+    an unsafe request the SPA sends."""
+    return {**ORIGIN, **cookie_header(cookie), CSRF_HEADER: csrf_for(cookie)}

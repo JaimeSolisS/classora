@@ -9,6 +9,7 @@ Application code gets configuration only through :func:`get_settings`, which
 tests can replace with ``app.dependency_overrides[get_settings]``.
 """
 
+import re
 from functools import lru_cache
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -56,6 +57,10 @@ class Settings(BaseSettings):
     # the worker (ADR-0003). Required, never derived from DATABASE_URL, so a
     # missing value can never silently send them through PgBouncer.
     database_direct_url: SecretStr
+    # The origin the SPA is served from (ADR-0007 D9). Unsafe API requests
+    # (POST, PUT, PATCH, DELETE) whose ``Origin`` differs get 403 (#24).
+    # Required, no default; normalized as browsers serialize ``Origin``.
+    app_origin: str
     session_cookie_secure: bool = True
     storage_bucket: NonEmptyStr | None = None
     storage_region: NonEmptyStr | None = None
@@ -98,6 +103,18 @@ class Settings(BaseSettings):
             raise ValueError("must include a database name")
         return value
 
+    @field_validator("app_origin")
+    @classmethod
+    def _check_app_origin(cls, value: str, info: ValidationInfo) -> str:
+        # Messages never include the value.
+        origin = normalize_origin(value)
+        app_env = info.data.get("app_env")
+        if origin.startswith("http://") and app_env is not None and app_env != "local":
+            raise ValueError(
+                f"may use http only when APP_ENV=local (APP_ENV is {app_env!r})"
+            )
+        return origin
+
     @field_validator("session_cookie_secure")
     @classmethod
     def _check_cookie_secure(cls, value: bool, info: ValidationInfo) -> bool:
@@ -120,6 +137,45 @@ class Settings(BaseSettings):
                 "must be both set or both unset"
             )
         return value
+
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+_HOST = re.compile(r"[a-z0-9.-]+|\[[0-9a-f:.]+\]")
+
+
+def normalize_origin(value: str) -> str:
+    """``value`` as a browser serializes ``Origin``, or :class:`ValueError`.
+
+    Accepts only a bare ``http``/``https`` origin (scheme, host, optional
+    port): no userinfo, path (not even ``/``), query or fragment, and not
+    ``null``. Lower-cases the scheme and host and drops a default port. The
+    error messages never contain the value.
+    """
+    if value == "null":
+        raise ValueError("must be an origin, not 'null'")
+    if not value.isascii() or not value.isprintable() or " " in value:
+        raise ValueError("must be an origin without spaces or non-ASCII characters")
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        raise ValueError("is not a valid origin") from None
+    scheme = parts.scheme.lower()
+    if scheme not in _DEFAULT_PORTS:
+        raise ValueError("scheme must be 'http' or 'https'")
+    if "@" in parts.netloc:
+        raise ValueError("must not contain userinfo")
+    if "?" in value or "#" in value:
+        raise ValueError("must not contain a query or a fragment")
+    if parts.path:
+        raise ValueError("must not contain a path (not even a trailing '/')")
+    host = parts.netloc.rsplit(":", 1)[0] if port is not None else parts.netloc
+    host = host.lower()
+    if not host or _HOST.fullmatch(host) is None:
+        raise ValueError("must include a valid host")
+    if port is None or port == _DEFAULT_PORTS[scheme]:
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
 
 
 def env_var_names() -> set[str]:

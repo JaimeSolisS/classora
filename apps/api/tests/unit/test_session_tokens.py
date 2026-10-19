@@ -15,6 +15,7 @@ from app.core.authz import (
     AUTH_RESPONSES,
     PRINCIPAL_RESOLVER_STATE,
     Principal,
+    ResolvedSession,
     authenticated,
     register_principal_resolver,
 )
@@ -23,6 +24,7 @@ from app.core.conventions import install_conventions
 from app.main import build_app
 from app.modules.identity import sessions
 from app.modules.identity.service import resolve_session_principal
+from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.unit.authz_app import build_authz_app
 
 PLACEHOLDER = SecretStr("postgresql://x:y@127.0.0.1:1/z")
@@ -31,6 +33,7 @@ PLACEHOLDER = SecretStr("postgresql://x:y@127.0.0.1:1/z")
 def settings(*, secure: bool) -> Settings:
     return Settings(
         app_env="local",
+        app_origin=TEST_APP_ORIGIN,
         database_url=PLACEHOLDER,
         database_direct_url=PLACEHOLDER,
         session_cookie_secure=secure,
@@ -204,7 +207,7 @@ def test_a_resolver_gets_the_request_session_and_settings(anyone):
 
     async def resolver(request: Request, session: AsyncSession, settings: Settings):
         seen.update(request=request, session=session, settings=settings)
-        return anyone
+        return ResolvedSession(principal=anyone, session_token=b"t" * 32)
 
     with TestClient(probe_app(resolver), raise_server_exceptions=False) as client:
         response = client.get("/probe")

@@ -12,19 +12,33 @@ E5 runs the same runner against the test-only app of
 ``tests/unit/authz_app.py`` and its test-local matrix, with the actor's
 principal overriding ``get_current_principal`` (that app has no login route),
 so every outcome (allowed, 401, 403, delegation) is exercised.
+
+#24 F2 adds the CSRF cases (``METHOD path csrf:no-origin`` and
+``csrf:no-token``) for every unsafe entry of both matrices, and a self-test
+with a planted route that skips the token check.
 """
 
 import asyncio
 import copy
 import uuid
 from collections.abc import Iterator
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 from alembic import command
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
 from sqlalchemy import make_url
 
+from app.core.authz import (
+    AUTH_RESPONSES,
+    CSRF_RESPONSES,
+    ROUTE_MARKER_ATTR,
+    AccessRule,
+    Principal,
+    ResolvedSession,
+    get_current_session,
+)
 from app.core.config import get_settings
 from app.core.db import create_sessionmaker
 from app.main import build_app, lifespan
@@ -39,8 +53,10 @@ from tests.authz.harness import (
     ANONYMOUS,
     Actor,
     Case,
+    CsrfCase,
     MatrixUser,
     all_actors,
+    csrf_cases,
     load_matrix,
     login_cookie,
     matrix_cases,
@@ -48,6 +64,8 @@ from tests.authz.harness import (
     parse_matrix,
     run_case,
     run_cases,
+    run_csrf_case,
+    run_csrf_cases,
 )
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.test_migrations import alembic_config
@@ -55,6 +73,8 @@ from tests.unit.authz_app import SAMPLE_MATRIX, build_authz_app
 
 REAL_CASES = matrix_cases(load_matrix())
 SAMPLE_CASES = matrix_cases(parse_matrix(SAMPLE_MATRIX))
+REAL_CSRF_CASES = csrf_cases(load_matrix())
+SAMPLE_CSRF_CASES = csrf_cases(parse_matrix(SAMPLE_MATRIX))
 ACTORS = all_actors([*REAL_CASES, *SAMPLE_CASES])
 
 
@@ -121,6 +141,28 @@ def test_real_app(real_client: TestClient, users, case: Case) -> None:
     assert not problems, "\n".join(problems)
 
 
+@pytest.mark.parametrize("case", REAL_CSRF_CASES, ids=[c.id for c in REAL_CSRF_CASES])
+def test_real_app_csrf(real_client: TestClient, users, case: CsrfCase) -> None:
+    problems = run_csrf_case(real_client, case, users)
+
+    assert not problems, "\n".join(problems)
+
+
+def test_real_app_csrf_cases_cover_every_unsafe_entry():
+    unsafe = [
+        e for e in load_matrix() if e.method in {"POST", "PUT", "PATCH", "DELETE"}
+    ]
+
+    assert {(c.entry.key, c.check) for c in REAL_CSRF_CASES} == {
+        (e.key, check) for e in unsafe for check in ("no-origin", "no-token")
+    }
+    by_id = {c.id: c for c in REAL_CSRF_CASES}
+    logout = by_id["POST /api/v1/auth/logout csrf:no-token"]
+    login = by_id["POST /api/v1/auth/login csrf:no-token"]
+    assert logout.actor == Actor("owner") and logout.expects_csrf_failed
+    assert login.actor == ANONYMOUS and not login.expects_csrf_failed
+
+
 def test_real_app_cases_cover_every_entry_and_actor():
     entries = load_matrix()
 
@@ -163,6 +205,59 @@ def test_sample_app(sample_client: TestClient, users, case: Case) -> None:
     problems = run_case(sample_client, case, users, sign_in="override")
 
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    "case", SAMPLE_CSRF_CASES, ids=[c.id for c in SAMPLE_CSRF_CASES]
+)
+def test_sample_app_csrf(sample_client: TestClient, users, case: CsrfCase) -> None:
+    problems = run_csrf_case(sample_client, case, users, sign_in="override")
+
+    assert not problems, "\n".join(problems)
+
+
+def test_sample_csrf_cases_cover_post_patch_and_delete():
+    methods = {c.entry.method for c in SAMPLE_CSRF_CASES}
+
+    assert methods == {"POST", "PATCH", "DELETE"}
+
+
+def test_a_route_that_skips_the_csrf_token_check_is_reported(users):
+    """A planted access dependency marked authenticated() that takes the
+    session without going through get_current_principal (so no token check)."""
+
+    async def unchecked_access(
+        resolved: Annotated[ResolvedSession, Depends(get_current_session)],
+    ) -> Principal:
+        return resolved.principal
+
+    setattr(unchecked_access, ROUTE_MARKER_ATTR, AccessRule("authenticated"))
+    app = build_authz_app()
+    router = APIRouter()
+
+    @router.delete(
+        "/sample/unchecked/{item_id}",
+        status_code=204,
+        responses={**AUTH_RESPONSES, **CSRF_RESPONSES},
+        dependencies=[Depends(unchecked_access)],
+    )
+    async def unchecked(item_id: uuid.UUID) -> None:
+        return None
+
+    app.include_router(router)
+    path = "/sample/unchecked/{item_id}"
+    cases = csrf_cases(
+        parse_matrix(
+            {"route": [{"method": "DELETE", "path": path, "access": "authenticated"}]}
+        )
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        problems = run_csrf_cases(client, cases, users, sign_in="override")
+
+    assert problems == [
+        f"DELETE {path} csrf:no-token: expected 403 csrf_failed, got 204"
+    ]
 
 
 def test_sample_cases_exercise_every_outcome():
@@ -214,7 +309,9 @@ def test_a_protected_route_listed_as_public_is_reported(sample_client, users):
     problems = run_cases(sample_client, cases, users, sign_in="override")
 
     assert problems == [
-        "GET /sample/me as anonymous: expected access, got 401 authentication_required"
+        "GET /sample/me as anonymous: expected access, got 401 authentication_required",
+        "PATCH /sample/me as anonymous: expected access,"
+        " got 401 authentication_required",
     ]
 
 

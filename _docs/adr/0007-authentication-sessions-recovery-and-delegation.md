@@ -12,6 +12,8 @@ Accepted
 
 Owner: JaimeSolisS. Decision items D1 and D4–D14, D17 and D18 approved as recommended (option (a) for each) on 2026-10-18 (GitHub issue #19, M2-01, owner decision comment). No amendments. The approval includes the scope effects of D14 (self-service password change added to #30) and D17 (birthdate required in #33).
 
+Amended 2026-10-18: D9 token derivation instead of a stored hash (issue #24, owner decision E1).
+
 ## Context
 
 Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) and **ISSUE-S1, S2, S4, S5, S6 and S7** (§10.7, identity, security and privacy) in [`../architecture.md`](../architecture.md). ISSUE-S3 (rate limiting) is resolved separately in [ADR-0008](0008-rate-limiting-without-redis.md). Records decision items **D1, D4–D14, D17 and D18** of issue #19.
@@ -81,7 +83,7 @@ Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) a
 
 ### CSRF (ISSUE-S4, D9 (a))
 
-- **Token:** a synchronizer token is created with the session and stored hashed on the session row. It is returned in the JSON of `POST /api/v1/auth/login` and `GET /api/v1/auth/me`. The SPA keeps it in memory and sends it as `X-CSRF-Token` on POST, PUT, PATCH and DELETE. It is never in a cookie that JavaScript can read; after a reload the SPA calls `/auth/me` again.
+- **Token:** a synchronizer token derived from the session token (base64url of HMAC-SHA256 keyed with the session token), so nothing extra is stored; it is returned in the JSON of `POST /api/v1/auth/login` and `GET /api/v1/auth/me`. The SPA keeps it in memory and sends it as `X-CSRF-Token` on POST, PUT, PATCH and DELETE. It is never in a cookie that JavaScript can read; after a reload the SPA calls `/auth/me` again.
 - **Origin:** `Origin` must equal the configured app origin. A missing or foreign `Origin` returns `403`.
 - **Unauthenticated endpoints:** login, token redemption and registration rely on the `Origin` check plus `SameSite`.
 

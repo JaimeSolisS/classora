@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react';
 import { playwright } from '@vitest/browser-playwright';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
+import {
+  DEVELOPMENT_HEADERS,
+  PRODUCTION_HEADERS,
+} from './src/security-headers';
 
 // Story tests: every story (with its play function and the axe check) runs
 // headlessly in Chromium, once per theme through the `theme` toolbar global.
@@ -35,6 +39,11 @@ const DEFAULT_TEST_TIME_ZONE = 'Pacific/Kiritimati';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const apiTarget = env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000';
+  // The app's dev server (`make dev`, `make e2e`) enforces the development
+  // CSP (src/security-headers.ts). Storybook (it sets STORYBOOK) and Vitest
+  // (VITEST) reuse this file but serve their own inline scripts, so they get
+  // no policy. loadEnv with the '' prefix also returns process variables.
+  const appDevServer = !env.STORYBOOK && !env.VITEST;
 
   return {
     plugins: [react(), tailwindcss()],
@@ -45,11 +54,16 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
+      // Enforced (not Report-Only), also on the proxied API responses.
+      headers: appDevServer ? { ...DEVELOPMENT_HEADERS } : undefined,
       proxy: {
         '/health': apiTarget,
         '/api': apiTarget,
       },
     },
+    // `vite preview` serves a production build under the production policy
+    // (the manual check of #24; M9-09 moves it into Caddy).
+    preview: { headers: { ...PRODUCTION_HEADERS } },
     test: {
       projects: [
         {

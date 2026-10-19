@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.core.errors import AppError, VersionConflictError
 from app.main import create_app
+from tests.authz.csrf import PROD_APP_ORIGIN
 from tests.unit.conventions_app import LEAK_MARKER
 
 PROBLEM_JSON = "application/problem+json"
@@ -172,6 +173,7 @@ def test_production_app_has_no_demo_route(
 ):
     # APP_ENV=prod: the local/DEV demo job route is not mounted (M1-16 D4).
     monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("APP_ORIGIN", PROD_APP_ORIGIN)
     app = create_app()
 
     assert app.debug is False

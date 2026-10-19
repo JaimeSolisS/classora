@@ -34,12 +34,14 @@ STORAGE_SECRET = "Storage-S3cret-key-88"
 DATABASE_URL_NAMES = ["DATABASE_URL", "DATABASE_DIRECT_URL"]
 MINIMAL_ENV = {
     "APP_ENV": "local",
+    "APP_ORIGIN": "http://127.0.0.1:5173",
     "DATABASE_URL": VALID_DSN,
     "DATABASE_DIRECT_URL": DIRECT_DSN,
 }
 FULL_ENV = {
     **MINIMAL_ENV,
     "APP_ENV": "prod",
+    "APP_ORIGIN": "https://app.classora.example",
     "SESSION_COOKIE_SECURE": "true",
     "STORAGE_BUCKET": "classora-docs",
     "STORAGE_REGION": "us-east-1",
@@ -90,6 +92,7 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
     settings = load_settings()
 
     assert settings.app_env == "local"
+    assert settings.app_origin == "http://127.0.0.1:5173"
     assert settings.database_url.get_secret_value() == VALID_DSN
     assert settings.database_direct_url.get_secret_value() == DIRECT_DSN
     assert settings.session_cookie_secure is True
@@ -106,6 +109,7 @@ def test_full_environment_loads(monkeypatch):
     settings = load_settings()
 
     assert settings.app_env == "prod"
+    assert settings.app_origin == "https://app.classora.example"
     assert settings.session_cookie_secure is True
     assert settings.storage_bucket == "classora-docs"
     assert settings.storage_region == "us-east-1"
@@ -144,7 +148,7 @@ def test_get_settings_is_cached(monkeypatch):
 # --- missing ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["APP_ENV", *DATABASE_URL_NAMES])
+@pytest.mark.parametrize("name", ["APP_ENV", "APP_ORIGIN", *DATABASE_URL_NAMES])
 def test_missing_required_variable(monkeypatch, name):
     env = {k: v for k, v in MINIMAL_ENV.items() if k != name}
 
@@ -237,6 +241,82 @@ def test_insecure_cookie_accepted_in_local(monkeypatch):
     set_env(monkeypatch, {**MINIMAL_ENV, "SESSION_COOKIE_SECURE": "false"})
 
     assert load_settings().session_cookie_secure is False
+
+
+# --- APP_ORIGIN (#24 A2) ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("app_env", "value", "expected"),
+    [
+        ("local", "http://127.0.0.1:5173", "http://127.0.0.1:5173"),
+        ("local", "https://127.0.0.1:5173", "https://127.0.0.1:5173"),
+        ("prod", "https://app.classora.example", "https://app.classora.example"),
+        (
+            "dev",
+            "https://dev.classora.example:8443",
+            "https://dev.classora.example:8443",
+        ),
+        # Normalized as browsers serialize Origin.
+        ("local", "HTTP://LocalHost:5173", "http://localhost:5173"),
+        ("prod", "HTTPS://App.Classora.Example", "https://app.classora.example"),
+        ("local", "http://127.0.0.1:80", "http://127.0.0.1"),
+        ("prod", "https://app.classora.example:443", "https://app.classora.example"),
+        ("local", "http://[::1]:5173", "http://[::1]:5173"),
+    ],
+)
+def test_app_origin_is_accepted_and_normalized(monkeypatch, app_env, value, expected):
+    set_env(monkeypatch, {**MINIMAL_ENV, "APP_ENV": app_env, "APP_ORIGIN": value})
+
+    assert load_settings().app_origin == expected
+
+
+@pytest.mark.parametrize("app_env", ["dev", "prod"])
+def test_http_app_origin_is_refused_outside_local(monkeypatch, app_env):
+    message = config_error(
+        monkeypatch,
+        {**MINIMAL_ENV, "APP_ENV": app_env, "APP_ORIGIN": "http://app.example.test"},
+    )
+
+    line = line_for(message, "APP_ORIGIN")
+    assert "http only when APP_ENV=local" in line
+    assert "app.example.test" not in message
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        pytest.param("http://127.0.0.1:5173/", "path", id="trailing-slash"),
+        pytest.param("http://127.0.0.1:5173/app", "path", id="path"),
+        pytest.param("http://127.0.0.1:5173?x=1", "query", id="query"),
+        pytest.param("http://127.0.0.1:5173?", "query", id="empty-query"),
+        pytest.param("http://127.0.0.1:5173#top", "fragment", id="fragment"),
+        pytest.param("http://user:pw-77@127.0.0.1:5173", "userinfo", id="userinfo"),
+        pytest.param("http://user@127.0.0.1:5173", "userinfo", id="user-only"),
+        pytest.param("null", "null", id="null"),
+        pytest.param("ftp://127.0.0.1:21", "scheme", id="ftp"),
+        pytest.param("127.0.0.1:5173", "scheme", id="no-scheme"),
+        pytest.param("http://", "host", id="no-host"),
+        pytest.param("http://127.0.0.1:", "host", id="empty-port"),
+        pytest.param("http://127.0.0.1:99999", "valid origin", id="port-range"),
+        pytest.param("http://exa mple.test", "spaces", id="space"),
+        pytest.param("http://exämple.test", "non-ASCII", id="non-ascii"),
+    ],
+)
+def test_app_origin_must_be_a_bare_origin(monkeypatch, value, reason):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "APP_ORIGIN": value})
+
+    line = line_for(message, "APP_ORIGIN")
+    assert reason in line
+    if value != "null":
+        assert value not in message
+    assert "pw-77" not in message
+
+
+def test_empty_app_origin_counts_as_missing(monkeypatch):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "APP_ORIGIN": ""})
+
+    assert "missing" in line_for(message, "APP_ORIGIN")
 
 
 @pytest.mark.parametrize("url", ["ftp://storage:21", "s3://bucket", "not a url"])
@@ -432,6 +512,7 @@ def test_env_example_is_a_valid_local_configuration(monkeypatch):
 def test_settings_reads_exactly_the_documented_variables():
     assert env_var_names() == {
         "APP_ENV",
+        "APP_ORIGIN",
         "DATABASE_URL",
         "DATABASE_DIRECT_URL",
         "SESSION_COOKIE_SECURE",

@@ -146,8 +146,15 @@ describes the route declarations and the 401/403/404 rule.
   migrated, seeded Testcontainers database (`matrix_user_for` in
   `tests/authz/harness.py`), and each case logs in through
   `POST /api/v1/auth/login` and sends that fresh session's cookie (M2-05).
-  Only the runner's self-test on the test-only sample app overrides
-  `get_current_principal`.
+  Only the runner's self-test on the test-only sample app overrides the
+  session (`get_current_session`).
+- **CSRF (M2-06):** test clients send the test app origin (`Origin`) by
+  default and the matrix runner adds the session's `X-CSRF-Token` to unsafe
+  requests, so CSRF never hides the outcome under test; the runtime check
+  also generates `METHOD path csrf:no-origin` (expects `403 csrf_failed`) and
+  `METHOD path csrf:no-token` (`403 csrf_failed` on a protected route, anything
+  but `403` on a public one) for every unsafe entry. CSRF tests remove or
+  change the header explicitly (`tests/authz/csrf.py`).
 - Unit tests of a route declaration use a test-only app and override
   `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the

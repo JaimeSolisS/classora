@@ -22,11 +22,12 @@ import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from app.core.authz import register_principal_resolver
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.conventions import install_conventions
+from app.core.csrf import require_trusted_origin
 from app.core.db import create_engine, create_sessionmaker
 from app.core.demo_jobs import router as demo_jobs_router
 from app.core.health import router as health_router
@@ -69,11 +70,19 @@ def build_app(
     """The app without settings validation: metadata, conventions, routers.
 
     Registers the identity module's session resolver, so
-    ``get_current_principal`` resolves the session cookie (#23).
+    ``get_current_principal`` resolves the session cookie (#23), and installs
+    the ``Origin`` check on every unsafe request as an app-level dependency, so
+    it runs before authentication (#24).
     ``include_dev_routes`` mounts the local/DEV demo job route; the exported
     contract (``app.core.openapi``) never includes it.
     """
-    app = FastAPI(title=API_TITLE, version=API_VERSION, debug=False, lifespan=lifespan)
+    app = FastAPI(
+        title=API_TITLE,
+        version=API_VERSION,
+        debug=False,
+        lifespan=lifespan,
+        dependencies=[Depends(require_trusted_origin)],
+    )
     install_conventions(app)
     register_principal_resolver(app, resolve_session_principal)
     app.include_router(health_router)

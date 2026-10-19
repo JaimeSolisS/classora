@@ -5,6 +5,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, FastAPI, WebSocket
 
 from app.core.authz import (
+    AUTH_RESPONSES,
+    CSRF_RESPONSES,
     PERMISSION_RESPONSES,
     Principal,
     authenticated,
@@ -172,6 +174,35 @@ def test_the_sample_app_and_its_matrix_report_nothing():
 
     assert check_matrix(build_authz_app(), entries) == []
     assert order_problems(entries) == []
+
+
+def test_an_unsafe_authenticated_route_must_document_the_csrf_403():
+    """#24 C6: POST/PUT/PATCH/DELETE authenticated() routes can answer
+    403 csrf_failed, so their OpenAPI entry must say so."""
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.post("/csrf/undocumented", responses=AUTH_RESPONSES)
+    async def undocumented(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.delete("/csrf/documented", responses={**AUTH_RESPONSES, **CSRF_RESPONSES})
+    async def documented(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.get("/csrf/safe", responses=AUTH_RESPONSES)
+    async def safe(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    app.include_router(router)
+    matrix = [
+        *DOCS,
+        entry("DELETE", "/csrf/documented", "authenticated"),
+        entry("GET", "/csrf/safe", "authenticated"),
+        entry("POST", "/csrf/undocumented", "authenticated"),
+    ]
+
+    assert check_matrix(app, parse_matrix({"route": matrix})) == [
+        "POST /csrf/undocumented: 403 csrf_failed is not documented as"
+        " ProblemDetails (add CSRF_RESPONSES)"
+    ]
 
 
 def test_every_planted_problem_is_reported():

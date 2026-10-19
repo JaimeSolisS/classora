@@ -42,6 +42,8 @@ export POSTGRES_PORT=$E2E_POSTGRES_PORT
 export PGBOUNCER_PORT=$E2E_PGBOUNCER_PORT
 export API_PORT=$E2E_API_PORT
 export WEB_PORT=$E2E_WEB_PORT
+# The API accepts unsafe requests only from the web origin of this stack.
+export APP_ORIGIN=http://127.0.0.1:$E2E_WEB_PORT
 # The host demo step reaches the E2E database on its published ports.
 export DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@127.0.0.1:$E2E_PGBOUNCER_PORT/$POSTGRES_DB"
 export DATABASE_DIRECT_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@127.0.0.1:$E2E_POSTGRES_PORT/$POSTGRES_DB"

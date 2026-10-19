@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.seeds import runner
 from app.seeds.registry import UpsertSeed
 from app.seeds.upsert import UpsertResult
+from tests.authz.csrf import origin_for
 from tests.integration.conftest import run_sql, run_sql_async, settings_for
 from tests.integration.models import SeedReference, VersionedSeedReference
 from tests.integration.samples import TEST_REFERENCE_ROWS, TEST_REFERENCE_SEED
@@ -57,6 +58,7 @@ async def engine(migrated_url: str) -> AsyncIterator[AsyncEngine]:
 def env_for(monkeypatch):
     def _set(dsn: str) -> None:
         monkeypatch.setenv("APP_ENV", "prod")  # reference seeds run everywhere
+        monkeypatch.setenv("APP_ORIGIN", origin_for("prod"))
         monkeypatch.setenv("DATABASE_URL", dsn)
         monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
 

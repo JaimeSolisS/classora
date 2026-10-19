@@ -16,7 +16,9 @@ class LoginRequest(BaseModel):
 class SessionUser(BaseModel):
     """The signed-in user (``POST /auth/login`` and ``GET /auth/me``).
 
-    Holds no secret: no password hash, session token or session id.
+    Holds no password hash, session token or session id. ``csrf_token`` is
+    the session's CSRF token: the SPA keeps it in memory and sends it as
+    ``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``.
     """
 
     id: uuid.UUID
@@ -24,3 +26,11 @@ class SessionUser(BaseModel):
     display_name: str
     roles: list[str] = Field(description="Role codes, sorted.")
     permissions: list[str] = Field(description="Effective permission codes, sorted.")
+    csrf_token: str = Field(
+        description=(
+            "The session's CSRF token: send it as X-CSRF-Token on POST, PUT,"
+            " PATCH and DELETE. Keep it in memory only."
+        ),
+        min_length=43,
+        max_length=43,
+    )

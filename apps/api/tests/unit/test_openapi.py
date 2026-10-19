@@ -14,6 +14,7 @@ from app.core.config import env_var_names
 from app.core.errors import PROBLEM_JSON, ProblemDetails, problem_response
 from app.core.logging import request_id_var
 from app.main import API_TITLE, API_VERSION, build_app, create_app
+from tests.authz.csrf import PROD_APP_ORIGIN
 from tests.unit.conventions_app import build_test_app
 
 CONFIG_VARS = ("APP_ENV", "DATABASE_URL", "DATABASE_DIRECT_URL")
@@ -74,6 +75,7 @@ def test_exported_document_matches_the_running_app(app_env, monkeypatch, tmp_pat
     # Same builder: the served /openapi.json equals the export (APP_ENV=prod,
     # where the dev-only demo route is not mounted).
     monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("APP_ORIGIN", PROD_APP_ORIGIN)
     with TestClient(create_app()) as client:
         served = client.get("/openapi.json").json()
 

@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import env_var_names, get_settings
+from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.factories.base import reseed
 
 FACTORY_SEED = 20261017
@@ -77,3 +78,4 @@ def app_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("DATABASE_URL", placeholder)
     monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)
+    monkeypatch.setenv("APP_ORIGIN", TEST_APP_ORIGIN)

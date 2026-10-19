@@ -16,6 +16,7 @@ from app import worker
 from app.core import jobs
 from app.core.config import Settings
 from app.main import create_app
+from tests.authz.csrf import origin_for
 
 API_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = API_ROOT / "app"
@@ -31,6 +32,7 @@ FORBIDDEN_DRIVER_MODULES = {"psycopg", "psycopg_pool", "asyncpg"}
 def settings(app_env: str = "local") -> Settings:
     return Settings(
         app_env=app_env,  # type: ignore[arg-type]
+        app_origin=origin_for(app_env),
         database_url=SecretStr(POOLED_DSN),
         database_direct_url=SecretStr(DIRECT_DSN),
     )
@@ -257,9 +259,14 @@ def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():
 def make_client(monkeypatch: pytest.MonkeyPatch, app_env: str) -> TestClient:
     placeholder = "postgresql://placeholder:placeholder@127.0.0.1:1/placeholder"
     monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
     monkeypatch.setenv("DATABASE_URL", placeholder)
     monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)
-    return TestClient(create_app(), raise_server_exceptions=False)
+    return TestClient(
+        create_app(),
+        raise_server_exceptions=False,
+        headers={"Origin": origin_for(app_env)},
+    )
 
 
 @pytest.mark.parametrize("app_env", ["local", "dev"])
@@ -292,6 +299,7 @@ def test_demo_route_is_absent_in_prod(monkeypatch):
 def test_invalid_shutdown_timeout_stops_the_worker(monkeypatch, capsys, value):
     placeholder = f"postgresql://u:{DIRECT_PASSWORD}@127.0.0.1:1/x"
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", placeholder)
     monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)
     monkeypatch.setenv("WORKER_SHUTDOWN_TIMEOUT_SECONDS", value)
@@ -314,6 +322,7 @@ def test_shutdown_timeout_default_and_bounds(monkeypatch, value, expected):
         monkeypatch.setenv("WORKER_SHUTDOWN_TIMEOUT_SECONDS", value)
     s = Settings(
         app_env="local",
+        app_origin=origin_for("local"),
         database_url=SecretStr(POOLED_DSN),
         database_direct_url=SecretStr(DIRECT_DSN),
     )
@@ -332,6 +341,7 @@ def test_worker_runs_one_job_at_a_time_and_handles_its_own_signals():
 
 def test_worker_rejects_unknown_arguments(monkeypatch, capsys):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", POOLED_DSN)
     monkeypatch.setenv("DATABASE_DIRECT_URL", DIRECT_DSN)
 
@@ -341,6 +351,7 @@ def test_worker_rejects_unknown_arguments(monkeypatch, capsys):
 
 def test_healthcheck_fails_fast_when_postgresql_is_unreachable(monkeypatch):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     unreachable = "postgresql://u:p@127.0.0.1:1/x"
     monkeypatch.setenv("DATABASE_URL", unreachable)
     monkeypatch.setenv("DATABASE_DIRECT_URL", unreachable)

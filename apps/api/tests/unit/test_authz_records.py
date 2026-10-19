@@ -16,6 +16,7 @@ from app.core.authz import (
 )
 from app.modules.identity.permissions import GUARDIAN, STUDENT_VIEW, TUTOR
 from tests.authz.assertions import assert_same_not_found
+from tests.authz.csrf import ORIGIN_HEADER
 from tests.unit.authz_app import (
     GUARDIAN_ID,
     NOTE,
@@ -40,7 +41,9 @@ def app() -> FastAPI:
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app, raise_server_exceptions=False) as test_client:
+    with TestClient(
+        app, raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as test_client:
         yield test_client
 
 

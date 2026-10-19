@@ -4,7 +4,10 @@ Never mounted in the real app. It has:
 
 - sample routes, one per access kind, including the delegable permission
   ``payroll.finalize`` on a route with a path parameter and a required body
-  (the check-order tests and the runtime matrix self-test use them);
+  (the check-order tests and the runtime matrix self-test use them), and
+  ``PATCH``/``DELETE`` routes for the CSRF cases (#24);
+- the ``Origin`` check of the real app (an app-level dependency) and fixed
+  settings whose ``app_origin`` is ``TEST_APP_ORIGIN``;
 - a fake in-memory note store with a sample record policy (the record-level
   tests use it);
 - :data:`SAMPLE_MATRIX`, its test-local permission matrix.
@@ -14,11 +17,12 @@ import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, FastAPI
+from pydantic import BaseModel, ConfigDict, SecretStr
 
 from app.core.authz import (
     AUTH_RESPONSES,
+    CSRF_RESPONSES,
     PERMISSION_RESPONSES,
     Principal,
     authenticated,
@@ -26,7 +30,9 @@ from app.core.authz import (
     public,
     require,
 )
+from app.core.config import Settings, get_settings
 from app.core.conventions import install_conventions
+from app.core.csrf import require_trusted_origin
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
     GUARDIAN,
@@ -37,6 +43,7 @@ from app.modules.identity.permissions import (
     TUTOR,
     USER_VIEW,
 )
+from tests.authz.csrf import TEST_APP_ORIGIN
 
 # --- Sample record policy (the convention of a module's permissions.py) ----------
 
@@ -87,9 +94,19 @@ class FinalizeOut(BaseModel):
     by: uuid.UUID
 
 
+PLACEHOLDER_DSN = SecretStr("postgresql://sample:sample@127.0.0.1:1/sample")
+SAMPLE_SETTINGS = Settings(
+    app_env="local",
+    app_origin=TEST_APP_ORIGIN,
+    database_url=PLACEHOLDER_DSN,
+    database_direct_url=PLACEHOLDER_DSN,
+)
+
+
 def build_authz_app() -> FastAPI:
-    app = FastAPI()
+    app = FastAPI(dependencies=[Depends(require_trusted_origin)])
     install_conventions(app)
+    app.dependency_overrides[get_settings] = lambda: SAMPLE_SETTINGS
     sample = APIRouter(prefix="/sample")
 
     @sample.get("/public", dependencies=[public(reason="Sample public route")])
@@ -101,6 +118,23 @@ def build_authz_app() -> FastAPI:
         principal: Annotated[Principal, authenticated()],
     ) -> dict[str, str]:
         return {"user_id": str(principal.user_id)}
+
+    @sample.patch("/me", responses={**AUTH_RESPONSES, **CSRF_RESPONSES})
+    async def sample_patch_me(
+        principal: Annotated[Principal, authenticated()],
+    ) -> dict[str, str]:
+        return {"user_id": str(principal.user_id)}
+
+    @sample.delete(
+        "/items/{item_id}",
+        status_code=204,
+        responses={**AUTH_RESPONSES, **CSRF_RESPONSES},
+    )
+    async def sample_delete_item(
+        item_id: uuid.UUID,
+        principal: Annotated[Principal, authenticated()],
+    ) -> None:
+        return None
 
     @sample.get(
         "/users", dependencies=[require(USER_VIEW)], responses=PERMISSION_RESPONSES
@@ -186,7 +220,13 @@ SAMPLE_MATRIX: dict[str, Any] = {
             "reason": DOCS_REASON,
         },
         {"method": "GET", "path": "/redoc", "access": "public", "reason": DOCS_REASON},
+        {
+            "method": "DELETE",
+            "path": "/sample/items/{item_id}",
+            "access": "authenticated",
+        },
         {"method": "GET", "path": "/sample/me", "access": "authenticated"},
+        {"method": "PATCH", "path": "/sample/me", "access": "authenticated"},
         {
             "method": "POST",
             "path": "/sample/payroll/{period_id}/finalize",

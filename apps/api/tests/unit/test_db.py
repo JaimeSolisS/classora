@@ -11,6 +11,7 @@ from app.core.db import (
     create_sessionmaker,
     engine_options,
 )
+from tests.authz.csrf import TEST_APP_ORIGIN
 
 DSN = "postgresql://classora:s3cret-pw@db.example:6543/classora?application_name=x"
 POOLED_DSN = "postgresql://classora:pooled-pw@pgbouncer:6432/classora"
@@ -25,6 +26,7 @@ PGBOUNCER_CONNECT_ARGS = (
 def settings(dsn: str = DSN, direct_dsn: str = DIRECT_DSN) -> Settings:
     return Settings(
         app_env="local",
+        app_origin=TEST_APP_ORIGIN,
         database_url=SecretStr(dsn),
         database_direct_url=SecretStr(direct_dsn),
     )

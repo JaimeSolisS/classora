@@ -61,7 +61,8 @@ export interface paths {
          * @description Sign in with a username and password; sets the session cookie.
          *
          *     Every login issues a new session; a live session on the request's cookie
-         *     is revoked. Any failure is the same ``401 invalid_credentials``.
+         *     is revoked. Any failure is the same ``401 invalid_credentials``. The body
+         *     carries the new session's ``csrf_token``. Needs the app's ``Origin``.
          */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
@@ -82,6 +83,8 @@ export interface paths {
         /**
          * Logout
          * @description Sign out: revoke the current session and clear the cookie.
+         *
+         *     Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
          */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
@@ -99,7 +102,8 @@ export interface paths {
         };
         /**
          * Me
-         * @description The signed-in user, their roles and their effective permissions.
+         * @description The signed-in user, their roles, their effective permissions and the
+         *     session's CSRF token (the same value for the whole session).
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -245,7 +249,9 @@ export interface components {
          * SessionUser
          * @description The signed-in user (``POST /auth/login`` and ``GET /auth/me``).
          *
-         *     Holds no secret: no password hash, session token or session id.
+         *     Holds no password hash, session token or session id. ``csrf_token`` is
+         *     the session's CSRF token: the SPA keeps it in memory and sends it as
+         *     ``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``.
          */
         SessionUser: {
             /**
@@ -267,6 +273,11 @@ export interface components {
              * @description Effective permission codes, sorted.
              */
             permissions: string[];
+            /**
+             * Csrf Token
+             * @description The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only.
+             */
+            csrf_token: string;
         };
     };
     responses: never;
@@ -357,6 +368,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -386,6 +406,15 @@ export interface operations {
             };
             /** @description Authentication required. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -473,7 +502,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied. */
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -545,7 +545,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
   - The cookie is `__Host-classora_session`: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`. The token is 32 random bytes; only its SHA-256 hash is stored. A local-only setting uses `classora_session` without `Secure` for plain-HTTP development and is refused outside the local environment.
   - Staff sessions (Owner, Administrator, Academic Coordinator, Finance Staff): 30-minute idle timeout, 12-hour absolute. Family and tutor sessions: 7-day idle, 30-day absolute. Several roles: the strictest class applies.
-  - CSRF uses a synchronizer token issued with the session, stored hashed, returned by `POST /api/v1/auth/login` and `GET /api/v1/auth/me`, kept in memory by the SPA and sent in the `X-CSRF-Token` header. The server also requires `Origin` to equal the app origin (`403` otherwise).
+  - CSRF uses a synchronizer token derived from the session token (base64url of HMAC-SHA256 keyed with the session token), so nothing extra is stored, returned by `POST /api/v1/auth/login` and `GET /api/v1/auth/me`, kept in memory by the SPA and sent in the `X-CSRF-Token` header. The server also requires `Origin` to equal the app origin (`403` otherwise).
   - A new session ID is issued on every login. A user's sessions are revoked when the user is suspended or archived, changes role, or has a password reset. A self-service password change revokes the other sessions and rotates the current one.
 
 #### ISSUE-S5 — List of sensitive actions requiring reauthentication (A)

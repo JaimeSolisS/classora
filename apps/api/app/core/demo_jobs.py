@@ -25,7 +25,7 @@ from procrastinate import App, JobContext, RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
 from pydantic import BaseModel, ConfigDict
 
-from app.core.authz import public
+from app.core.authz import CSRF_RESPONSES, public
 from app.core.errors import AppError
 from app.core.jobs import get_job_app, ids_only
 
@@ -127,6 +127,7 @@ router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
             reason="Local/DEV-only demo job route, never mounted outside local or dev"
         )
     ],
+    responses=CSRF_RESPONSES,
 )
 async def create_demo_job(
     job_app: Annotated[App, Depends(get_job_app)],

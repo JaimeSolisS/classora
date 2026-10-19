@@ -7,9 +7,18 @@
 - :func:`matrix_cases` and :func:`run_case` are the runtime check: one request
   per entry and actor (anonymous, each role, and an Administrator holding the
   delegation for a delegable permission).
+- :func:`csrf_cases` and :func:`run_csrf_case` are the CSRF part of the
+  runtime check (#24 F2): for every unsafe entry, ``csrf:no-origin`` (no
+  ``Origin``: ``403 csrf_failed``) and ``csrf:no-token`` (no
+  ``X-CSRF-Token``: ``403 csrf_failed`` on a protected route, anything but
+  ``403`` on a public one), sent by an allowed role (anonymous for public).
 - :func:`matrix_user_for` creates an actor's real, active database user (the
   #20 factory helper, password :data:`TEST_USER_PASSWORD`) and loads its
   :class:`Principal`.
+
+Every request carries ``Origin: TEST_APP_ORIGIN``, and every unsafe request
+of a signed-in actor its session's ``X-CSRF-Token``, so CSRF never hides a
+``permission_denied`` (#24 F1); only the CSRF cases leave one of them out.
 
 How a case signs in (``run_case(..., sign_in=...)``):
 
@@ -20,7 +29,9 @@ How a case signs in (``run_case(..., sign_in=...)``):
   ``get_current_principal`` is not overridden.
 - ``"override"`` (the self-test on the sample app of
   ``tests/unit/authz_app.py``, E5, which has no login route): the actor's
-  principal replaces ``get_current_principal`` for the request.
+  principal, with the fixed :data:`OVERRIDE_SESSION_TOKEN`, replaces
+  ``get_current_session`` for the request, so ``get_current_principal`` still
+  runs the CSRF token check.
 
 Anonymous sends no cookie and uses the real dependency in both modes.
 """
@@ -41,7 +52,13 @@ from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import Route
 
-from app.core.authz import Principal, get_current_principal, route_access_rules
+from app.core.authz import (
+    Principal,
+    ResolvedSession,
+    get_current_session,
+    route_access_rules,
+)
+from app.core.csrf import UNSAFE_METHODS, csrf_token_for
 from app.core.errors import PROBLEM_DETAILS_REF, PROBLEM_JSON
 from app.modules.identity import service as identity
 from app.modules.identity.permissions import (
@@ -50,6 +67,7 @@ from app.modules.identity.permissions import (
     PERMISSION_CODES,
     ROLE_CODES,
 )
+from tests.authz.csrf import CSRF_HEADER, ORIGIN_HEADER
 from tests.factories.identity import TEST_USER_PASSWORD, persist_user
 
 MATRIX_PATH = Path(__file__).with_name("matrix.toml")
@@ -66,6 +84,9 @@ PLACEHOLDER_UUID = "00000000-0000-7000-8000-000000000001"
 PLACEHOLDER_INT = "1"
 
 _PATH_PARAM = re.compile(r"{([^}:]+)(?::[^}]*)?}")
+
+OVERRIDE_SESSION_TOKEN = b"classora-matrix-override-session"
+"""The raw session token of every overridden actor (``sign_in="override"``)."""
 
 
 # --- The matrix file -------------------------------------------------------------
@@ -281,6 +302,15 @@ def check_matrix(
                     f"{label}: {status} is not documented as ProblemDetails"
                     " (pass AUTH_RESPONSES or PERMISSION_RESPONSES)"
                 )
+        if (
+            rule.kind == "authenticated"
+            and method in UNSAFE_METHODS
+            and not _documents_problem(document, method, path, "403")
+        ):
+            problems.append(
+                f"{label}: 403 csrf_failed is not documented as ProblemDetails"
+                " (add CSRF_RESPONSES)"
+            )
         entry = by_key.get((method, path))
         if entry is None:
             continue
@@ -453,8 +483,16 @@ class LoginFailedError(AssertionError):
     """The harness could not sign an actor in."""
 
 
-def login_cookie(client: TestClient, username: str) -> str:
-    """Log ``username`` in through the API; the ``Cookie`` header to send.
+@dataclass(frozen=True)
+class SignedIn:
+    """A fresh session: the ``Cookie`` header to send and its CSRF token."""
+
+    cookie: str
+    csrf_token: str
+
+
+def login_session(client: TestClient, username: str) -> SignedIn:
+    """Log ``username`` in through the API; the new session's cookie and token.
 
     Parses the raw ``Set-Cookie`` header (a ``Secure`` cookie is not sent back
     over ``http://`` by an HTTP client's jar) and leaves the client's own cookie
@@ -462,7 +500,9 @@ def login_cookie(client: TestClient, username: str) -> str:
     """
     client.cookies.clear()
     response = client.post(
-        LOGIN_PATH, json={"username": username, "password": TEST_USER_PASSWORD}
+        LOGIN_PATH,
+        json={"username": username, "password": TEST_USER_PASSWORD},
+        headers=ORIGIN_HEADER,
     )
     client.cookies.clear()
     if response.status_code != 200:
@@ -471,7 +511,65 @@ def login_cookie(client: TestClient, username: str) -> str:
     cookie = SimpleCookie()
     cookie.load(header)
     [(name, morsel)] = cookie.items()
-    return f"{name}={morsel.value}"
+    return SignedIn(f"{name}={morsel.value}", str(response.json()["csrf_token"]))
+
+
+def login_cookie(client: TestClient, username: str) -> str:
+    """Log ``username`` in through the API; the ``Cookie`` header to send."""
+    return login_session(client, username).cookie
+
+
+CsrfCheck = Literal["no-origin", "no-token"]
+
+
+def _send(
+    client: TestClient,
+    entry: MatrixEntry,
+    actor: Actor,
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn,
+    omit: CsrfCheck | None = None,
+) -> Response:
+    """Send ``entry``'s request as ``actor``.
+
+    With ``Origin`` (unless ``omit="no-origin"``) and, for a signed-in actor
+    on an unsafe method, the session's ``X-CSRF-Token`` (unless
+    ``omit="no-token"``).
+    """
+    app = client.app
+    assert isinstance(app, FastAPI)
+    method = str(entry.method)
+    headers: dict[str, str] = {}
+    csrf_token: str | None = None
+    overrides = app.dependency_overrides
+    previous = overrides.pop(get_current_session, None)
+    if actor != ANONYMOUS:
+        if sign_in == "login":
+            signed_in = login_session(client, users[actor].username)
+            headers["Cookie"] = signed_in.cookie
+            csrf_token = signed_in.csrf_token
+        else:
+            resolved = ResolvedSession(users[actor].principal, OVERRIDE_SESSION_TOKEN)
+            overrides[get_current_session] = lambda: resolved
+            csrf_token = csrf_token_for(OVERRIDE_SESSION_TOKEN)
+    if omit != "no-origin":
+        headers.update(ORIGIN_HEADER)
+    if csrf_token is not None and method in UNSAFE_METHODS and omit != "no-token":
+        headers[CSRF_HEADER] = csrf_token
+    try:
+        client.cookies.clear()
+        request = client.build_request(
+            method, request_path(app, entry), json=entry.json, headers=headers
+        )
+        if omit == "no-origin" and "origin" in request.headers:
+            del request.headers["origin"]
+        return client.send(request)
+    finally:
+        client.cookies.clear()
+        overrides.pop(get_current_session, None)
+        if previous is not None:
+            overrides[get_current_session] = previous
 
 
 def run_case(
@@ -485,38 +583,9 @@ def run_case(
 
     ``sign_in="login"``: a fresh login per case (cookie sent by hand).
     ``sign_in="override"``: the actor's principal replaces
-    :func:`get_current_principal` for this request.
+    :func:`~app.core.authz.get_current_session` for this request.
     """
-    app = client.app
-    assert isinstance(app, FastAPI)
-    if sign_in == "login":
-        headers = {}
-        if case.actor != ANONYMOUS:
-            headers["Cookie"] = login_cookie(client, users[case.actor].username)
-        client.cookies.clear()
-        response = client.request(
-            str(case.entry.method),
-            request_path(app, case.entry),
-            json=case.entry.json,
-            headers=headers,
-        )
-        client.cookies.clear()
-        return check_response(case, response)
-    overrides = app.dependency_overrides
-    previous = overrides.pop(get_current_principal, None)
-    if case.actor != ANONYMOUS:
-        principal = users[case.actor].principal
-        overrides[get_current_principal] = lambda: principal
-    try:
-        response = client.request(
-            str(case.entry.method),
-            request_path(app, case.entry),
-            json=case.entry.json,
-        )
-    finally:
-        overrides.pop(get_current_principal, None)
-        if previous is not None:
-            overrides[get_current_principal] = previous
+    response = _send(client, case.entry, case.actor, users, sign_in=sign_in)
     return check_response(case, response)
 
 
@@ -531,6 +600,100 @@ def run_cases(
         problem
         for case in cases
         for problem in run_case(client, case, users, sign_in=sign_in)
+    ]
+
+
+# --- CSRF cases (#24 F2) -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CsrfCase:
+    """One unsafe entry sent without ``Origin`` or without the CSRF token."""
+
+    entry: MatrixEntry
+    check: CsrfCheck
+    actor: Actor
+
+    @property
+    def id(self) -> str:
+        return f"{self.entry.label} csrf:{self.check}"
+
+    @property
+    def expects_csrf_failed(self) -> bool:
+        return self.check == "no-origin" or self.entry.access != "public"
+
+
+def _allowed_actor(
+    entry: MatrixEntry,
+    role_codes: tuple[str, ...],
+    delegable: Collection[str],
+) -> Actor:
+    if entry.access == "public":
+        return ANONYMOUS
+    if entry.access == "permission":
+        allowed = [role for role in role_codes if role in entry.allowed_roles]
+        if allowed:
+            return Actor(allowed[0])
+        if entry.permission in delegable:
+            return Actor(ADMINISTRATOR, delegation=entry.permission)
+    return Actor(role_codes[0])
+
+
+def csrf_cases(
+    entries: Iterable[MatrixEntry],
+    *,
+    role_codes: Iterable[str] = ROLE_CODES,
+    delegable: Collection[str] = DELEGABLE_PERMISSIONS,
+) -> list[CsrfCase]:
+    """``csrf:no-origin`` and ``csrf:no-token`` for every unsafe entry."""
+    role_codes = tuple(role_codes)
+    checks: tuple[CsrfCheck, ...] = ("no-origin", "no-token")
+    return [
+        CsrfCase(entry, check, _allowed_actor(entry, role_codes, delegable))
+        for entry in entries
+        if entry.method in UNSAFE_METHODS
+        for check in checks
+    ]
+
+
+def check_csrf_response(case: CsrfCase, response: Response) -> list[str]:
+    status, code = response.status_code, _problem_code(response)
+    got = f"got {status} {code}" if code else f"got {status}"
+    if case.expects_csrf_failed:
+        if (status, code) != (403, "csrf_failed"):
+            return [f"{case.id}: expected 403 csrf_failed, {got}"]
+        if response.headers.get("content-type") != PROBLEM_JSON:
+            return [f"{case.id}: 403 is not {PROBLEM_JSON}"]
+        return []
+    if status == 403:
+        return [f"{case.id}: expected no CSRF token check, {got}"]
+    return []
+
+
+def run_csrf_case(
+    client: TestClient,
+    case: CsrfCase,
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    response = _send(
+        client, case.entry, case.actor, users, sign_in=sign_in, omit=case.check
+    )
+    return check_csrf_response(case, response)
+
+
+def run_csrf_cases(
+    client: TestClient,
+    cases: Iterable[CsrfCase],
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    return [
+        problem
+        for case in cases
+        for problem in run_csrf_case(client, case, users, sign_in=sign_in)
     ]
 
 

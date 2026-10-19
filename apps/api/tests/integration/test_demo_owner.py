@@ -8,6 +8,7 @@ from alembic import command
 
 from app.cli import main as cli_main
 from app.modules.identity.passwords import needs_rehash, verify_password
+from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import GeneratorSkipped
 from tests.factories.identity import (
@@ -42,6 +43,7 @@ def migrated_url(fresh_database_url: str) -> str:
 def env_for(monkeypatch):
     def _set(app_env: str, dsn: str) -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", dsn)
         monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
 

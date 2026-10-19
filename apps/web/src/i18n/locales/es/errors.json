@@ -10,6 +10,7 @@
   "authentication_required": "Inicia sesión para continuar.",
   "permission_denied": "No tienes permiso para realizar esta acción.",
   "invalid_credentials": "El usuario o la contraseña no son correctos.",
+  "csrf_failed": "No pudimos verificar la solicitud. Recarga la página e inténtalo de nuevo.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",
