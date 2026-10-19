@@ -2,9 +2,9 @@ import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
 import type { RoleCode } from '@/features/auth/session';
 
-// The user administration calls (#31). The list and the detail are queries;
-// the profile change and the state changes are direct calls whose answer
-// (the updated detail) replaces the detail in the cache.
+// The user administration calls (#31, #170). The list and the detail are
+// queries; the profile, state, role and delegation changes are direct calls
+// whose answer (the updated detail) replaces the detail in the cache.
 
 export type UserListItem = components['schemas']['UserListItem'];
 export type UserListPage = components['schemas']['OffsetPage_UserListItem_'];
@@ -12,6 +12,16 @@ export type UserDetail = components['schemas']['UserDetail'];
 export type UserState = components['schemas']['UserState'];
 export type UserUpdate = components['schemas']['UserUpdate'];
 export type StateAction = 'suspend' | 'archive' | 'reactivate';
+export type DelegablePermission =
+  components['schemas']['DelegablePermissionCode'];
+
+/** The four delegable permissions, in the API's order (sorted). */
+export const DELEGABLE_PERMISSIONS: readonly DelegablePermission[] = [
+  'finance.refund.approve',
+  'payroll.finalize',
+  'schedule.override',
+  'user.admin_role.assign',
+];
 
 export const USER_STATES: readonly UserState[] = [
   'pending',
@@ -114,4 +124,36 @@ export function changeUserState(
         return api.POST('/api/v1/users/{user_id}/reactivate', init);
     }
   });
+}
+
+/**
+ * PUT the complete set of roles with the loaded `version` (#170 A). Needs a
+ * recent reauthentication, so apiCall opens the password dialog and retries
+ * once.
+ */
+export function updateUserRoles(
+  userId: string,
+  roles: RoleCode[],
+  version: number,
+): Promise<UserDetail> {
+  return apiCall(() =>
+    api.PUT('/api/v1/users/{user_id}/roles', {
+      params: { path: { user_id: userId } },
+      body: { roles, version },
+    }),
+  );
+}
+
+/** PUT the complete set of delegated permissions (#170 C), as above. */
+export function updateUserDelegations(
+  userId: string,
+  permissions: DelegablePermission[],
+  version: number,
+): Promise<UserDetail> {
+  return apiCall(() =>
+    api.PUT('/api/v1/users/{user_id}/delegations', {
+      params: { path: { user_id: userId } },
+      body: { permissions, version },
+    }),
+  );
 }

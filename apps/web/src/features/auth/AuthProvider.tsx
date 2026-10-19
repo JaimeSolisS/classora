@@ -14,6 +14,7 @@ import {
 } from '@/app/api';
 import { resetUiStore } from '@/stores/ui';
 import { clearCsrfToken } from './csrf';
+import type { LoginNoticeState } from './loginNotice';
 import { ReauthDialog } from './ReauthDialog';
 import {
   acceptSessionUser,
@@ -105,6 +106,28 @@ function createAuthController({
     void navigate('/', { replace: true });
   }
 
+  /**
+   * Clears the token, every cached query and mutation and the UI store, then
+   * goes to /login (with `notice` in the router state). Later 401s from
+   * requests still in flight are ignored (`ending`).
+   */
+  function signOutLocally(notice?: LoginNoticeState): void {
+    ending = true;
+    clearCsrfToken();
+    finishReauth(false);
+    // The guard also redirects to /login, with the same notice.
+    replaceSession(
+      notice
+        ? { user: null, reason: 'signed_out', notice }
+        : { user: null, reason: 'signed_out' },
+    );
+    resetUiStore();
+    void navigate(
+      '/login',
+      notice ? { replace: true, state: notice } : { replace: true },
+    );
+  }
+
   const handler: AuthHandler = {
     sessionEnded(error) {
       endSession(
@@ -190,13 +213,11 @@ function createAuthController({
           throw error;
         }
       }
-      ending = true;
-      clearCsrfToken();
-      finishReauth(false);
-      replaceSession({ user: null, reason: 'signed_out' });
-      resetUiStore();
-      void navigate('/login', { replace: true });
+      signOutLocally();
     },
+
+    /** The local steps of signOut (#28 E2), then /login with `notice`. */
+    signOutLocally,
 
     confirmReauth: async (password: string): Promise<void> => {
       // A direct call: the password never enters the mutation cache. A 401
@@ -221,11 +242,15 @@ function toSession(query: {
   isError: boolean;
 }): Session {
   if (query.data) {
-    return query.data.user
-      ? { status: 'signedIn', user: query.data.user }
-      : query.data.reason
-        ? { status: 'signedOut', reason: query.data.reason }
-        : { status: 'signedOut' };
+    const data = query.data;
+    if (data.user) {
+      return { status: 'signedIn', user: data.user };
+    }
+    return {
+      status: 'signedOut',
+      ...(data.reason ? { reason: data.reason } : {}),
+      ...(data.notice ? { notice: data.notice } : {}),
+    };
   }
   if (query.isError) {
     return { status: 'error', error: query.error };
@@ -271,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetchSession: () => void refetch(),
     signIn: controller.signIn,
     signOut: controller.signOut,
+    signOutLocally: controller.signOutLocally,
   };
 
   return (

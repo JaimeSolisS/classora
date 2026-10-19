@@ -58,12 +58,15 @@ const ITEM: UserListItem = {
   created_at: '2026-10-01T15:00:00Z',
 };
 
-const ALL_ACTIONS = {
+const ALL_ACTIONS: UserDetail['allowed_actions'] = {
   edit: true,
   suspend: true,
   archive: true,
   reactivate: false,
   reset_password: true,
+  // The #170 sections are off here; roles.test.tsx covers them.
+  assignable_roles: [],
+  manage_delegations: false,
 };
 
 const TUTOR: UserDetail = {
@@ -448,6 +451,8 @@ describe('buttons follow allowed_actions (K7)', () => {
       archive: false,
       reactivate: false,
       reset_password: false,
+      assignable_roles: [],
+      manage_delegations: false,
     };
     stub(OWNER, {
       [DETAIL]: [
@@ -484,6 +489,8 @@ describe('buttons follow allowed_actions (K7)', () => {
             archive: false,
             reactivate: false,
             reset_password: false,
+            assignable_roles: [],
+            manage_delegations: false,
           },
         }),
     });
@@ -507,6 +514,8 @@ describe('buttons follow allowed_actions (K7)', () => {
             archive: false,
             reactivate: false,
             reset_password: false,
+            assignable_roles: [],
+            manage_delegations: false,
           },
         }),
     });

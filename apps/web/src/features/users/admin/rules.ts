@@ -1,16 +1,19 @@
 import type { RoleCode } from '@/features/auth/session';
 import { ROLE_ORDER } from '../roles';
 import {
+  DELEGABLE_PERMISSIONS,
   USER_STATES,
+  type DelegablePermission,
   type UserDetail,
   type UserListParams,
   type UserState,
   type UserUpdate,
 } from './api';
 
-// Pure helpers of the user administration pages (#31): the list's URL
-// parameters, the profile change body and the state-action checks. UX only:
-// the server computes `allowed_actions` and the routes decide.
+// Pure helpers of the user administration pages (#31, #170): the list's URL
+// parameters, the profile change body, the state-action checks and the role
+// and delegation sets. UX only: the server computes `allowed_actions` and the
+// routes decide.
 
 /** The API's limit on `q`. */
 export const SEARCH_MAX_LENGTH = 100;
@@ -66,4 +69,45 @@ export function isOpenInvitation(user: UserDetail): boolean {
 export function hasStateActions(user: UserDetail): boolean {
   const { suspend, archive, reactivate } = user.allowed_actions;
   return suspend || archive || reactivate;
+}
+
+/** `roles` in the catalog order (ROLE_ORDER), without duplicates. */
+export function orderedRoles(roles: Iterable<RoleCode>): RoleCode[] {
+  const held = new Set(roles);
+  return ROLE_ORDER.filter((role) => held.has(role));
+}
+
+/** `permissions` in the API's order, without duplicates. */
+export function orderedDelegations(
+  permissions: Iterable<DelegablePermission>,
+): DelegablePermission[] {
+  const held = new Set(permissions);
+  return DELEGABLE_PERMISSIONS.filter((code) => held.has(code));
+}
+
+/** Whether two sets of codes differ. */
+export function setsDiffer<T>(a: readonly T[], b: readonly T[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size !== right.size || [...left].some((code) => !right.has(code));
+}
+
+/** The `common` catalog prefix of a delegable permission (`delegations.*`). */
+export function delegationKey(
+  code: DelegablePermission,
+):
+  | 'delegations.finance_refund_approve'
+  | 'delegations.payroll_finalize'
+  | 'delegations.schedule_override'
+  | 'delegations.user_admin_role_assign' {
+  switch (code) {
+    case 'finance.refund.approve':
+      return 'delegations.finance_refund_approve';
+    case 'payroll.finalize':
+      return 'delegations.payroll_finalize';
+    case 'schedule.override':
+      return 'delegations.schedule_override';
+    case 'user.admin_role.assign':
+      return 'delegations.user_admin_role_assign';
+  }
 }

@@ -8,6 +8,9 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { loginNoticeState } from '@/features/auth/loginNotice';
+import type { RoleCode } from '@/features/auth/session';
+import { useAuth } from '@/features/auth/useSession';
 import {
   issuePasswordReset,
   type PasswordResetIssued,
@@ -19,23 +22,31 @@ import {
   changeUserState,
   fetchUser,
   updateUser,
+  updateUserDelegations,
+  updateUserRoles,
   userDetailKey,
   USERS_LIST_QUERY_KEY,
+  type DelegablePermission,
   type StateAction,
   type UserDetail,
   type UserUpdate,
 } from './api';
+import { DelegationsEditor } from './DelegationsEditor';
 import { ProfileForm, ProfileReadOnly } from './ProfileForm';
+import { RolesEditor } from './RolesEditor';
 import { hasStateActions } from './rules';
 import { StateBadge } from './StateBadge';
 
-// /users/:userId (#31 K): the account of one user. The header shows the
-// name, username, state and roles (read-only; #170 makes roles editable).
-// Each section appears only when the server's `allowed_actions` allow it: the
-// profile form (else the profile as text), the account status buttons, and
-// "Create password reset link" (the #30 route; the link lives only in this
-// page's state and is never cached). A successful change replaces the cached
-// detail with the response and refreshes the list.
+// /users/:userId (#31 K, #170 G): the account of one user. The header shows
+// the name, username, state and current roles. Each section appears only
+// when the server's `allowed_actions` allow it: the profile form (else the
+// profile as text), the roles editor (`assignable_roles` not empty), the
+// delegated permissions (only for an Administrator; editable with
+// `manage_delegations`), the account status buttons, and "Create password
+// reset link" (the #30 route; the link lives only in this page's state and is
+// never cached). A successful change replaces the cached detail with the
+// response and refreshes the list. Changing your own roles ends your session
+// on the server, so the app signs out locally and goes to /login (G4).
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -44,6 +55,7 @@ export function UserDetailPage() {
   const { t } = useTranslation();
   const { userId = '' } = useParams();
   const queryClient = useQueryClient();
+  const { session, signOutLocally } = useAuth();
   const key = userDetailKey(userId);
   const detail = useQuery({
     queryKey: key,
@@ -66,6 +78,36 @@ export function UserDetailPage() {
       return;
     }
     store(await changeUserState(userId, action, current.version));
+  }
+
+  function loadedVersion(): number | null {
+    return queryClient.getQueryData<UserDetail>(key)?.version ?? null;
+  }
+
+  async function saveRoles(roles: RoleCode[]) {
+    const version = loadedVersion();
+    if (version === null) {
+      return;
+    }
+    const updated = await updateUserRoles(userId, roles, version);
+    if (
+      session.status === 'signedIn' &&
+      updated.id === session.user.id &&
+      updated.username === session.user.username
+    ) {
+      // The server revoked every session of ours (#25): no /auth/logout.
+      signOutLocally(loginNoticeState('roles_changed', updated.username));
+      return;
+    }
+    store(updated);
+  }
+
+  async function saveDelegations(permissions: DelegablePermission[]) {
+    const version = loadedVersion();
+    if (version === null) {
+      return;
+    }
+    store(await updateUserDelegations(userId, permissions, version));
   }
 
   async function reload() {
@@ -98,7 +140,10 @@ export function UserDetailPage() {
   return (
     <UserDetailView
       user={user}
+      ownRecord={session.status === 'signedIn' && session.user.id === user.id}
       onSaveProfile={saveProfile}
+      onSaveRoles={saveRoles}
+      onSaveDelegations={saveDelegations}
       onChangeState={changeState}
       onReload={reload}
     />
@@ -107,7 +152,11 @@ export function UserDetailPage() {
 
 interface UserDetailViewProps {
   user: UserDetail;
+  /** The signed-in user's own record (#170 G4). */
+  ownRecord?: boolean;
   onSaveProfile: (body: UserUpdate) => Promise<void>;
+  onSaveRoles: (roles: RoleCode[]) => Promise<void>;
+  onSaveDelegations: (permissions: DelegablePermission[]) => Promise<void>;
   onChangeState: (action: StateAction) => Promise<void>;
   onReload: () => Promise<void>;
   /** Issues a reset link (default: the #30 route through apiCall). */
@@ -117,7 +166,10 @@ interface UserDetailViewProps {
 /** The detail page's content, without any query (stories use it). */
 export function UserDetailView({
   user,
+  ownRecord = false,
   onSaveProfile,
+  onSaveRoles,
+  onSaveDelegations,
   onChangeState,
   onReload,
   onIssueReset = issuePasswordReset,
@@ -161,6 +213,21 @@ export function UserDetailView({
       ) : (
         <ProfileReadOnly user={user} />
       )}
+      {user.allowed_actions.assignable_roles.length > 0 ? (
+        <RolesEditor
+          user={user}
+          ownRecord={ownRecord}
+          onSave={onSaveRoles}
+          onReload={onReload}
+        />
+      ) : null}
+      {user.roles.includes('administrator') ? (
+        <DelegationsEditor
+          user={user}
+          onSave={onSaveDelegations}
+          onReload={onReload}
+        />
+      ) : null}
       {hasStateActions(user) ? (
         <AccountStatus
           user={user}

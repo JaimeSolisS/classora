@@ -18,6 +18,7 @@ export function StoryAuth({
         refetchSession: () => {},
         signIn: () => {},
         signOut: () => new Promise<void>(() => {}),
+        signOutLocally: () => {},
       }}
     >
       {children}

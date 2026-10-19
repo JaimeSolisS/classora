@@ -14,7 +14,8 @@ import { useAuth } from '@/features/auth/useSession';
  * a route may also require a permission with `handle: { permission }`.
  *
  * - loading: the session loading state (never the page, never a redirect);
- * - signed out: to /login?next=<this page> (just /login after "Sign out");
+ * - signed out: to /login?next=<this page> (just /login after "Sign out",
+ *   with the session's login notice in the router state, #170 G4);
  * - error: the error with "Try again" (no redirect);
  * - a required permission the user lacks: ForbiddenPage at the same URL;
  * - otherwise the page.
@@ -34,6 +35,7 @@ export function RouteGuard() {
         <Navigate
           replace
           to={session.reason === 'signed_out' ? '/login' : loginPath(location)}
+          state={session.notice}
         />
       );
     case 'signedIn': {
