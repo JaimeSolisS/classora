@@ -38,6 +38,7 @@ from app.core.ratelimit import RATE_LIMIT_RESPONSES, rate_limit
 from app.core.reauth import REAUTH_RESPONSES, RecentAuthGuard, recent_auth_guard
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import invitations
+from app.modules.identity.errors import STUDENT_LOGIN_GATE_DOC
 from app.modules.identity.permissions import USER_INVITE
 from app.modules.identity.schemas import (
     InvitationCreate,
@@ -169,6 +170,7 @@ async def lookup_invitation(
     responses={
         **CSRF_RESPONSES,
         **TOKEN_INVALID_RESPONSE,
+        409: problem_response_doc(STUDENT_LOGIN_GATE_DOC + " The link still works."),
         422: problem_response_doc(
             "The body is not valid (validation_error) or the password breaks"
             " the policy (password_too_short, password_too_long,"

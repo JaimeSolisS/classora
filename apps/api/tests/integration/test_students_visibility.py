@@ -267,7 +267,9 @@ def principal(*roles: str) -> Principal:
 def test_an_empty_visible_set_returns_an_empty_page_without_more_sql(
     module_seeded_url, students, roles
 ):
-    # A guardian's links are one statement (#34 F2); nothing else is sent.
+    # A guardian's links are one statement (#34 F2, with the academic consents
+    # in the same one, #35 F1), a student's own profile one more (#35 F1);
+    # nothing else is sent.
     statements, page = count_statements(
         module_seeded_url,
         lambda session: service.list_students(
@@ -281,5 +283,5 @@ def test_an_empty_visible_set_returns_an_empty_page_without_more_sql(
         ),
     )
 
-    assert statements == (1 if GUARDIAN in roles else 0)
+    assert statements == (GUARDIAN in roles) + (STUDENT in roles)
     assert (page.items, page.total) == ([], 0)

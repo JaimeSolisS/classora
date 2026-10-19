@@ -713,6 +713,16 @@
               }
             }
           },
+          "409": {
+            "description": "The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. The link still works.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1315,7 +1325,7 @@
             }
           },
           "409": {
-            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided).",
+            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1399,7 +1409,7 @@
             }
           },
           "409": {
-            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided).",
+            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1785,7 +1795,7 @@
             }
           },
           "409": {
-            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1879,7 +1889,7 @@
             }
           },
           "409": {
-            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1973,7 +1983,7 @@
             }
           },
           "409": {
-            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2067,7 +2077,7 @@
             }
           },
           "409": {
-            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes.",
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes. Adding student to an active account: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4546,6 +4556,360 @@
           }
         }
       }
+    },
+    "/api/v1/students/{student_id}/account": {
+      "put": {
+        "tags": [
+          "consents"
+        ],
+        "summary": "Set Student Account",
+        "description": "Link a login account to the student profile (the account then sees\nonly this profile while it holds the student role), or unlink it with\n``null``. A minor's account can be active only with a guardian's\nconsent.",
+        "operationId": "set_student_account_api_v1_students__student_id__account_put",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentAccountUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not visible to the caller (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The student changed since it was loaded (version_conflict); the account is linked to another student (student_account_in_use); or the account is active with the student role and the student is a minor without a valid consent from a linked, active guardian (guardian_consent_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/consents": {
+      "get": {
+        "tags": [
+          "consents"
+        ],
+        "summary": "Get Consents",
+        "description": "The student's consents the caller may see, the guardians they may name\nand the scopes they may record now.",
+        "operationId": "get_consents_api_v1_students__student_id__consents_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not visible to the caller (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "consents"
+        ],
+        "summary": "Record Consent",
+        "description": "Record a consent, stamped with the current privacy-notice version.\nStaff record paper or in-person consents; a guardian allows a minor's\nlogin in the app; an adult student shares academic records with one\nguardian in the app.",
+        "operationId": "record_consent_api_v1_students__student_id__consents_post",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRecordItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not visible to the caller (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An active consent for this guardian and scope already exists (consent_already_given).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/consents/{consent_id}/revoke": {
+      "post": {
+        "tags": [
+          "consents"
+        ],
+        "summary": "Revoke Consent",
+        "description": "Revoke a consent. When it was a minor's last valid login consent, the\nstudent's login is suspended in the same transaction and its sessions\nend.",
+        "operationId": "revoke_consent_api_v1_students__student_id__consents__consent_id__revoke_post",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "consent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Consent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRevocation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student or consent, or not visible to the caller (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The consent was already revoked (consent_already_revoked).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4677,6 +5041,253 @@
           "active",
           "inactive",
           "all"
+        ]
+      },
+      "ConsentCreate": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConsentScope",
+            "description": "student_login (a guardian allows a minor's login) or guardian_academic_access (an adult student shares academic records with this guardian)."
+          },
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id",
+            "description": "For student_login, the guardian who consents; for guardian_academic_access, the guardian who receives access. An active guardian linked to the student."
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConsentMethod",
+            "description": "Staff: paper or in_person. A guardian or a student: in_app."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scope",
+          "guardian_id",
+          "method"
+        ],
+        "title": "ConsentCreate",
+        "description": "A consent (``POST /api/v1/students/{student_id}/consents``)."
+      },
+      "ConsentGuardianOption": {
+        "properties": {
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/GuardianRelationship"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "guardian_id",
+          "given_names",
+          "family_names",
+          "relationship",
+          "is_active"
+        ],
+        "title": "ConsentGuardianOption",
+        "description": "A linked guardian the viewer may name in a consent."
+      },
+      "ConsentMethod": {
+        "type": "string",
+        "enum": [
+          "in_app",
+          "paper",
+          "in_person"
+        ]
+      },
+      "ConsentOverview": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor"
+          },
+          "login_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked login's state, or null when none is linked."
+          },
+          "current_notice_version": {
+            "type": "integer",
+            "title": "Current Notice Version",
+            "description": "The privacy-notice version a new consent records."
+          },
+          "guardians": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentGuardianOption"
+            },
+            "type": "array",
+            "title": "Guardians",
+            "description": "Staff: every linked guardian; a guardian: themselves; a student: their own linked guardians."
+          },
+          "consents": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentRecordItem"
+            },
+            "type": "array",
+            "title": "Consents",
+            "description": "Active records first, then by granted_at, newest first."
+          },
+          "can_record": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentScope"
+            },
+            "type": "array",
+            "title": "Can Record",
+            "description": "The scopes the viewer may record now (by role and age)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_id",
+          "is_minor",
+          "login_state",
+          "current_notice_version",
+          "guardians",
+          "consents",
+          "can_record"
+        ],
+        "title": "ConsentOverview",
+        "description": "A student's consents as the viewer may see them (``GET\n/api/v1/students/{student_id}/consents``)."
+      },
+      "ConsentRecordItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConsentScope"
+          },
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id"
+          },
+          "guardian_given_names": {
+            "type": "string",
+            "title": "Guardian Given Names"
+          },
+          "guardian_family_names": {
+            "type": "string",
+            "title": "Guardian Family Names"
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConsentMethod"
+          },
+          "notice_version": {
+            "type": "integer",
+            "title": "Notice Version",
+            "description": "The privacy-notice version current when it was given."
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Granted At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "revocation_cause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevocationCause"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_revoke": {
+            "type": "boolean",
+            "title": "Can Revoke",
+            "description": "The viewer may revoke it now."
+          },
+          "suspends_login_on_revoke": {
+            "type": "boolean",
+            "title": "Suspends Login On Revoke",
+            "description": "Revoking it would suspend the student's login (the last valid student_login consent of a minor with an active login)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scope",
+          "guardian_id",
+          "guardian_given_names",
+          "guardian_family_names",
+          "method",
+          "notice_version",
+          "granted_at",
+          "revoked_at",
+          "revocation_cause",
+          "can_revoke",
+          "suspends_login_on_revoke"
+        ],
+        "title": "ConsentRecordItem",
+        "description": "One consent record as the viewer sees it."
+      },
+      "ConsentRevocation": {
+        "properties": {
+          "consent": {
+            "$ref": "#/components/schemas/ConsentRecordItem"
+          },
+          "student_login_suspended": {
+            "type": "boolean",
+            "title": "Student Login Suspended",
+            "description": "The revocation suspended the student's login."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent",
+          "student_login_suspended"
+        ],
+        "title": "ConsentRevocation",
+        "description": "The revoked record (``POST …/consents/{consent_id}/revoke``)."
+      },
+      "ConsentScope": {
+        "type": "string",
+        "enum": [
+          "student_login",
+          "guardian_academic_access"
         ]
       },
       "CursorPage_AuditEventListItem_": {
@@ -6609,6 +7220,13 @@
         "title": "RegistrationSubmitted",
         "description": "The answer to a registration request (``202``). Holds no id."
       },
+      "RevocationCause": {
+        "type": "string",
+        "enum": [
+          "revoked",
+          "guardian_unlinked"
+        ]
+      },
       "RoleCode": {
         "type": "string",
         "enum": [
@@ -6677,6 +7295,36 @@
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login`` and ``GET /auth/me``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
+      },
+      "StudentAccountUpdate": {
+        "properties": {
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "An account that isn't archived and isn't linked to another student, or null to unlink."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "version"
+        ],
+        "title": "StudentAccountUpdate",
+        "description": "Link a login account to the profile, or ``null`` to unlink it (``PUT\n/api/v1/students/{student_id}/account``), with the ``version`` the caller\nloaded."
       },
       "StudentCreate": {
         "properties": {
@@ -6876,6 +7524,17 @@
             ],
             "description": "The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it. Shown only to viewers with a staff role and guardian.view."
           },
+          "login": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudentLogin"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked login account (#35); null when none is linked or the viewer doesn't hold family.manage."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -6905,6 +7564,7 @@
           "personal",
           "guardians",
           "family",
+          "login",
           "version",
           "created_at",
           "updated_at"
@@ -7043,6 +7703,35 @@
         ],
         "title": "StudentListItem",
         "description": "One student in the list. No birthdate or contact data (spec §16)."
+      },
+      "StudentLogin": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "state"
+        ],
+        "title": "StudentLogin",
+        "description": "The student's login account, shown only to ``family.manage`` holders\n(#35 C3)."
       },
       "StudentPersonal": {
         "properties": {

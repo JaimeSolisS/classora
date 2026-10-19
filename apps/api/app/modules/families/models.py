@@ -31,6 +31,13 @@ creates (``unaccent()`` itself is only ``STABLE``).
   edited (to change the relationship, unlink and link again). A link never
   changes either profile's ``version``.
 
+- ``students.user_id`` (#35): the student's optional login account
+  (unique; ``ON DELETE RESTRICT``). The account sees only this profile while
+  it holds ``student``; a minor's account is ``active`` only with a valid
+  guardian consent (ADR-0007 D18).
+- ``consent_records`` (#35): :class:`ConsentRecord`, the ``student_login``
+  and ``guardian_academic_access`` consents (D17, D18).
+
 - ``families`` (#172): a named family grouping (spec §2 "family account
   with multiple children"), which M6-05 attaches a billing account to.
   Versioned; deactivated, never deleted. Names aren't unique.
@@ -49,13 +56,14 @@ covers its contacts too (any contact change increments it).
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Final
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     SmallInteger,
@@ -70,7 +78,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
-from app.modules.families.constants import GUARDIAN_RELATIONSHIPS
+from app.modules.families.constants import (
+    CONSENT_METHODS,
+    CONSENT_SCOPES,
+    GUARDIAN_RELATIONSHIPS,
+    REVOCATION_CAUSES,
+)
 
 NAME_MAX_LENGTH: Final = 100
 EMAIL_MAX_LENGTH: Final = 254
@@ -112,6 +125,21 @@ LINK_UNIQUE: Final = "uq_student_guardians_student_guardian"
 constraint is ``409 guardian_already_linked``."""
 
 
+STUDENT_USER_UNIQUE: Final = "uq_students_user_id"
+"""One login per student profile and one profile per login (#35 A2); a
+violation of exactly this constraint is ``409 student_account_in_use``."""
+CONSENT_ACTIVE_UNIQUE: Final = "uq_consent_records_active"
+"""One active consent per student, guardian and scope (#35 A3, a partial
+unique index); a violation of exactly it is ``409 consent_already_given``."""
+
+
+def _one_of(column: str, codes: tuple[str, ...]) -> CheckConstraint:
+    return CheckConstraint(
+        "{} IN ({})".format(column, ", ".join(f"'{code}'" for code in codes)),
+        name=f"{column}_valid",
+    )
+
+
 FAMILY_NAME_MAX_LENGTH: Final = 200
 FAMILY_SEARCH_INDEX: Final = "ix_families_search_name_trgm"
 FAMILY_INDEX_EXPRESSION: Final = "f_unaccent(lower(name::text))"
@@ -144,6 +172,7 @@ class Student(Audited, VersionedMixin, Model):
         CheckConstraint(f"phone ~ '{PHONE_PATTERN}'", name="phone_format"),
         _trimmed("school_name"),
         _trimmed("school_grade"),
+        UniqueConstraint("user_id", name=STUDENT_USER_UNIQUE),
         Index(
             SEARCH_INDEX,
             literal_column(INDEX_EXPRESSION).label("search_name"),
@@ -172,6 +201,12 @@ class Student(Audited, VersionedMixin, Model):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """The student's login account (#35), or ``None``."""
 
 
 class StudentEmergencyContact(Audited, Model):
@@ -319,3 +354,63 @@ class FamilyGuardian(Audited, Model):
     guardian_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="RESTRICT")
     )
+
+
+class ConsentRecord(Audited, Model):
+    """A consent for a student and a guardian profile (#35 A3; ADR-0007 D17,
+    D18). Created, later revoked, never edited otherwise and never deleted:
+    the revocation columns are the history. Not versioned."""
+
+    __tablename__ = "consent_records"
+    __table_args__ = (
+        _one_of("scope", CONSENT_SCOPES),
+        _one_of("method", CONSENT_METHODS),
+        _one_of("revocation_cause", REVOCATION_CAUSES),
+        CheckConstraint(
+            "(revoked_at IS NULL AND revoked_by_user_id IS NULL"
+            " AND revocation_cause IS NULL)"
+            " OR (revoked_at IS NOT NULL AND revoked_by_user_id IS NOT NULL"
+            " AND revocation_cause IS NOT NULL)",
+            name="revocation_complete",
+        ),
+        Index(
+            CONSENT_ACTIVE_UNIQUE,
+            "student_id",
+            "guardian_id",
+            "scope",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("students.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    guardian_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="RESTRICT")
+    )
+    scope: Mapped[str] = mapped_column(Text)
+    method: Mapped[str] = mapped_column(Text)
+    notice_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        # Named explicitly: the convention's name would pass PostgreSQL's
+        # 63-character limit.
+        ForeignKey(
+            "privacy_notice_versions.id",
+            ondelete="RESTRICT",
+            name="fk_consent_records_notice_version_id",
+        ),
+    )
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recorded_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    revocation_cause: Mapped[str | None] = mapped_column(Text, nullable=True)

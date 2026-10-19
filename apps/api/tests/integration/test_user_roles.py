@@ -25,6 +25,7 @@ from app.modules.identity.permissions import (
 from tests.factories.identity import TEST_USER_PASSWORD
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
 from tests.integration.conftest import run_sql
+from tests.integration.consent_support import adult_profile_for
 from tests.integration.invitation_support import reauthenticate, sign_in
 from tests.integration.lifecycle_support import (
     code_of,
@@ -179,6 +180,9 @@ def test_an_administrator_adds_and_removes_the_other_roles(
     admin = create_user(module_seeded_url, roles=(ADMINISTRATOR,))
     base = GUARDIAN if role != GUARDIAN else TUTOR
     person = create_user(module_seeded_url, roles=(base,))
+    if role == STUDENT:
+        # An active student needs a linked profile (#35 H5): an adult's.
+        adult_profile_for(module_seeded_url, person.id)
     cookie = staff(client, admin.username)
 
     added = change(client, cookie, module_seeded_url, person.id, [base, role])
@@ -413,6 +417,7 @@ def test_concurrent_changes_with_one_version_give_one_200_and_one_409(
     module_seeded_url, client, clock, owner
 ):
     person = create_user(module_seeded_url, roles=(TUTOR,))
+    adult_profile_for(module_seeded_url, person.id)  # adding student (#35 H5)
     cookie = staff(client, owner.username)
     results: list[tuple[int, str | None]] = []
     start = threading.Barrier(2)

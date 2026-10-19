@@ -35,6 +35,8 @@ from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as administration_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.families import service as families_service
+from app.modules.families.consent_router import router as consent_router
 from app.modules.families.groupings_router import router as groupings_router
 from app.modules.families.guardians_router import router as guardians_router
 from app.modules.families.router import router as families_router
@@ -45,7 +47,10 @@ from app.modules.identity.registrations_router import (
     router as registrations_router,
 )
 from app.modules.identity.router import router as identity_router
-from app.modules.identity.service import resolve_session_principal
+from app.modules.identity.service import (
+    register_student_login_gate,
+    resolve_session_principal,
+)
 from app.modules.identity.user_admin_router import router as user_admin_router
 
 
@@ -81,7 +86,9 @@ def build_app(
     """The app without settings validation: metadata, conventions, routers.
 
     Registers the identity module's session resolver, so
-    ``get_current_principal`` resolves the session cookie (#23), and installs
+    ``get_current_principal`` resolves the session cookie (#23), and the
+    families student-login gate (#35 B1; activating a student fails closed
+    without it), and installs
     the ``Origin`` check on every unsafe request as an app-level dependency, so
     it runs before authentication (#24).
     ``include_dev_routes`` mounts the local/DEV demo job route; the exported
@@ -96,6 +103,8 @@ def build_app(
     )
     install_conventions(app)
     register_principal_resolver(app, resolve_session_principal)
+    # The families consent check for every student activation (#35 B1).
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(invitations_router)
@@ -108,6 +117,7 @@ def build_app(
     app.include_router(families_router)
     app.include_router(guardians_router)
     app.include_router(groupings_router)
+    app.include_router(consent_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
     return app

@@ -426,6 +426,41 @@ allow = ["owner", "administrator", "academic_coordinator"]
 json = {}
 
 [[route]]
+method = "PUT"
+path = "/api/v1/students/{student_id}/account"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is linked.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/consents"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# The placeholder id is no student: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# A valid body for the placeholder id, which is no student: 404 for every
+# allowed role (nothing is recorded).
+json = { scope = "student_login", guardian_id = "00000000-0000-4000-8000-000000000001", method = "paper" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents/{consent_id}/revoke"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# The placeholder ids are no student or consent: 404 for the allowed roles.
+
+[[route]]
 method = "POST"
 path = "/api/v1/students/{student_id}/guardians"
 access = "permission"

@@ -34,6 +34,16 @@
   is none, changing nothing. The guard lives only here, so every caller gets
   it: #169 registration approval and rejection, the #31 user-state routes,
   #170 role changes and #35 consent revocation. Routes never repeat it.
+- **Student-login gate** (#35 B1; ADR-0007 D18, #29 E3): an account that holds
+  ``student`` becomes ``active`` (:func:`change_user_state`) or gets
+  ``student`` while ``active`` (:func:`add_user_role`) only when the
+  registered :class:`StudentLoginGate` allows it. ``identity`` can't import
+  ``families`` (ADR-0002, #34 H3), so ``families`` implements the gate and the
+  composition roots (the API app factory, the CLI and the worker) register it
+  with :func:`register_student_login_gate`. With none registered, activating
+  a student **fails closed** (:class:`StudentLoginGateMissingError`). Before
+  the gate runs, the user's row is locked (:func:`lock_user`), so every path
+  locks the user row before the student profile row.
 
 Every function runs in the caller's Unit of Work and never commits. Nothing
 here deletes a user: archived users keep their history (spec §2, §16).
@@ -43,7 +53,7 @@ import re
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Final, Literal
+from typing import Final, Literal, Protocol
 
 from fastapi import Request
 from sqlalchemy import func, literal_column, select
@@ -98,6 +108,7 @@ from app.modules.identity.permissions import (
     PENDING,
     ROLE_CODES,
     STAFF_ROLES,
+    STUDENT,
     SUSPENDED,
     USER_DELEGATION_MANAGE,
     USER_STATES,
@@ -109,6 +120,7 @@ from app.modules.identity.privacy import (
     accepted_current_notice,
     current_privacy_notice,
     has_accepted_current_privacy_notice,
+    privacy_notice_versions,
 )
 from app.modules.identity.schemas import AccountReference, PrivacyNotice
 
@@ -130,6 +142,8 @@ __all__ = [
     "PrivacyNotice",
     "PrivacyNoticeOutdatedError",
     "PrivacyNoticeUnavailableError",
+    "StudentLoginGate",
+    "StudentLoginGateMissingError",
     "UnknownRoleError",
     "AccountReference",
     "UsernameInvalidError",
@@ -145,9 +159,12 @@ __all__ = [
     "hash_password",
     "load_principal",
     "lock_owner_guard",
+    "lock_user",
     "may_assign_role",
     "needs_rehash",
     "normalize_username",
+    "privacy_notice_versions",
+    "register_student_login_gate",
     "remove_user_role",
     "resolve_permissions",
     "resolve_session_principal",
@@ -431,6 +448,64 @@ async def _ensure_another_active_owner(
         raise LastActiveOwnerError()
 
 
+# --- The student-login gate (#35 B1; ADR-0007 D18) ---------------------------------
+
+
+class StudentLoginGate(Protocol):
+    """Decides whether an account holding ``student`` may be ``active``.
+
+    ``ensure_login_allowed`` raises a Problem Details error (``409
+    student_profile_required`` or ``409 guardian_consent_required``) to refuse
+    and returns ``None`` to allow. It runs in the caller's Unit of Work, after
+    the user's row is locked, and never commits."""
+
+    async def ensure_login_allowed(
+        self, session: AsyncSession, *, user_id: uuid.UUID
+    ) -> None: ...
+
+
+class StudentLoginGateMissingError(RuntimeError):
+    """No :class:`StudentLoginGate` is registered: activating a student fails
+    closed (a ``500``) instead of skipping the consent check."""
+
+
+_student_login_gate: StudentLoginGate | None = None
+
+
+def register_student_login_gate(gate: StudentLoginGate | None) -> None:
+    """Register the gate for this process (``None`` unregisters it; tests
+    only). The API app factory, ``app.cli`` and ``app.worker`` register the
+    ``families`` implementation."""
+    global _student_login_gate
+    _student_login_gate = gate
+
+
+def registered_student_login_gate() -> StudentLoginGate | None:
+    """The registered gate, or ``None``."""
+    return _student_login_gate
+
+
+async def lock_user(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """Lock the user's row (``FOR UPDATE``) until the transaction ends.
+
+    The lock order of student logins (#35, the #170 lesson): the
+    last-active-Owner advisory lock (when needed), then the user row, then
+    the student profile row. Changes nothing in the session's identity map."""
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
+
+
+async def _ensure_student_login_allowed(
+    session: AsyncSession, user_id: uuid.UUID
+) -> None:
+    gate = _student_login_gate
+    if gate is None:
+        raise StudentLoginGateMissingError(
+            "No student-login gate is registered; refusing to activate a student."
+        )
+    await lock_user(session, user_id)
+    await gate.ensure_login_allowed(session, user_id=user_id)
+
+
 async def change_user_state(
     session: AsyncSession, *, user_id: uuid.UUID, new_state: str
 ) -> bool:
@@ -442,9 +517,12 @@ async def change_user_state(
     user raises :class:`~app.core.authz.RecordNotFoundError`. Moving an
     ``active`` user who holds ``owner`` to ``suspended`` or ``archived``
     raises :class:`LastActiveOwnerError` when no other active Owner exists
-    (the guard, see the module docstring). Moving to ``suspended`` or
-    ``archived`` revokes every session of the user. The state change is
-    audited automatically (``users`` ``update``).
+    (the guard, see the module docstring). Moving a user who holds
+    ``student`` to ``active`` first passes the student-login gate (#35;
+    ``409 student_profile_required`` / ``guardian_consent_required``, nothing
+    written). Moving to ``suspended`` or ``archived`` revokes every session of
+    the user. The state change is audited automatically (``users``
+    ``update``).
     """
     user = await _get_user(session, user_id)
     if new_state not in USER_STATES:
@@ -453,6 +531,8 @@ async def change_user_state(
         return False
     if (user.state, new_state) not in ALLOWED_STATE_TRANSITIONS:
         raise InvalidUserStateTransitionError()
+    if new_state == ACTIVE and STUDENT in await _user_roles(session, user_id):
+        await _ensure_student_login_allowed(session, user_id)
     if (
         user.state == ACTIVE
         and new_state in _REVOKING_STATES
@@ -495,13 +575,17 @@ async def add_user_role(
 
     Adding a role the user already has is a no-op that returns ``False``. An
     unknown role code raises :class:`UnknownRoleError`; an unknown user
-    :class:`~app.core.authz.RecordNotFoundError`. No authority checks here
-    (#31). Audited automatically (``user_roles`` ``create``).
+    :class:`~app.core.authz.RecordNotFoundError`. Adding ``student`` to an
+    ``active`` user first passes the student-login gate (#35; a ``pending``
+    user is checked when activated). No authority checks here (#31).
+    Audited automatically (``user_roles`` ``create``).
     """
     role_id = await _role_id(session, role)
-    await _get_user(session, user_id)
+    user = await _get_user(session, user_id)
     if await _user_role(session, user_id, role_id) is not None:
         return False
+    if role == STUDENT and user.state == ACTIVE:
+        await _ensure_student_login_allowed(session, user_id)
     session.add(UserRole(user_id=user_id, role_id=role_id))
     await session.flush()
     await revoke_user_sessions(session, user_id=user_id, reason="role_added")

@@ -17,6 +17,7 @@ from app.core.audit import Audited, audited_table_names, sensitive_column_proble
 from app.core.models import Base, StandardColumns
 from app.modules.catalog.models import EducationLevel, Subject
 from app.modules.families.models import (
+    ConsentRecord,
     Family,
     FamilyGuardian,
     FamilyStudent,
@@ -61,6 +62,7 @@ def test_every_audited_model_lists_its_sensitive_columns():
 def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
+        ConsentRecord,
         EducationLevel,
         Family,
         FamilyGuardian,

@@ -69,6 +69,7 @@ from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.db import create_sessionmaker
 from app.core.logging import configure_logging
 from app.core.uow import UnitOfWork
+from app.modules.families import service as families_service
 from app.modules.identity import recovery
 from app.modules.identity.models import Role, User, UserRole
 from app.modules.identity.permissions import ACTIVE, OWNER
@@ -77,6 +78,7 @@ from app.modules.identity.service import (
     UsernameInvalidError,
     hash_password,
     normalize_username,
+    register_student_login_gate,
     validate_password,
 )
 from app.seeds.runner import (
@@ -365,6 +367,9 @@ def main(
     prompt: PasswordPrompt = getpass.getpass,
 ) -> int:
     """Run a command; returns the process exit code."""
+    # Every identity state change a command makes passes the families
+    # student-login gate (#35 B1), as in the API.
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
     args = build_parser().parse_args(argv)
     try:
         settings = get_settings()

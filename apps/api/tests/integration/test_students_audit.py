@@ -75,6 +75,7 @@ def test_a_create_records_every_column_with_the_actor_and_request_id(
         "school_grade": {"old": None, "new": "2.º"},
         "education_level_id": {"old": None, "new": None},
         "is_active": {"old": None, "new": True},
+        "user_id": {"old": None, "new": None},  # no login yet (#35)
     }
     contact_events = [
         e

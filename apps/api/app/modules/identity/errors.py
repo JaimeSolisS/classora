@@ -5,6 +5,16 @@ Messages never contain a submitted password or username.
 
 from app.core.errors import AppError
 
+STUDENT_LOGIN_GATE_DOC = (
+    "The account holds the student role and isn't linked to a student profile"
+    " (student_profile_required), or its student is a minor without a valid"
+    " consent from a linked, active guardian (guardian_consent_required);"
+    " nothing changes."
+)
+"""The two refusals of the student-login gate (#35 B; raised by the families
+module through the registered gate), for the OpenAPI docs of the routes that
+activate an account or add the student role."""
+
 
 class UsernameInvalidError(AppError):
     status = 422

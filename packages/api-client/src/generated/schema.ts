@@ -1026,6 +1026,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/students/{student_id}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Student Account
+         * @description Link a login account to the student profile (the account then sees
+         *     only this profile while it holds the student role), or unlink it with
+         *     ``null``. A minor's account can be active only with a guardian's
+         *     consent.
+         */
+        put: operations["set_student_account_api_v1_students__student_id__account_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/consents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Consents
+         * @description The student's consents the caller may see, the guardians they may name
+         *     and the scopes they may record now.
+         */
+        get: operations["get_consents_api_v1_students__student_id__consents_get"];
+        put?: never;
+        /**
+         * Record Consent
+         * @description Record a consent, stamped with the current privacy-notice version.
+         *     Staff record paper or in-person consents; a guardian allows a minor's
+         *     login in the app; an adult student shares academic records with one
+         *     guardian in the app.
+         */
+        post: operations["record_consent_api_v1_students__student_id__consents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/consents/{consent_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Consent
+         * @description Revoke a consent. When it was a minor's last valid login consent, the
+         *     student's login is suspended in the same transaction and its sessions
+         *     end.
+         */
+        post: operations["revoke_consent_api_v1_students__student_id__consents__consent_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1076,6 +1149,137 @@ export interface components {
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * ConsentCreate
+         * @description A consent (``POST /api/v1/students/{student_id}/consents``).
+         */
+        ConsentCreate: {
+            /** @description student_login (a guardian allows a minor's login) or guardian_academic_access (an adult student shares academic records with this guardian). */
+            scope: components["schemas"]["ConsentScope"];
+            /**
+             * Guardian Id
+             * Format: uuid
+             * @description For student_login, the guardian who consents; for guardian_academic_access, the guardian who receives access. An active guardian linked to the student.
+             */
+            guardian_id: string;
+            /** @description Staff: paper or in_person. A guardian or a student: in_app. */
+            method: components["schemas"]["ConsentMethod"];
+        };
+        /**
+         * ConsentGuardianOption
+         * @description A linked guardian the viewer may name in a consent.
+         */
+        ConsentGuardianOption: {
+            /**
+             * Guardian Id
+             * Format: uuid
+             */
+            guardian_id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            relationship: components["schemas"]["GuardianRelationship"];
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** @enum {string} */
+        ConsentMethod: "in_app" | "paper" | "in_person";
+        /**
+         * ConsentOverview
+         * @description A student's consents as the viewer may see them (``GET
+         *     /api/v1/students/{student_id}/consents``).
+         */
+        ConsentOverview: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Is Minor */
+            is_minor: boolean;
+            /** @description The linked login's state, or null when none is linked. */
+            login_state: components["schemas"]["UserState"] | null;
+            /**
+             * Current Notice Version
+             * @description The privacy-notice version a new consent records.
+             */
+            current_notice_version: number;
+            /**
+             * Guardians
+             * @description Staff: every linked guardian; a guardian: themselves; a student: their own linked guardians.
+             */
+            guardians: components["schemas"]["ConsentGuardianOption"][];
+            /**
+             * Consents
+             * @description Active records first, then by granted_at, newest first.
+             */
+            consents: components["schemas"]["ConsentRecordItem"][];
+            /**
+             * Can Record
+             * @description The scopes the viewer may record now (by role and age).
+             */
+            can_record: components["schemas"]["ConsentScope"][];
+        };
+        /**
+         * ConsentRecordItem
+         * @description One consent record as the viewer sees it.
+         */
+        ConsentRecordItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            scope: components["schemas"]["ConsentScope"];
+            /**
+             * Guardian Id
+             * Format: uuid
+             */
+            guardian_id: string;
+            /** Guardian Given Names */
+            guardian_given_names: string;
+            /** Guardian Family Names */
+            guardian_family_names: string;
+            method: components["schemas"]["ConsentMethod"];
+            /**
+             * Notice Version
+             * @description The privacy-notice version current when it was given.
+             */
+            notice_version: number;
+            /**
+             * Granted At
+             * Format: date-time
+             */
+            granted_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            revocation_cause: components["schemas"]["RevocationCause"] | null;
+            /**
+             * Can Revoke
+             * @description The viewer may revoke it now.
+             */
+            can_revoke: boolean;
+            /**
+             * Suspends Login On Revoke
+             * @description Revoking it would suspend the student's login (the last valid student_login consent of a minor with an active login).
+             */
+            suspends_login_on_revoke: boolean;
+        };
+        /**
+         * ConsentRevocation
+         * @description The revoked record (``POST …/consents/{consent_id}/revoke``).
+         */
+        ConsentRevocation: {
+            consent: components["schemas"]["ConsentRecordItem"];
+            /**
+             * Student Login Suspended
+             * @description The revocation suspended the student's login.
+             */
+            student_login_suspended: boolean;
+        };
+        /** @enum {string} */
+        ConsentScope: "student_login" | "guardian_academic_access";
         /** CursorPage[AuditEventListItem] */
         CursorPage_AuditEventListItem_: {
             /** Items */
@@ -1993,6 +2197,8 @@ export interface components {
             status: "pending";
         };
         /** @enum {string} */
+        RevocationCause: "revoked" | "guardian_unlinked";
+        /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
         /**
          * SessionUser
@@ -2032,6 +2238,21 @@ export interface components {
              * @description True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout and the privacy-notice routes answers 403 privacy_notice_required.
              */
             privacy_notice_required: boolean;
+        };
+        /**
+         * StudentAccountUpdate
+         * @description Link a login account to the profile, or ``null`` to unlink it (``PUT
+         *     /api/v1/students/{student_id}/account``), with the ``version`` the caller
+         *     loaded.
+         */
+        StudentAccountUpdate: {
+            /**
+             * User Id
+             * @description An account that isn't archived and isn't linked to another student, or null to unlink.
+             */
+            user_id: string | null;
+            /** Version */
+            version: number;
         };
         /**
          * StudentCreate
@@ -2103,6 +2324,8 @@ export interface components {
             guardians: components["schemas"]["StudentGuardianItem"][] | null;
             /** @description The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it. Shown only to viewers with a staff role and guardian.view. */
             family: components["schemas"]["FamilyReference"] | null;
+            /** @description The linked login account (#35); null when none is linked or the viewer doesn't hold family.manage. */
+            login: components["schemas"]["StudentLogin"] | null;
             /**
              * Version
              * @description Send it back with every change.
@@ -2181,6 +2404,23 @@ export interface components {
             /** School Grade */
             school_grade: string | null;
             education_level: components["schemas"]["EducationLevelReference"] | null;
+        };
+        /**
+         * StudentLogin
+         * @description The student's login account, shown only to ``family.manage`` holders
+         *     (#35 C3).
+         */
+        StudentLogin: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
         };
         /**
          * StudentPersonal
@@ -3013,6 +3253,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+            /** @description The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. The link still works. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid). */
             410: {
                 headers: {
@@ -3484,7 +3733,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). */
+            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3551,7 +3800,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). */
+            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3804,7 +4053,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3875,7 +4124,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3946,7 +4195,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). Reactivation only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4017,7 +4266,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes. */
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes. Adding student to an active account: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5705,6 +5954,274 @@ export interface operations {
             };
             /** @description No such family or member, or the member isn't in this family (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    set_student_account_api_v1_students__student_id__account_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not visible to the caller (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student changed since it was loaded (version_conflict); the account is linked to another student (student_account_in_use); or the account is active with the student role and the student is a minor without a valid consent from a linked, active guardian (guardian_consent_required). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_consents_api_v1_students__student_id__consents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentOverview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not visible to the caller (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    record_consent_api_v1_students__student_id__consents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRecordItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not visible to the caller (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An active consent for this guardian and scope already exists (consent_already_given). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    revoke_consent_api_v1_students__student_id__consents__consent_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+                consent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRevocation"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student or consent, or not visible to the caller (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The consent was already revoked (consent_already_revoked). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

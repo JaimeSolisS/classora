@@ -24,6 +24,8 @@ import pytest
 
 from app.core import clock as app_clock
 from app.core.config import env_var_names, get_settings
+from app.modules.families import service as families_service
+from app.modules.identity.service import register_student_login_gate
 from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.factories.base import reseed
 
@@ -65,6 +67,23 @@ def isolated_settings_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def student_login_gate() -> Iterator[None]:
+    """Register the families student-login gate for every test (#35 B1), as
+    the composition roots do: identity calls made outside an app (``in_uow``)
+    pass the real gate too. ``no_student_login_gate`` unregisters it."""
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+    yield
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+
+
+@pytest.fixture
+def no_student_login_gate(student_login_gate: None) -> Iterator[None]:
+    """No gate registered for this test: activating a student fails closed."""
+    register_student_login_gate(None)
+    yield
 
 
 @pytest.fixture(autouse=True)

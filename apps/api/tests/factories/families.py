@@ -1,6 +1,6 @@
-"""Families factories (#33 H6, #34 H6, #172 G4): student profiles with
-emergency contacts, guardian profiles, student-guardian links, and family
-groupings with their members.
+"""Families factories (#33 H6, #34 H6, #172 G4, #35 H5): student profiles
+with emergency contacts, guardian profiles, student-guardian links, family
+groupings with their members, student logins and consent records.
 
 For #35, M6 (billing accounts on ``families``) and later milestones. All
 data is synthetic (``es_MX`` Faker names, reserved-domain emails). Phone
@@ -12,13 +12,16 @@ The default birthdate (2012-2016, a fixed range) makes the student a minor
 until 2030; pass ``birthdate=`` for an adult.
 """
 
+import uuid
 from datetime import date
 from typing import Any
 
 import factory
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.modules.families.models import (
+    ConsentRecord,
     Family,
     FamilyGuardian,
     FamilyStudent,
@@ -27,7 +30,11 @@ from app.modules.families.models import (
     StudentEmergencyContact,
     StudentGuardian,
 )
+from app.modules.identity import service as identity
 from tests.factories.base import ClassoraFactory, calendar_date, get_faker, persist
+
+ADULT_BIRTHDATE = date(2000, 1, 1)
+"""A birthdate that makes a student an adult (#35: no consent needed)."""
 
 
 def fictitious_phone(n: int) -> str:
@@ -143,3 +150,42 @@ async def add_to_family(
     session.add_all(rows)
     await session.flush()
     return rows
+
+
+async def student_login(
+    session: AsyncSession, student: Student, user_id: uuid.UUID
+) -> Student:
+    """Link the login ``user_id`` to ``student`` (``students.user_id``, #35).
+    With an adult ``student`` (``birthdate=ADULT_BIRTHDATE``) or a consent
+    (:func:`login_consent`), the account then passes the student-login gate.
+    Flushes, never commits."""
+    student.user_id = user_id
+    await session.flush()
+    return student
+
+
+async def login_consent(
+    session: AsyncSession,
+    student: Student,
+    guardian: Guardian,
+    *,
+    recorded_by: uuid.UUID,
+    scope: str = "student_login",
+    method: str = "paper",
+) -> ConsentRecord:
+    """Persist an active consent stamped with the current privacy-notice
+    version (``guardian`` should be linked to ``student``). Flushes, never
+    commits."""
+    notice = await identity.current_privacy_notice(session)
+    record = ConsentRecord(
+        student_id=student.id,
+        guardian_id=guardian.id,
+        scope=scope,
+        method=method,
+        notice_version_id=notice.id,
+        granted_at=clock.now(),
+        recorded_by_user_id=recorded_by,
+    )
+    session.add(record)
+    await session.flush()
+    return record
