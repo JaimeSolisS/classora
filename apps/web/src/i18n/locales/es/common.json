@@ -723,5 +723,16 @@
     "other_relative": "Otro familiar",
     "legal_guardian": "Tutor(a) legal",
     "other": "Otro"
+  },
+  "privacyNotice": {
+    "title": "Aviso de privacidad",
+    "version": "Versión {{version}}, publicada el {{date}}",
+    "intro": "Lee el aviso de privacidad. Debes aceptarlo para usar Classora.",
+    "textLabel": "Texto del aviso de privacidad",
+    "accept": "Acepto",
+    "accepting": "Aceptando…",
+    "accepted": "Aceptado el {{date}}",
+    "changed": "El aviso cambió. Lee la nueva versión.",
+    "menu": "Aviso de privacidad"
   }
 }

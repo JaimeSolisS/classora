@@ -723,5 +723,16 @@
     "other_relative": "Other relative",
     "legal_guardian": "Legal guardian",
     "other": "Other"
+  },
+  "privacyNotice": {
+    "title": "Privacy notice",
+    "version": "Version {{version}}, published {{date}}",
+    "intro": "Read the privacy notice. You must accept it to use Classora.",
+    "textLabel": "Privacy notice text",
+    "accept": "I accept",
+    "accepting": "Accepting…",
+    "accepted": "Accepted on {{date}}",
+    "changed": "The notice changed. Please read the new version.",
+    "menu": "Privacy notice"
   }
 }

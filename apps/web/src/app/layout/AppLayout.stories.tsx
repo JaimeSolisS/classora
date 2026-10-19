@@ -20,6 +20,7 @@ const signedIn: Session = {
     display_name: 'Demo Owner',
     roles: ['administrator'],
     permissions: ['user.view'],
+    privacy_notice_required: false,
   },
 };
 

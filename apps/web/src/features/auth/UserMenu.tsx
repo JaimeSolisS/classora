@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from './useSession';
 
 // The signed-in user in the header (#28 E1–E3): "Signed in as …" (text, not a
-// link), "Change password" (#30 K1) and "Sign out". A failed logout shows its error and keeps the user
-// signed in, because the server session may still be live.
+// link), "Change password" (#30 K1), "Privacy notice" (#174 G2) and "Sign
+// out". A failed logout shows its error and keeps the user signed in,
+// because the server session may still be live.
 export function UserMenu() {
   const { t } = useTranslation();
   const { session, signOut } = useAuth();
@@ -41,6 +42,12 @@ export function UserMenu() {
           className="inline-flex min-h-8 items-center rounded-md px-1 text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring"
         >
           {t('account.password.link')}
+        </Link>
+        <Link
+          to="/privacy-notice"
+          className="inline-flex min-h-8 items-center rounded-md px-1 text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {t('privacyNotice.menu')}
         </Link>
         <Button
           type="button"

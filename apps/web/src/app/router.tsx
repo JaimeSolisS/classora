@@ -18,6 +18,7 @@ import {
   NewGuardianPage,
 } from '@/features/guardians/GuardianFormPages';
 import { GuardiansPage } from '@/features/guardians/GuardiansPage';
+import { PrivacyNoticePage } from '@/features/privacy-notice/PrivacyNoticePage';
 import { StudentDetailPage } from '@/features/students/StudentDetailPage';
 import {
   EditStudentPage,
@@ -34,7 +35,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
-import { RouteGuard } from './RouteGuard';
+import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 
 // React Router in data mode. Server data is fetched with TanStack Query
 // hooks, never with route loaders or actions (architecture §8, ISSUE-X4).
@@ -46,7 +47,8 @@ import { RouteGuard } from './RouteGuard';
 // things outside the guard. Every other page goes
 // under the guard route and needs a session; a page that needs a permission
 // declares `handle: { permission: '…' }`. A unit test fails if a page is
-// added outside the guard.
+// added outside the guard. Until the user accepts the current privacy notice
+// (#174), the guard shows /privacy-notice instead of any other page.
 export const routes: RouteObject[] = [
   {
     id: 'root',
@@ -188,6 +190,12 @@ export const routes: RouteObject[] = [
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
+          // Any signed-in user, before and after accepting (#174 G1).
+          {
+            id: PRIVACY_NOTICE_ROUTE_ID,
+            path: 'privacy-notice',
+            element: <PrivacyNoticePage />,
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

@@ -1,10 +1,11 @@
 import { Menu } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, NavLink, Outlet } from 'react-router';
+import { Link, NavLink, Outlet, useMatch } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { canAccess } from '@/features/auth/access';
 import { UserMenu } from '@/features/auth/UserMenu';
+import { PRIVACY_NOTICE_PATH } from '@/features/auth/session';
 import { useSession } from '@/features/auth/useSession';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/ui';
@@ -37,16 +38,20 @@ interface AppLayoutProps {
 // main area. Below `lg` the navigation, the switchers and the user menu
 // collapse behind a toggle; the open state lives in the UI store. Signed out
 // (the login page), the header has no navigation and no user menu. The items
-// shown are the ones the user may open (UX only, #28 F4).
+// shown are the ones the user may open (UX only, #28 F4). The privacy-notice
+// page, and every page while the notice is still to accept, show no
+// navigation items (#174 G1): only the brand, the switchers and the user menu.
 export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
   const { t } = useTranslation();
   const navOpen = useUiStore((state) => state.navOpen);
   const toggleNav = useUiStore((state) => state.toggleNav);
   const session = useSession();
+  const onNotice = useMatch(PRIVACY_NOTICE_PATH) !== null;
   const user = session.status === 'signedIn' ? session.user : null;
-  const visibleItems = user
-    ? navItems.filter((item) => canAccess(user, item))
-    : [];
+  const visibleItems =
+    user && !user.privacy_notice_required && !onNotice
+      ? navItems.filter((item) => canAccess(user, item))
+      : [];
 
   return (
     <div className="flex min-h-svh flex-col">

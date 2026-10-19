@@ -67,6 +67,8 @@ function createAuthController({
     promise: Promise<boolean>;
     resolve: (ok: boolean) => void;
   } | null = null;
+  /** The /auth/me refetch after `privacy_notice_required`, while in flight. */
+  let noticeRefetch: Promise<unknown> | null = null;
 
   /**
    * Clears every cached query and mutation (`queryClient.clear()`), then
@@ -171,6 +173,22 @@ function createAuthController({
       }
       // D5: every request waits for the same dialog.
       return reauth.promise;
+    },
+    privacyNoticeRequired() {
+      // #174 G3: one refetch, whatever the number of failing requests. When
+      // the cached session already asks for the notice, the guard is on it.
+      const cached = queryClient.getQueryData<SessionData>(SESSION_QUERY_KEY);
+      if (signedInId === null || cached?.user?.privacy_notice_required) {
+        return;
+      }
+      if (noticeRefetch === null) {
+        noticeRefetch = queryClient
+          .fetchQuery({ ...sessionQueryOptions(), staleTime: 0, retry: false })
+          .catch(() => undefined)
+          .finally(() => {
+            noticeRefetch = null;
+          });
+      }
     },
   };
 

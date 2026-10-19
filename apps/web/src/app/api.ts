@@ -9,9 +9,10 @@ import { csrfMiddleware } from '@/features/auth/csrf';
 // layer"). Query and mutation functions call `apiCall(() => api.GET(…))`:
 // they get `data` back or an `ApiError`, and never handle `{ error }` or a
 // rejected request by hand. `apiCall` also ends the session on a 401,
-// recovers once from `csrf_failed` and asks for the password once on
-// `reauth_required` (through the auth handler below), so pages need no code
-// of their own for those.
+// recovers once from `csrf_failed`, asks for the password once on
+// `reauth_required` and refreshes the session on `privacy_notice_required`
+// (through the auth handler below), so pages need no code of their own for
+// those.
 
 /** The app's client: same origin as the page (no API URL setting). */
 export const api = createApiClient();
@@ -153,6 +154,12 @@ export interface AuthHandler {
    * confirmed their password and the request may be retried (#28 D).
    */
   reauthenticate(): Promise<boolean>;
+  /**
+   * After `403 privacy_notice_required` (#174 G3): refetch /auth/me once, so
+   * the guard sends the user to the privacy notice. Concurrent failures
+   * share one refetch. The request is not retried.
+   */
+  privacyNoticeRequired(): void;
 }
 
 let authHandler: AuthHandler | null = null;
@@ -193,7 +200,8 @@ export const NO_AUTH_HANDLING: ApiCallOptions = {
  * it before the error is thrown; `csrf_failed` refetches /auth/me and calls
  * `call` again once (never when the user changed); `reauth_required` waits for
  * the password dialog and calls `call` again once. A second `csrf_failed` or
- * `reauth_required` reaches the caller.
+ * `reauth_required` reaches the caller. `privacy_notice_required` refreshes
+ * the session (the guard then shows the notice) and reaches the caller.
  */
 export async function apiCall<T>(
   call: () => Promise<ClientResult<T>>,
@@ -248,6 +256,9 @@ export async function apiCall<T>(
           continue;
         }
         throw error;
+      }
+      if (error.status === 403 && error.code === 'privacy_notice_required') {
+        handler.privacyNoticeRequired();
       }
       throw error;
     }
