@@ -152,11 +152,12 @@ def test_a_tutor_and_guardian_with_one_assignment_sees_exactly_it(
         )
 
 
-# --- Guardians and students (facts arrive with #34 and #35) ----------------------
+# --- Guardians without a profile and students (facts arrive with #35) ------------
+# Guardians with linked students: test_guardians_visibility.py (#34).
 
 
 @pytest.mark.parametrize("role", [GUARDIAN, STUDENT])
-def test_guardians_and_student_users_see_nothing_yet(
+def test_unlinked_guardians_and_student_users_see_nothing(
     module_seeded_url, client, students, role
 ):
     person = user_with(module_seeded_url, role)
@@ -263,9 +264,10 @@ def principal(*roles: str) -> Principal:
 @pytest.mark.parametrize(
     "roles", [(TUTOR,), (GUARDIAN,), (STUDENT,), (TUTOR, GUARDIAN)]
 )
-def test_an_empty_visible_set_returns_an_empty_page_without_sql(
+def test_an_empty_visible_set_returns_an_empty_page_without_more_sql(
     module_seeded_url, students, roles
 ):
+    # A guardian's links are one statement (#34 F2); nothing else is sent.
     statements, page = count_statements(
         module_seeded_url,
         lambda session: service.list_students(
@@ -279,5 +281,5 @@ def test_an_empty_visible_set_returns_an_empty_page_without_sql(
         ),
     )
 
-    assert statements == 0
+    assert statements == (1 if GUARDIAN in roles else 0)
     assert (page.items, page.total) == ([], 0)

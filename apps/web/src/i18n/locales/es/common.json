@@ -34,7 +34,8 @@
     "passwordResets": "Restablecer contraseñas",
     "registrations": "Solicitudes de cuenta",
     "catalog": "Catálogo",
-    "students": "Estudiantes"
+    "students": "Estudiantes",
+    "guardians": "Padres y tutores"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -537,6 +538,113 @@
       "gradeTooLong": "Puede tener hasta 50 caracteres.",
       "contactNameTooLong": "Puede tener hasta 200 caracteres.",
       "relationshipTooLong": "Puede tener hasta 50 caracteres."
+    },
+    "guardians": {
+      "title": "Padres y tutores",
+      "empty": "Aún no hay padres o tutores vinculados.",
+      "link": "Vincular padre o tutor",
+      "linkAction": "Vincular",
+      "linkTitle": "Vincular padre o tutor",
+      "linkBody": "Busca un padre o tutor activo y elige el parentesco.",
+      "guardian": "Padre o tutor",
+      "chooseGuardian": "Elige un padre o tutor de los resultados.",
+      "relationship": "Parentesco",
+      "chooseRelationship": "Elige un parentesco",
+      "unlink": "Desvincular",
+      "unlinkNamed": "Desvincular a {{name}}",
+      "unlinkTitle": "Desvincular padre o tutor",
+      "unlinkBody": "{{name}} dejará de ver los registros de este estudiante.",
+      "linked": "Padre o tutor vinculado.",
+      "unlinked": "Padre o tutor desvinculado."
     }
+  },
+  "guardians": {
+    "title": "Padres y tutores",
+    "add": "Agregar padre o tutor",
+    "edit": "Editar padre o tutor",
+    "editNamed": "Editar a {{name}}",
+    "back": "Volver a padres y tutores",
+    "backToGuardian": "Volver al padre o tutor",
+    "notFound": "Este padre o tutor no existe.",
+    "saved": "Cambios guardados.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "notSet": "Sin dato",
+    "list": {
+      "search": "Buscar por nombre",
+      "status": "Estado",
+      "statusAll": "Todos",
+      "empty": "No hay padres o tutores con estos filtros.",
+      "noResults": "No hay resultados para esta búsqueda.",
+      "name": "Nombre",
+      "account": "Cuenta",
+      "students": "Estudiantes vinculados"
+    },
+    "fields": {
+      "givenNames": "Nombres",
+      "familyNames": "Apellidos",
+      "email": "Correo electrónico (opcional)",
+      "phone": "Teléfono (opcional)"
+    },
+    "details": {
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "username": "Usuario",
+      "displayName": "Nombre en la cuenta",
+      "state": "Estado de la cuenta"
+    },
+    "sections": {
+      "contact": "Contacto",
+      "account": "Cuenta de acceso"
+    },
+    "account": {
+      "label": "Cuenta de acceso (opcional)",
+      "help": "Esta cuenta verá los registros de los estudiantes vinculados.",
+      "search": "Buscar cuentas por usuario o nombre",
+      "has": "Con cuenta",
+      "none": "Sin cuenta",
+      "remove": "Quitar cuenta",
+      "archived": "(archivada)"
+    },
+    "students": {
+      "title": "Estudiantes vinculados",
+      "empty": "Sin estudiantes vinculados."
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar padre o tutor",
+      "body": "El perfil se conserva, pero su cuenta deja de ver a los estudiantes vinculados."
+    },
+    "reactivate": {
+      "action": "Reactivar",
+      "title": "Reactivar padre o tutor",
+      "body": "Su cuenta vuelve a ver a los estudiantes vinculados."
+    },
+    "conflict": {
+      "reload": "Recargar"
+    },
+    "validation": {
+      "nameRequired": "Escribe este dato.",
+      "nameTooLong": "Puede tener hasta 100 caracteres.",
+      "emailInvalid": "Escribe un correo electrónico válido.",
+      "phoneInvalid": "Escribe un teléfono válido: solo dígitos, espacios, paréntesis, puntos o guiones."
+    },
+    "picker": {
+      "count": "Resultados: {{count}}",
+      "none": "Sin resultados.",
+      "failed": "La búsqueda no funcionó. Inténtalo de nuevo.",
+      "results": "Resultados de «{{label}}»"
+    }
+  },
+  "relationships": {
+    "mother": "Madre",
+    "father": "Padre",
+    "grandparent": "Abuelo(a)",
+    "stepparent": "Padrastro / madrastra",
+    "sibling": "Hermano(a)",
+    "other_relative": "Otro familiar",
+    "legal_guardian": "Tutor(a) legal",
+    "other": "Otro"
   }
 }

@@ -782,6 +782,100 @@ export interface paths {
         patch: operations["update_student_api_v1_students__student_id__patch"];
         trace?: never;
     };
+    "/api/v1/guardians": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Guardians
+         * @description The guardian profiles the caller may see (a guardian: only their own).
+         *     With ``q``: by relevance, then by family names and given names.
+         */
+        get: operations["list_guardians_api_v1_guardians_get"];
+        put?: never;
+        /**
+         * Create Guardian
+         * @description Add an active guardian profile, optionally linked to a login account.
+         */
+        post: operations["create_guardian_api_v1_guardians_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guardians/{guardian_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Guardian
+         * @description One guardian profile with its linked students. ``account`` is ``null``
+         *     unless the caller holds ``family.manage``.
+         */
+        get: operations["get_guardian_api_v1_guardians__guardian_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Guardian
+         * @description Change a profile: the fields sent, ``user_id`` to link, move or (with
+         *     ``null``) clear the account, ``is_active`` to deactivate or reactivate.
+         *     An inactive profile grants its account nothing.
+         */
+        patch: operations["update_guardian_api_v1_guardians__guardian_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/guardians": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Guardian
+         * @description Link an active guardian to the student with a relationship. The
+         *     guardian's account then sees the student on its next request.
+         */
+        post: operations["link_guardian_api_v1_students__student_id__guardians_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/guardians/{guardian_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Guardian
+         * @description Remove the link. The guardian's account loses access to the student on
+         *     its next request.
+         */
+        delete: operations["unlink_guardian_api_v1_students__student_id__guardians__guardian_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -982,6 +1076,158 @@ export interface components {
             message: string;
         };
         /**
+         * GuardianAccount
+         * @description The linked login, shown only to ``family.manage`` holders.
+         */
+        GuardianAccount: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+        };
+        /**
+         * GuardianCreate
+         * @description A new guardian profile (``POST /api/v1/guardians``). It starts active.
+         *     ``user_id`` links a login account (one that holds the ``guardian`` role
+         *     and isn't archived).
+         */
+        GuardianCreate: {
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /**
+             * User Id
+             * @description An account with the guardian role that isn't archived.
+             */
+            user_id?: string | null;
+        };
+        /**
+         * GuardianDetail
+         * @description One guardian profile. ``account`` is ``null`` unless the viewer holds
+         *     ``family.manage``.
+         */
+        GuardianDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Has Account */
+            has_account: boolean;
+            account: components["schemas"]["GuardianAccount"] | null;
+            /**
+             * Students
+             * @description By family names, then given names.
+             */
+            students: components["schemas"]["GuardianStudentItem"][];
+            /**
+             * Version
+             * @description Send it back with every change.
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * GuardianListItem
+         * @description One guardian in the list. No contact data (spec §16).
+         */
+        GuardianListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Has Account */
+            has_account: boolean;
+            /**
+             * Student Count
+             * @description The number of linked students.
+             */
+            student_count: number;
+        };
+        /** @enum {string} */
+        GuardianRelationship: "mother" | "father" | "grandparent" | "stepparent" | "sibling" | "other_relative" | "legal_guardian" | "other";
+        /** @enum {string} */
+        GuardianStatus: "active" | "inactive" | "all";
+        /**
+         * GuardianStudentItem
+         * @description A student linked to the guardian.
+         */
+        GuardianStudentItem: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            relationship: components["schemas"]["GuardianRelationship"];
+            /** Is Minor */
+            is_minor: boolean;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * GuardianUpdate
+         * @description A change to a guardian profile (``PATCH /api/v1/guardians/{id}``) with
+         *     the ``version`` the caller loaded. ``null`` clears ``email``, ``phone``
+         *     and ``user_id``.
+         */
+        GuardianUpdate: {
+            /** Version */
+            version: number;
+            /** Given Names */
+            given_names?: string | null;
+            /** Family Names */
+            family_names?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * HealthStatus
          * @description The success body of both health probes.
          */
@@ -1130,6 +1376,17 @@ export interface components {
         OffsetPage_EducationLevelDetail_: {
             /** Items */
             items: components["schemas"]["EducationLevelDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[GuardianListItem] */
+        OffsetPage_GuardianListItem_: {
+            /** Items */
+            items: components["schemas"]["GuardianListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -1450,7 +1707,9 @@ export interface components {
         /**
          * StudentDetail
          * @description One student profile. ``personal`` is ``null`` for a viewer with
-         *     limited access (Finance Staff, assigned tutors).
+         *     limited access (Finance Staff, assigned tutors, a linked guardian of an
+         *     adult student). ``guardians`` is ``null`` for viewers without a staff
+         *     role and ``guardian.view``.
          */
         StudentDetail: {
             /**
@@ -1474,6 +1733,11 @@ export interface components {
             education_level: components["schemas"]["EducationLevelReference"] | null;
             personal: components["schemas"]["StudentPersonal"] | null;
             /**
+             * Guardians
+             * @description The linked guardians, by family names then given names; null unless the viewer holds a staff role and guardian.view.
+             */
+            guardians: components["schemas"]["StudentGuardianItem"][] | null;
+            /**
              * Version
              * @description Send it back with every change.
              */
@@ -1488,6 +1752,44 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * StudentGuardianCreate
+         * @description A link (``POST /api/v1/students/{student_id}/guardians``).
+         */
+        StudentGuardianCreate: {
+            /**
+             * Guardian Id
+             * Format: uuid
+             * @description An active guardian profile.
+             */
+            guardian_id: string;
+            relationship: components["schemas"]["GuardianRelationship"];
+        };
+        /**
+         * StudentGuardianItem
+         * @description A guardian linked to a student, as staff see it on the student.
+         */
+        StudentGuardianItem: {
+            /**
+             * Guardian Id
+             * Format: uuid
+             */
+            guardian_id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            relationship: components["schemas"]["GuardianRelationship"];
+            /** Phone */
+            phone: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Has Account
+             * @description The profile is linked to a login.
+             */
+            has_account: boolean;
         };
         /**
          * StudentListItem
@@ -4097,6 +4399,377 @@ export interface operations {
             };
             /** @description The student changed since it was loaded (version_conflict); reload and retry. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_guardians_api_v1_guardians_get: {
+        parameters: {
+            query?: {
+                /** @description Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words). */
+                q?: string | null;
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["GuardianStatus"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_GuardianListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_guardian_api_v1_guardians_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardianCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardianDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The account is already linked to another guardian (guardian_account_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_guardian_api_v1_guardians__guardian_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guardian_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardianDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such guardian, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_guardian_api_v1_guardians__guardian_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guardian_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardianUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardianDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such guardian, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The guardian changed since it was loaded (version_conflict); or The account is already linked to another guardian (guardian_account_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    link_guardian_api_v1_students__student_id__guardians_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentGuardianCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentGuardianItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The guardian is already linked to this student (guardian_already_linked). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    unlink_guardian_api_v1_students__student_id__guardians__guardian_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+                guardian_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, guardian or link between them (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

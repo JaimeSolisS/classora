@@ -100,6 +100,10 @@ Codes in use today:
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
+| `guardian_account_unavailable` | 422 | A guardian profile's `user_id` is an account that is unknown, archived or doesn't hold the `guardian` role; the field error is on `["body","user_id"]` (see Guardians and links). |
+| `guardian_account_in_use` | 409 | A guardian profile's `user_id` is already linked to another profile (see Guardians and links). |
+| `guardian_unavailable` | 422 | Linking a guardian profile that is unknown or inactive; the field error is on `["body","guardian_id"]` (see Guardians and links). |
+| `guardian_already_linked` | 409 | Linking a guardian who is already linked to this student (see Guardians and links). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -668,23 +672,26 @@ without a login.
 | ----- | ------ | ----- |
 | `GET /api/v1/students` | `require("student.view")`, list filtered by record policy | Query `q` (name search, see below), `status` (`active` (default), `inactive` or `all`), `education_level_id` (an unknown id gives an empty page), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `is_minor`, `school_grade`, `education_level` (`{id, name, is_active}` or `null`); never a birthdate or contact data. |
 | `POST /api/v1/students` | `require("student.manage")` | Body `{given_names, family_names, birthdate, email?, phone?, school_name?, school_grade?, education_level_id?, emergency_contacts: [{name, relationship, phone}] (1-5)}`. `201` with the detail. |
-| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `version`, `created_at`, `updated_at`. |
+| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `guardians` (#34), `version`, `created_at`, `updated_at`. |
 | `PATCH /api/v1/students/{student_id}` | `require("student.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `emergency_contacts` is the complete new list. |
 
 - **Who sees which student** (record policy, pure functions in
   `families/permissions.py`): Owners, Administrators, Academic Coordinators
   and Finance Staff see every student. Tutors see only the students of their
   current assignments; assignments arrive with scheduling (M4), so until
-  then tutors see none. Guardians see their linked students (#34) and a
-  student user their own profile (#35); both see none until those issues.
+  then tutors see none. Guardians see the students linked to their active
+  guardian profile (#34, see Guardians and links) and a student user their
+  own profile (#35, none until then).
   A student the caller may not see is `404 not_found`, exactly like a
   missing one, and the list leaves it out (never `403`/`404` for hidden
   rows).
 - **How much** (owner decision on #33, E2 (a)): `personal` (`birthdate`,
   `email`, `phone`, `emergency_contacts` in position order) is present only
-  for full-access viewers: holders of `student.manage`, and later a linked
-  guardian and the student themselves. For Finance Staff and assigned
-  tutors `personal` is `null`. `is_minor` (under 18 today in the center's
+  for full-access viewers: holders of `student.manage`, a linked guardian
+  of a **minor** (#34) and later the student themselves (#35). For Finance
+  Staff, assigned tutors and a linked guardian of an **adult** student
+  (until #35 records the student's consent, ADR-0007 D17; owner decision on
+  #34, E3 (a)) `personal` is `null`. `is_minor` (under 18 today in the center's
   time zone, ADR-0007 D17) is shown to every viewer.
 - **Search** (`q`, 1-100 characters, at most 5 words): ignores case and
   accents (`José` = `jose`, `Ñúñez` = `nunez`) and word order (`garcia jose`
@@ -723,6 +730,70 @@ without a login.
   `create`/`update`/`delete` with the changed fields, unmasked; a
   contacts-only change writes only contact events); no named event. `403`,
   `404`, `409`, `422` and a body that changes nothing write no event.
+
+### Guardians and links
+
+Implemented by M2-16 (#34; spec §2, §12, §16) in
+`apps/api/app/modules/families/`. A guardian profile records a parent or
+guardian, with or without a login (staff can record consent on paper for a
+guardian without one, ADR-0007 D18).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/guardians` | `require("guardian.view")`, list filtered by record policy | Query `q` (the Students name search), `status` (`active` (default), `inactive` or `all`), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `has_account`, `student_count`; no contact data. |
+| `POST /api/v1/guardians` | `require("family.manage")` | Body `{given_names, family_names, email?, phone?, user_id?}`. `201` with the detail. |
+| `GET /api/v1/guardians/{guardian_id}` | `require("guardian.view")` + record policy | Fields: the item's (without `student_count`) plus `email`, `phone`, `account`, `students` (`[{student_id, given_names, family_names, relationship, is_minor, is_active}]`), `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/guardians/{guardian_id}` | `require("family.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `null` clears `email`, `phone` and `user_id`. |
+| `POST /api/v1/students/{student_id}/guardians` | `require("family.manage")` + record policy (student) | Body `{guardian_id, relationship}`. `201` with the student's guardian item. |
+| `DELETE /api/v1/students/{student_id}/guardians/{guardian_id}` | `require("family.manage")` + record policy (student) | `204`. An unknown student, an unknown guardian and no link are the same `404`. |
+
+- **Profiles:** the profile has its own `email`/`phone` (the user-profile
+  patterns); a linked account's contact fields are never copied or shown.
+  Names 1-100 characters; duplicates are allowed. No hard delete:
+  `is_active: false` deactivates (the links and the account link are kept,
+  but the profile grants nothing) and `true` reactivates. Check order of the
+  `PATCH`: `422` → `404` → `409 version_conflict` → the account rule → the
+  update; a body that changes nothing returns `200` with no new version.
+- **One account per profile:** `user_id` links at most one account to one
+  profile. The account must exist, not be `archived` and hold the `guardian`
+  role (`pending` and `suspended` accounts may be linked); otherwise `422
+  guardian_account_unavailable`. An account linked to another profile is
+  `409 guardian_account_in_use`. The rule is checked only when `user_id`
+  changes, so an already linked account that was archived later stays.
+  `account` (`{id, username, display_name, state}`) is shown only to holders
+  of `family.manage`; everyone else gets `null` and `has_account`. No
+  reauthentication: linking an account is the step that gives a login
+  access to children's records, and ADR-0007 D10 doesn't list it.
+- **Links:** one link per student and guardian, with a relationship code:
+  `mother`, `father`, `grandparent`, `stepparent`, `sibling`,
+  `other_relative`, `legal_guardian` or `other`. A student may have several
+  guardians and a guardian several students; there is no primary guardian.
+  Only an active guardian can be linked (`422 guardian_unavailable`); an
+  inactive student can. A duplicate is `409 guardian_already_linked`. To
+  change a relationship, unlink and link again. A link never changes either
+  profile's `version`. Unlinking hard-deletes the link; its audit `delete`
+  event keeps the values.
+- **Who sees what:** staff with `guardian.view` (Owners, Administrators,
+  Academic Coordinators, Finance Staff) see every profile. A guardian sees
+  only their own **active** profile (the list has at most that one row;
+  any other profile is `404`, like a missing one), and the students linked
+  to it: a **minor** in full, an **adult** with `personal: null` until #35
+  records the student's consent (owner decision on #34, E3 (a)). Tutors
+  and student users get `403` on the guardian routes.
+- **Access follows the links on the next request:** the guardian's facts are
+  loaded on every request, never cached. Unlinking, deactivating the
+  profile, moving its account to another profile or removing the
+  `guardian` role takes effect on the guardian's next request, without a
+  new login.
+- **Co-guardians:** `StudentDetail.guardians` (`[{guardian_id, given_names,
+  family_names, relationship, phone, is_active, has_account}]`, by family
+  names then given names) is a list only for viewers with a staff role and
+  `guardian.view`; it is `null` for tutors, student users and linked
+  guardians, so a guardian never sees the child's other guardians.
+- **Audit:** automatic only (`guardians` and `student_guardians`
+  `create`/`update`/`delete`, unmasked; an account link is an `update` of
+  `user_id`); no named event and no `details`. `403`, `404`, `409`, `422`
+  and a body that changes nothing write no event.
 
 ### Response headers
 

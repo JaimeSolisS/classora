@@ -219,7 +219,12 @@ describes the route declarations and the 401/403/404 rule.
   fixed tutor → students map with `student_support.assigned(client,
   {tutor_id: {student_id, ...}})`, which overrides that dependency on the
   test client's app for the block and counts the calls (facts are loaded only
-  for callers holding the matching role).
+  for callers holding the matching role). Guardian links (#34) are real
+  rows: build them with `guardian_support` (API) or the
+  `tests/factories/families.py` helpers `GuardianFactory` and
+  `link_guardian(session, student, guardian, relationship="mother")` (for
+  #34b, #35 and later milestones). Guardian facts are loaded on every
+  request; tests prove a change applies on the same session's next request.
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
   that does not exist. Record policies (`can_<action>_<resource>`) are
@@ -322,6 +327,10 @@ follows these rules.
     "This student doesn't exist." in `e2e/tests/students/students.spec.ts`
     (#33). The same rules: created by that test in every run, no other test
     may use the name.
+  - `e2e.guardians.parent`: the Parent/Guardian account the demo Owner links
+    to a guardian profile in `e2e/tests/families/guardians.spec.ts` (#34);
+    it sees the linked student until the Owner unlinks it. The same rules:
+    created by that test in every run, no other test may use the name.
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,
@@ -330,7 +339,9 @@ follows these rules.
 - **Student data** (#33): students a spec creates carry a unique per-test
   suffix in their family names (for example `Ñúñez Pérez <suffix>`), and
   specs search with that suffix, so parallel tests never see each other's
-  students. There are no demo students.
+  students. There are no demo students. Guardian profiles a spec creates
+  (#34) follow the same rule (`Laura Ñúñez <suffix>`); there are no demo
+  guardians.
 - **Never change `demo.owner` in a spec** (its profile, state, roles or
   password): every test shares its signed-in session (`storageState`). A test
   that needs an Owner to act signs `demo.owner` in in its own fresh context
@@ -338,11 +349,11 @@ follows these rules.
 - **`createActiveUser(playwright.request, baseURL, { username, role,
   password })`** (`e2e/tests/support/users.ts`, #30) creates an active user
   through the API in its own fresh API context: the demo Owner signs in and
-  invites the user, then the invitation is looked up and redeemed. For a
+  invites the user, then the invitation is redeemed (no lookup call, #34). For a
   staff role (`administrator`, `academic_coordinator`, `finance_staff`;
   #170) the helper first reauthenticates the demo Owner in that same API
   context (`POST /api/v1/auth/reauthenticate`); Tutor and Parent/Guardian
-  need no reauthentication. It costs one login and two redemption calls;
+  need no reauthentication. It costs one login and one redemption call;
   count them in the budgets below.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.

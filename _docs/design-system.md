@@ -262,6 +262,17 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   and the last "Remove" are disabled with a help text. Focus goes to the new
   row after adding, to a neighbour after removing, and stays on the moved
   row's button after a move. Server field errors land on their fields.
+- **`SearchPicker`** (`features/guardians`, #34): a labelled search field
+  whose results (up to 10, after a 300 ms pause) are a native radio group,
+  so Tab reaches the group and the arrow keys move the visible checked
+  option; a polite status announces the result count. Disabled options
+  (an archived account) stay listed. Used by the guardian form's account
+  picker and the student's "Link guardian" dialog; no combobox dependency.
+- **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
+  account" as a text badge.
+- **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
+  Cancel/confirm buttons; focus returns to the button that opened it. Used
+  to deactivate a guardian and to unlink a guardian from a student.
 - Render errors are caught by the route error page (inside the layout), the
   root error page and the app-level boundary. None of them shows the error
   message or stack.

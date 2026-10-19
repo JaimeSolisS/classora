@@ -24,8 +24,8 @@ import { createActiveUser } from '../support/users';
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 7 logins (2 by
 // createActiveUser; I1: the tutor twice and the Owner once; I2: the
-// Administrator and the Owner once each), no wrong password, and 4
-// redemption calls (createActiveUser: lookup + redeem, twice). The
+// Administrator and the Owner once each), no wrong password, and 2
+// redemption calls (createActiveUser, twice). The
 // Administrator invitation also reauthenticates the demo Owner once in the
 // helper's own API context. Usernames are unique per run: every `make e2e`
 // starts from an empty database.
@@ -146,7 +146,7 @@ test('a role change ends the user’s sessions; the next login has the new role'
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  // 1. The tutor exists with P1 (login 1, redemption calls 1–2) and is signed
+  // 1. The tutor exists with P1 (login 1, redemption call 1) and is signed
   // in in context B (login 2).
   await createActiveUser(playwright.request, baseURL!, {
     username: TUTOR,
@@ -204,7 +204,7 @@ test('a delegation reaches the Administrator without a new sign-in', async ({
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
   // 1. The Administrator exists (login 5 and a reauthentication in the
-  // helper; redemption calls 3–4) and is signed in in context C (login 6).
+  // helper; redemption call 2) and is signed in in context C (login 6).
   await createActiveUser(playwright.request, baseURL!, {
     username: ADMIN,
     role: 'administrator',

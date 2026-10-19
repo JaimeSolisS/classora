@@ -1,4 +1,4 @@
-"""The families factories without a database (#33 H6)."""
+"""The families factories without a database (#33 H6, #34 H6)."""
 
 import re
 from datetime import date
@@ -6,6 +6,7 @@ from datetime import date
 from app.modules.families.ages import is_minor
 from app.modules.families.models import PHONE_PATTERN
 from tests.factories.families import (
+    GuardianFactory,
     StudentEmergencyContactFactory,
     StudentFactory,
     fictitious_phone,
@@ -30,3 +31,12 @@ def test_contact_phones_are_valid_and_fictitious():
     assert all(c.phone.startswith("+52 00 ") for c in contacts)
     assert len({c.phone for c in contacts}) == 3
     assert fictitious_phone(123456789) == "+52 00 2345 6789"
+
+
+def test_built_guardians_are_active_without_an_account_or_contact():
+    guardians = GuardianFactory.build_batch(3)
+
+    assert all(g.is_active for g in guardians)
+    assert all(g.user_id is None for g in guardians)
+    assert all((g.email, g.phone) == (None, None) for g in guardians)
+    assert all(g.given_names.strip() and g.family_names.strip() for g in guardians)

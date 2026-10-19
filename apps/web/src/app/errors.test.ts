@@ -48,6 +48,10 @@ const API_CODES = [
   'education_level_inactive',
   'education_level_unavailable',
   'emergency_contact_unknown',
+  'guardian_account_unavailable',
+  'guardian_account_in_use',
+  'guardian_unavailable',
+  'guardian_already_linked',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

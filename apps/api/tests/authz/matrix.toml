@@ -195,6 +195,41 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/guardians"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The record policy filters the list: a guardian sees only their own active
+# profile (#34 F3).
+
+[[route]]
+method = "POST"
+path = "/api/v1/guardians"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/guardians/{guardian_id}"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The placeholder id is no guardian: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/invitations"
 access = "permission"
 permission = "user.invite"
@@ -263,8 +298,9 @@ path = "/api/v1/students"
 access = "permission"
 permission = "student.view"
 allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
-# Every role may call it; the record policy filters the list (tutors,
-# guardians and students see an empty page until M4, #34 and #35).
+# Every role may call it; the record policy filters the list (tutors and
+# students see an empty page until M4 and #35; guardians see their linked
+# students, #34).
 
 [[route]]
 method = "POST"
@@ -291,6 +327,23 @@ permission = "student.manage"
 allow = ["owner", "administrator", "academic_coordinator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/guardians"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is linked.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/students/{student_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no link: 404 for the allowed roles.
 
 [[route]]
 method = "GET"

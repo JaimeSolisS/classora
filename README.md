@@ -56,6 +56,13 @@ Profiles are deactivated instead of deleted, and the list has an accent- and
 typo-tolerant name search. Finance staff see profiles without personal or
 contact details; tutors see only their assigned students (assignments arrive
 with scheduling, so for now they see none).
+On the Guardians page, Owners and administrators keep a profile for every
+parent or guardian (with or without a login), link it to the guardian's
+account, and link guardians to students with a relationship (a child may
+have several guardians, and a guardian several children). A signed-in
+guardian sees only their linked children (minors in full, adult students
+without personal details), never the child's other guardians, and unlinking
+takes effect on their next request.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

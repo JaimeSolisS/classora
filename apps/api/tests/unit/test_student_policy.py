@@ -1,4 +1,6 @@
-"""The student record policies (#33 F1, F5): pure functions, no I/O."""
+"""The student record policies (#33 F1, F5): pure functions, no I/O. The
+cases here are minors (``is_minor=True``); the adult cases of #34 E3 are in
+``test_guardian_policy.py``."""
 
 import uuid
 
@@ -50,6 +52,8 @@ def test_the_codes_match_the_identity_catalog():
     ) == ROLES
     assert policy.STUDENT_VIEW == identity.STUDENT_VIEW
     assert policy.STUDENT_MANAGE == identity.STUDENT_MANAGE
+    assert policy.GUARDIAN_VIEW == identity.GUARDIAN_VIEW
+    assert policy.FAMILY_MANAGE == identity.FAMILY_MANAGE
 
 
 def test_every_role_holds_student_view_and_only_three_manage():
@@ -90,7 +94,7 @@ SINGLE_ROLE_CASES = [
 def test_each_role_alone(role, facts, expected):
     caller = principal(role)
 
-    assert student_access_level(caller, A, facts) == expected
+    assert student_access_level(caller, A, facts, is_minor=True) == expected
     assert can_view_student(caller, A, facts) is (expected is not None)
 
 
@@ -100,7 +104,9 @@ def test_an_unlinked_student_follows_the_staff_rule(role):
     staff = role in identity.STAFF_ROLES
 
     assert can_view_student(caller, B, ALL_FACTS_FOR_A) is staff
-    assert (student_access_level(caller, B, ALL_FACTS_FOR_A) is None) is not staff
+    assert (
+        student_access_level(caller, B, ALL_FACTS_FOR_A, is_minor=True) is None
+    ) is not staff
 
 
 def test_tutor_and_guardian_get_the_union():
@@ -109,29 +115,29 @@ def test_tutor_and_guardian_get_the_union():
         assigned_student_ids=frozenset({A}), linked_student_ids=frozenset({B})
     )
 
-    assert student_access_level(caller, A, facts) == "limited"
-    assert student_access_level(caller, B, facts) == "full"
-    assert student_access_level(caller, uuid.uuid4(), facts) is None
+    assert student_access_level(caller, A, facts, is_minor=True) == "limited"
+    assert student_access_level(caller, B, facts, is_minor=True) == "full"
+    assert student_access_level(caller, uuid.uuid4(), facts, is_minor=True) is None
     assert visible_student_ids(caller, facts) == {A, B}
 
 
 def test_finance_staff_with_academic_coordinator_get_full_access():
     caller = principal(identity.FINANCE_STAFF, identity.ACADEMIC_COORDINATOR)
 
-    assert student_access_level(caller, A, NONE) == "full"
+    assert student_access_level(caller, A, NONE, is_minor=True) == "full"
 
 
 def test_tutor_with_academic_coordinator_see_every_student_in_full():
     caller = principal(identity.TUTOR, identity.ACADEMIC_COORDINATOR)
 
-    assert student_access_level(caller, B, NONE) == "full"
+    assert student_access_level(caller, B, NONE, is_minor=True) == "full"
 
 
 def test_finance_staff_and_an_assigned_tutor_stay_limited():
     caller = principal(identity.FINANCE_STAFF, identity.TUTOR)
     facts = StudentAccessFacts(assigned_student_ids=frozenset({A}))
 
-    assert student_access_level(caller, A, facts) == "limited"
+    assert student_access_level(caller, A, facts, is_minor=True) == "limited"
 
 
 def test_a_staff_role_without_student_view_sees_nothing_through_it():

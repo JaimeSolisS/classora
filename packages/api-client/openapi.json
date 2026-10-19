@@ -3269,6 +3269,521 @@
           }
         }
       }
+    },
+    "/api/v1/guardians": {
+      "get": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "List Guardians",
+        "description": "The guardian profiles the caller may see (a guardian: only their own).\nWith ``q``: by relevance, then by family names and given names.",
+        "operationId": "list_guardians_api_v1_guardians_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words).",
+              "title": "Q"
+            },
+            "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/GuardianStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_GuardianListItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "Create Guardian",
+        "description": "Add an active guardian profile, optionally linked to a login account.",
+        "operationId": "create_guardian_api_v1_guardians_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardianCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardianDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account is already linked to another guardian (guardian_account_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/guardians/{guardian_id}": {
+      "get": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "Get Guardian",
+        "description": "One guardian profile with its linked students. ``account`` is ``null``\nunless the caller holds ``family.manage``.",
+        "operationId": "get_guardian_api_v1_guardians__guardian_id__get",
+        "parameters": [
+          {
+            "name": "guardian_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guardian Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardianDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such guardian, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "Update Guardian",
+        "description": "Change a profile: the fields sent, ``user_id`` to link, move or (with\n``null``) clear the account, ``is_active`` to deactivate or reactivate.\nAn inactive profile grants its account nothing.",
+        "operationId": "update_guardian_api_v1_guardians__guardian_id__patch",
+        "parameters": [
+          {
+            "name": "guardian_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guardian Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardianUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardianDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such guardian, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The guardian changed since it was loaded (version_conflict); or The account is already linked to another guardian (guardian_account_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/guardians": {
+      "post": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "Link Guardian",
+        "description": "Link an active guardian to the student with a relationship. The\nguardian's account then sees the student on its next request.",
+        "operationId": "link_guardian_api_v1_students__student_id__guardians_post",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentGuardianCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentGuardianItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The guardian is already linked to this student (guardian_already_linked).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/guardians/{guardian_id}": {
+      "delete": {
+        "tags": [
+          "guardians"
+        ],
+        "summary": "Unlink Guardian",
+        "description": "Remove the link. The guardian's account loses access to the student on\nits next request.",
+        "operationId": "unlink_guardian_api_v1_students__student_id__guardians__guardian_id__delete",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "guardian_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guardian Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, guardian or link between them (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3745,6 +4260,387 @@
         "title": "FieldError",
         "type": "object"
       },
+      "GuardianAccount": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "state"
+        ],
+        "title": "GuardianAccount",
+        "description": "The linked login, shown only to ``family.manage`` holders."
+      },
+      "GuardianCreate": {
+        "properties": {
+          "given_names": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Family Names"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "An account with the guardian role that isn't archived."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "given_names",
+          "family_names"
+        ],
+        "title": "GuardianCreate",
+        "description": "A new guardian profile (``POST /api/v1/guardians``). It starts active.\n``user_id`` links a login account (one that holds the ``guardian`` role\nand isn't archived)."
+      },
+      "GuardianDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "has_account": {
+            "type": "boolean",
+            "title": "Has Account"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardianAccount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/GuardianStudentItem"
+            },
+            "type": "array",
+            "title": "Students",
+            "description": "By family names, then given names."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with every change."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "given_names",
+          "family_names",
+          "email",
+          "phone",
+          "is_active",
+          "has_account",
+          "account",
+          "students",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GuardianDetail",
+        "description": "One guardian profile. ``account`` is ``null`` unless the viewer holds\n``family.manage``."
+      },
+      "GuardianListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "has_account": {
+            "type": "boolean",
+            "title": "Has Account"
+          },
+          "student_count": {
+            "type": "integer",
+            "title": "Student Count",
+            "description": "The number of linked students."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "given_names",
+          "family_names",
+          "is_active",
+          "has_account",
+          "student_count"
+        ],
+        "title": "GuardianListItem",
+        "description": "One guardian in the list. No contact data (spec §16)."
+      },
+      "GuardianRelationship": {
+        "type": "string",
+        "enum": [
+          "mother",
+          "father",
+          "grandparent",
+          "stepparent",
+          "sibling",
+          "other_relative",
+          "legal_guardian",
+          "other"
+        ]
+      },
+      "GuardianStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive",
+          "all"
+        ]
+      },
+      "GuardianStudentItem": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/GuardianRelationship"
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_id",
+          "given_names",
+          "family_names",
+          "relationship",
+          "is_minor",
+          "is_active"
+        ],
+        "title": "GuardianStudentItem",
+        "description": "A student linked to the guardian."
+      },
+      "GuardianUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "given_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Given Names"
+          },
+          "family_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Names"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "GuardianUpdate",
+        "description": "A change to a guardian profile (``PATCH /api/v1/guardians/{id}``) with\nthe ``version`` the caller loaded. ``null`` clears ``email``, ``phone``\nand ``user_id``."
+      },
       "HealthStatus": {
         "properties": {
           "status": {
@@ -4018,6 +4914,37 @@
           "offset"
         ],
         "title": "OffsetPage[EducationLevelDetail]"
+      },
+      "OffsetPage_GuardianListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GuardianListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[GuardianListItem]"
       },
       "OffsetPage_InvitationListItem_": {
         "properties": {
@@ -4770,6 +5697,21 @@
               }
             ]
           },
+          "guardians": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/StudentGuardianItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardians",
+            "description": "The linked guardians, by family names then given names; null unless the viewer holds a staff role and guardian.view."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -4797,12 +5739,86 @@
           "school_grade",
           "education_level",
           "personal",
+          "guardians",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "StudentDetail",
-        "description": "One student profile. ``personal`` is ``null`` for a viewer with\nlimited access (Finance Staff, assigned tutors)."
+        "description": "One student profile. ``personal`` is ``null`` for a viewer with\nlimited access (Finance Staff, assigned tutors, a linked guardian of an\nadult student). ``guardians`` is ``null`` for viewers without a staff\nrole and ``guardian.view``."
+      },
+      "StudentGuardianCreate": {
+        "properties": {
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id",
+            "description": "An active guardian profile."
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/GuardianRelationship"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "guardian_id",
+          "relationship"
+        ],
+        "title": "StudentGuardianCreate",
+        "description": "A link (``POST /api/v1/students/{student_id}/guardians``)."
+      },
+      "StudentGuardianItem": {
+        "properties": {
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/GuardianRelationship"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "has_account": {
+            "type": "boolean",
+            "title": "Has Account",
+            "description": "The profile is linked to a login."
+          }
+        },
+        "type": "object",
+        "required": [
+          "guardian_id",
+          "given_names",
+          "family_names",
+          "relationship",
+          "phone",
+          "is_active",
+          "has_account"
+        ],
+        "title": "StudentGuardianItem",
+        "description": "A guardian linked to a student, as staff see it on the student."
       },
       "StudentListItem": {
         "properties": {

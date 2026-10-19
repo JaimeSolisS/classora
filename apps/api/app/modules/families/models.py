@@ -1,4 +1,5 @@
-"""Student profiles and their emergency contacts (spec §4, §12; #33).
+"""Student profiles, their emergency contacts, guardian profiles and the
+student-guardian links (spec §4, §12; #33, #34).
 
 - ``students``: one profile per student, with or without a login (#35 links
   a login later). Personal details (``given_names``, ``family_names`` and a
@@ -17,11 +18,24 @@ family_names))``: no stored search column, so audit diffs have no derived
 value. ``public.f_unaccent`` is the ``IMMUTABLE`` wrapper the migration
 creates (``unaccent()`` itself is only ``STABLE``).
 
+- ``guardians`` (#34): a parent or guardian, with or without a login
+  (ADR-0007 D18: staff record paper consent for guardians without one).
+  Names, the profile's **own** optional ``email``/``phone`` (never a
+  login's), ``is_active`` and an optional ``user_id`` (a foreign key to
+  ``users``, ``ON DELETE RESTRICT``, unique: one account is linked to at most
+  one profile). That account sees the profile's linked students while it
+  holds the ``guardian`` role and the profile is active.
+- ``student_guardians`` (#34): one row per link, with a ``relationship``
+  code (:data:`~app.modules.families.constants.GUARDIAN_RELATIONSHIPS`).
+  Unique per ``(student_id, guardian_id)``; created and hard-deleted, never
+  edited (to change the relationship, unlink and link again). A link never
+  changes either profile's ``version``.
+
 Profiles are never deleted by the application: they are deactivated
 (``is_active``). Both tables are :class:`~app.core.audit.Audited` with
 nothing excluded or masked (#22; personal fields are audited unmasked, spec
-§9). Only ``students`` is versioned: its ``version`` covers its contacts too
-(any contact change increments it).
+§9). ``students`` and ``guardians`` are versioned; a student's ``version``
+covers its contacts too (any contact change increments it).
 """
 
 import uuid
@@ -36,6 +50,7 @@ from sqlalchemy import (
     Index,
     SmallInteger,
     String,
+    Text,
     UniqueConstraint,
     literal_column,
     text,
@@ -45,6 +60,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
+from app.modules.families.constants import GUARDIAN_RELATIONSHIPS
 
 NAME_MAX_LENGTH: Final = 100
 EMAIL_MAX_LENGTH: Final = 254
@@ -76,6 +92,14 @@ skipping it (Alembic doesn't compare operator classes; the migration test
 checks ``gin_trgm_ops``)."""
 
 CONTACT_POSITION_UNIQUE: Final = "uq_student_emergency_contacts_student_id_position"
+
+GUARDIAN_SEARCH_INDEX: Final = "ix_guardians_search_name_trgm"
+GUARDIAN_USER_UNIQUE: Final = "uq_guardians_user_id"
+"""One account per guardian profile (#34 A2); the service maps a violation of
+exactly this constraint to ``409 guardian_account_in_use``."""
+LINK_UNIQUE: Final = "uq_student_guardians_student_guardian"
+"""One link per student and guardian (#34 A3); a violation of exactly this
+constraint is ``409 guardian_already_linked``."""
 
 
 def _trimmed(column: str) -> CheckConstraint:
@@ -157,3 +181,63 @@ class StudentEmergencyContact(Audited, Model):
     relationship: Mapped[str] = mapped_column(String(RELATIONSHIP_MAX_LENGTH))
     phone: Mapped[str] = mapped_column(String(PHONE_MAX_LENGTH))
     position: Mapped[int] = mapped_column(SmallInteger)
+
+
+class Guardian(Audited, VersionedMixin, Model):
+    """A parent or guardian profile (#34 A2)."""
+
+    __tablename__ = "guardians"
+    __table_args__ = (
+        _trimmed("given_names"),
+        _not_blank("given_names"),
+        _trimmed("family_names"),
+        _not_blank("family_names"),
+        CheckConstraint(f"email ~ '{EMAIL_PATTERN}'", name="email_format"),
+        CheckConstraint(f"phone ~ '{PHONE_PATTERN}'", name="phone_format"),
+        UniqueConstraint("user_id", name=GUARDIAN_USER_UNIQUE),
+        Index(
+            GUARDIAN_SEARCH_INDEX,
+            literal_column(INDEX_EXPRESSION).label("search_name"),
+            postgresql_using="gin",
+            postgresql_ops={"search_name": "gin_trgm_ops"},
+        ),
+    )
+
+    given_names: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    family_names: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    email: Mapped[str | None] = mapped_column(String(EMAIL_MAX_LENGTH), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(PHONE_MAX_LENGTH), nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class StudentGuardian(Audited, Model):
+    """A link between a student and a guardian profile (#34 A3)."""
+
+    __tablename__ = "student_guardians"
+    __table_args__ = (
+        CheckConstraint(
+            "relationship IN ({})".format(
+                ", ".join(f"'{code}'" for code in GUARDIAN_RELATIONSHIPS)
+            ),
+            name="relationship_valid",
+        ),
+        # Its index also serves lookups by student (the leading column).
+        UniqueConstraint("student_id", "guardian_id", name=LINK_UNIQUE),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    guardian_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("guardians.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    relationship: Mapped[str] = mapped_column(Text)

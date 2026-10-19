@@ -1,5 +1,5 @@
-"""Student profile request and response bodies (#33; the public schemas of
-the module).
+"""Student and guardian request and response bodies (#33, #34; the public
+schemas of the module).
 
 Request bodies forbid unknown fields (``422``). Strings are trimmed; for an
 optional string, ``""`` becomes ``null``. In ``StudentUpdate`` a field that is
@@ -9,7 +9,12 @@ any other field is ``422``.
 
 ``StudentDetail.personal`` holds the birthdate, the contact details and the
 emergency contacts. It is ``null`` for a viewer with limited access (owner
-decision #33 E2 (a)); list items never carry it.
+decision #33 E2 (a)); list items never carry it. ``StudentDetail.guardians``
+is ``null`` for viewers without a staff role and ``guardian.view`` (#34 E1).
+
+Guardian bodies (#34) follow the same rules: in ``GuardianUpdate`` ``null``
+clears ``email``, ``phone`` and ``user_id``, and is ``422`` for a name or
+``is_active``.
 """
 
 import re
@@ -39,6 +44,7 @@ from app.modules.families.models import (
     SCHOOL_GRADE_MAX_LENGTH,
     SCHOOL_NAME_MAX_LENGTH,
 )
+from app.modules.identity.schemas import UserState
 
 # The #31 F1 contact-field patterns (``models.EMAIL_PATTERN`` /
 # ``PHONE_PATTERN``; PostgreSQL ``[:space:]`` is ``\s`` here), the same as
@@ -242,9 +248,37 @@ class StudentListItem(BaseModel):
     education_level: EducationLevelReference | None
 
 
+type GuardianRelationship = Literal[
+    "mother",
+    "father",
+    "grandparent",
+    "stepparent",
+    "sibling",
+    "other_relative",
+    "legal_guardian",
+    "other",
+]
+"""A link's relationship code (``constants.GUARDIAN_RELATIONSHIPS``; a unit
+test keeps both equal)."""
+
+
+class StudentGuardianItem(BaseModel):
+    """A guardian linked to a student, as staff see it on the student."""
+
+    guardian_id: uuid.UUID
+    given_names: str
+    family_names: str
+    relationship: GuardianRelationship
+    phone: str | None
+    is_active: bool
+    has_account: bool = Field(description="The profile is linked to a login.")
+
+
 class StudentDetail(BaseModel):
     """One student profile. ``personal`` is ``null`` for a viewer with
-    limited access (Finance Staff, assigned tutors)."""
+    limited access (Finance Staff, assigned tutors, a linked guardian of an
+    adult student). ``guardians`` is ``null`` for viewers without a staff
+    role and ``guardian.view``."""
 
     id: uuid.UUID
     given_names: str
@@ -257,6 +291,12 @@ class StudentDetail(BaseModel):
         description="Shown even when the level is inactive."
     )
     personal: StudentPersonal | None
+    guardians: list[StudentGuardianItem] | None = Field(
+        description=(
+            "The linked guardians, by family names then given names; null"
+            " unless the viewer holds a staff role and guardian.view."
+        )
+    )
     version: int = Field(description="Send it back with every change.")
     created_at: datetime
     updated_at: datetime
@@ -281,3 +321,100 @@ SearchText = Annotated[
     AfterValidator(_at_most_five_terms),
 ]
 """A name search: trimmed, 1-100 characters, at most five words."""
+
+
+# --- Guardian profiles and links (#34) -------------------------------------------
+
+# The status filter of the guardians list.
+type GuardianStatus = Literal["active", "inactive", "all"]
+
+
+class GuardianCreate(_Body):
+    """A new guardian profile (``POST /api/v1/guardians``). It starts active.
+    ``user_id`` links a login account (one that holds the ``guardian`` role
+    and isn't archived)."""
+
+    given_names: PersonName
+    family_names: PersonName
+    email: OptionalEmail = None
+    phone: OptionalPhone = None
+    user_id: uuid.UUID | None = Field(
+        default=None,
+        description="An account with the guardian role that isn't archived.",
+    )
+
+
+class GuardianUpdate(_Body):
+    """A change to a guardian profile (``PATCH /api/v1/guardians/{id}``) with
+    the ``version`` the caller loaded. ``null`` clears ``email``, ``phone``
+    and ``user_id``."""
+
+    version: int = Field(ge=1)
+    given_names: PersonName | None = None
+    family_names: PersonName | None = None
+    email: OptionalEmail = None
+    phone: OptionalPhone = None
+    user_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+    _fields_not_null = field_validator("given_names", "family_names", "is_active")(
+        _not_null
+    )
+
+
+class GuardianListItem(BaseModel):
+    """One guardian in the list. No contact data (spec §16)."""
+
+    id: uuid.UUID
+    given_names: str
+    family_names: str
+    is_active: bool
+    has_account: bool
+    student_count: int = Field(description="The number of linked students.")
+
+
+class GuardianAccount(BaseModel):
+    """The linked login, shown only to ``family.manage`` holders."""
+
+    id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+
+
+class GuardianStudentItem(BaseModel):
+    """A student linked to the guardian."""
+
+    student_id: uuid.UUID
+    given_names: str
+    family_names: str
+    relationship: GuardianRelationship
+    is_minor: bool
+    is_active: bool
+
+
+class GuardianDetail(BaseModel):
+    """One guardian profile. ``account`` is ``null`` unless the viewer holds
+    ``family.manage``."""
+
+    id: uuid.UUID
+    given_names: str
+    family_names: str
+    email: str | None
+    phone: str | None
+    is_active: bool
+    has_account: bool
+    account: GuardianAccount | None
+    students: list[GuardianStudentItem] = Field(
+        description="By family names, then given names."
+    )
+    version: int = Field(description="Send it back with every change.")
+    created_at: datetime
+    updated_at: datetime
+
+
+class StudentGuardianCreate(_Body):
+    """A link (``POST /api/v1/students/{student_id}/guardians``)."""
+
+    guardian_id: uuid.UUID = Field(description="An active guardian profile.")
+    relationship: GuardianRelationship

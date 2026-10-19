@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { SIGNED_OUT_STATE } from '../support/auth';
+import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
@@ -15,7 +16,9 @@ const THEMES = ['light', 'dark'] as const;
 // /password-resets, /registration-requests, /account/password, the catalog
 // levels page and the seeded "Primaria" level's page (opened from the list),
 // /students, /students/new and the detail of a student the scan creates
-// through the API first (#33 L2) are behind the guard: scanned signed in
+// through the API first (#33 L2), /guardians, /guardians/new and the detail
+// of a guardian the scan creates and links to a new student first (#34 K2)
+// are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
 // signed out.
@@ -29,6 +32,11 @@ interface ScannedRoute {
   openedPath?: RegExp;
   /** First create a student through the API; `path` is then its detail. */
   createsStudent?: boolean;
+  /**
+   * First create a guardian linked to a new student through the API; `path`
+   * is then the guardian's detail.
+   */
+  createsGuardian?: boolean;
 }
 
 const ROUTES: ScannedRoute[] = [
@@ -65,6 +73,14 @@ const ROUTES: ScannedRoute[] = [
     path: '/students/<created>',
     signedIn: true,
     createsStudent: true,
+  },
+  { name: 'guardians', path: '/guardians', signedIn: true },
+  { name: 'guardian-new', path: '/guardians/new', signedIn: true },
+  {
+    name: 'guardian-detail',
+    path: '/guardians/<created>',
+    signedIn: true,
+    createsGuardian: true,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },
@@ -105,7 +121,7 @@ for (const theme of THEMES) {
         }, theme);
 
         let path = route.path;
-        if (route.createsStudent) {
+        if (route.createsStudent || route.createsGuardian) {
           // The app origin first, so the API call carries the session.
           await page.goto('/');
           await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
@@ -117,6 +133,14 @@ for (const theme of THEMES) {
             familyNames: `Accesible ${sfx}`,
           });
           path = `/students/${id}`;
+          if (route.createsGuardian) {
+            const guardianId = await createGuardianViaApi(page, {
+              givenNames: 'Elena',
+              familyNames: `Accesible ${sfx}`,
+            });
+            await linkGuardianViaApi(page, id, guardianId);
+            path = `/guardians/${guardianId}`;
+          }
         }
         await page.goto(path);
         await expect(page).toHaveURL(path);

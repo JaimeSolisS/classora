@@ -2,11 +2,15 @@
 
 **Reads** (``student.view``): :func:`list_students` and :func:`get_student`.
 Who sees which student, and how much of it, is decided by the pure policies
-in :mod:`app.modules.families.permissions`; this module loads the facts
-(:func:`load_access_facts`): a tutor's current assignments from the
-:class:`~app.modules.families.assignments.TutorAssignmentSource` (a stub until
-M4), a guardian's links (#34) and a student user's own profile (#35), each
-only for a caller who holds that role. A hidden student is ``404
+in :mod:`app.modules.families.permissions`; :func:`load_access_facts`
+(``facts.py``) loads the facts per request: a tutor's current assignments
+from the :class:`~app.modules.families.assignments.TutorAssignmentSource` (a
+stub until M4), a guardian's links (#34) and a student user's own profile
+(#35), each only for a caller who holds that role. The detail lists the
+student's guardians for staff with ``guardian.view`` (#34 E1).
+
+**Guardians** (#34): the guardian profile and link functions live in
+``guardians.py`` and are public through this module. A hidden student is ``404
 not_found``, the same as a missing one; the list leaves hidden students out
 and never answers ``403``/``404`` for them.
 
@@ -53,13 +57,7 @@ from typing import Any, Final
 
 from sqlalchemy import (
     ColumnElement,
-    Float,
-    String,
-    and_,
     func,
-    literal,
-    literal_column,
-    or_,
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +69,8 @@ from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import EducationLevelReference
+from app.modules.families import guardians as _guardians
+from app.modules.families import search
 from app.modules.families.ages import is_minor
 from app.modules.families.assignments import TutorAssignmentSource
 from app.modules.families.errors import (
@@ -78,13 +78,14 @@ from app.modules.families.errors import (
     EducationLevelUnavailableError,
     EmergencyContactUnknownError,
 )
+from app.modules.families.facts import load_access_facts
 from app.modules.families.models import Student, StudentEmergencyContact
 from app.modules.families.permissions import (
-    TUTOR,
     AccessLevel,
     StudentAccessFacts,
     can_view_student,
     sees_every_student,
+    sees_student_guardians,
     student_access_level,
     visible_student_ids,
 )
@@ -92,91 +93,50 @@ from app.modules.families.schemas import (
     EmergencyContact,
     StudentCreate,
     StudentDetail,
+    StudentGuardianItem,
     StudentListItem,
     StudentPersonal,
     StudentStatus,
     StudentUpdate,
-    search_terms,
 )
 
 __all__ = [
+    "create_guardian",
     "create_student",
+    "get_guardian",
     "get_student",
     "is_minor",
+    "link_guardian",
+    "list_guardians",
     "list_students",
     "load_access_facts",
+    "unlink_guardian",
+    "update_guardian",
     "update_student",
 ]
 
-# --- Facts -----------------------------------------------------------------------
-
-
-async def load_access_facts(
-    session: AsyncSession, principal: Principal, source: TutorAssignmentSource
-) -> StudentAccessFacts:
-    """What the caller is linked to, loaded only for the roles they hold.
-
-    - ``tutor``: the current assignments from ``source`` (always empty until
-      M4 replaces :class:`~app.modules.families.assignments.NoTutorAssignments`);
-    - ``guardian``: ``linked_student_ids`` stays empty until #34 loads
-      guardian links (per request, never cached, so an unlink applies on the
-      next request);
-    - ``student``: ``own_student_id`` stays ``None`` until #35 links a login
-      to its profile.
-    """
-    assigned: frozenset[uuid.UUID] = frozenset()
-    if TUTOR in principal.roles:
-        assigned = await source.student_ids_for_tutor(session, principal.user_id)
-    return StudentAccessFacts(assigned_student_ids=assigned)
-
+# Guardian profiles and links (#34), public through this module (ADR-0002).
+create_guardian = _guardians.create_guardian
+get_guardian = _guardians.get_guardian
+link_guardian = _guardians.link_guardian
+list_guardians = _guardians.list_guardians
+unlink_guardian = _guardians.unlink_guardian
+update_guardian = _guardians.update_guardian
 
 # --- Search expressions ----------------------------------------------------------
 
 
-def _normalized(expression: Any) -> ColumnElement[str]:
-    """``public.f_unaccent(lower(expression))``."""
-    return func.public.f_unaccent(func.lower(expression), type_=String)
-
-
-def _search_name() -> ColumnElement[str]:
-    # Exactly the indexed expression (models.SEARCH_EXPRESSION): the separator
-    # is an SQL literal, not a bound parameter, so the planner can match the
-    # GIN index.
-    full_name = Student.given_names.op("||")(literal_column("' '")).op("||")(
-        Student.family_names
-    )
-    return _normalized(full_name)
-
-
-def _escape_like(term: str) -> str:
-    """``term`` for a ``LIKE`` pattern with PostgreSQL's default escape
-    character (``\\``): ``%``, ``_`` and ``\\`` match literally."""
-    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 def search_condition(q: str) -> ColumnElement[bool]:
-    """The E2 predicate of ``q`` (already trimmed, at most five terms)."""
-    name = _search_name()
-    every_term = and_(
-        *(
-            name.like(
-                literal("%") + _normalized(literal(_escape_like(term))) + literal("%")
-            )
-            for term in search_terms(q)
-        )
-    )
-    similar = _normalized(literal(q)).op("<%", is_comparison=True)(name)
-    return or_(every_term, similar)
+    """The E2 predicate of ``q`` on students (``search.name_search_condition``)."""
+    return search.name_search_condition(q, Student.given_names, Student.family_names)
 
 
 def _relevance(q: str) -> ColumnElement[float]:
-    return func.word_similarity(_normalized(literal(q)), _search_name(), type_=Float)
+    return search.relevance(q, Student.given_names, Student.family_names)
 
 
-DEFAULT_ORDER: Final = (
-    _normalized(Student.family_names),
-    _normalized(Student.given_names),
-    Student.id,
+DEFAULT_ORDER: Final = search.default_order(
+    Student.given_names, Student.family_names, Student.id
 )
 
 
@@ -246,6 +206,7 @@ def _detail(
     level: EducationLevelReference | None,
     access: AccessLevel,
     contacts: Iterable[StudentEmergencyContact],
+    guardians: list[StudentGuardianItem] | None,
 ) -> StudentDetail:
     personal = None
     if access == "full":
@@ -267,6 +228,7 @@ def _detail(
         school_grade=student.school_grade,
         education_level=level,
         personal=personal,
+        guardians=guardians,
         version=student.version,
         created_at=student.created_at,
         updated_at=student.updated_at,
@@ -277,6 +239,7 @@ async def _detail_for(
     session: AsyncSession,
     student: Student,
     *,
+    principal: Principal,
     access: AccessLevel,
     level: EducationLevelReference | None = None,
     contacts: Sequence[StudentEmergencyContact] | None = None,
@@ -285,7 +248,27 @@ async def _detail_for(
         level = await _level_of(session, student)
     if access == "full" and contacts is None:
         contacts = await _contacts_of(session, student.id)
-    return _detail(student, level=level, access=access, contacts=contacts or ())
+    guardians = None
+    if sees_student_guardians(principal):
+        guardians = await _guardians.student_guardian_items(session, student.id)
+    return _detail(
+        student,
+        level=level,
+        access=access,
+        contacts=contacts or (),
+        guardians=guardians,
+    )
+
+
+def _access(
+    principal: Principal, student: Student, facts: StudentAccessFacts
+) -> AccessLevel | None:
+    return student_access_level(
+        principal,
+        student.id,
+        facts,
+        is_minor=is_minor(student.birthdate, center_today()),
+    )
 
 
 # --- Reads -----------------------------------------------------------------------
@@ -361,10 +344,10 @@ async def get_student(
         await session.get(Student, student_id),
         can_view=lambda record: can_view_student(principal, record.id, facts),
     )
-    access = student_access_level(principal, student.id, facts)
+    access = _access(principal, student, facts)
     if access is None:  # pragma: no cover - authorize_record already checked
         raise AssertionError("visible student without an access level")
-    return await _detail_for(session, student, access=access)
+    return await _detail_for(session, student, principal=principal, access=access)
 
 
 # --- Writes ----------------------------------------------------------------------
@@ -434,8 +417,14 @@ async def create_student(
     ]
     session.add_all(contacts)
     await session.flush()
-    access = student_access_level(principal, student.id, StudentAccessFacts())
-    return _detail(student, level=level, access=access or "limited", contacts=contacts)
+    access = _access(principal, student, StudentAccessFacts())
+    return _detail(
+        student,
+        level=level,
+        access=access or "limited",
+        contacts=contacts,
+        guardians=[] if sees_student_guardians(principal) else None,
+    )
 
 
 PROFILE_FIELDS: Final = (
@@ -569,9 +558,11 @@ async def update_student(
         if body.education_level_id is not None:
             level = await _available_level(session, body.education_level_id)
         changes["education_level_id"] = body.education_level_id
-    access = student_access_level(principal, student.id, facts) or "limited"
+    access = _access(principal, student, facts) or "limited"
     if not changes and not plan.changes_anything:
-        return await _detail_for(session, student, access=access, contacts=current)
+        return await _detail_for(
+            session, student, principal=principal, access=access, contacts=current
+        )
 
     # One versioned UPDATE of the student row: the changed columns, or, for
     # a contacts-only change, only updated_at (left out of the audit, so no
@@ -594,5 +585,10 @@ async def update_student(
     deleted = {row.id for row in plan.deletes}
     contacts = [row for row in current if row.id not in deleted] + plan.inserts
     return await _detail_for(
-        session, student, access=access, level=level, contacts=contacts
+        session,
+        student,
+        principal=principal,
+        access=access,
+        level=level,
+        contacts=contacts,
     )

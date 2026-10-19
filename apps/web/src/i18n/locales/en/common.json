@@ -34,7 +34,8 @@
     "passwordResets": "Password resets",
     "registrations": "Account requests",
     "catalog": "Catalog",
-    "students": "Students"
+    "students": "Students",
+    "guardians": "Guardians"
   },
   "notFound": {
     "title": "Page not found",
@@ -537,6 +538,113 @@
       "gradeTooLong": "It can have up to 50 characters.",
       "contactNameTooLong": "It can have up to 200 characters.",
       "relationshipTooLong": "It can have up to 50 characters."
+    },
+    "guardians": {
+      "title": "Guardians",
+      "empty": "No guardians linked yet.",
+      "link": "Link guardian",
+      "linkAction": "Link",
+      "linkTitle": "Link guardian",
+      "linkBody": "Search for an active guardian and choose the relationship.",
+      "guardian": "Guardian",
+      "chooseGuardian": "Choose a guardian from the results.",
+      "relationship": "Relationship",
+      "chooseRelationship": "Choose a relationship",
+      "unlink": "Unlink",
+      "unlinkNamed": "Unlink {{name}}",
+      "unlinkTitle": "Unlink guardian",
+      "unlinkBody": "{{name}} will no longer see this student's records.",
+      "linked": "Guardian linked.",
+      "unlinked": "Guardian unlinked."
     }
+  },
+  "guardians": {
+    "title": "Guardians",
+    "add": "Add guardian",
+    "edit": "Edit guardian",
+    "editNamed": "Edit {{name}}",
+    "back": "Back to guardians",
+    "backToGuardian": "Back to the guardian",
+    "notFound": "This guardian doesn't exist.",
+    "saved": "Changes saved.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "notSet": "Not set",
+    "list": {
+      "search": "Search by name",
+      "status": "Status",
+      "statusAll": "All",
+      "empty": "No guardians match these filters.",
+      "noResults": "No results for this search.",
+      "name": "Name",
+      "account": "Account",
+      "students": "Linked students"
+    },
+    "fields": {
+      "givenNames": "Given names",
+      "familyNames": "Family names",
+      "email": "Email (optional)",
+      "phone": "Phone (optional)"
+    },
+    "details": {
+      "email": "Email",
+      "phone": "Phone",
+      "username": "Username",
+      "displayName": "Name on the account",
+      "state": "Account status"
+    },
+    "sections": {
+      "contact": "Contact",
+      "account": "Login account"
+    },
+    "account": {
+      "label": "Login account (optional)",
+      "help": "This account will see the records of the linked children.",
+      "search": "Search accounts by username or name",
+      "has": "Has account",
+      "none": "No account",
+      "remove": "Remove account",
+      "archived": "(archived)"
+    },
+    "students": {
+      "title": "Linked students",
+      "empty": "No linked students."
+    },
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate guardian",
+      "body": "The profile is kept, but its account stops seeing the linked students."
+    },
+    "reactivate": {
+      "action": "Reactivate",
+      "title": "Reactivate guardian",
+      "body": "Its account sees the linked students again."
+    },
+    "conflict": {
+      "reload": "Reload"
+    },
+    "validation": {
+      "nameRequired": "Enter this information.",
+      "nameTooLong": "It can have up to 100 characters.",
+      "emailInvalid": "Enter a valid email address.",
+      "phoneInvalid": "Enter a valid phone number: digits, spaces, parentheses, dots or hyphens only."
+    },
+    "picker": {
+      "count": "Results: {{count}}",
+      "none": "No results.",
+      "failed": "The search didn't work. Try again.",
+      "results": "Results for “{{label}}”"
+    }
+  },
+  "relationships": {
+    "mother": "Mother",
+    "father": "Father",
+    "grandparent": "Grandparent",
+    "stepparent": "Stepparent",
+    "sibling": "Sibling",
+    "other_relative": "Other relative",
+    "legal_guardian": "Legal guardian",
+    "other": "Other"
   }
 }

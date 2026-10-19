@@ -6,6 +6,12 @@ import { LevelsPage } from '@/features/catalog/LevelsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
+import { GuardianDetailPage } from '@/features/guardians/GuardianDetailPage';
+import {
+  EditGuardianPage,
+  NewGuardianPage,
+} from '@/features/guardians/GuardianFormPages';
+import { GuardiansPage } from '@/features/guardians/GuardiansPage';
 import { StudentDetailPage } from '@/features/students/StudentDetailPage';
 import {
   EditStudentPage,
@@ -133,6 +139,26 @@ export const routes: RouteObject[] = [
             path: 'students/:studentId/edit',
             element: <EditStudentPage />,
             handle: { permission: 'student.manage' },
+          },
+          {
+            path: 'guardians',
+            element: <GuardiansPage />,
+            handle: { permission: 'guardian.view' },
+          },
+          {
+            path: 'guardians/new',
+            element: <NewGuardianPage />,
+            handle: { permission: 'family.manage' },
+          },
+          {
+            path: 'guardians/:guardianId',
+            element: <GuardianDetailPage />,
+            handle: { permission: 'guardian.view' },
+          },
+          {
+            path: 'guardians/:guardianId/edit',
+            element: <EditGuardianPage />,
+            handle: { permission: 'family.manage' },
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
