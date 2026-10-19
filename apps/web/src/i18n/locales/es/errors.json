@@ -24,6 +24,8 @@
   "current_password_invalid": "La contraseña actual no es correcta.",
   "user_not_active": "Esta cuenta no está activa. Si es una invitación pendiente, crea un enlace nuevo en Invitaciones.",
   "registration_already_decided": "Esta solicitud ya fue resuelta.",
+  "last_active_owner": "Esta es la única cuenta de Propietario activa. Primero activa o asigna otro Propietario.",
+  "user_state_transition_invalid": "La cuenta no puede pasar a ese estado.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

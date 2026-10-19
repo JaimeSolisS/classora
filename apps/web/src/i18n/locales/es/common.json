@@ -29,6 +29,7 @@
     "label": "Navegación principal",
     "toggle": "Menú",
     "home": "Inicio",
+    "users": "Usuarios",
     "invitations": "Invitaciones",
     "passwordResets": "Restablecer contraseñas",
     "registrations": "Solicitudes de cuenta"
@@ -267,5 +268,85 @@
     "cancel": "Cancelar",
     "approved": "Solicitud aprobada.",
     "rejected": "Solicitud rechazada."
+  },
+  "users": {
+    "title": "Usuarios",
+    "list": {
+      "search": "Buscar por nombre o usuario",
+      "role": "Rol",
+      "state": "Estado",
+      "allRoles": "Todos los roles",
+      "allStates": "Todos los estados",
+      "displayName": "Nombre",
+      "username": "Usuario",
+      "roles": "Roles",
+      "createdAt": "Creado",
+      "empty": "Ningún usuario coincide con estos filtros.",
+      "pagination": "Páginas",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "range": "{{from}}–{{to}} de {{total}}",
+      "invite": "Invitar usuario",
+      "noRoles": "Ninguno"
+    },
+    "detail": {
+      "username": "Usuario",
+      "state": "Estado",
+      "roles": "Roles",
+      "noRoles": "Sin roles",
+      "pendingInvitation": "Invitación aún no utilizada",
+      "pendingRequest": "Solicitud de cuenta en revisión",
+      "notFound": "Este usuario no existe.",
+      "backToList": "Volver a usuarios"
+    },
+    "profile": {
+      "title": "Perfil",
+      "displayName": "Nombre",
+      "email": "Correo electrónico (opcional)",
+      "phone": "Teléfono (opcional)",
+      "contactHelp": "Solo para contacto. No se usa para iniciar sesión.",
+      "notSet": "Sin registrar",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Cambios guardados.",
+      "displayNameRequired": "Escribe un nombre.",
+      "displayNameTooLong": "Usa como máximo 200 caracteres.",
+      "emailInvalid": "Escribe un correo como nombre@ejemplo.com, o déjalo vacío.",
+      "phoneInvalid": "Escribe un teléfono de 7 a 32 caracteres entre dígitos, espacios o ( ) . -, o déjalo vacío."
+    },
+    "status": {
+      "title": "Estado de la cuenta",
+      "suspend": "Suspender",
+      "archive": "Archivar",
+      "reactivate": "Reactivar",
+      "suspendTitle": "Suspender cuenta",
+      "archiveTitle": "Archivar cuenta",
+      "archiveInvitationTitle": "Cancelar invitación",
+      "reactivateTitle": "Reactivar cuenta",
+      "suspendConfirm": "¿Suspender a {{name}}? Se cerrarán todas sus sesiones y no podrá iniciar sesión hasta que la reactives. Te pediremos tu contraseña.",
+      "archiveConfirm": "¿Archivar a {{name}}? Se cerrarán sus sesiones y no podrá iniciar sesión. Su historial se conserva y puedes reactivarlo después. Te pediremos tu contraseña.",
+      "archiveInvitationConfirm": "¿Cancelar la invitación de {{name}}? El enlace dejará de funcionar. Te pediremos tu contraseña.",
+      "reactivateConfirm": "¿Reactivar a {{name}}? Podrá iniciar sesión de nuevo.",
+      "cancel": "Cancelar",
+      "working": "Guardando…",
+      "suspended": "La cuenta está suspendida. Sus sesiones se cerraron.",
+      "archived": "La cuenta está archivada.",
+      "reactivated": "Puede iniciar sesión con su contraseña actual.",
+      "reactivatedNoPassword": "Esta persona aún no tiene contraseña. Crea un enlace para restablecerla."
+    },
+    "reset": {
+      "title": "Contraseña",
+      "intro": "Te pediremos tu contraseña. Las sesiones de la persona se cerrarán cuando establezca la nueva contraseña.",
+      "create": "Crear enlace para restablecer la contraseña"
+    },
+    "conflict": {
+      "reload": "Recargar"
+    }
+  },
+  "userStates": {
+    "pending": "Pendiente",
+    "active": "Activo",
+    "suspended": "Suspendido",
+    "archived": "Archivado"
   }
 }

@@ -16,6 +16,7 @@ export interface NavItem extends AccessRequirement {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/', labelKey: 'nav.home', end: true },
+  { to: '/users', labelKey: 'nav.users', permission: 'user.view' },
   {
     to: '/invitations',
     labelKey: 'nav.invitations',

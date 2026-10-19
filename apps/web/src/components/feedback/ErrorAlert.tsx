@@ -10,6 +10,8 @@ interface ErrorAlertProps {
   error: unknown;
   /** Shows a "Try again" button (for query errors). */
   onRetry?: () => void;
+  /** The retry button's text instead of "Try again" (for example "Reload"). */
+  retryLabel?: string;
   /** A page-specific message (already translated) instead of the code's. */
   message?: string;
   className?: string;
@@ -21,6 +23,7 @@ interface ErrorAlertProps {
 export function ErrorAlert({
   error,
   onRetry,
+  retryLabel,
   message,
   className,
 }: ErrorAlertProps) {
@@ -47,7 +50,7 @@ export function ErrorAlert({
         {requestId ? <RequestReference requestId={requestId} /> : null}
         {onRetry ? (
           <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-            {t('feedback.retry')}
+            {retryLabel ?? t('feedback.retry')}
           </Button>
         ) : null}
       </div>

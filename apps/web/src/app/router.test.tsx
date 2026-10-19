@@ -55,18 +55,22 @@ describe('route tree', () => {
     const children = guard!.children!;
     expect(children.map((r) => (r.index ? 'index' : r.path))).toEqual([
       'index',
+      'users',
+      'users/:userId',
       'invitations',
       'password-resets',
       'registration-requests',
       'account/password',
       '*',
     ]);
-    expect(children[1]!.handle).toEqual({ permission: 'user.invite' });
-    expect(children[2]!.handle).toEqual({
+    expect(children[1]!.handle).toEqual({ permission: 'user.view' });
+    expect(children[2]!.handle).toEqual({ permission: 'user.view' });
+    expect(children[3]!.handle).toEqual({ permission: 'user.invite' });
+    expect(children[4]!.handle).toEqual({
       permission: 'user.password_reset.issue',
     });
-    expect(children[3]!.handle).toEqual({ permission: 'registration.review' });
-    expect(children[4]!.handle).toBeUndefined();
+    expect(children[5]!.handle).toEqual({ permission: 'registration.review' });
+    expect(children[6]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

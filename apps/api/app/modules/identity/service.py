@@ -17,8 +17,15 @@
   :func:`add_user_role`, :func:`remove_user_role` and :func:`set_password`.
   Each revokes all of the user's sessions (:func:`revoke_user_sessions`) in
   the caller's transaction when it changes something that must end them.
-  Callers (#29, #30, #31, #35) add authority checks, reauthentication and the
-  last-active-Owner guard.
+  Callers (#29, #30, #31, #35) add authority checks and reauthentication.
+- **Last-active-Owner guard** (#31; ADR-0007 D4): :func:`change_user_state`
+  (``active`` -> ``suspended``/``archived`` of a user holding ``owner``) and
+  :func:`remove_user_role` (``owner`` from an ``active`` user) take a
+  transaction-scoped advisory lock (:data:`LAST_ACTIVE_OWNER_LOCK_KEY`), count
+  the other active Owners and raise :class:`LastActiveOwnerError` when there
+  is none, changing nothing. The guard lives only here, so every caller gets
+  it: #169 registration approval and rejection, the #31 user-state routes,
+  #170 role changes and #35 consent revocation. Routes never repeat it.
 
 Every function runs in the caller's Unit of Work and never commits. Nothing
 here deletes a user: archived users keep their history (spec §2, §16).
@@ -30,7 +37,7 @@ from collections import defaultdict
 from typing import Final, Literal
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +55,7 @@ from app.modules.identity.errors import (
     DelegationForbiddenError,
     DelegationTargetInvalidError,
     InvalidUserStateTransitionError,
+    LastActiveOwnerError,
     PasswordEqualsUsernameError,
     PasswordPolicyError,
     PasswordTooLongError,
@@ -95,6 +103,7 @@ __all__ = [
     "DelegationForbiddenError",
     "DelegationTargetInvalidError",
     "InvalidUserStateTransitionError",
+    "LastActiveOwnerError",
     "PasswordEqualsUsernameError",
     "PasswordPolicyError",
     "PasswordTooLongError",
@@ -304,6 +313,39 @@ async def _get_user(session: AsyncSession, user_id: uuid.UUID) -> User:
     return user
 
 
+# --- The last-active-Owner guard (#31; ADR-0007 D4) ----------------------------------
+
+LAST_ACTIVE_OWNER_LOCK_KEY: Final = 7_164_227_892_382_950_770
+"""The ``pg_advisory_xact_lock`` key of the guard: the bytes ``b"clsOwner"``
+read as a big-endian 64-bit integer. One constant key, so every guarded change
+in any transaction waits for the others; the lock ends with the transaction
+(it works through PgBouncer in transaction mode)."""
+
+
+async def _ensure_another_active_owner(
+    session: AsyncSession, user_id: uuid.UUID
+) -> None:
+    """Take the guard's lock, then raise :class:`LastActiveOwnerError` unless an
+    ``active`` user other than ``user_id`` holds ``owner``.
+
+    The count runs after the lock is granted, so under READ COMMITTED it sees
+    every guarded change committed before: of two concurrent suspensions of
+    the last two active Owners, the second one is refused.
+    """
+    await session.execute(
+        select(func.pg_advisory_xact_lock(LAST_ACTIVE_OWNER_LOCK_KEY))
+    )
+    others = await session.scalar(
+        select(func.count())
+        .select_from(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .join(User, User.id == UserRole.user_id)
+        .where(Role.code == OWNER, User.state == ACTIVE, User.id != user_id)
+    )
+    if not others:
+        raise LastActiveOwnerError()
+
+
 async def change_user_state(
     session: AsyncSession, *, user_id: uuid.UUID, new_state: str
 ) -> bool:
@@ -312,9 +354,12 @@ async def change_user_state(
     The same state is a no-op that returns ``False`` and writes nothing. A
     forbidden transition (or an unknown state) raises
     :class:`InvalidUserStateTransitionError` and changes nothing; an unknown
-    user raises :class:`~app.core.authz.RecordNotFoundError`. Moving to
-    ``suspended`` or ``archived`` revokes every session of the user. The
-    state change is audited automatically (``users`` ``update``).
+    user raises :class:`~app.core.authz.RecordNotFoundError`. Moving an
+    ``active`` user who holds ``owner`` to ``suspended`` or ``archived``
+    raises :class:`LastActiveOwnerError` when no other active Owner exists
+    (the guard, see the module docstring). Moving to ``suspended`` or
+    ``archived`` revokes every session of the user. The state change is
+    audited automatically (``users`` ``update``).
     """
     user = await _get_user(session, user_id)
     if new_state not in USER_STATES:
@@ -323,6 +368,12 @@ async def change_user_state(
         return False
     if (user.state, new_state) not in ALLOWED_STATE_TRANSITIONS:
         raise InvalidUserStateTransitionError()
+    if (
+        user.state == ACTIVE
+        and new_state in _REVOKING_STATES
+        and OWNER in await _user_roles(session, user_id)
+    ):
+        await _ensure_another_active_owner(session, user_id)
     user.state = new_state
     await session.flush()
     reason = _REVOKING_STATES.get(new_state)
@@ -379,13 +430,17 @@ async def remove_user_role(
 
     Removing a role the user does not have is a no-op that returns ``False``.
     The row is deleted as an ORM instance, so it is audited (``user_roles``
-    ``delete``). The same errors as :func:`add_user_role`.
+    ``delete``). The same errors as :func:`add_user_role`, plus
+    :class:`LastActiveOwnerError` when ``role`` is ``owner``, the user is
+    ``active`` and no other active Owner exists (the guard).
     """
     role_id = await _role_id(session, role)
-    await _get_user(session, user_id)
+    user = await _get_user(session, user_id)
     user_role = await _user_role(session, user_id, role_id)
     if user_role is None:
         return False
+    if role == OWNER and user.state == ACTIVE:
+        await _ensure_another_active_owner(session, user_id)
     await session.delete(user_role)
     await session.flush()
     await revoke_user_sessions(session, user_id=user_id, reason="role_removed")

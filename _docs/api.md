@@ -94,6 +94,8 @@ Codes in use today:
 | `username_taken` | 409 | `POST /api/v1/invitations` or `POST /api/v1/auth/registrations` with a username another user already has, in any state. |
 | `registration_already_decided` | 409 | Approving or rejecting a registration request that was already approved or rejected, or whose account is no longer `pending` (see Registration requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
+| `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
+| `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `username_invalid` | 422 | A username that does not normalize to 3 to 64 characters from `a-z 0-9 . _ -`. |
 | `password_too_short`, `password_too_long`, `password_equals_username` | 422 | A new password that breaks the policy (12 to 128 characters, not the username; ADR-0007 D6). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
@@ -510,6 +512,65 @@ reauthentication, the change and the two redemptions.
   password, token or hash, and the password hash is excluded from automatic
   `users` events. `404`, `409`, `410`, `422` and `429` answers write no event.
 
+### User administration
+
+Implemented by M2-13 (#31; spec §2, §16, ADR-0007 D4, D7, D8, D10) in
+`apps/api/app/modules/identity/` (`user_admin.py`, `user_admin_router.py`; the
+last-active-Owner guard in `service.py`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/users` | `require("user.view")` | Query `q` (at most 100 characters, trimmed), `role` (one role code), `state` (one state), offset pagination. Items: `id`, `username`, `display_name`, `state`, `roles`, `created_at`; no contact fields, password data or delegations. |
+| `GET /api/v1/users/{user_id}` | `require("user.view")` | The list fields plus `email`, `phone`, `version`, `updated_at`, `delegations`, `password_set` and the caller's `allowed_actions`. |
+| `PATCH /api/v1/users/{user_id}` | `require("user.manage")` | Body `{version, display_name?, email?, phone?}`. |
+| `POST /api/v1/users/{user_id}/suspend` | `require("user.manage")` + `require_recent_auth("user.suspend_or_archive")` | Body `{version}`. |
+| `POST /api/v1/users/{user_id}/archive` | `require("user.manage")` + `require_recent_auth("user.suspend_or_archive")` | Body `{version}`. |
+| `POST /api/v1/users/{user_id}/reactivate` | `require("user.manage")` | Body `{version}`. |
+
+- **Search:** `q` matches part of the username or the display name, not
+  case-sensitive; `%`, `_` and `\` match literally. Accents are not folded
+  ("jose" doesn't find "José"). Sorted by display name (not case-sensitive),
+  then username, then id. Pending invitations and registration requests are
+  listed too; `password_set` on the detail tells them apart.
+- **Who may manage whom** (ADR-0007 D4 as amended by #31): a holder of
+  `user.manage` may edit, suspend, archive or reactivate a user only when they
+  may assign **every** role that user holds. Owners manage everyone;
+  Administrators manage Academic Coordinators, Finance Staff, Tutors,
+  Students, Parents/Guardians and users without roles, and other
+  Administrators only with the `user.admin_role.assign` delegation. Everyone
+  may edit their own profile; nobody suspends, archives or reactivates
+  themselves (`403 permission_denied`). `allowed_actions` is computed with the
+  same rules (and the #30 rule for `reset_password`); the routes stay the
+  authority.
+- **Profile:** fields not sent stay unchanged; `""` or `null` clears `email`
+  or `phone`. Patterns (also CHECKs in the database): email
+  `^[^@\s]+@[^@\s]+\.[^@\s]+$` (at most 254), phone
+  `^\+?[0-9][0-9 ().-]{5,30}[0-9]$` (at most 32); neither is unique. Contact
+  fields are **never used to sign in** (ADR-0007 D7) and the username never
+  changes. A body that changes nothing returns `200` without a new version.
+  Order: `422` → `404` → `403` → `409 version_conflict`.
+- **Transitions:** suspend `active → suspended`; archive `active` or
+  `suspended → archived`, and `pending → archived` only for an open
+  invitation (no password; its link then answers `410`); reactivate
+  `suspended` or `archived → active`. Anything else, including a registration
+  request (decided on its own page) and `pending → active`, is `409
+  user_state_transition_invalid`. Suspending and archiving end every session
+  of the user (`identity.sessions_revoked`); reactivation revives no session
+  and never touches the password (a user without one needs a reset link).
+  Order: `401` → `403 csrf_failed` → `403 permission_denied` → `403
+  reauth_required` (suspend, archive) → `422` → `404` → `403
+  permission_denied` (may not manage, or own account) → `409
+  version_conflict` → `409 user_state_transition_invalid` → `409
+  last_active_owner`.
+- **The last active Owner** can never be suspended, archived or lose the
+  `owner` role. The guard is inside the identity service
+  (`change_user_state`, `remove_user_role`), behind a transaction-scoped
+  advisory lock, so every caller gets it and two concurrent changes cannot
+  both pass; routes never repeat it.
+- **Audit:** automatic only (`users` `update` with the changed fields and the
+  state, plus `identity.sessions_revoked`); no named event. `403`, `404`,
+  `409`, `422` and a body that changes nothing write no event.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one
@@ -545,10 +606,11 @@ M1-09 in `apps/api/app/core/pagination.py`.
 1. **API version:** the path prefix `/api/v1`. A breaking change gets a new
    prefix. Approved (spec §10 "API versioning").
 2. **Record version (optimistic concurrency):** detail responses include an
-   integer `version`; update requests send it back; a mismatch returns
-   `409 version_conflict`. PROPOSED (decided by architecture ISSUE-D5,
-   implemented by the first editable-record task). The `version_conflict` error
-   already exists (M1-09).
+   integer `version`; every update request body sends back the `version` the
+   client loaded; a mismatch returns `409 version_conflict` and changes
+   nothing. Approved (architecture ISSUE-D5), implemented by M2-13 (`users`:
+   `PATCH /api/v1/users/{user_id}` and the state routes). The
+   `version_conflict` error exists since M1-09.
 
 ## Idempotency
 

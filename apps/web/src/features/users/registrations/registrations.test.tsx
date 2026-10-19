@@ -125,7 +125,7 @@ describe('route and navigation (G1)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    expect(nav).toEqual(['Home']);
+    expect(nav).toEqual(['Home', 'Users']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

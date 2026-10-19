@@ -221,6 +221,61 @@ allow = ["owner", "administrator"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/users"
+access = "permission"
+permission = "user.view"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/users/{user_id}"
+access = "permission"
+permission = "user.view"
+allow = ["owner", "administrator"]
+# The placeholder id is no user: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/users/{user_id}"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 (no version) for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/archive"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.suspend_or_archive"
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/reactivate"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 (no version) for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/suspend"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.suspend_or_archive"
+
+[[route]]
+method = "GET"
 path = "/docs"
 access = "public"
 reason = "FastAPI Swagger UI; not forwarded by Caddy (/api/* only) or the Vite proxy"

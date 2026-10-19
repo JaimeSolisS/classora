@@ -17,6 +17,7 @@ Amended 2026-10-18: D9 token derivation instead of a stored hash (issue #24, own
 ## Amendments
 
 - 2026-10-18, GitHub issue #29 (M2-11), owner decision: invitation and reset tokens are shown as a link only. No QR code is generated, so no QR library is added.
+- 2026-10-18, GitHub issue #31 (M2-13), owner decision E2 (a): managing an account needs authority to assign every role it holds, and nobody suspends or archives themselves (D4).
 
 ## Context
 
@@ -47,6 +48,7 @@ Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) a
   - The Owner role is assigned or removed only by an Owner and cannot be delegated.
   - An invitation that carries a role counts as assigning that role.
   - The last active Owner cannot be removed or suspended.
+- **Managing an account** — profile, suspend, archive, reactivate — needs authority to assign every role it holds; nobody suspends or archives themselves. (amended by #31)
 
 ### Password hashing (D5 (a))
 

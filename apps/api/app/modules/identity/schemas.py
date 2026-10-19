@@ -2,9 +2,17 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    field_validator,
+)
+
+from app.modules.identity.models import EMAIL_MAX_LENGTH, PHONE_MAX_LENGTH
 
 # Named string enums in OpenAPI, so the generated web client gets
 # ``RoleCode`` and ``PermissionCode`` unions (#28 F3). They list exactly the
@@ -40,6 +48,15 @@ type PermissionCode = Literal[
     "user.role.assign",
     "user.view",
 ]
+# The delegable permissions (ADR-0007 D4), the four ``DELEGABLE_PERMISSIONS``.
+type DelegablePermissionCode = Literal[
+    "finance.refund.approve",
+    "payroll.finalize",
+    "schedule.override",
+    "user.admin_role.assign",
+]
+# The user states (spec §2), in ``USER_STATES`` order.
+type UserState = Literal["pending", "active", "suspended", "archived"]
 
 
 class LoginRequest(BaseModel):
@@ -277,3 +294,100 @@ class RegistrationRequestItem(BaseModel):
     status: RegistrationStatus
     submitted_at: datetime
     decided_at: datetime | None
+
+
+# --- User administration (#31) -------------------------------------------------------
+
+# The contact-field patterns of ``models.EMAIL_PATTERN`` / ``PHONE_PATTERN``
+# (PostgreSQL ``[:space:]`` is ``\s`` here). A unit test checks that both
+# accept and refuse the same samples.
+EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+PHONE_REGEX = r"^\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+
+
+def _blank_to_none(value: Any) -> Any:
+    """Trim a contact field; an empty string clears it (``None``)."""
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+ContactEmail = Annotated[
+    Annotated[str, StringConstraints(max_length=EMAIL_MAX_LENGTH, pattern=EMAIL_REGEX)]
+    | None,
+    BeforeValidator(_blank_to_none),
+]
+ContactPhone = Annotated[
+    Annotated[str, StringConstraints(max_length=PHONE_MAX_LENGTH, pattern=PHONE_REGEX)]
+    | None,
+    BeforeValidator(_blank_to_none),
+]
+
+
+class UserListItem(BaseModel):
+    """One user in the list. No contact fields, password data or delegations
+    (spec §16: minimal exposure)."""
+
+    id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+    roles: list[RoleCode] = Field(description="Role codes, in the catalog order.")
+    created_at: datetime
+
+
+class UserAllowedActions(BaseModel):
+    """What the caller may do to this user, computed by the server with the
+    routes' rules (the routes stay the authority). The last-active-Owner guard
+    is not considered (the server answers ``409 last_active_owner``)."""
+
+    edit: bool
+    suspend: bool
+    archive: bool
+    reactivate: bool
+    reset_password: bool
+
+
+class UserDetail(UserListItem):
+    """One user's account. Holds no password hash or token."""
+
+    email: str | None
+    phone: str | None
+    version: int = Field(description="Send it back with every change.")
+    updated_at: datetime
+    delegations: list[DelegablePermissionCode] = Field(
+        description="Delegated permission codes, sorted (read-only here)."
+    )
+    password_set: bool = Field(
+        description=(
+            "Whether the account has a password: a pending account without one"
+            " is an open invitation, with one a registration request."
+        )
+    )
+    allowed_actions: UserAllowedActions
+
+
+class UserUpdate(BaseModel):
+    """A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not
+    sent stay unchanged; ``""`` or ``null`` clears ``email`` or ``phone``. The
+    username never changes (ADR-0007 D7)."""
+
+    version: int = Field(ge=1)
+    display_name: DisplayName | None = None
+    email: ContactEmail = None
+    phone: ContactPhone = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _display_name_not_null(cls, value: str | None) -> str | None:
+        # Runs only when the field is sent: null is not a display name.
+        if value is None:
+            raise ValueError("The display name cannot be empty.")
+        return value
+
+
+class UserStateChange(BaseModel):
+    """Suspend, archive or reactivate: the version the caller loaded."""
+
+    version: int = Field(ge=1)

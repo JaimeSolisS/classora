@@ -56,7 +56,11 @@ from app.modules.identity.errors import (
     UserNotActiveError,
 )
 from app.modules.identity.models import AccountToken, Role, User, UserRole
-from app.modules.identity.permissions import ACTIVE, ADMINISTRATOR, OWNER
+from app.modules.identity.permissions import (
+    ACTIVE,
+    OWNER_ONLY_RESET_TARGETS,
+    may_reset_password_of,
+)
 from app.modules.identity.schemas import PasswordResetIssued, PasswordResetLookup
 
 PASSWORD_RESET_ISSUED_EVENT: Final = "identity.password_reset_issued"  # noqa: S105
@@ -67,8 +71,10 @@ PASSWORD_CHANGE_FAILED_EVENT: Final = "identity.password_change_failed"  # noqa:
 RESET_PATH: Final = "/reset"
 """The web page that redeems a reset link (``#token=`` in the fragment)."""
 
-OWNER_ONLY_TARGET_ROLES: Final = frozenset({OWNER, ADMINISTRATOR})
-"""Only an Owner may reset a user holding one of these roles (D12)."""
+OWNER_ONLY_TARGET_ROLES: Final = OWNER_ONLY_RESET_TARGETS
+"""Only an Owner may reset a user holding one of these roles (D12; the rule is
+:func:`~app.modules.identity.permissions.may_reset_password_of`, shared with
+the user detail page's ``allowed_actions``, #31)."""
 
 ResetSource = Literal["staff", "cli"]
 
@@ -146,10 +152,11 @@ async def issue_password_reset(
     user = await _user_by_username(session, username)
     if user is None:
         raise RecordNotFoundError()
-    if user.id == principal.user_id:
-        raise PermissionDeniedError()
-    if OWNER_ONLY_TARGET_ROLES & await _roles_of(session, user.id) and (
-        OWNER not in principal.roles
+    if not may_reset_password_of(
+        principal.roles,
+        actor_id=principal.user_id,
+        target_id=user.id,
+        target_roles=await _roles_of(session, user.id),
     ):
         raise PermissionDeniedError()
     if user.state != ACTIVE:

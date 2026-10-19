@@ -79,6 +79,12 @@ def password_body_routes(document: dict[str, Any]) -> set[str]:
     return found
 
 
+BOOLEAN_RESPONSE_FLAGS = frozenset({"password_set", "reset_password"})
+"""Response fields whose name contains "password" but which are booleans, not
+secrets (#31): ``UserDetail.password_set`` and
+``UserAllowedActions.reset_password``. A test checks they are booleans."""
+
+
 def secret_response_fields(document: dict[str, Any]) -> set[str]:
     found: set[str] = set()
     for path, method, operation in _operations(document):
@@ -86,6 +92,8 @@ def secret_response_fields(document: dict[str, Any]) -> set[str]:
             for media in response.get("content", {}).values():
                 for name in property_names(document, media.get("schema", {})):
                     lowered = name.lower()
+                    if name in BOOLEAN_RESPONSE_FLAGS:
+                        continue
                     if "password" in lowered or "hash" in lowered:
                         found.add(f"{method.upper()} {path} {status}: {name}")
     return found
@@ -104,6 +112,22 @@ def test_password_fields_only_on_self_or_token_routes():
 
 def test_no_response_holds_a_password_or_hash():
     assert secret_response_fields(build_app().openapi()) == set()
+
+
+def test_the_allowed_password_flags_are_booleans():
+    schemas = build_app().openapi()["components"]["schemas"]
+
+    flags = {
+        (schema_name, name): prop
+        for schema_name, schema in schemas.items()
+        for name, prop in schema.get("properties", {}).items()
+        if name in BOOLEAN_RESPONSE_FLAGS
+    }
+    assert set(flags) == {
+        ("UserDetail", "password_set"),
+        ("UserAllowedActions", "reset_password"),
+    }
+    assert all(prop["type"] == "boolean" for prop in flags.values())
 
 
 def test_a_staff_route_with_a_password_field_is_found():
