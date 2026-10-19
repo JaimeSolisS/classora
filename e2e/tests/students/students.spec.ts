@@ -18,7 +18,7 @@ import { createActiveUser } from '../support/users';
 // parallel tests and runs never see each other's students.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (1 by
-// createActiveUser, 1 for the tutor) and 2 redemption calls
+// createActiveUser, 1 for the tutor) and 1 redemption call
 // (createActiveUser). Every `make e2e` starts from an empty database, so the
 // username `e2e.students.tutor` is unique per run.
 
@@ -116,7 +116,8 @@ test('managing a student profile, and a tutor who may not see it', async ({
   await expect(
     main.getByRole('heading', { level: 1, name: fullName }),
   ).toBeVisible();
-  await expect(main.getByRole('status')).toHaveText(s.saved);
+  // The page's own status (the Guardians section, #34, has its own).
+  await expect(main.getByRole('status').first()).toHaveText(s.saved);
   await expect(main.getByText(s.badge.minor, { exact: true })).toBeVisible();
   await expect(main.getByText('Secundaria', { exact: true })).toBeVisible();
   await expect(main.getByText('María Pérez')).toBeVisible();
@@ -156,7 +157,8 @@ test('managing a student profile, and a tutor who may not see it', async ({
   ).toBeDisabled();
   await main.getByRole('button', { name: s.save, exact: true }).click();
   await expect(page).toHaveURL(studentPath);
-  await expect(main.getByRole('status')).toHaveText(s.saved);
+  // The page's own status (the Guardians section, #34, has its own).
+  await expect(main.getByRole('status').first()).toHaveText(s.saved);
   const contacts = main.locator('ol li');
   await expect(contacts).toHaveCount(1);
   await expect(contacts.first()).toContainText('Luis Ñúñez');

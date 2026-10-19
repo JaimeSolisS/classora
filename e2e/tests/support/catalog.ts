@@ -15,6 +15,7 @@ type Common = {
     registrations: string;
     catalog: string;
     students: string;
+    guardians: string;
   };
   roles: Record<string, string>;
   delegations: Record<string, { label: string; description: string }>;
@@ -134,7 +135,34 @@ type Common = {
     badge: { minor: string; adult: string };
     status: { active: string; inactive: string };
     deactivate: { action: string; title: string };
+    guardians: {
+      title: string;
+      link: string;
+      linkAction: string;
+      linkTitle: string;
+      guardian: string;
+      relationship: string;
+      unlink: string;
+      unlinkNamed: string;
+      unlinkTitle: string;
+      linked: string;
+      unlinked: string;
+    };
   };
+  guardians: {
+    title: string;
+    add: string;
+    save: string;
+    saved: string;
+    fields: {
+      givenNames: string;
+      familyNames: string;
+      phone: string;
+    };
+    account: { search: string };
+    list: { empty: string };
+  };
+  relationships: Record<string, string>;
   registrations: {
     title: string;
     approve: string;

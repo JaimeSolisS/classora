@@ -3,7 +3,7 @@ import { SIGNED_OUT_STATE } from './auth';
 import { demoOwner } from './credentials';
 
 // Test users created through the real API (#30 M1). Budget: one login
-// (`login.ip`) and two redemption calls (`token_redemption.ip`) per user; see
+// (`login.ip`) and one redemption call (`token_redemption.ip`) per user; see
 // LOGIN_ATTEMPTS_PER_RUN and TOKEN_REDEMPTIONS_PER_RUN in support/auth.ts. A
 // staff role also costs one reauthentication of the demo Owner (#170 I2; it
 // counts against `reauth.user` only when the password is wrong, never here).
@@ -36,7 +36,7 @@ export interface ActiveUserInput {
 /**
  * Creates an active user with `password`: in a fresh API context (its own
  * cookies; the shared browser state is never touched) the demo Owner signs
- * in and invites the user, then the invitation is looked up and redeemed.
+ * in and invites the user, then the invitation is redeemed.
  * Returns nothing secret beyond what the test passed in.
  */
 export async function createActiveUser(
@@ -80,10 +80,8 @@ export async function createActiveUser(
     const token = new URLSearchParams(new URL(url).hash.slice(1)).get('token');
     expect(token).toBeTruthy();
 
-    const lookup = await context.post('/api/v1/auth/invitation/lookup', {
-      data: { token },
-    });
-    expect(lookup.status()).toBe(200);
+    // No lookup call: auth/invitations.spec.ts covers it, and each call
+    // counts against `token_redemption.ip` (#34).
     const redeem = await context.post('/api/v1/auth/invitation/redeem', {
       data: { token, password },
     });

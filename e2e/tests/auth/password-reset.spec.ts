@@ -21,8 +21,8 @@ import { createActiveUser } from '../support/users';
 // signs in on its own, and logins never touch the shared session (#28 H2).
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 8 logins (2 of them by
-// createActiveUser), 7 redemption calls (4 of them by createActiveUser:
-// lookup + redeem each) and one wrong current password (reauth.user). No
+// createActiveUser), 5 redemption calls (2 of them by createActiveUser, one
+// each) and one wrong current password (reauth.user). No
 // setting that disables limits is used. Usernames are unique per run:
 // every `make e2e` starts from an empty database.
 
@@ -97,7 +97,7 @@ test('staff issue a reset link; the person sets a new password and the old sessi
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  // 1. The tutor exists with P1 (login 1, redemption calls 1–2) and is signed
+  // 1. The tutor exists with P1 (login 1, redemption call 1) and is signed
   // in in context B (login 2).
   await createActiveUser(playwright.request, baseURL!, {
     username: TUTOR,
@@ -164,8 +164,8 @@ test('staff issue a reset link; the person sets a new password and the old sessi
   await owner.expectClean();
   await owner.close();
 
-  // 3. The tutor opens the link in context C (lookup: call 3): no fragment in
-  // the address bar, the username is shown. Set P2 (call 4) → /login with
+  // 3. The tutor opens the link in context C (lookup: call 2): no fragment in
+  // the address bar, the username is shown. Set P2 (call 3) → /login with
   // the notice and the username → sign in (login 4).
   const resetter = await freshPage(browser);
   await resetter.page.goto(link);
@@ -208,7 +208,7 @@ test('staff issue a reset link; the person sets a new password and the old sessi
   await tutorBefore.expectClean();
   await tutorBefore.close();
 
-  // 6. The same link in context D (lookup: call 5): no longer valid.
+  // 6. The same link in context D (lookup: call 4): no longer valid.
   const late = await freshPage(browser);
   await late.page.goto(link);
   const lateMain = late.page.getByRole('main');
@@ -224,7 +224,7 @@ test('a signed-in user changes their password; other sessions end', async ({
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  // The guardian exists with P1 (login 5, redemption calls 6–7); contexts A
+  // The guardian exists with P1 (login 5, redemption call 5); contexts A
   // and B sign in (logins 6 and 7).
   await createActiveUser(playwright.request, baseURL!, {
     username: GUARDIAN,

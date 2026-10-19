@@ -28,22 +28,24 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * users/suspend.spec.ts 5 (1 by createActiveUser; 1 refused while the tutor
  * is suspended: a failure on `e2e.suspend.tutor`'s own budget),
  * users/roles.spec.ts 7 (2 by createActiveUser), students/students.spec.ts 2
- * (1 by createActiveUser) = 36 attempts, 2 failures
+ * (1 by createActiveUser), families/guardians.spec.ts 2 (1 by
+ * createActiveUser) = 38 attempts, 2 failures
  * for `demo.owner`. Keep the total well under both limits; never add a
  * setting that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20
  * lookups and redemptions per 15 minutes for the run's one IP, invitations
- * and resets together. auth/invitations.spec.ts makes 3 (2 lookups, 1
- * redemption), auth/password-reset.spec.ts 7 (4 of them by
- * createActiveUser), users/suspend.spec.ts 2 (createActiveUser),
- * users/roles.spec.ts 4 (createActiveUser, twice) and
- * students/students.spec.ts 2 (createActiveUser) = 18.
+ * and resets together. createActiveUser redeems without a lookup (1 call
+ * per user, #34). auth/invitations.spec.ts makes 3 (2 lookups, 1
+ * redemption), auth/password-reset.spec.ts 5 (2 of them by
+ * createActiveUser), users/suspend.spec.ts 1, users/roles.spec.ts 2,
+ * students/students.spec.ts 1 and families/guardians.spec.ts 1 (all by
+ * createActiveUser) = 13.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 36;
+export const LOGIN_ATTEMPTS_PER_RUN = 38;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
-export const TOKEN_REDEMPTIONS_PER_RUN = 18;
+export const TOKEN_REDEMPTIONS_PER_RUN = 13;
 
 /**
  * Self-registration requests in one run (#169; `registration.ip` allows 10
