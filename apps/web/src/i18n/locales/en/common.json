@@ -29,7 +29,8 @@
     "label": "Main navigation",
     "toggle": "Menu",
     "home": "Home",
-    "invitations": "Invitations"
+    "invitations": "Invitations",
+    "passwordResets": "Password resets"
   },
   "notFound": {
     "title": "Page not found",
@@ -62,7 +63,8 @@
       "usernameRequired": "Enter your username.",
       "passwordRequired": "Enter your password.",
       "tooLong": "This is too long.",
-      "invitationRedeemed": "Your password is set. Sign in to continue."
+      "invitationRedeemed": "Your password is set. Sign in to continue.",
+      "passwordReset": "Your new password is set. Sign in to continue."
     },
     "reauth": {
       "title": "Confirm your password",
@@ -118,16 +120,8 @@
     },
     "result": {
       "title": "Invitation link ready",
-      "person": "Person",
-      "username": "Username",
       "role": "Role",
-      "expires": "Expires",
-      "link": "Invitation link",
-      "onceWarning": "This link is shown only once. Give it to the person in person or over the phone. It expires in 24 hours.",
-      "copy": "Copy link",
-      "copied": "Link copied",
-      "copyFailed": "Couldn't copy. The link is selected: copy it by hand.",
-      "done": "Done"
+      "link": "Invitation link"
     },
     "list": {
       "title": "Open invitations",
@@ -162,5 +156,54 @@
     "submitting": "Saving…",
     "incomplete": "This link is incomplete. Open the link you were given again.",
     "signedIn": "You're signed in as {{name}}. This link is for the person who was invited. Sign out, then open the link again."
+  },
+  "oneTimeLink": {
+    "person": "Person",
+    "username": "Username",
+    "expires": "Expires",
+    "onceWarning": "This link is shown only once. Give it to the person in person or over the phone. It expires in 24 hours.",
+    "copy": "Copy link",
+    "copied": "Link copied",
+    "copyFailed": "Couldn't copy. The link is selected: copy it by hand.",
+    "done": "Done"
+  },
+  "passwordResets": {
+    "title": "Password resets",
+    "intro": "Create a one-time link so a person can set a new password. No email is sent.",
+    "form": {
+      "title": "New reset link",
+      "username": "Username",
+      "usernameRequired": "Enter a username.",
+      "tooLong": "This is too long.",
+      "help": "We'll ask for your password. The person's sessions end when they set the new password.",
+      "submit": "Create reset link",
+      "submitting": "Creating…",
+      "notFound": "No user has this username.",
+      "notAllowed": "You can't issue a reset for this account. Only an Owner can reset Owner and Administrator accounts.",
+      "self": "To change your own password, use Change password."
+    },
+    "result": {
+      "title": "Reset link ready",
+      "link": "Password reset link"
+    }
+  },
+  "reset": {
+    "title": "Reset your password",
+    "username": "Your username is:",
+    "signedIn": "You're signed in as {{name}}. This link is for resetting another account's password. Sign out, then open the link again."
+  },
+  "account": {
+    "password": {
+      "title": "Change password",
+      "link": "Change password",
+      "username": "Username",
+      "current": "Current password",
+      "currentRequired": "Enter your current password.",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Change password",
+      "submitting": "Changing…",
+      "done": "Your password was changed. You were signed out on your other devices."
+    }
   }
 }

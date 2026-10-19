@@ -121,25 +121,25 @@ export function InvitationLinkPanel({
     <OneTimeLinkPanel
       url={issued.invitation_url}
       details={[
-        { label: t('invitations.result.person'), value: issued.display_name },
-        { label: t('invitations.result.username'), value: issued.username },
+        { label: t('oneTimeLink.person'), value: issued.display_name },
+        { label: t('oneTimeLink.username'), value: issued.username },
         {
           label: t('invitations.result.role'),
           value: issued.roles.map((role) => t(roleNameKey(role))).join(', '),
         },
         {
-          label: t('invitations.result.expires'),
+          label: t('oneTimeLink.expires'),
           value: formatInstant(issued.expires_at, 'dateTime'),
         },
       ]}
       labels={{
         title: t('invitations.result.title'),
         link: t('invitations.result.link'),
-        warning: t('invitations.result.onceWarning'),
-        copy: t('invitations.result.copy'),
-        copied: t('invitations.result.copied'),
-        copyFailed: t('invitations.result.copyFailed'),
-        done: t('invitations.result.done'),
+        warning: t('oneTimeLink.onceWarning'),
+        copy: t('oneTimeLink.copy'),
+        copied: t('oneTimeLink.copied'),
+        copyFailed: t('oneTimeLink.copyFailed'),
+        done: t('oneTimeLink.done'),
       }}
       onDone={onDone}
     />

@@ -291,6 +291,16 @@ follows these rules.
     `e2e/tests/auth/invitations.spec.ts` invites and activates (#29). It is
     created by that test in every run (unique per run, because every run
     starts from an empty database); no other test may use the name.
+  - `e2e.reset.tutor` and `e2e.change.guardian`: the Tutor whose password
+    is reset and the Parent/Guardian who changes their own password in
+    `e2e/tests/auth/password-reset.spec.ts` (#30). The same rules: created by
+    that test in every run, no other test may use the names.
+- **`createActiveUser(playwright.request, baseURL, { username, role,
+  password })`** (`e2e/tests/support/users.ts`, #30) creates an active Tutor
+  or Parent/Guardian through the API in its own fresh API context: the demo
+  Owner signs in and invites the user (no reauthentication for these roles),
+  then the invitation is looked up and redeemed. It costs one login and two
+  redemption calls; count them in the budgets below.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 
@@ -322,9 +332,9 @@ follows these rules.
   `make e2e` starts from an empty volume, so the budget is per run. Keep the
   count in `LOGIN_ATTEMPTS_PER_RUN` (`e2e/tests/support/auth.ts`) up to date
   and well under both limits; never add a setting that disables the limits.
-  One-time links share one `token_redemption.ip` budget of 20 lookups and
-  redemptions per 15 minutes (#29); keep `TOKEN_REDEMPTIONS_PER_RUN` up to
-  date too.
+  One-time links (invitations and password resets) share one
+  `token_redemption.ip` budget of 20 lookups and redemptions per 15 minutes
+  (#29, #30); keep `TOKEN_REDEMPTIONS_PER_RUN` up to date too.
 - **Reauthentication dialog:** a test that needs the password dialog signs in
   with a fresh login in its own fresh context (#29 L1), never with the shared
   `storageState`: parallel tests share that session and its reauthentication

@@ -75,7 +75,7 @@ def test_a_new_live_token_is_accepted_once_the_first_is_used_or_revoked(
     ("overrides", "constraint"),
     [
         pytest.param({"hash": bytes(31)}, "token_hash_length", id="31-byte-hash"),
-        pytest.param({"kind": "password_reset"}, "kind_valid", id="password-reset"),
+        pytest.param({"kind": "other"}, "kind_valid", id="other-kind"),
         pytest.param(
             {"used": CLOCK_START, "revoked": CLOCK_START},
             "used_or_revoked",
@@ -86,6 +86,29 @@ def test_a_new_live_token_is_accepted_once_the_first_is_used_or_revoked(
 def test_invalid_rows_are_refused(seeded_url, user, overrides, constraint):
     with pytest.raises(IntegrityError, match=constraint):
         run_sql(seeded_url, INSERT, token_row(user, **overrides))
+
+
+def test_a_password_reset_row_is_accepted(seeded_url, user):
+    # #30 A2: the widened CHECK accepts password_reset.
+    run_sql(seeded_url, INSERT, token_row(user, kind="password_reset"))
+
+    rows = run_sql(seeded_url, "SELECT kind FROM account_tokens")
+    assert [r.kind for r in rows] == ["password_reset"]
+
+
+def test_a_live_invitation_and_a_live_reset_for_one_user_coexist(seeded_url, user):
+    # #30 A2: the partial unique index is per (user_id, kind).
+    run_sql(seeded_url, INSERT, token_row(user, kind="invitation"))
+    run_sql(seeded_url, INSERT, token_row(user, kind="password_reset"))
+
+    rows = run_sql(
+        seeded_url,
+        "SELECT kind FROM account_tokens"
+        " WHERE used_at IS NULL AND revoked_at IS NULL ORDER BY kind",
+    )
+    assert [r.kind for r in rows] == ["invitation", "password_reset"]
+    with pytest.raises(IntegrityError, match="uq_account_tokens_live_user_kind"):
+        run_sql(seeded_url, INSERT, token_row(user, kind="password_reset"))
 
 
 # --- C4: the token rules -----------------------------------------------------------
@@ -263,6 +286,6 @@ def test_a_kind_outside_the_catalog_is_refused(seeded_url, user):
         in_uow(
             seeded_url,
             lambda s: tokens.issue_account_token(
-                s, user_id=user.id, kind="password_reset", issued_by=None
+                s, user_id=user.id, kind="other", issued_by=None
             ),
         )

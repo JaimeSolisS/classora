@@ -172,3 +172,66 @@ class InvitationLookup(BaseModel):
     display_name: str
     roles: list[RoleCode] = Field(description="Role codes, sorted.")
     expires_at: datetime
+
+
+# --- Password reset and change (#30) -------------------------------------------------
+
+
+class PasswordResetCreate(BaseModel):
+    """Issue a reset link for one user (``POST /api/v1/password-resets``)."""
+
+    username: str = Field(
+        min_length=1,
+        max_length=256,
+        description=(
+            "The user's username (normalized like a login username; letters"
+            " are not case-sensitive)."
+        ),
+    )
+
+
+class PasswordResetIssued(BaseModel):
+    """A new password-reset link (``201``).
+
+    ``reset_url`` holds the one-time token in its fragment. It is shown in this
+    response only: never stored, logged or returned again.
+    """
+
+    user_id: uuid.UUID
+    username: str
+    display_name: str
+    expires_at: datetime
+    reset_url: str = Field(
+        description=(
+            "APP_ORIGIN + '/reset#token=' + the one-time token. Show it once;"
+            " never store or log it."
+        )
+    )
+
+
+class PasswordResetTokenRequest(BaseModel):
+    """The token from a reset link (``POST …/password-reset/lookup``)."""
+
+    token: str = Field(min_length=1, max_length=256, repr=False)
+
+
+class PasswordResetRedeemRequest(BaseModel):
+    """The token and the new password (``POST …/password-reset/redeem``)."""
+
+    token: str = Field(min_length=1, max_length=256, repr=False)
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class PasswordResetLookup(BaseModel):
+    """Who a reset link is for, so the page can show the username."""
+
+    username: str
+    display_name: str
+    expires_at: datetime
+
+
+class PasswordChange(BaseModel):
+    """The signed-in user's current and new password (``POST /auth/password``)."""
+
+    current_password: str = Field(min_length=1, max_length=1024, repr=False)
+    new_password: str = Field(min_length=1, max_length=1024, repr=False)

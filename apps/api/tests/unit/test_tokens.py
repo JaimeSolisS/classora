@@ -101,7 +101,15 @@ def test_the_invitation_url_carries_the_token_in_the_fragment():
 
 def test_an_unknown_kind_is_refused():
     with pytest.raises(ValueError, match="kind"):
-        tokens._checked_kind("password_reset")
+        tokens._checked_kind("other")
+
+
+def test_the_kinds_are_invitation_and_password_reset():
+    # #30 B1: one new kind; the lifetime is the same 24 hours for both.
+    assert tokens.INVITATION == "invitation"
+    assert tokens.PASSWORD_RESET == "password_reset"
+    assert tokens._checked_kind(tokens.PASSWORD_RESET) == "password_reset"
+    assert timedelta(hours=24) == tokens.TOKEN_LIFETIME
 
 
 # --- G4: the conditional guard per role ----------------------------------------------

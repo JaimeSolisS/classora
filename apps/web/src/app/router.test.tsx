@@ -29,19 +29,23 @@ afterEach(() => {
 });
 
 describe('route tree', () => {
-  it('is layout → login, invite and guard → home, invitations and 404, nothing else', () => {
+  it('is layout → login, invite, reset and guard → home, pages and 404, nothing else', () => {
     expect(routes).toHaveLength(1);
     const [root] = routes;
     expect(root!.path).toBe('/');
     expect(root!.errorElement).toBeTruthy();
-    const [login, invite, guard] = root!.children!;
-    expect(root!.children).toHaveLength(3);
-    // /login and /invite are the only pages outside the guard (#28 B1, #29 J1).
+    const [login, invite, reset, guard] = root!.children!;
+    expect(root!.children).toHaveLength(4);
+    // /login, /invite and /reset are the only pages outside the guard
+    // (#28 B1, #29 J1, #30 J1).
     expect(login!.path).toBe('login');
     expect(login!.children).toBeUndefined();
     expect(invite!.path).toBe('invite');
     expect(invite!.children).toBeUndefined();
     expect(invite!.errorElement).toBeTruthy();
+    expect(reset!.path).toBe('reset');
+    expect(reset!.children).toBeUndefined();
+    expect(reset!.errorElement).toBeTruthy();
     expect(guard!.id).toBe('guard');
     expect(guard!.path).toBeUndefined();
     expect(guard!.errorElement).toBeTruthy();
@@ -49,9 +53,15 @@ describe('route tree', () => {
     expect(children.map((r) => (r.index ? 'index' : r.path))).toEqual([
       'index',
       'invitations',
+      'password-resets',
+      'account/password',
       '*',
     ]);
     expect(children[1]!.handle).toEqual({ permission: 'user.invite' });
+    expect(children[2]!.handle).toEqual({
+      permission: 'user.password_reset.issue',
+    });
+    expect(children[3]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

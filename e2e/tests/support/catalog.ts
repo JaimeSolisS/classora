@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 type Common = {
   apiStatus: { live: string };
   notFound: { title: string };
-  nav: { home: string; invitations: string };
+  nav: { home: string; invitations: string; passwordResets: string };
   roles: Record<string, string>;
   auth: {
     login: {
@@ -16,6 +16,7 @@ type Common = {
       password: string;
       submit: string;
       invitationRedeemed: string;
+      passwordReset: string;
     };
     reauth: { password: string; confirm: string };
     userMenu: { signedInAs: string; signOut: string };
@@ -28,7 +29,25 @@ type Common = {
       role: string;
       submit: string;
     };
-    result: { link: string; onceWarning: string };
+    result: { link: string };
+  };
+  oneTimeLink: { onceWarning: string };
+  passwordResets: {
+    title: string;
+    form: { username: string; submit: string; self: string };
+    result: { link: string };
+  };
+  reset: { title: string };
+  account: {
+    password: {
+      title: string;
+      link: string;
+      current: string;
+      new: string;
+      confirm: string;
+      submit: string;
+      done: string;
+    };
   };
   invite: {
     title: string;
@@ -43,6 +62,7 @@ type Common = {
 type Errors = {
   invalid_credentials: string;
   token_invalid: string;
+  current_password_invalid: string;
 };
 
 function read<T>(path: string): T {

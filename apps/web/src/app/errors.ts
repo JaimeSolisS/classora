@@ -37,6 +37,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['password_too_short', 'password_too_short'],
   ['password_too_long', 'password_too_long'],
   ['password_equals_username', 'password_equals_username'],
+  ['current_password_invalid', 'current_password_invalid'],
+  ['user_not_active', 'user_not_active'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

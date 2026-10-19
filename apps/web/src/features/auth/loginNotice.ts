@@ -2,12 +2,13 @@ import type { ParseKeys } from 'i18next';
 
 // The notice the login page shows once after a public page sent the person
 // there (#29 J5): router state, never the URL, so the username never goes
-// into `next` or a query string and a reload drops it. #30 adds
-// 'password_reset'.
+// into `next` or a query string and a reload drops it: after an invitation
+// (#29) or a password reset (#30).
 
 /** The kinds of login notice and their `common` catalog key. */
 export const LOGIN_NOTICE_KEYS = {
   invitation_redeemed: 'auth.login.invitationRedeemed',
+  password_reset: 'auth.login.passwordReset',
 } as const satisfies Record<string, ParseKeys<'common'>>;
 
 export type LoginNoticeKind = keyof typeof LOGIN_NOTICE_KEYS;

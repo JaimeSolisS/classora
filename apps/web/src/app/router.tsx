@@ -1,8 +1,10 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { InvitePage } from '@/features/auth/redeem/InvitePage';
+import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
+import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
+import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
@@ -16,7 +18,7 @@ import { RouteGuard } from './RouteGuard';
 // the API.
 //
 // Access (#28 F1, UX only: the API checks every request): the public pages
-// (/login, /invite) and the error elements are the only things outside the
+// (/login, /invite, /reset) and the error elements are the only things outside the
 // guard. Every other page goes
 // under the guard route and needs a session; a page that needs a permission
 // declares `handle: { permission: '…' }`. A unit test fails if a page is
@@ -47,6 +49,12 @@ export const routes: RouteObject[] = [
         errorElement: <RouteErrorPage />,
       },
       {
+        id: 'reset',
+        path: 'reset',
+        element: <ResetPage />,
+        errorElement: <RouteErrorPage />,
+      },
+      {
         id: 'guard',
         element: <RouteGuard />,
         // Errors in a page: rendered inside the layout.
@@ -58,6 +66,13 @@ export const routes: RouteObject[] = [
             element: <InvitationsPage />,
             handle: { permission: 'user.invite' },
           },
+          {
+            path: 'password-resets',
+            element: <PasswordResetsPage />,
+            handle: { permission: 'user.password_reset.issue' },
+          },
+          // Any signed-in user (#30 K1): no permission.
+          { path: 'account/password', element: <ChangePasswordPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

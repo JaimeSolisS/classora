@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input';
 import { z } from '@/lib/forms';
 import { FieldError } from '../FieldError';
 
-// "Set your password" for a one-time link (#29 J4; #30 reuses it for reset
-// links): the person's username (prominent, selectable, and in a read-only
+// "Set your password" for a one-time link (#29 J4; #30 J2 for reset links):
+// a short intro, the person's username (prominent, selectable, and in a read-only
 // `username` field so password managers save the pair), a new password and
 // its confirmation. No API call here: the page passes `onSubmit`. The
 // passwords live only in this form's state, never in a store, the query
@@ -54,16 +54,13 @@ type PasswordCode =
 
 interface RedeemFormProps {
   username: string;
-  displayName: string;
+  /** The line above the username (already translated). */
+  intro: string;
   /** Sends the new password. Rejects with the error to show (an ApiError). */
   onSubmit: (password: string) => Promise<void>;
 }
 
-export function RedeemForm({
-  username,
-  displayName,
-  onSubmit,
-}: RedeemFormProps) {
+export function RedeemForm({ username, intro, onSubmit }: RedeemFormProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
   const id = useId();
@@ -124,7 +121,7 @@ export function RedeemForm({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <p>{t('invite.welcome', { name: displayName })}</p>
+        <p>{intro}</p>
         <p className="text-xl font-semibold break-all select-all">{username}</p>
       </div>
       {error ? <ErrorAlert error={error} /> : null}
