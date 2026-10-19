@@ -107,6 +107,19 @@ does not run the Storybook story tests or E2E.
 - The web unit tests run under `Pacific/Kiritimati` (UTC+14) by default, so a
   helper that leaks the host zone fails. E2E runs in `America/Mexico_City`.
 
+### Time travel (M2-07)
+
+- API code that needs "now" for a time-based rule that must be testable
+  (session expiry, the session purge, and later rules like them) reads
+  `app.core.clock.now()`, never `datetime.now()` or the database's `now()`.
+- Tests move that clock with the `clock` fixture (`apps/api/tests/conftest.py`):
+  it starts frozen at a fixed UTC instant and offers `clock.set(dt)` and
+  `clock.advance(timedelta)`. It replaces a module attribute, so it also
+  reaches the app inside `TestClient`, and it restores the real clock after
+  the test.
+- Never `sleep` to let time pass; test boundaries exactly (one second before
+  and at the limit).
+
 ## Permission-matrix approach
 
 These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization

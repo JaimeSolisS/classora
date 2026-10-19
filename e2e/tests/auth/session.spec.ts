@@ -13,6 +13,8 @@ import { demoOwner } from '../support/credentials';
 
 const COOKIE = 'classora_session';
 const CSRF_HEADER = 'X-CSRF-Token';
+// The demo Owner is staff: the cookie lives as long as the absolute timeout.
+const STAFF_ABSOLUTE_SECONDS = 12 * 60 * 60;
 
 test.beforeEach(async ({ page }) => {
   // Any page of the web origin, so fetch() runs same-origin.
@@ -25,6 +27,7 @@ test('login stores an HttpOnly session cookie that is sent back and cleared on l
   context,
 }) => {
   // 1. Login.
+  const loggedInAt = Date.now() / 1000;
   const login = await api(page, '/api/v1/auth/login', {
     method: 'POST',
     json: demoOwner,
@@ -34,7 +37,8 @@ test('login stores an HttpOnly session cookie that is sent back and cleared on l
   const token = csrfTokenOf(login);
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
-  // 2. Exactly one local session cookie, with the local-mode attributes.
+  // 2. Exactly one local session cookie, with the local-mode attributes and
+  // Max-Age = the staff absolute timeout (12 hours, #25).
   const cookies = await context.cookies();
   const session = cookies.filter((c) => c.name === COOKIE);
   expect(session).toHaveLength(1);
@@ -44,8 +48,11 @@ test('login stores an HttpOnly session cookie that is sent back and cleared on l
     secure: false,
     sameSite: 'Lax',
     path: '/',
-    expires: -1,
   });
+  const expires = session[0]?.expires ?? -1;
+  expect(
+    Math.abs(expires - (loggedInAt + STAFF_ABSOLUTE_SECONDS)),
+  ).toBeLessThanOrEqual(120);
   expect(cookies.some((c) => c.name === `__Host-${COOKIE}`)).toBe(false);
 
   // 3. HttpOnly: invisible to the page's scripts.

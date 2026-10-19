@@ -6,8 +6,9 @@ without a user or a stored hash it verifies against :func:`dummy_password_hash`
 and ignores the result, so an unknown account costs the same work.
 
 On success, in the caller's Unit of Work: the hash is upgraded when its
-parameters changed (D5), a live session on the request's cookie is revoked
-(rotation; a client token is never adopted), a new session is created and
+parameters changed (D5), any unrevoked session on the request's cookie,
+expired or not, is revoked (rotation; a client token is never adopted), a new
+session is created with the limits of the user's role class (#25) and
 ``identity.login_succeeded`` is written.
 
 On failure the caller first rolls the request's transaction back (the
@@ -67,6 +68,7 @@ class LoginSuccess:
     user: User
     principal: Principal
     token: bytes
+    limits: sessions.SessionLimits
 
 
 @cache
@@ -125,10 +127,15 @@ async def login(
     user = checked
     previous_token = sessions.request_token(request, settings)
     if previous_token is not None:
+        # Unrevoked, expired or not (#25 C5).
         previous = await sessions.find_live_session(session, previous_token)
         if previous is not None:
             await sessions.revoke_session(session, previous)
-    auth_session, token = await sessions.create_session(session, user.id)
+    principal = await load_principal(session, user.id)
+    if principal is None:  # pragma: no cover - checked as active above
+        raise RuntimeError("an active user has no principal")
+    limits = sessions.session_limits(principal.roles)
+    auth_session, token = await sessions.create_session(session, user.id, limits)
     record_audit_event(
         session,
         action=LOGIN_SUCCEEDED_EVENT,
@@ -136,10 +143,7 @@ async def login(
         record_id=user.id,
         details={"auth_session_id": auth_session.id},
     )
-    principal = await load_principal(session, user.id)
-    if principal is None:  # pragma: no cover - checked as active above
-        raise RuntimeError("an active user has no principal")
-    return LoginSuccess(user=user, principal=principal, token=token)
+    return LoginSuccess(user=user, principal=principal, token=token, limits=limits)
 
 
 async def record_failed_login(

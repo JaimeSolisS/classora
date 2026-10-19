@@ -63,15 +63,26 @@ def assert_invalid_credentials(response: Response) -> None:
 
 
 @pytest.mark.parametrize(
+    ("roles", "max_age"),
+    [(("owner",), "43200"), (("tutor",), "2592000")],
+    ids=["staff", "extended"],
+)
+@pytest.mark.parametrize(
     ("secure", "name", "flags"),
     [
-        (True, "__Host-classora_session", {"httponly", "path", "samesite", "secure"}),
-        (False, "classora_session", {"httponly", "path", "samesite"}),
+        (
+            True,
+            "__Host-classora_session",
+            {"httponly", "max-age", "path", "samesite", "secure"},
+        ),
+        (False, "classora_session", {"httponly", "max-age", "path", "samesite"}),
     ],
     ids=["secure", "local"],
 )
-def test_login_sets_exactly_one_session_cookie(seeded_url, secure, name, flags):
-    user = create_user(seeded_url)
+def test_login_sets_exactly_one_session_cookie(
+    seeded_url, secure, name, flags, roles, max_age
+):
+    user = create_user(seeded_url, roles=roles)
     with auth_client(seeded_url, secure=secure) as client:
         response = login(client, user.username)
 
@@ -79,7 +90,9 @@ def test_login_sets_exactly_one_session_cookie(seeded_url, secure, name, flags):
     cookie = only_set_cookie(response)
     assert cookie.name == name
     assert len(cookie.value) == 43
-    assert set(cookie.attributes) == flags  # no Domain, Max-Age or Expires
+    assert set(cookie.attributes) == flags  # no Domain or Expires (#23, #25)
+    # Max-Age is the class's absolute timeout (#25 E1).
+    assert cookie.attributes["max-age"] == max_age
     assert cookie.attributes["path"] == "/"
     assert cookie.attributes["samesite"].lower() == "lax"
     [row] = session_rows(seeded_url)

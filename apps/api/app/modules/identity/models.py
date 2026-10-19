@@ -14,7 +14,8 @@
   of a non-delegable permission.
 - ``auth_sessions``: login sessions (#23, ADR-0007 D1, D8). Only the SHA-256
   hash of the session token is stored; the token itself exists only in the
-  cookie. ``revoked_at`` ``NULL`` means the session is live.
+  cookie. ``revoked_at`` ``NULL`` means the session was not revoked; it may
+  still have expired (``expires_at``, ``idle_timeout_seconds``, #25).
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
@@ -35,6 +36,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     LargeBinary,
     String,
     Text,
@@ -139,13 +141,19 @@ class UserDelegation(Audited, Model):
 class AuthSession(Model):
     """One login session (ADR-0007 D1, D8). Not audited (see the module doc).
 
-    Expiry (#25), the CSRF token (#24) and reauthentication (#26) add their own
-    columns in their own migrations.
+    Expiry (#25): ``expires_at`` is the absolute end and
+    ``idle_timeout_seconds`` the idle limit, both fixed at login from the
+    user's role class (``sessions.session_limits``). A session is expired when
+    ``now >= expires_at`` or ``now >= last_seen_at + idle_timeout_seconds``;
+    that is computed, never stored. Reauthentication (#26) adds its own column.
     """
 
     __tablename__ = "auth_sessions"
     __table_args__ = (
         CheckConstraint("octet_length(token_hash) = 32", name="token_hash_length"),
+        CheckConstraint(
+            "idle_timeout_seconds > 0", name="idle_timeout_seconds_positive"
+        ),
     )
 
     # Indexed: #25 revokes every session of a user.
@@ -160,3 +168,6 @@ class AuthSession(Model):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The absolute expiry (#25).
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idle_timeout_seconds: Mapped[int] = mapped_column(Integer)

@@ -18,7 +18,8 @@ dependency through ``app.dependency_overrides``.
 :func:`get_current_principal` checks the ``X-CSRF-Token`` header against the
 resolved session's token (``app.core.csrf.verify_csrf_token``) before it
 returns the principal. Every ``authenticated()`` and ``require()`` route is
-therefore protected by construction, in the order ``401`` (no session), ``403
+therefore protected by construction, in the order ``401`` (no session:
+``authentication_required``; a timed-out one: ``session_expired``, #25), ``403
 csrf_failed``, ``403 permission_denied``, then ``422``. ``public()`` routes
 need no token; the ``Origin`` check (``app.core.csrf.require_trusted_origin``)
 covers every route. Overriding ``get_current_principal`` in a test also skips
@@ -101,6 +102,22 @@ class AuthenticationRequiredError(AppError):
         super().__init__()
 
 
+class SessionExpiredError(AppError):
+    """The session timed out (idle or absolute limit, #25; ADR-0007 D8).
+
+    A different code from ``authentication_required`` so the web app can say
+    "your session expired". Raised by the registered resolver for an
+    unrevoked session past its limits. Takes no arguments.
+    """
+
+    status = 401
+    code = "session_expired"
+    detail = "Your session has expired. Sign in again."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
 class PermissionDeniedError(AppError):
     """The user lacks the permission. Never names the permission or record."""
 
@@ -150,7 +167,10 @@ PrincipalResolver = Callable[
 
 Called with the request, the request's Unit of Work session and the settings;
 returns the principal together with the raw session token, or ``None`` when
-there is no signed-in user. It must not write.
+there is no signed-in user. It raises :class:`SessionExpiredError` for a
+session that timed out (#25), before it checks the user. It writes nothing
+except the throttled ``last_seen_at`` update of a live session (#25), in the
+request's Unit of Work.
 """
 
 PRINCIPAL_RESOLVER_STATE: Final = "principal_resolver"
@@ -184,7 +204,9 @@ async def get_current_session(
     Calls the app's registered :data:`PrincipalResolver` (since #23: session
     cookie -> live ``auth_sessions`` row -> ``identity.service.load_principal``)
     in the request's Unit of Work. No resolver, or no session, raises
-    :class:`AuthenticationRequiredError`.
+    :class:`AuthenticationRequiredError`; a timed-out session raises
+    :class:`SessionExpiredError` from the resolver (#25), so both come before
+    the CSRF check.
     """
     resolved = await resolver(request, uow.session, settings)
     if resolved is None:

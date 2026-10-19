@@ -21,7 +21,8 @@ It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
-cookie); there is no login screen yet. Requests that change data are protected
+cookie) that expire after a period of inactivity or a maximum lifetime; there is
+no login screen yet. Requests that change data are protected
 by an `Origin` check and a CSRF token, and the web app is served with a
 Content Security Policy and other security headers. No other product features
 are implemented yet.
@@ -160,7 +161,10 @@ failed login always answers `401 invalid_credentials`. Every `POST`, `PUT`,
 `PATCH` or `DELETE` must send `Origin: http://127.0.0.1:5173` (the
 `APP_ORIGIN`), and once signed in also the `X-CSRF-Token` header; otherwise
 the API answers `403 csrf_failed`. For the same reason the Swagger UI on the
-API port cannot send them. Details: [`_docs/api.md`](_docs/api.md) and
+API port cannot send them. Sessions expire after 30 idle minutes (12 hours at
+most) for staff accounts such as the demo Owner, and after 7 idle days (30 days
+at most) for tutors, students and guardians; `/api/v1/auth/me` then answers
+`401 session_expired`, so log in again. Details: [`_docs/api.md`](_docs/api.md) and
 [`_docs/security-headers.md`](_docs/security-headers.md).
 
 ## Configuration

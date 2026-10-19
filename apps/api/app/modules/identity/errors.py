@@ -73,3 +73,29 @@ class InvalidCredentialsError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class InvalidUserStateTransitionError(AppError):
+    """A user-state change the transition table forbids (#25 F2).
+
+    Nothing goes back to ``pending``; ``pending`` and ``archived`` users cannot
+    be suspended.
+    """
+
+    status = 409
+    code = "user_state_transition_invalid"
+    detail = "The user cannot be moved to this state."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class UnknownRoleError(AppError):
+    """A role code that is not in the role catalog (#25 F3)."""
+
+    status = 422
+    code = "role_unknown"
+    detail = "This role does not exist."
+
+    def __init__(self) -> None:
+        super().__init__()

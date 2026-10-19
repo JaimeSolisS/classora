@@ -1,4 +1,4 @@
-"""``auth_sessions`` constraints with raw SQL (#23 A4)."""
+"""``auth_sessions`` constraints with raw SQL (#23 A4, #25 B2)."""
 
 import hashlib
 
@@ -8,8 +8,10 @@ from sqlalchemy.exc import IntegrityError
 from tests.integration.auth_support import create_user
 from tests.integration.conftest import run_sql
 
+# expires_at and idle_timeout_seconds have no default (#25): the app sets them.
 INSERT = (
-    "INSERT INTO auth_sessions (user_id, token_hash) VALUES (:user_id, :token_hash)"
+    "INSERT INTO auth_sessions (user_id, token_hash, expires_at, idle_timeout_seconds)"
+    " VALUES (:user_id, :token_hash, now() + interval '12 hours', 1800)"
 )
 
 
@@ -85,3 +87,43 @@ def test_a_session_for_an_unknown_user_fails(seeded_url):
         )
 
     assert sqlstate(caught.value) == "23503"  # foreign_key_violation
+
+
+@pytest.mark.parametrize("column", ["expires_at", "idle_timeout_seconds"])
+def test_the_expiry_columns_have_no_default(seeded_url, column):
+    user = create_user(seeded_url)
+    values = {"expires_at": "now()", "idle_timeout_seconds": "1800"}
+    del values[column]
+    columns = ", ".join(values)
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            seeded_url,
+            # Column names are test constants, never user input.
+            f"INSERT INTO auth_sessions (user_id, token_hash, {columns})"  # noqa: S608
+            f" VALUES (:user_id, :token_hash, {', '.join(values.values())})",
+            {"user_id": user.id, "token_hash": hashlib.sha256(b"n").digest()},
+        )
+
+    assert sqlstate(caught.value) == "23502"  # not_null_violation
+
+
+@pytest.mark.parametrize("idle", [0, -1])
+def test_a_non_positive_idle_timeout_fails_the_check(seeded_url, idle):
+    user = create_user(seeded_url)
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            seeded_url,
+            "INSERT INTO auth_sessions"
+            " (user_id, token_hash, expires_at, idle_timeout_seconds)"
+            " VALUES (:user_id, :token_hash, now(), :idle)",
+            {
+                "user_id": user.id,
+                "token_hash": hashlib.sha256(b"i").digest(),
+                "idle": idle,
+            },
+        )
+
+    assert sqlstate(caught.value) == "23514"  # check_violation
+    assert "ck_auth_sessions_idle_timeout_seconds_positive" in str(caught.value.orig)

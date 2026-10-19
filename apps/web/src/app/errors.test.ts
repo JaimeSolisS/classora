@@ -25,6 +25,7 @@ const API_CODES = [
   'permission_denied',
   'invalid_credentials',
   'csrf_failed',
+  'session_expired',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -65,11 +66,6 @@ describe('errorMessageKey', () => {
     [
       'the local-only demo code',
       new ApiError({ code: 'demo_job_already_queued', status: 409 }),
-      'client_error',
-    ],
-    [
-      'session_expired (M2-10)',
-      new ApiError({ code: 'session_expired', status: 401 }),
       'client_error',
     ],
     [

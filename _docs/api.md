@@ -82,6 +82,7 @@ Codes in use today:
 | `validation_error` | 422 | Request validation (body, query, path, headers). |
 | `not_found` | 404 | Unknown path, or a record that is missing or not visible to the caller (no `detail`). |
 | `authentication_required` | 401 | No signed-in user on an `authenticated()` or `require()` route. |
+| `session_expired` | 401 | The session cookie belongs to a session that timed out (idle or absolute limit); sign in again (see Sessions). |
 | `invalid_credentials` | 401 | `POST /api/v1/auth/login` did not succeed, for any reason (the same body whether or not the account exists). |
 | `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
@@ -144,7 +145,8 @@ implemented by M2-03 in `apps/api/app/core/authz.py`.
 
 ### Sessions
 
-Implemented by M2-05 (ADR-0007 D7, D8) in `apps/api/app/modules/identity/`.
+Implemented by M2-05 and M2-07 (ADR-0007 D7, D8) in
+`apps/api/app/modules/identity/`.
 
 - **Endpoints:**
   - `POST /api/v1/auth/login` (public): body `{"username", "password"}`.
@@ -155,8 +157,10 @@ Implemented by M2-05 (ADR-0007 D7, D8) in `apps/api/app/modules/identity/`.
   - `POST /api/v1/auth/logout` (`authenticated()`): revokes the current session
     only, clears the cookie, `204`.
   - `GET /api/v1/auth/me` (`authenticated()`): the same body as login.
-- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and no
-  `Max-Age` yet (a browser-session cookie). With `SESSION_COOKIE_SECURE=true`
+- **Cookie:** `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and
+  `Max-Age` equal to the session's absolute timeout (`43200` for staff,
+  `2592000` for the others; no `Expires`). The server stays the authority:
+  the cookie lifetime never extends a session. With `SESSION_COOKIE_SECURE=true`
   (the default, every deployed environment) it is `__Host-classora_session`
   with `Secure`; with `false` (allowed only when `APP_ENV=local`, for plain-HTTP
   local runs) it is `classora_session` without `Secure`. The API reads only
@@ -164,9 +168,32 @@ Implemented by M2-05 (ADR-0007 D7, D8) in `apps/api/app/modules/identity/`.
 - **Token:** 32 random bytes in unpadded base64url. The server stores only its
   SHA-256 hash, so the token is never stored, logged, audited or returned in a
   body.
-- **Rotation:** every login issues a new session; a live session on the
-  request's cookie is revoked, and a token supplied by the client is never
-  adopted.
+- **Rotation:** every login issues a new session; an unrevoked session on the
+  request's cookie (expired or not) is revoked, and a token supplied by the
+  client is never adopted.
+- **Timeouts (M2-07):** fixed at login from the user's roles; the strictest
+  class wins, and a user without roles counts as staff.
+
+  | Class | Roles | Idle | Absolute |
+  | ----- | ----- | ---- | -------- |
+  | staff | Owner, Administrator, Academic Coordinator, Finance Staff | 30 minutes | 12 hours |
+  | extended | only Tutor, Student and/or Guardian | 7 days | 30 days |
+
+  A session expires when the absolute limit is reached or when it has been
+  idle for the idle limit. Activity (`last_seen_at`) is recorded at most once
+  a minute, only on requests that succeed.
+- **`session_expired` vs `authentication_required`:** both are `401`. A
+  cookie of a session that timed out gets `session_expired` (show "your
+  session expired" and sign in again). No cookie, an unknown or revoked
+  session, or a user who is not active gets `authentication_required`. On
+  unsafe methods both come before the CSRF check (`csrf_failed`).
+- **Revocation:** suspending or archiving a user, adding or removing a role,
+  and setting a new password revoke all of that user's sessions in the same
+  transaction (they then get `authentication_required`; reactivating the user
+  does not bring them back). Delegation changes do not revoke sessions:
+  permissions are loaded on every request.
+- **Purge:** an hourly worker job deletes session rows 24 hours after they
+  were revoked or expired.
 - **CSRF token:** login and `/auth/me` also return `csrf_token`, the session's
   CSRF token (see below).
 
