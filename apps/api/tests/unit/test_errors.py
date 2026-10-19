@@ -191,6 +191,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/auth/invitation/redeem",
         "/api/v1/invitations",
         "/api/v1/invitations/{user_id}/reissue",
+        "/api/v1/privacy-notice",
+        "/api/v1/privacy-notice/acceptance",
         "/api/v1/auth/password",
         "/api/v1/auth/password-reset/lookup",
         "/api/v1/auth/password-reset/redeem",

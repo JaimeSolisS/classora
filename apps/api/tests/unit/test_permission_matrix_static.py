@@ -301,6 +301,76 @@ def test_every_planted_problem_is_reported():
     )
 
 
+def test_every_planted_notice_exempt_problem_is_reported():
+    """#174 E1: ``notice_exempt`` must match the route's AccessRule, be a
+    boolean and appear only on authenticated entries."""
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.get("/n/exempt", responses=AUTH_RESPONSES)
+    async def exempt(
+        who: Annotated[Principal, authenticated(notice_exempt=True)],
+    ) -> None: ...
+
+    @router.get("/n/exempt-unlisted", responses=AUTH_RESPONSES)
+    async def exempt_unlisted(
+        who: Annotated[Principal, authenticated(notice_exempt=True)],
+    ) -> None: ...
+
+    @router.get("/n/gated", responses=AUTH_RESPONSES)
+    async def gated(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.get("/n/gated-ok", responses=AUTH_RESPONSES)
+    async def gated_ok(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.get("/n/permission", responses=PERMISSION_RESPONSES)
+    async def permission(who: Annotated[Principal, require("user.view")]) -> None: ...
+
+    @router.get("/n/public", dependencies=[public(reason="probe")])
+    async def open_route() -> None: ...
+
+    app.include_router(router)
+    matrix = [
+        *DOCS,
+        entry("GET", "/n/exempt", "authenticated", notice_exempt=True),
+        entry("GET", "/n/exempt-unlisted", "authenticated"),
+        entry("GET", "/n/gated", "authenticated", notice_exempt=True),
+        entry("GET", "/n/gated-ok", "authenticated", notice_exempt=False),
+        entry(
+            "GET",
+            "/n/permission",
+            "permission",
+            permission="user.view",
+            allow=["owner"],
+            notice_exempt=True,
+        ),
+        entry("GET", "/n/public", "public", reason="probe", notice_exempt="yes"),
+    ]
+
+    assert check_matrix(app, parse_matrix({"route": matrix})) == [
+        "GET /n/exempt-unlisted: the route's notice_exempt is true but the matrix"
+        " says false",
+        "GET /n/gated: the route's notice_exempt is false but the matrix says true",
+        "GET /n/permission: notice_exempt is only for access = 'authenticated'",
+        "GET /n/permission: the route's notice_exempt is false but the matrix"
+        " says true",
+        "GET /n/public: notice_exempt is only for access = 'authenticated'",
+        "GET /n/public: notice_exempt must be true or false",
+    ]
+
+
+def test_the_real_matrix_lists_exactly_the_notice_exempt_routes():
+    """#174 C3: exactly these four routes skip the privacy-notice gate."""
+    exempt = {e.key for e in load_matrix() if e.is_notice_exempt}
+
+    assert exempt == {
+        ("GET", "/api/v1/auth/me"),
+        ("POST", "/api/v1/auth/logout"),
+        ("GET", "/api/v1/privacy-notice"),
+        ("POST", "/api/v1/privacy-notice/acceptance"),
+    }
+
+
 def test_unsupported_route_types_are_reported():
     app = correct_app()
 

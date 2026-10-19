@@ -10,8 +10,13 @@
 - Account references (#34 B1): :func:`get_account_reference` and
   :func:`get_account_references` (``schemas.AccountReference``: id, username,
   display name, state and roles; never a hash or contact data).
+- Privacy notice (#174; ``privacy.py``): :func:`current_privacy_notice`,
+  :func:`accept_privacy_notice` and :func:`has_accepted_current_privacy_notice`
+  (schema ``schemas.PrivacyNotice``; errors
+  :class:`PrivacyNoticeOutdatedError`, :class:`PrivacyNoticeUnavailableError`).
 - Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
-  of an active user) and :func:`resolve_session_principal`, the
+  of an active user, with ``privacy_notice_accepted``) and
+  :func:`resolve_session_principal`, the
   :data:`~app.core.authz.PrincipalResolver` that ``build_app`` registers
   (session cookie -> unrevoked ``auth_sessions`` row -> expiry check ->
   :func:`load_principal`; #23, #25).
@@ -65,6 +70,8 @@ from app.modules.identity.errors import (
     PasswordTooLongError,
     PasswordTooShortError,
     PermissionNotDelegableError,
+    PrivacyNoticeOutdatedError,
+    PrivacyNoticeUnavailableError,
     UnknownRoleError,
     UsernameInvalidError,
 )
@@ -97,7 +104,13 @@ from app.modules.identity.permissions import (
     may_assign_role,
     resolve_permissions,
 )
-from app.modules.identity.schemas import AccountReference
+from app.modules.identity.privacy import (
+    accept_privacy_notice,
+    accepted_current_notice,
+    current_privacy_notice,
+    has_accepted_current_privacy_notice,
+)
+from app.modules.identity.schemas import AccountReference, PrivacyNotice
 
 __all__ = [
     "ACTIVE",
@@ -114,15 +127,21 @@ __all__ = [
     "PasswordTooLongError",
     "PasswordTooShortError",
     "PermissionNotDelegableError",
+    "PrivacyNotice",
+    "PrivacyNoticeOutdatedError",
+    "PrivacyNoticeUnavailableError",
     "UnknownRoleError",
     "AccountReference",
     "UsernameInvalidError",
+    "accept_privacy_notice",
     "add_user_role",
     "change_user_state",
+    "current_privacy_notice",
     "effective_permissions",
     "get_account_reference",
     "get_account_references",
     "grant_delegation",
+    "has_accepted_current_privacy_notice",
     "hash_password",
     "load_principal",
     "lock_owner_guard",
@@ -212,15 +231,26 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
     """The :class:`Principal` of an ``active`` user, or ``None``.
 
     ``None`` for an unknown user or one whose state is not ``active``.
-    Otherwise the user's role codes and :func:`effective_permissions`.
+    Otherwise the user's role codes, :func:`effective_permissions` and
+    ``privacy_notice_accepted`` (#174: the current version, read in the same
+    statement as the state, on every call; never cached, so a version
+    published while the user is signed in applies on their next request).
     Never commits.
     """
-    if await _user_state(session, user_id) != ACTIVE:
+    row = (
+        await session.execute(
+            select(User.state, accepted_current_notice(User.id)).where(
+                User.id == user_id
+            )
+        )
+    ).one_or_none()
+    if row is None or row[0] != ACTIVE:
         return None
     return Principal(
         user_id=user_id,
         roles=frozenset(await _user_roles(session, user_id)),
         permissions=await effective_permissions(session, user_id),
+        privacy_notice_accepted=bool(row[1]),
     )
 
 

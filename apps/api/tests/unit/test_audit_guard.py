@@ -26,6 +26,7 @@ from app.modules.families.models import (
     StudentGuardian,
 )
 from app.modules.identity.models import (
+    PrivacyNoticeAcceptance,
     RegistrationRequest,
     User,
     UserDelegation,
@@ -65,6 +66,7 @@ def test_the_guard_scans_the_real_audited_models():
         FamilyGuardian,
         FamilyStudent,
         Guardian,
+        PrivacyNoticeAcceptance,
         RegistrationRequest,
         Student,
         StudentEmergencyContact,

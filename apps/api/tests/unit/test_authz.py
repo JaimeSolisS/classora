@@ -96,6 +96,7 @@ def test_principal_holds_only_id_roles_and_permissions():
         "user_id",
         "roles",
         "permissions",
+        "privacy_notice_accepted",
     ]
 
 

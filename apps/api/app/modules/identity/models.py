@@ -24,6 +24,11 @@
 - ``registration_requests``: self-registration requests (#169; ADR-0007 D13).
   One per ``pending`` user created by the public registration route; an Owner
   or Administrator approves or rejects it.
+- ``privacy_notice_versions``: the published privacy-notice versions (#174;
+  spec §9). Each is written once by an Alembic migration and never changes: a
+  trigger rejects ``UPDATE`` and ``DELETE``.
+- ``privacy_notice_acceptances``: which user accepted which version, and when
+  (#174). One row per user and version.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
@@ -37,6 +42,10 @@ write explicit events instead (``app.modules.identity.sessions``).
 named events instead (``app.modules.identity.invitations``).
 ``registration_requests`` holds no secret and is audited, next to the named
 events of ``app.modules.identity.registrations``.
+``privacy_notice_versions`` is not audited: a row is publication data written
+once by a migration, and its trigger keeps it as published.
+``privacy_notice_acceptances`` is audited (each acceptance is a ``create``
+event).
 """
 
 import uuid
@@ -315,3 +324,57 @@ class RegistrationRequest(Audited, Model):
     decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+
+
+PRIVACY_NOTICE_IMMUTABLE_TRIGGER = "privacy_notice_versions_immutable"
+"""The trigger (and its function) that rejects ``UPDATE`` and ``DELETE`` on
+``privacy_notice_versions`` (migration 0017)."""
+
+
+class PrivacyNoticeVersion(Model):
+    """One published privacy-notice version (#174; spec §9). Not audited.
+
+    Written once by an Alembic migration (owner decision #174 E2 (a)); the
+    trigger :data:`PRIVACY_NOTICE_IMMUTABLE_TRIGGER` rejects ``UPDATE`` and
+    ``DELETE``, so the stored text is exactly what each user accepted. The
+    current version is the highest ``version`` whose ``published_at`` has
+    passed (``app.modules.identity.privacy``).
+    """
+
+    __tablename__ = "privacy_notice_versions"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint("body_es ~ '[^[:space:]]'", name="body_es_not_blank"),
+        CheckConstraint("body_en ~ '[^[:space:]]'", name="body_en_not_blank"),
+    )
+
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    body_es: Mapped[str] = mapped_column(Text)
+    body_en: Mapped[str] = mapped_column(Text)
+
+
+class PrivacyNoticeAcceptance(Audited, Model):
+    """One user's acceptance of one privacy-notice version (#174). Audited.
+
+    The unique ``(user_id, notice_version_id)`` constraint also serves the
+    lookups by user (its index starts with ``user_id``).
+    """
+
+    __tablename__ = "privacy_notice_acceptances"
+    __table_args__ = (UniqueConstraint("user_id", "notice_version_id"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    notice_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        # Named explicitly: the convention's name would pass PostgreSQL's
+        # 63-character limit.
+        ForeignKey(
+            "privacy_notice_versions.id",
+            ondelete="RESTRICT",
+            name="fk_privacy_notice_acceptances_notice_version_id",
+        ),
+    )
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

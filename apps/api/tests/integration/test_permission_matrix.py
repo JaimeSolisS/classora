@@ -17,6 +17,12 @@ so every outcome (allowed, 401, 403, delegation) is exercised.
 ``csrf:no-token``) for every unsafe entry of both matrices, and a self-test
 with a planted route that skips the token check.
 
+#174 E2: ``METHOD path notice:pending`` sends every ``authenticated`` and
+``permission`` entry of both matrices as an Owner who hasn't accepted the
+current privacy notice (``403 privacy_notice_required`` except on
+notice-exempt entries); self-tests plant a route that forgets the gate and a
+wrong ``notice_exempt``.
+
 #26 E3, E4: for an unconditional ``reauth`` entry the allowed actors
 reauthenticate before the request (denied actors do not and still get
 ``permission_denied``), and ``METHOD path reauth:none`` expects ``403
@@ -42,6 +48,7 @@ from app.core.authz import (
     AccessRule,
     Principal,
     ResolvedSession,
+    get_current_principal,
     get_current_session,
     require,
 )
@@ -60,10 +67,12 @@ from app.modules.identity.permissions import (
 from app.seeds import runner
 from tests.authz.harness import (
     ANONYMOUS,
+    NOTICE_PENDING_OWNER,
     Actor,
     Case,
     CsrfCase,
     MatrixUser,
+    NoticeCase,
     ReauthCase,
     all_actors,
     csrf_cases,
@@ -71,12 +80,15 @@ from tests.authz.harness import (
     login_cookie,
     matrix_cases,
     matrix_users_for,
+    notice_cases,
     parse_matrix,
     reauth_cases,
     run_case,
     run_cases,
     run_csrf_case,
     run_csrf_cases,
+    run_notice_case,
+    run_notice_cases,
     run_reauth_case,
     run_reauth_cases,
 )
@@ -91,7 +103,9 @@ REAL_CSRF_CASES = csrf_cases(load_matrix())
 SAMPLE_CSRF_CASES = csrf_cases(parse_matrix(SAMPLE_MATRIX))
 REAL_REAUTH_CASES = reauth_cases(load_matrix())
 SAMPLE_REAUTH_CASES = reauth_cases(parse_matrix(SAMPLE_MATRIX))
-ACTORS = all_actors([*REAL_CASES, *SAMPLE_CASES])
+REAL_NOTICE_CASES = notice_cases(load_matrix())
+SAMPLE_NOTICE_CASES = notice_cases(parse_matrix(SAMPLE_MATRIX))
+ACTORS = [*all_actors([*REAL_CASES, *SAMPLE_CASES]), NOTICE_PENDING_OWNER]
 
 
 @pytest.fixture(scope="module")
@@ -457,4 +471,105 @@ def test_a_public_route_listed_as_protected_is_reported(sample_client, users):
 
     assert problems == [
         "GET /sample/public as anonymous: expected 401 authentication_required, got 200"
+    ]
+
+
+# --- #174 E2: the privacy-notice gate -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case", REAL_NOTICE_CASES, ids=[c.id for c in REAL_NOTICE_CASES]
+)
+def test_real_app_notice(real_client: TestClient, users, case: NoticeCase) -> None:
+    problems = run_notice_case(real_client, case, users)
+
+    assert not problems, "\n".join(problems)
+
+
+def test_real_app_notice_cases_cover_every_protected_entry():
+    protected = [e for e in load_matrix() if e.access != "public"]
+
+    assert [c.entry.key for c in REAL_NOTICE_CASES] == [e.key for e in protected]
+    assert {c.actor for c in REAL_NOTICE_CASES} == {NOTICE_PENDING_OWNER}
+    assert {c.entry.key for c in REAL_NOTICE_CASES if c.entry.is_notice_exempt} == {
+        ("GET", "/api/v1/auth/me"),
+        ("POST", "/api/v1/auth/logout"),
+        ("GET", "/api/v1/privacy-notice"),
+        ("POST", "/api/v1/privacy-notice/acceptance"),
+    }
+
+
+def test_the_notice_pending_owner_has_not_accepted(users):
+    assert not users[NOTICE_PENDING_OWNER].principal.privacy_notice_accepted
+    assert all(
+        user.principal.privacy_notice_accepted
+        for actor, user in users.items()
+        if actor != NOTICE_PENDING_OWNER
+    )
+
+
+@pytest.mark.parametrize(
+    "case", SAMPLE_NOTICE_CASES, ids=[c.id for c in SAMPLE_NOTICE_CASES]
+)
+def test_sample_app_notice(sample_client: TestClient, users, case: NoticeCase) -> None:
+    problems = run_notice_case(sample_client, case, users, sign_in="override")
+
+    assert not problems, "\n".join(problems)
+
+
+def test_a_route_that_forgets_the_notice_gate_is_reported(users):
+    """A planted access dependency marked authenticated() that never checks
+    the privacy notice."""
+
+    async def ungated_access(
+        principal: Annotated[Principal, Depends(get_current_principal)],
+    ) -> Principal:
+        return principal
+
+    setattr(ungated_access, ROUTE_MARKER_ATTR, AccessRule("authenticated"))
+    app = build_authz_app()
+    router = APIRouter()
+    path = "/sample/ungated"
+
+    @router.get(path, responses=AUTH_RESPONSES, dependencies=[Depends(ungated_access)])
+    async def ungated() -> None:
+        return None
+
+    app.include_router(router)
+    entries = parse_matrix(
+        {"route": [{"method": "GET", "path": path, "access": "authenticated"}]}
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        problems = run_notice_cases(
+            client, notice_cases(entries), users, sign_in="override"
+        )
+
+    assert problems == [
+        f"GET {path} notice:pending: expected 403 privacy_notice_required, got 200"
+    ]
+
+
+def test_a_wrong_notice_exempt_entry_is_reported(sample_client, users):
+    """``/sample/me`` is gated: listing it as notice-exempt fails its case,
+    and the exempt ``/sample/notice`` listed without the flag fails too."""
+    document = copy.deepcopy(SAMPLE_MATRIX)
+    for table in document["route"]:
+        if table["path"] == "/sample/me" and table["method"] == "GET":
+            table["notice_exempt"] = True
+        if table["path"] == "/sample/notice":
+            del table["notice_exempt"]
+    cases = [
+        c
+        for c in notice_cases(parse_matrix(document))
+        if c.entry.path in ("/sample/me", "/sample/notice") and c.entry.method == "GET"
+    ]
+
+    problems = run_notice_cases(sample_client, cases, users, sign_in="override")
+
+    assert problems == [
+        "GET /sample/me notice:pending: a notice-exempt route answered"
+        " 403 privacy_notice_required",
+        "GET /sample/notice notice:pending: expected 403 privacy_notice_required,"
+        " got 200",
     ]

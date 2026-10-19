@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.modules.identity import service as identity_service
 from app.modules.identity.models import (
     Permission,
     Role,
@@ -62,6 +63,7 @@ async def persist_user(
     roles: Iterable[str] = (),
     delegations: Iterable[str] = (),
     granted_by: uuid.UUID | None = None,
+    privacy_notice_accepted: bool = True,
     **overrides: Any,
 ) -> User:
     """Persist a :class:`UserFactory` user with ``roles`` and ``delegations``.
@@ -69,6 +71,12 @@ async def persist_user(
     Role and permission codes are resolved against the seeded tables. A
     delegation is recorded as granted by ``granted_by`` (default: the user
     itself, for tests that do not care who granted it). Flushes, never commits.
+
+    The user accepts the current privacy-notice version (#174 E3, through
+    ``identity.service.accept_privacy_notice``; one audited acceptance row),
+    so the server-side notice gate never gets in the way of tests about
+    something else. ``privacy_notice_accepted=False`` gives a user who still
+    has to accept it.
     """
     user: User = await persist(session, UserFactory, **overrides)
     for code in roles:
@@ -88,6 +96,11 @@ async def persist_user(
             )
         )
     await session.flush()
+    if privacy_notice_accepted:
+        current = await identity_service.current_privacy_notice(session)
+        await identity_service.accept_privacy_notice(
+            session, user_id=user.id, version=current.version
+        )
     return user
 
 

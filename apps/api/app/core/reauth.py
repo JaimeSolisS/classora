@@ -73,6 +73,7 @@ from app.core.authz import (
     ResolvedSession,
     as_principal,
     ensure_permission,
+    ensure_privacy_notice_accepted,
     get_current_session,
     mark_dependency,
     route_access_rules,
@@ -266,8 +267,11 @@ def require_recent_auth(action: str) -> Any:
     :class:`~app.core.authz.Principal`.
 
     ``401`` without a session, ``403 csrf_failed`` on a failed token check,
-    ``403 permission_denied`` without the route's permission, then ``403
-    reauth_required``. ``action`` must be in :data:`SENSITIVE_ACTIONS`.
+    ``403 privacy_notice_required`` before the privacy notice is accepted
+    (#174; a sensitive action is never notice-exempt), ``403
+    permission_denied`` without the route's permission, then ``403
+    reauth_required``. The same order whichever dependency FastAPI solves
+    first. ``action`` must be in :data:`SENSITIVE_ACTIONS`.
     """
     _checked_action(action)
 
@@ -275,6 +279,7 @@ def require_recent_auth(action: str) -> Any:
         request: Request, resolved: SessionDep, principal: CurrentPrincipal
     ) -> Principal:
         checked = as_principal(principal)
+        ensure_privacy_notice_accepted(checked)
         for permission in _route_permissions(request):
             ensure_permission(checked, permission)
         if not is_recent(resolved.reauthenticated_at):
@@ -326,7 +331,8 @@ REAUTH_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     **PERMISSION_RESPONSES,
     403: problem_response_doc(
         "Permission denied (permission_denied); a failed Origin or X-CSRF-Token"
-        " check (csrf_failed); or the session needs a recent password"
+        " check (csrf_failed); the privacy notice must be accepted first"
+        " (privacy_notice_required); or the session needs a recent password"
         " reauthentication (reauth_required)."
     ),
 }

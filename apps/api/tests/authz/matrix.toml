@@ -47,6 +47,20 @@
 #   (app/core/ratelimit.py); the issue that applies it removes it there. The
 #   runtime check sends no rate-limit cases (integration tests cover them).
 #
+# Privacy notice (#174; spec §9): every signed-in route answers 403
+# privacy_notice_required until the user accepts the current notice version,
+# except the notice-exempt ones:
+#   notice_exempt = true   the route is authenticated(notice_exempt=True);
+#                          must match the route's AccessRule. Only for
+#                          access = "authenticated" (require() has no
+#                          exemption). Today exactly GET /auth/me,
+#                          POST /auth/logout and the two /privacy-notice
+#                          routes; adding one is a reviewed change.
+#   The runtime check adds a `notice:pending` case per authenticated or
+#   permission entry: an Owner who hasn't accepted the current version gets
+#   403 privacy_notice_required, except on notice-exempt entries. Every other
+#   actor has accepted it.
+#
 # The runtime check signs every role in for real (POST /api/v1/auth/login, a
 # fresh session per request); anonymous sends no cookie.
 #
@@ -97,11 +111,13 @@ rate_limit = ["login.ip", "login.username"]
 method = "POST"
 path = "/api/v1/auth/logout"
 access = "authenticated"
+notice_exempt = true
 
 [[route]]
 method = "GET"
 path = "/api/v1/auth/me"
 access = "authenticated"
+notice_exempt = true
 
 [[route]]
 method = "POST"
@@ -335,6 +351,20 @@ allow = ["owner", "administrator"]
 # them; reauth:none gets 403 reauth_required.
 json = {}
 reauth = "user.password_reset.issue"
+
+[[route]]
+method = "GET"
+path = "/api/v1/privacy-notice"
+access = "authenticated"
+notice_exempt = true
+
+[[route]]
+method = "POST"
+path = "/api/v1/privacy-notice/acceptance"
+access = "authenticated"
+notice_exempt = true
+# An empty body gets 422, so no case accepts the notice.
+json = {}
 
 [[route]]
 method = "GET"

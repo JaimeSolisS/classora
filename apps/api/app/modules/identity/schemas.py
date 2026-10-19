@@ -91,6 +91,13 @@ class SessionUser(BaseModel):
         min_length=43,
         max_length=43,
     )
+    privacy_notice_required: bool = Field(
+        description=(
+            "True until the user accepts the current privacy-notice version"
+            " (#174). Meanwhile every route except /auth/me, /auth/logout and"
+            " the privacy-notice routes answers 403 privacy_notice_required."
+        )
+    )
 
 
 class ReauthenticateRequest(BaseModel):
@@ -455,3 +462,53 @@ class AccountReference(BaseModel):
     display_name: str
     state: UserState
     roles: frozenset[RoleCode] = Field(description="The account's role codes.")
+
+
+# --- Privacy notice (#174) -----------------------------------------------------------
+
+
+class PrivacyNotice(BaseModel):
+    """One published privacy-notice version (``identity.service``; #35 stamps
+    consent records with its ``id``)."""
+
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    id: uuid.UUID
+    version: int
+    published_at: datetime
+    body_es: str
+    body_en: str
+
+
+class PrivacyNoticeRead(BaseModel):
+    """The current privacy notice (``GET /api/v1/privacy-notice``)."""
+
+    version: int = Field(description="The current version number.")
+    published_at: datetime
+    body_es: str = Field(
+        description="The Spanish text: plain text, paragraphs separated by blank lines."
+    )
+    body_en: str = Field(
+        description="The English text: plain text, paragraphs separated by blank lines."
+    )
+    accepted_at: datetime | None = Field(
+        description="When the caller accepted this version, or null."
+    )
+
+
+class PrivacyNoticeAcceptanceRequest(BaseModel):
+    """The version the user read and accepts
+    (``POST /api/v1/privacy-notice/acceptance``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(
+        description="The version shown to the user; it must be the current one."
+    )
+
+
+class PrivacyNoticeAccepted(BaseModel):
+    """An acceptance of the current version (the first one, when repeated)."""
+
+    version: int
+    accepted_at: datetime

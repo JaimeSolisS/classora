@@ -122,13 +122,14 @@ async def login(
 
 @router.post("/logout", status_code=204, responses={**AUTH_RESPONSES, **CSRF_RESPONSES})
 async def logout(
-    principal: Annotated[Principal, authenticated()],
+    principal: Annotated[Principal, authenticated(notice_exempt=True)],
     request: Request,
     response: Response,
     uow: UnitOfWorkDep,
     settings: SettingsDep,
 ) -> None:
-    """Sign out: revoke the current session and clear the cookie.
+    """Sign out: revoke the current session and clear the cookie. Works
+    before the privacy notice is accepted (#174).
 
     Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
     """
@@ -138,13 +139,15 @@ async def logout(
 
 @router.get("/me", responses=AUTH_RESPONSES)
 async def me(
-    principal: Annotated[Principal, authenticated()],
+    principal: Annotated[Principal, authenticated(notice_exempt=True)],
     request: Request,
     uow: UnitOfWorkDep,
     settings: SettingsDep,
 ) -> SessionUser:
-    """The signed-in user, their roles, their effective permissions and the
-    session's CSRF token (the same value for the whole session)."""
+    """The signed-in user, their roles, their effective permissions, whether
+    they must accept the privacy notice first, and the session's CSRF token
+    (the same value for the whole session). Works before the privacy notice
+    is accepted (#174)."""
     return await auth.current_session_user(uow.session, request, settings, principal)
 
 
