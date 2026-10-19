@@ -20,6 +20,13 @@
   ``METHOD path reauth:none`` case per such entry: an allowed actor with a
   valid ``Origin`` and CSRF token but no reauthentication expects ``403
   reauth_required``.
+- Rate limits (#27): an entry's ``rate_limit`` list must match the route's
+  :class:`~app.core.ratelimit.RateLimitRule` codes (order ignored), a route
+  with a marker documents ``429``, every unsafe ``public()`` route declares a
+  policy or has ``rate_limit_exempt``, and (with ``pending_policies``) every
+  policy is applied by a route or listed in
+  :data:`~app.core.ratelimit.PENDING_POLICIES`, never both. Static only: the
+  runtime cases send no rate-limit requests.
 - :func:`matrix_user_for` creates an actor's real, active database user (the
   #20 factory helper, password :data:`TEST_USER_PASSWORD`) and loads its
   :class:`Principal`.
@@ -69,6 +76,11 @@ from app.core.authz import (
 )
 from app.core.csrf import UNSAFE_METHODS, csrf_token_for
 from app.core.errors import PROBLEM_DETAILS_REF, PROBLEM_JSON
+from app.core.ratelimit import (
+    RATE_LIMIT_POLICIES,
+    RateLimitPolicy,
+    route_rate_limit_rules,
+)
 from app.core.reauth import (
     SENSITIVE_ACTIONS,
     SensitiveAction,
@@ -101,6 +113,8 @@ ENTRY_FIELDS = frozenset(
         "json",
         "reauth",
         "reauth_conditional",
+        "rate_limit",
+        "rate_limit_exempt",
     }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -132,6 +146,8 @@ class MatrixEntry:
     json: Any = None
     reauth: Any = None
     reauth_conditional: Any = None
+    rate_limit: Any = None
+    rate_limit_exempt: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -188,6 +204,7 @@ def entry_problems(
     permission_codes: Collection[str] = PERMISSION_CODES,
     role_codes: Collection[str] = ROLE_CODES,
     sensitive_actions: Collection[str] = SENSITIVE_ACTIONS,
+    rate_limit_policies: Collection[str] = RATE_LIMIT_POLICIES,
 ) -> list[str]:
     """Format problems of one entry."""
     problems: list[str] = []
@@ -229,6 +246,24 @@ def entry_problems(
             problems.append("reauth_conditional must be true or false")
         if entry.reauth is None:
             problems.append("reauth_conditional is only for an entry with reauth")
+    if entry.rate_limit is not None:
+        if not isinstance(entry.rate_limit, list) or not all(
+            isinstance(code, str) for code in entry.rate_limit
+        ):
+            problems.append("rate_limit must be a list of policy codes")
+        else:
+            problems.extend(
+                f"unknown rate-limit policy {code!r} (see app/core/ratelimit.py)"
+                for code in entry.rate_limit
+                if code not in rate_limit_policies
+            )
+    if entry.rate_limit_exempt is not None and (
+        not isinstance(entry.rate_limit_exempt, str)
+        or not entry.rate_limit_exempt.strip()
+    ):
+        problems.append("rate_limit_exempt needs a non-empty reason")
+    if entry.rate_limit is not None and entry.rate_limit_exempt is not None:
+        problems.append("an entry has either rate_limit or rate_limit_exempt, not both")
     return problems
 
 
@@ -372,6 +407,87 @@ def _reauth_entry_problems(
     return problems
 
 
+def _rate_limit_problems(
+    method: str,
+    path: str,
+    route: RouteContext,
+    rule_kind: str,
+    entry: MatrixEntry | None,
+    document: Mapping[str, Any],
+    rate_limit_policies: Mapping[str, RateLimitPolicy],
+) -> list[str]:
+    """The rate-limit problems of one route (#27 G2)."""
+    label = f"{method} {path}"
+    problems: list[str] = []
+    markers = route_rate_limit_rules(route)
+    if len(markers) > 1:
+        problems.append(f"{label}: more than one rate_limit marker ({len(markers)})")
+    codes = {code for marker in markers for code in marker.codes}
+    problems.extend(
+        f"{label}: rate-limit policy {code!r} is not in RATE_LIMIT_POLICIES"
+        for code in sorted(codes)
+        if code not in rate_limit_policies
+    )
+    if markers and not _documents_problem(document, method, path, "429"):
+        problems.append(
+            f"{label}: 429 rate_limited is not documented as ProblemDetails"
+            " (pass RATE_LIMIT_RESPONSES)"
+        )
+    if entry is None:
+        return problems
+    exempt = entry.rate_limit_exempt is not None
+    if (
+        method in UNSAFE_METHODS
+        and rule_kind == "public"
+        and not markers
+        and not exempt
+    ):
+        problems.append(
+            f"{label}: an unsafe public route needs rate_limit(...) or"
+            " rate_limit_exempt (see app/core/ratelimit.py)"
+        )
+    listed = entry.rate_limit if isinstance(entry.rate_limit, list) else []
+    if len(markers) <= 1 and codes != set(listed):
+        problems.append(
+            f"{label}: the route's rate limits are {sorted(codes)}"
+            f" but the matrix says {sorted(set(listed))}"
+        )
+    return problems
+
+
+def _policy_coverage_problems(
+    routes: Mapping[tuple[str, str], RouteContext],
+    rate_limit_policies: Mapping[str, RateLimitPolicy],
+    pending_policies: Mapping[str, str],
+) -> list[str]:
+    """Each policy is applied by a route or pending, never both (#27 G2)."""
+    applied = {
+        code
+        for route in routes.values()
+        for marker in route_rate_limit_rules(route)
+        for code in marker.codes
+    }
+    problems: list[str] = []
+    for code in sorted(rate_limit_policies):
+        if code not in applied and code not in pending_policies:
+            problems.append(
+                f"rate-limit policy {code!r}: no route applies it and it is not"
+                " in PENDING_POLICIES"
+            )
+        if code in applied and code in pending_policies:
+            problems.append(
+                f"rate-limit policy {code!r}: a route applies it but it is still"
+                f" in PENDING_POLICIES ({pending_policies[code]}): remove it"
+            )
+    problems.extend(
+        f"rate-limit policy {code!r}: in PENDING_POLICIES but not in"
+        " RATE_LIMIT_POLICIES"
+        for code in sorted(pending_policies)
+        if code not in rate_limit_policies
+    )
+    return problems
+
+
 def check_matrix(
     app: FastAPI,
     entries: list[MatrixEntry],
@@ -379,8 +495,16 @@ def check_matrix(
     permission_codes: Collection[str] = PERMISSION_CODES,
     role_codes: Collection[str] = ROLE_CODES,
     sensitive_actions: Mapping[str, SensitiveAction] = SENSITIVE_ACTIONS,
+    rate_limit_policies: Mapping[str, RateLimitPolicy] = RATE_LIMIT_POLICIES,
+    pending_policies: Mapping[str, str] | None = None,
 ) -> list[str]:
-    """Every problem between ``app``'s routes and ``entries`` (sorted)."""
+    """Every problem between ``app``'s routes and ``entries`` (sorted).
+
+    ``pending_policies`` (the real app passes
+    :data:`~app.core.ratelimit.PENDING_POLICIES`) also checks that every
+    rate-limit policy is applied by a route or pending, never both; a
+    synthetic app leaves it out.
+    """
     routes = _collect_routes(app)
     problems = list(routes.problems)
     document = app.openapi()
@@ -400,6 +524,7 @@ def check_matrix(
                 permission_codes=permission_codes,
                 role_codes=role_codes,
                 sensitive_actions=sensitive_actions,
+                rate_limit_policies=rate_limit_policies,
             )
         )
         if entry.key not in routes.keys:
@@ -451,6 +576,11 @@ def check_matrix(
             )
         )
         entry = by_key.get((method, path))
+        problems.extend(
+            _rate_limit_problems(
+                method, path, route, rule.kind, entry, document, rate_limit_policies
+            )
+        )
         if entry is None:
             continue
         problems.extend(_reauth_entry_problems(label, route, entry))
@@ -463,6 +593,10 @@ def check_matrix(
                 f"{label}: the route requires {rule.permission!r}"
                 f" but the matrix says {entry.permission!r}"
             )
+    if pending_policies is not None:
+        problems.extend(
+            _policy_coverage_problems(routes.api, rate_limit_policies, pending_policies)
+        )
     return sorted(set(problems))
 
 

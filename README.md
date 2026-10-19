@@ -21,11 +21,11 @@ It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
-cookie) that expire after a period of inactivity or a maximum lifetime; there is
-no login screen yet. Requests that change data are protected
-by an `Origin` check and a CSRF token, and the web app is served with a
-Content Security Policy and other security headers. No other product features
-are implemented yet.
+cookie) that expire after a period of inactivity or a maximum lifetime, with
+rate limits on login and password confirmation; there is no login screen yet.
+Requests that change data are protected by an `Origin` check and a CSRF
+token, and the web app is served with a Content Security Policy and other
+security headers. No other product features are implemented yet.
 
 ## Prerequisites
 
@@ -157,7 +157,10 @@ curl -s -b cookies.txt -X POST -H 'Origin: http://127.0.0.1:5173' \
 Login returns the signed-in user, including a `csrf_token`, and sets the
 session cookie; `GET /api/v1/auth/me` returns the same user, roles,
 permissions and token, and `POST /api/v1/auth/logout` ends the session. A
-failed login always answers `401 invalid_credentials`. Every `POST`, `PUT`,
+failed login answers `401 invalid_credentials`. After 10 failed logins for one
+username, or 50 login attempts from one address, in a 15-minute window, login
+answers `429 rate_limited` until the window ends (the `Retry-After` header gives
+the seconds to wait), even with the right password. Every `POST`, `PUT`,
 `PATCH` or `DELETE` must send `Origin: http://127.0.0.1:5173` (the
 `APP_ORIGIN`), and once signed in also the `X-CSRF-Token` header; otherwise
 the API answers `403 csrf_failed`. For the same reason the Swagger UI on the

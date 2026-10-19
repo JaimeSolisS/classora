@@ -88,6 +88,7 @@ Codes in use today:
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
+| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
 | `internal_error` | 500 | Any unexpected exception. |
@@ -252,8 +253,9 @@ identity module.
   (or a user without one) is `403 reauth_failed`, the session stays signed in
   and its window is unchanged. Each attempt runs one Argon2id verification and
   is audited (`identity.reauthenticated`, or `identity.reauth_failed`
-  committed even though the response is an error). Limiting failed attempts
-  is #27.
+  committed even though the response is an error). After 5 wrong passwords
+  for the user in a 15-minute window, further attempts get `429 rate_limited`
+  without a password check (see Rate limits).
 - **Window:** 5 minutes from the reauthentication, for the **current session
   only**; activity does not extend it, a later reauthentication restarts it,
   and logging in does not count (the first sensitive action after a login asks
@@ -280,6 +282,64 @@ identity module.
   unsafe route requiring a bound permission (for example
   `user.password_reset.issue`) without the marker fails the matrix test.
   Markers are only for `POST`, `PUT`, `PATCH` and `DELETE`.
+
+### Rate limits
+
+Implemented by M2-09 (ADR-0008 D15) in `apps/api/app/core/ratelimit.py`
+(policies, counters, the route declaration) and `apps/api/app/core/client_ip.py`
+(the client address). The counters live in PostgreSQL (`rate_limit_counters`),
+so a limit holds across every API process; there is no Redis and no permanent
+lockout: a window simply ends.
+
+| Policy | Endpoint | Limit | Key | Counts |
+| ------ | -------- | ----- | --- | ------ |
+| `login.ip` | `POST /api/v1/auth/login` | 50 per 15 min | client IP | every request |
+| `login.username` | `POST /api/v1/auth/login` | 10 per 15 min | normalized submitted username, existing or not | failed attempts |
+| `reauth.user` | `POST /api/v1/auth/reauthenticate`, and the current-password check of the password change (#30) | 5 per 15 min | user | failed attempts |
+| `token_redemption.ip` | invitation and reset-token redemption (#29, #30) | 20 per 15 min | client IP | every request |
+| `registration.ip` | self-registration request (#29) | 10 per hour | client IP | every request |
+
+- **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
+  `:45`; the full hour for registration). Up to twice a limit can pass across
+  a window boundary; that is the accepted cost of fixed windows.
+- **`429 rate_limited`** with `Retry-After`: the whole seconds until the
+  exhausted window ends (rounded up, at least 1; at most 900 for login and
+  reauthentication). The body never names the policy, the key or the account.
+  Each `429` writes one `WARNING` line on the `app.security` logger with the
+  policy code, method and path (no IP, username or user id) and no audit
+  event.
+- **Requests versus failures.** A `requests` policy takes one unit per request
+  before anything else, so `401`, `403` and `422` answers count too. A
+  `failures` policy reserves a unit before the password is verified (no
+  verification at all when the limit is used up) and gives it back when the
+  password is right; a success does not reset the window. Every count is
+  committed in its own transaction, so an error response never rolls it back.
+- **Order on login:** a foreign `Origin` (`403 csrf_failed`, never counted) →
+  `login.ip` (`429`) → body validation (`422`; a body that is not JSON may be
+  rejected before) → `login.username` (`429`) → the password check (`200` or
+  `401 invalid_credentials`). The `429` does not depend on whether the account
+  exists. On reauthentication: `401` / `csrf_failed` → `422` → `reauth.user`
+  (`429`; the session and its window are unchanged) → the password check.
+- **Client IP.** The client is the TCP peer. Only when the peer is listed in
+  `TRUSTED_PROXIES` (comma-separated IPs or CIDR networks, empty by default)
+  is `X-Forwarded-For` read, from the right: trusted entries are skipped and
+  the first untrusted one is the client. A missing header, a chain of trusted
+  entries only, or an entry that is not an IP address falls back to a trusted
+  address, never to a client-chosen string. IPv6 clients are keyed by their
+  `/64`. Uvicorn runs with `--no-proxy-headers`, so the app is the only place
+  that reads the header. Keys are stored only as SHA-256 hashes; an hourly job
+  deletes windows that ended more than an hour ago.
+- **Applying a policy to a new endpoint** (#29, #30): declare
+  `rate_limit("<policy>", ...)` on the route (`dependencies=[...]` or
+  `limiter: Annotated[RateLimiter, rate_limit(...)]`), pass
+  `responses=RATE_LIMIT_RESPONSES`, add `rate_limit = ["<policy>", ...]` to the
+  route's entry in `apps/api/tests/authz/matrix.toml`, and remove the policy
+  from `PENDING_POLICIES` in `app/core/ratelimit.py`. For a `failures` policy,
+  call `await limiter.reserve("<policy>", key)` before the password check and
+  `await reservation.release(session)` on success; the request's transaction
+  must be ended first (one connection per request at a time). Every unsafe
+  `public()` route must declare a policy or carry `rate_limit_exempt =
+  "<reason>"` in the matrix.
 
 ### Response headers
 

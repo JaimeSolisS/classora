@@ -319,6 +319,11 @@ def test_five_wrong_attempts_are_all_answered_and_audited(
         "invalid_password"
     ] * 5
     assert session_row(module_seeded_url, cookie).revoked_at is None
+    # #27 D5: reauth.user allows 5 wrong passwords per 15 minutes.
+    sixth = reauthenticate(client, cookie, f"{WRONG_PASSWORD}-6")
+    assert code_of(sixth) == (429, "rate_limited")
+    assert len(failed_events(module_seeded_url, owner)) == 5
+    assert session_row(module_seeded_url, cookie).revoked_at is None
 
 
 def test_a_user_without_a_password(module_seeded_url, client, clock, owner):

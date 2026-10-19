@@ -14,6 +14,7 @@
   "session_expired": "Tu sesión expiró. Inicia sesión de nuevo.",
   "reauth_required": "Confirma tu contraseña para continuar.",
   "reauth_failed": "La contraseña no es correcta.",
+  "rate_limited": "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

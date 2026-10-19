@@ -31,6 +31,14 @@ request's transaction back and writes ``identity.reauth_failed`` with
 :func:`record_failed_reauth` in its own committed Unit of Work, the same
 pattern as a failed login; the session and its ``reauthenticated_at`` are
 unchanged.
+
+**Rate limits** (#27; ``app.core.ratelimit``). The login route reserves
+:data:`LOGIN_USERNAME_RATE_LIMIT` keyed by :func:`login_rate_limit_key`
+before :func:`login` runs; :func:`reauthenticate` reserves
+:data:`REAUTH_RATE_LIMIT` keyed by the user id before its password check. A
+used-up limit raises ``429 rate_limited`` before any verification. A
+successful check releases its reservation in the caller's Unit of Work; a
+failed one keeps it.
 """
 
 import secrets
@@ -49,6 +57,7 @@ from app.core.audit import record_audit_event
 from app.core.authz import AuthenticationRequiredError, Principal
 from app.core.config import Settings
 from app.core.csrf import csrf_token_for
+from app.core.ratelimit import RateLimiter
 from app.core.reauth import REAUTH_WINDOW
 from app.core.uow import UnitOfWork
 from app.modules.identity import passwords, sessions
@@ -63,6 +72,13 @@ LOGIN_FAILED_EVENT: Final = "identity.login_failed"
 LOGOUT_EVENT: Final = "identity.logout"
 REAUTHENTICATED_EVENT: Final = "identity.reauthenticated"
 REAUTH_FAILED_EVENT: Final = "identity.reauth_failed"
+
+LOGIN_USERNAME_RATE_LIMIT: Final = "login.username"
+REAUTH_RATE_LIMIT: Final = "reauth.user"
+"""Shared with the self-service password change's current-password check (#30)."""
+INVALID_USERNAME_KEY_PREFIX: Final = "!"
+"""Prefix of the rate-limit key of a username :func:`normalize_username`
+rejects; ``!`` is never part of a valid username, so the two never share a key."""
 
 FailureReason = Literal[
     "unknown_username", "no_password", "invalid_password", "not_active"
@@ -91,6 +107,19 @@ def dummy_password_hash() -> str:
     """A hash of a random password, made once per process with the current
     parameters; verified when there is no stored hash to verify against."""
     return passwords.hash_password(secrets.token_urlsafe(32))
+
+
+def login_rate_limit_key(raw_username: str) -> str:
+    """The ``login.username`` key of a submitted username, existing or not.
+
+    The normalized username; a value that :func:`normalize_username` rejects
+    is counted too, under its trimmed, lower-cased form with
+    :data:`INVALID_USERNAME_KEY_PREFIX`. Only its hash is stored.
+    """
+    try:
+        return normalize_username(raw_username)
+    except UsernameInvalidError:
+        return INVALID_USERNAME_KEY_PREFIX + raw_username.strip().lower()
 
 
 async def _find_user(session: AsyncSession, raw_username: str) -> User | None:
@@ -219,14 +248,19 @@ async def reauthenticate(
     principal: Principal,
     auth_session_id: uuid.UUID,
     password: str,
+    limiter: RateLimiter,
 ) -> datetime | ReauthFailure:
     """Check ``password`` for the signed-in ``principal``; on success mark the
     session ``auth_session_id`` reauthenticated now and return the end of the
     window (now + :data:`~app.core.reauth.REAUTH_WINDOW`).
 
-    Runs exactly one password verification, whatever the outcome. Writes
-    nothing on failure.
+    First reserves :data:`REAUTH_RATE_LIMIT` for the user (``429
+    rate_limited`` when used up: no verification, nothing written); ``session``
+    must have no open transaction then. Runs exactly one password
+    verification, whatever the outcome. Writes nothing on failure (the
+    reservation stays); a success releases it in ``session``.
     """
+    reservation = await limiter.reserve(REAUTH_RATE_LIMIT, str(principal.user_id))
     user = await session.get(User, principal.user_id)
     if user is None:  # pragma: no cover - the session was resolved
         raise AuthenticationRequiredError()
@@ -247,6 +281,7 @@ async def reauthenticate(
         record_id=user.id,
         details={"auth_session_id": auth_session_id},
     )
+    await reservation.release(session)
     return now + REAUTH_WINDOW
 
 
