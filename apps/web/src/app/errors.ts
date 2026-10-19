@@ -42,6 +42,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['registration_already_decided', 'registration_already_decided'],
   ['last_active_owner', 'last_active_owner'],
   ['user_state_transition_invalid', 'user_state_transition_invalid'],
+  ['delegation_forbidden', 'delegation_forbidden'],
+  ['permission_not_delegable', 'permission_not_delegable'],
+  ['delegation_target_invalid', 'delegation_target_invalid'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

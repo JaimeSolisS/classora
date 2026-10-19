@@ -108,7 +108,7 @@ _ACTIONS: Final = (
         "user.roles.change",
         "Assign or remove a user's roles.",
         "role and permission changes",
-        "#31",
+        "#170",
         frozenset(
             {"user.role.assign", "user.admin_role.assign", "user.owner_role.assign"}
         ),
@@ -117,7 +117,7 @@ _ACTIONS: Final = (
         "user.delegations.change",
         "Grant or revoke an Administrator's delegated permissions.",
         "delegation changes",
-        "#31",
+        "#170",
         frozenset({"user.delegation.manage"}),
     ),
     SensitiveAction(

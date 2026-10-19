@@ -347,6 +347,18 @@ class UserAllowedActions(BaseModel):
     archive: bool
     reactivate: bool
     reset_password: bool
+    assignable_roles: list[RoleCode] = Field(
+        description=(
+            "Roles the caller may add to and remove from this user, in the"
+            " catalog order (empty: the roles are read-only)."
+        )
+    )
+    manage_delegations: bool = Field(
+        description=(
+            "The caller may grant and revoke this user's delegated permissions"
+            " (an Owner, and the user holds administrator)."
+        )
+    )
 
 
 class UserDetail(UserListItem):
@@ -357,7 +369,10 @@ class UserDetail(UserListItem):
     version: int = Field(description="Send it back with every change.")
     updated_at: datetime
     delegations: list[DelegablePermissionCode] = Field(
-        description="Delegated permission codes, sorted (read-only here)."
+        description=(
+            "Delegated permission codes, sorted (changed with PUT"
+            " /api/v1/users/{user_id}/delegations)."
+        )
     )
     password_set: bool = Field(
         description=(
@@ -391,3 +406,37 @@ class UserStateChange(BaseModel):
     """Suspend, archive or reactivate: the version the caller loaded."""
 
     version: int = Field(ge=1)
+
+
+def _distinct[T](values: list[T]) -> list[T]:
+    if len(set(values)) != len(values):
+        raise ValueError("Each code may appear only once.")
+    return values
+
+
+class UserRolesUpdate(BaseModel):
+    """The user's complete set of roles (``PUT /api/v1/users/{user_id}/roles``)
+    and the version the caller loaded. At least one role: a roleless account
+    is only a registration request (#169)."""
+
+    roles: list[RoleCode] = Field(min_length=1, max_length=7)
+    version: int = Field(ge=1)
+
+    @field_validator("roles")
+    @classmethod
+    def _roles_distinct(cls, value: list[str]) -> list[str]:
+        return _distinct(value)
+
+
+class UserDelegationsUpdate(BaseModel):
+    """The Administrator's complete set of delegated permissions (``PUT
+    /api/v1/users/{user_id}/delegations``) and the version the caller
+    loaded."""
+
+    permissions: list[DelegablePermissionCode] = Field(max_length=4)
+    version: int = Field(ge=1)
+
+    @field_validator("permissions")
+    @classmethod
+    def _permissions_distinct(cls, value: list[str]) -> list[str]:
+        return _distinct(value)

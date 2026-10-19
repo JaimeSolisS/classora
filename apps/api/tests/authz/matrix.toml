@@ -255,6 +255,18 @@ json = {}
 reauth = "user.suspend_or_archive"
 
 [[route]]
+method = "PUT"
+path = "/api/v1/users/{user_id}/delegations"
+access = "permission"
+permission = "user.delegation.manage"
+allow = ["owner"]
+# The Owner gets 422 for the empty body after the runner reauthenticates them;
+# reauth:none gets 403 reauth_required. Never delegable: a delegated
+# Administrator gets 403 permission_denied.
+json = {}
+reauth = "user.delegations.change"
+
+[[route]]
 method = "POST"
 path = "/api/v1/users/{user_id}/reactivate"
 access = "permission"
@@ -262,6 +274,17 @@ permission = "user.manage"
 allow = ["owner", "administrator"]
 # An empty body gets 422 (no version) for the allowed roles.
 json = {}
+
+[[route]]
+method = "PUT"
+path = "/api/v1/users/{user_id}/roles"
+access = "permission"
+permission = "user.role.assign"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.roles.change"
 
 [[route]]
 method = "POST"

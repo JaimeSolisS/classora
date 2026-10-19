@@ -67,6 +67,7 @@
       "tooLong": "This is too long.",
       "invitationRedeemed": "Your password is set. Sign in to continue.",
       "passwordReset": "Your new password is set. Sign in to continue.",
+      "rolesChanged": "Your roles changed, so you were signed out. Sign in again to continue.",
       "requestAccount": "Request an account"
     },
     "reauth": {
@@ -103,6 +104,24 @@
     "tutor": "Tutor",
     "student": "Student",
     "guardian": "Parent or guardian"
+  },
+  "delegations": {
+    "payroll_finalize": {
+      "label": "Finalize payroll",
+      "description": "Approve the final close of a payroll period."
+    },
+    "schedule_override": {
+      "label": "Schedule overrides",
+      "description": "Schedule classes outside the scheduling rules."
+    },
+    "finance_refund_approve": {
+      "label": "Approve refunds",
+      "description": "Authorize refunds to families."
+    },
+    "user_admin_role_assign": {
+      "label": "Assign the Administrator role",
+      "description": "Give or remove the Administrator role for other users."
+    }
   },
   "invitations": {
     "title": "Invitations",
@@ -341,6 +360,27 @@
     },
     "conflict": {
       "reload": "Reload"
+    },
+    "roles": {
+      "title": "Roles",
+      "save": "Save roles",
+      "saving": "Saving…",
+      "saved": "Roles saved.",
+      "locked": "You can't change this role.",
+      "required": "Choose at least one role.",
+      "selfWarning": "Changing your own roles signs you out.",
+      "selfConfirmTitle": "Change your own roles",
+      "selfConfirm": "Save your roles? You'll be signed out and need to sign in again.",
+      "selfConfirmSave": "Save and sign out",
+      "cancel": "Cancel",
+      "reauthNote": "We'll ask for your password."
+    },
+    "delegations": {
+      "title": "Delegated permissions",
+      "save": "Save delegated permissions",
+      "saving": "Saving…",
+      "saved": "Delegated permissions saved.",
+      "none": "No delegated permissions."
     }
   },
   "userStates": {

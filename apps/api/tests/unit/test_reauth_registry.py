@@ -15,8 +15,8 @@ from app.modules.identity.permissions import PERMISSION_CODES
 
 # One per ADR-0007 D10 item (permission changes are covered by the first two).
 EXPECTED_ACTIONS = {
-    "user.roles.change": "#31",
-    "user.delegations.change": "#31",
+    "user.roles.change": "#170",
+    "user.delegations.change": "#170",
     "user.invitation.staff_role": "#29",
     "user.suspend_or_archive": "#31",
     "user.password_reset.issue": "#30",

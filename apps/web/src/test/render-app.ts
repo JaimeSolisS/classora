@@ -15,6 +15,16 @@ import { clearCsrfToken } from '@/features/auth/csrf';
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+// jsdom has no ResizeObserver; Radix's Checkbox measures itself with one
+// (#170). A no-op is enough: tests never depend on element sizes.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+
 export interface RenderedApp {
   container: HTMLDivElement;
   queryClient: QueryClient;

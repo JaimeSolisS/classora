@@ -41,6 +41,10 @@ sign in), create a password reset link for them, and suspend, archive or
 reactivate their account; suspending or archiving asks for the password again
 and ends that person's sessions, and the last active Owner can never be
 suspended or archived.
+On the same page, Owners and administrators can change a person's roles
+(after confirming their password; the person is signed out and signs in with
+the new roles), and Owners can delegate selected permissions to
+administrators, which take effect without signing them out.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

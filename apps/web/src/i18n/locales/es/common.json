@@ -67,6 +67,7 @@
       "tooLong": "Es demasiado largo.",
       "invitationRedeemed": "Tu contraseña quedó guardada. Inicia sesión para continuar.",
       "passwordReset": "Tu nueva contraseña quedó guardada. Inicia sesión para continuar.",
+      "rolesChanged": "Tus roles cambiaron y se cerró tu sesión. Inicia sesión de nuevo para continuar.",
       "requestAccount": "Solicitar una cuenta"
     },
     "reauth": {
@@ -103,6 +104,24 @@
     "tutor": "Tutor",
     "student": "Estudiante",
     "guardian": "Padre, madre o tutor legal"
+  },
+  "delegations": {
+    "payroll_finalize": {
+      "label": "Cerrar la nómina",
+      "description": "Aprobar el cierre definitivo de un periodo de nómina."
+    },
+    "schedule_override": {
+      "label": "Excepciones de horario",
+      "description": "Programar clases fuera de las reglas de horario."
+    },
+    "finance_refund_approve": {
+      "label": "Aprobar reembolsos",
+      "description": "Autorizar reembolsos a familias."
+    },
+    "user_admin_role_assign": {
+      "label": "Asignar el rol de Administrador",
+      "description": "Dar o quitar el rol de Administrador a otros usuarios."
+    }
   },
   "invitations": {
     "title": "Invitaciones",
@@ -341,6 +360,27 @@
     },
     "conflict": {
       "reload": "Recargar"
+    },
+    "roles": {
+      "title": "Roles",
+      "save": "Guardar roles",
+      "saving": "Guardando…",
+      "saved": "Roles guardados.",
+      "locked": "No puedes cambiar este rol.",
+      "required": "Elige al menos un rol.",
+      "selfWarning": "Si cambias tus propios roles, se cerrará tu sesión.",
+      "selfConfirmTitle": "Cambiar tus propios roles",
+      "selfConfirm": "¿Guardar tus roles? Se cerrará tu sesión y tendrás que iniciarla de nuevo.",
+      "selfConfirmSave": "Guardar y cerrar sesión",
+      "cancel": "Cancelar",
+      "reauthNote": "Te pediremos tu contraseña."
+    },
+    "delegations": {
+      "title": "Permisos delegados",
+      "save": "Guardar permisos delegados",
+      "saving": "Guardando…",
+      "saved": "Permisos delegados guardados.",
+      "none": "Sin permisos delegados."
     }
   },
   "userStates": {

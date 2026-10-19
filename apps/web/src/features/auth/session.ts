@@ -7,6 +7,7 @@ import {
   NO_AUTH_HANDLING,
 } from '@/app/api';
 import { clearCsrfToken, setCsrfToken } from './csrf';
+import type { LoginNoticeState } from './loginNotice';
 
 // The session state of the web app (#28 A): one TanStack query,
 // ['auth', 'me'], that asks GET /api/v1/auth/me who is signed in.
@@ -31,12 +32,21 @@ export type SignedOutReason = 'session_expired' | 'signed_out';
 
 /** The cached value of the session query. */
 export type SessionData =
-  { user: SessionUser } | { user: null; reason?: SignedOutReason };
+  | { user: SessionUser }
+  | {
+      user: null;
+      reason?: SignedOutReason;
+      /**
+       * A login notice for the guard's redirect (#170 G4: after changing your
+       * own roles); it goes into the router state, never the URL.
+       */
+      notice?: LoginNoticeState;
+    };
 
 export type Session =
   | { status: 'loading' }
   | { status: 'signedIn'; user: SessionUser }
-  | { status: 'signedOut'; reason?: SignedOutReason }
+  | { status: 'signedOut'; reason?: SignedOutReason; notice?: LoginNoticeState }
   | { status: 'error'; error: unknown };
 
 export const SESSION_QUERY_KEY = ['auth', 'me'] as const;

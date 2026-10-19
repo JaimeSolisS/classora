@@ -1,5 +1,6 @@
-"""User administration rules (#31 B1, B2, E2, F1, D3, I3): who may manage whom,
-``allowed_actions``, the state-route table and the request/response schemas."""
+"""User administration rules (#31 B1, B2, E2, F1, D3, I3; #170 A1, C1, D1): who
+may manage whom, ``allowed_actions``, the state-route table and the
+request/response schemas."""
 
 import re
 import uuid
@@ -25,6 +26,7 @@ from app.modules.identity.permissions import (
     SUSPENDED,
     TUTOR,
     USER_ADMIN_ROLE_ASSIGN,
+    USER_DELEGATION_MANAGE,
     USER_STATES,
     UserActions,
     allowed_user_actions,
@@ -35,8 +37,10 @@ from app.modules.identity.schemas import (
     EMAIL_REGEX,
     PHONE_REGEX,
     DelegablePermissionCode,
+    UserDelegationsUpdate,
     UserDetail,
     UserListItem,
+    UserRolesUpdate,
     UserState,
     UserUpdate,
 )
@@ -196,6 +200,8 @@ def test_own_account_edit_only(state):
         archive=False,
         reactivate=False,
         reset_password=False,
+        assignable_roles=ROLE_CODES,
+        manage_delegations=False,
     )
 
 
@@ -253,6 +259,109 @@ def test_a_delegated_administrator_may_suspend_an_administrator():
     )
 
     assert (result.edit, result.suspend, result.archive) == (True, True, True)
+
+
+# --- #170 D1: assignable_roles and manage_delegations ---------------------------------
+
+NOT_PRIVILEGED = (ACADEMIC_COORDINATOR, FINANCE_STAFF, TUTOR, STUDENT, GUARDIAN)
+
+
+@pytest.mark.parametrize(
+    ("actor_roles", "delegated", "target_roles", "expected"),
+    [
+        # An Owner: every role on anyone.
+        ((OWNER,), (), (TUTOR,), ROLE_CODES),
+        ((OWNER,), (), (ADMINISTRATOR,), ROLE_CODES),
+        ((OWNER,), (), (OWNER,), ROLE_CODES),
+        # An Administrator: every role but Administrator and Owner.
+        ((ADMINISTRATOR,), (), (TUTOR,), NOT_PRIVILEGED),
+        ((ADMINISTRATOR,), (), (), NOT_PRIVILEGED),
+        # ... with the delegation also Administrator, never Owner.
+        (
+            (ADMINISTRATOR,),
+            (USER_ADMIN_ROLE_ASSIGN,),
+            (TUTOR,),
+            (ADMINISTRATOR, *NOT_PRIVILEGED),
+        ),
+        (
+            (ADMINISTRATOR,),
+            (USER_ADMIN_ROLE_ASSIGN,),
+            (ADMINISTRATOR, TUTOR),
+            (ADMINISTRATOR, *NOT_PRIVILEGED),
+        ),
+        # [E2] Nothing on a user they may not manage.
+        ((ADMINISTRATOR,), (), (OWNER,), ()),
+        ((ADMINISTRATOR,), (), (ADMINISTRATOR,), ()),
+        ((ADMINISTRATOR,), (), (TUTOR, ADMINISTRATOR), ()),
+        ((ADMINISTRATOR,), (USER_ADMIN_ROLE_ASSIGN,), (OWNER,), ()),
+        # Without user.manage / user.role.assign: nothing.
+        ((ACADEMIC_COORDINATOR,), (), (TUTOR,), ()),
+        ((TUTOR,), (), (STUDENT,), ()),
+    ],
+)
+def test_assignable_roles(actor_roles, delegated, target_roles, expected):
+    result = actions(
+        actor_roles=actor_roles, delegated=delegated, target_roles=target_roles
+    )
+
+    assert result.assignable_roles == expected
+
+
+@pytest.mark.parametrize("state", USER_STATES)
+def test_assignable_roles_do_not_depend_on_the_target_state(state):
+    assert actions(state=state).assignable_roles == ROLE_CODES
+
+
+@pytest.mark.parametrize(
+    ("actor_roles", "expected"),
+    [
+        # Self: what the caller's own permissions allow.
+        ((OWNER,), ROLE_CODES),
+        ((ADMINISTRATOR,), NOT_PRIVILEGED),
+    ],
+)
+def test_assignable_roles_on_the_own_record(actor_roles, expected):
+    result = actions(actor_roles=actor_roles, target_id=ACTOR, target_roles=actor_roles)
+
+    assert result.assignable_roles == expected
+
+
+@pytest.mark.parametrize(
+    ("actor_roles", "delegated", "target_roles", "target_id", "expected"),
+    [
+        ((OWNER,), (), (ADMINISTRATOR,), TARGET, True),
+        ((OWNER,), (), (ADMINISTRATOR, TUTOR), TARGET, True),
+        ((OWNER,), (), (TUTOR,), TARGET, False),
+        ((OWNER,), (), (OWNER,), TARGET, False),
+        # An Owner who is also an Administrator, on their own record.
+        ((OWNER, ADMINISTRATOR), (), (OWNER, ADMINISTRATOR), ACTOR, True),
+        # Administrators never delegate, even holding every delegation.
+        ((ADMINISTRATOR,), (), (ADMINISTRATOR,), TARGET, False),
+        (
+            (ADMINISTRATOR,),
+            tuple(sorted(DELEGABLE_PERMISSIONS)),
+            (ADMINISTRATOR,),
+            TARGET,
+            False,
+        ),
+        ((ADMINISTRATOR,), (), (ADMINISTRATOR,), ACTOR, False),
+    ],
+)
+def test_manage_delegations(actor_roles, delegated, target_roles, target_id, expected):
+    result = actions(
+        actor_roles=actor_roles,
+        delegated=delegated,
+        target_roles=target_roles,
+        target_id=target_id,
+    )
+
+    assert result.manage_delegations is expected
+
+
+def test_only_owners_hold_the_delegation_permission():
+    assert [r for r in ROLE_CODES if USER_DELEGATION_MANAGE in ROLE_PERMISSIONS[r]] == [
+        OWNER
+    ]
 
 
 # --- G2: the state-route table --------------------------------------------------------
@@ -413,3 +522,60 @@ def test_the_state_and_delegation_enums_match_the_catalog():
     delegable = get_args(DelegablePermissionCode.__value__)
     assert set(delegable) == DELEGABLE_PERMISSIONS
     assert list(delegable) == sorted(delegable)
+
+
+# --- #170 A1, C1: the role and delegation bodies --------------------------------------
+
+
+@pytest.mark.parametrize(
+    "roles", [[TUTOR], list(ROLE_CODES), [OWNER, TUTOR], [GUARDIAN, STUDENT]]
+)
+def test_valid_role_sets(roles):
+    body = UserRolesUpdate.model_validate({"roles": roles, "version": 1})
+
+    assert body.roles == roles
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"roles": [], "version": 1},
+        {"roles": [TUTOR, TUTOR], "version": 1},
+        {"roles": ["janitor"], "version": 1},
+        {"roles": [*ROLE_CODES, TUTOR], "version": 1},
+        {"roles": [TUTOR]},
+        {"roles": [TUTOR], "version": 0},
+        {"version": 1},
+    ],
+)
+def test_invalid_role_sets(body):
+    with pytest.raises(ValidationError):
+        UserRolesUpdate.model_validate(body)
+
+
+@pytest.mark.parametrize(
+    "permissions", [[], sorted(DELEGABLE_PERMISSIONS), [USER_ADMIN_ROLE_ASSIGN]]
+)
+def test_valid_delegation_sets(permissions):
+    body = UserDelegationsUpdate.model_validate(
+        {"permissions": permissions, "version": 3}
+    )
+
+    assert body.permissions == permissions
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"permissions": ["payroll.finalize", "payroll.finalize"], "version": 1},
+        {"permissions": ["user.delegation.manage"], "version": 1},
+        {"permissions": ["user.owner_role.assign"], "version": 1},
+        {"permissions": ["no.such_code"], "version": 1},
+        {"permissions": [], "version": 0},
+        {"permissions": []},
+        {"version": 1},
+    ],
+)
+def test_invalid_delegation_sets(body):
+    with pytest.raises(ValidationError):
+        UserDelegationsUpdate.model_validate(body)

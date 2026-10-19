@@ -1891,6 +1891,194 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/roles": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User Roles",
+        "description": "Replace the user's roles with ``roles`` (at least one). Owners assign\nevery role; Administrators every role except Administrator (only with the\n``user.admin_role.assign`` delegation) and Owner. Removing a role needs\nthe same authority as adding it. Any change ends every session of the\nuser, also the caller's own when they change their own roles (the\nresponse is still ``200``). Removing Administrator also removes the\nuser's delegated permissions. The same set changes nothing. Needs a\npassword reauthentication in the last 5 minutes.",
+        "operationId": "update_user_roles_api_v1_users__user_id__roles_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRolesUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/delegations": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User Delegations",
+        "description": "Replace an Administrator's delegated permissions with ``permissions``\n(Owners only). Granting needs an Administrator who isn't archived;\nremoving works for any user. The Administrator stays signed in and their\nnext request uses the new permissions. The same set changes nothing.\nNeeds a password reauthentication in the last 5 minutes.",
+        "operationId": "update_user_delegations_api_v1_users__user_id__delegations_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserDelegationsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-events": {
       "get": {
         "tags": [
@@ -3055,6 +3243,19 @@
           "reset_password": {
             "type": "boolean",
             "title": "Reset Password"
+          },
+          "assignable_roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Assignable Roles",
+            "description": "Roles the caller may add to and remove from this user, in the catalog order (empty: the roles are read-only)."
+          },
+          "manage_delegations": {
+            "type": "boolean",
+            "title": "Manage Delegations",
+            "description": "The caller may grant and revoke this user's delegated permissions (an Owner, and the user holds administrator)."
           }
         },
         "type": "object",
@@ -3063,10 +3264,36 @@
           "suspend",
           "archive",
           "reactivate",
-          "reset_password"
+          "reset_password",
+          "assignable_roles",
+          "manage_delegations"
         ],
         "title": "UserAllowedActions",
         "description": "What the caller may do to this user, computed by the server with the\nroutes' rules (the routes stay the authority). The last-active-Owner guard\nis not considered (the server answers ``409 last_active_owner``)."
+      },
+      "UserDelegationsUpdate": {
+        "properties": {
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/DelegablePermissionCode"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Permissions"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permissions",
+          "version"
+        ],
+        "title": "UserDelegationsUpdate",
+        "description": "The Administrator's complete set of delegated permissions (``PUT\n/api/v1/users/{user_id}/delegations``) and the version the caller\nloaded."
       },
       "UserDetail": {
         "properties": {
@@ -3137,7 +3364,7 @@
             },
             "type": "array",
             "title": "Delegations",
-            "description": "Delegated permission codes, sorted (read-only here)."
+            "description": "Delegated permission codes, sorted (changed with PUT /api/v1/users/{user_id}/delegations)."
           },
           "password_set": {
             "type": "boolean",
@@ -3210,6 +3437,31 @@
         ],
         "title": "UserListItem",
         "description": "One user in the list. No contact fields, password data or delegations\n(spec §16: minimal exposure)."
+      },
+      "UserRolesUpdate": {
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Roles"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "roles",
+          "version"
+        ],
+        "title": "UserRolesUpdate",
+        "description": "The user's complete set of roles (``PUT /api/v1/users/{user_id}/roles``)\nand the version the caller loaded. At least one role: a roleless account\nis only a registration request (#169)."
       },
       "UserState": {
         "type": "string",

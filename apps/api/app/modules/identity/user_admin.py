@@ -20,9 +20,19 @@ user_state_transition_invalid``.
 **Versions:** every change sends the ``version`` the caller loaded; a stale
 one is ``409 version_conflict`` and changes nothing.
 
+**Roles and delegations (#170):** :func:`update_roles` and
+:func:`update_delegations` take the complete new set and apply the
+difference through the identity service (``add_user_role`` /
+``remove_user_role``, ``grant_delegation`` / ``revoke_delegation``). A change
+first increments ``users.version`` (the row is touched and flushed, which
+also locks it, so of two concurrent changes from one version the second gets
+``409 version_conflict``). The same set is a no-op. Role changes revoke the
+user's sessions (#25), delegation changes don't.
+
 **Audit:** automatic only (``users`` ``update`` for the changed fields and
-the state, plus ``identity.sessions_revoked`` from #25). No named event and
-no ``details`` key of its own.
+the state, ``user_roles`` / ``user_delegations`` ``create`` / ``delete``,
+plus ``identity.sessions_revoked`` from #25). No named event and no
+``details`` key of its own; a version bump alone writes no ``users`` event.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -30,7 +40,7 @@ Every function runs in the caller's Unit of Work and never commits.
 import uuid
 from collections import defaultdict
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Final, Literal
 
 from sqlalchemy import ColumnElement, exists, func, select
@@ -40,7 +50,10 @@ from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
 from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.identity import service
-from app.modules.identity.errors import InvalidUserStateTransitionError
+from app.modules.identity.errors import (
+    DelegationTargetInvalidError,
+    InvalidUserStateTransitionError,
+)
 from app.modules.identity.models import (
     Permission,
     Role,
@@ -50,11 +63,14 @@ from app.modules.identity.models import (
 )
 from app.modules.identity.permissions import (
     ACTIVE,
+    ADMINISTRATOR,
     ARCHIVED,
+    OWNER,
     PENDING,
     ROLE_CODES,
     SUSPENDED,
     allowed_user_actions,
+    may_assign_role,
     may_manage_user,
 )
 from app.modules.identity.schemas import (
@@ -227,13 +243,7 @@ async def _detail(
             "updated_at": user.updated_at,
             "delegations": list(delegations),
             "password_set": password_set,
-            "allowed_actions": UserAllowedActions(
-                edit=actions.edit,
-                suspend=actions.suspend,
-                archive=actions.archive,
-                reactivate=actions.reactivate,
-                reset_password=actions.reset_password,
-            ),
+            "allowed_actions": UserAllowedActions.model_validate(asdict(actions)),
         }
     )
 
@@ -323,4 +333,115 @@ async def change_state(
     if not allowed:
         raise InvalidUserStateTransitionError()
     await service.change_user_state(session, user_id=user.id, new_state=rule.new_state)
+    return await _detail(session, principal, user, roles)
+
+
+async def _delegations_of(session: AsyncSession, user_id: uuid.UUID) -> set[str]:
+    rows = await session.scalars(
+        select(Permission.code)
+        .join(UserDelegation, UserDelegation.permission_id == Permission.id)
+        .where(UserDelegation.user_id == user_id)
+    )
+    return set(rows)
+
+
+async def _bump_version(session: AsyncSession, user: User) -> None:
+    """Increment ``users.version`` now: touching ``updated_at`` makes the ORM
+    run its versioned ``UPDATE`` (which locks the row; a concurrent change
+    from the same version then fails with ``version_conflict``). Only
+    ``version``/``updated_at`` change, which the audit leaves out (#22)."""
+    user.updated_at = func.now()
+    await session.flush()
+    await session.refresh(user, ["updated_at"])
+
+
+async def update_roles(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    user_id: uuid.UUID,
+    roles: Collection[str],
+    version: int,
+) -> UserDetail:
+    """Make ``roles`` the user's complete set of roles (#170 A).
+
+    Order (after the route's permission and reauthentication checks and the
+    body's ``422``): ``404`` → ``403`` (:func:`may_manage_user`) → ``403``
+    unless :func:`may_assign_role` holds for **every** role added or removed
+    (ADR-0007 D4: removing needs the same authority as assigning) → ``409
+    version_conflict`` → the version bump → added roles through
+    :func:`service.add_user_role`, then removed roles through
+    :func:`service.remove_user_role`, each in catalog order. Removing
+    ``owner`` from the only active Owner raises ``409 last_active_owner`` and
+    the caller's Unit of Work rolls everything back. Allowed in every state;
+    the caller's own roles too (their sessions then end, including this one).
+    """
+    user, current = await _managed_user(session, principal, user_id)
+    wanted = set(roles)
+    added = wanted - current
+    removed = current - wanted
+    if not all(
+        may_assign_role(principal.permissions, role) for role in added | removed
+    ):
+        raise PermissionDeniedError()
+    ensure_version(user, version)
+    if added or removed:
+        if OWNER in removed and user.state == ACTIVE:
+            # The guard's lock before the row lock of the version bump: the
+            # order change_user_state uses, so a concurrent suspend or archive
+            # of this Owner waits instead of deadlocking (#170 QA D1).
+            await service.lock_owner_guard(session)
+        await _bump_version(session, user)
+        for role in _sorted_roles(added):
+            await service.add_user_role(session, user_id=user.id, role=role)
+        for role in _sorted_roles(removed):
+            await service.remove_user_role(session, user_id=user.id, role=role)
+    return await _detail(session, principal, user, wanted)
+
+
+async def update_delegations(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    user_id: uuid.UUID,
+    permissions: Collection[str],
+    version: int,
+) -> UserDetail:
+    """Make ``permissions`` the user's complete set of delegations (#170 C).
+
+    Order (after the route's ``user.delegation.manage`` and reauthentication
+    checks and the body's ``422``): ``404`` → ``409 version_conflict`` →
+    ``422 delegation_target_invalid`` when a code is **added** and the user
+    doesn't hold ``administrator`` or is ``archived`` → the version bump →
+    :func:`service.grant_delegation` for the added codes, then
+    :func:`service.revoke_delegation` for the removed ones, sorted, with the
+    caller as the actor (they re-check ``user.delegation.manage``). Removing
+    only is allowed for any user (#170 B2). No session is revoked: the
+    Administrator's next request sees the change (#25 F5).
+    """
+    user = await _user(session, user_id)
+    ensure_version(user, version)
+    roles = await _roles_of(session, user.id)
+    current = await _delegations_of(session, user.id)
+    wanted = set(permissions)
+    added = wanted - current
+    removed = current - wanted
+    if added and (user.state == ARCHIVED or ADMINISTRATOR not in roles):
+        raise DelegationTargetInvalidError()
+    if added or removed:
+        await _bump_version(session, user)
+        for permission in sorted(added):
+            await service.grant_delegation(
+                session,
+                actor_id=principal.user_id,
+                user_id=user.id,
+                permission=permission,
+            )
+        for permission in sorted(removed):
+            await service.revoke_delegation(
+                session,
+                actor_id=principal.user_id,
+                user_id=user.id,
+                permission=permission,
+            )
     return await _detail(session, principal, user, roles)

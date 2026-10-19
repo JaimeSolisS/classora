@@ -15,6 +15,7 @@ from app.modules.identity.permissions import (
     GUARDIAN,
     OWNER,
     PENDING,
+    ROLE_CODES,
     SUSPENDED,
     TUTOR,
     USER_ADMIN_ROLE_ASSIGN,
@@ -43,6 +44,8 @@ ALL_FALSE = {
     "archive": False,
     "reactivate": False,
     "reset_password": False,
+    "assignable_roles": [],
+    "manage_delegations": False,
 }
 
 
@@ -113,6 +116,8 @@ def test_the_detail_of_an_active_tutor(module_seeded_url, client, owner):
             "archive": True,
             "reactivate": False,
             "reset_password": True,
+            "assignable_roles": list(ROLE_CODES),
+            "manage_delegations": False,
         },
     }
 
@@ -167,7 +172,12 @@ def test_password_set_tells_an_invitation_from_a_registration_request(
 def test_own_record_allows_only_the_profile(module_seeded_url, client, owner):
     body = get_user(client, sign_in(client, owner.username), owner.id).json()
 
-    assert body["allowed_actions"] == {**ALL_FALSE, "edit": True}
+    assert body["allowed_actions"] == {
+        **ALL_FALSE,
+        "edit": True,
+        # Their own roles too (#170 A5; they are then signed out).
+        "assignable_roles": list(ROLE_CODES),
+    }
 
 
 def test_an_administrator_sees_an_owner_without_actions(
@@ -197,6 +207,14 @@ def test_actions_follow_the_state(
         "archive": archive,
         "reactivate": reactivate,
         "reset_password": False,  # not active
+        "assignable_roles": [
+            "academic_coordinator",
+            "finance_staff",
+            "tutor",
+            "student",
+            "guardian",
+        ],
+        "manage_delegations": False,
     }
 
 

@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { canAccess } from './access';
+import type { LoginNoticeState } from './loginNotice';
 import type { PermissionCode, Session, SessionUserBody } from './session';
 
 // The auth context, filled by AuthProvider (and by fixed values in stories).
@@ -21,6 +22,13 @@ export interface AuthContextValue {
    * still be live (#28 E3).
    */
   signOut: () => Promise<void>;
+  /**
+   * The server already ended this session (the user changed their own roles,
+   * #170 G4): the local steps of signOut without calling /auth/logout (clear
+   * the token, every cached query and mutation and the UI store), then
+   * /login with `notice` in the router state.
+   */
+  signOutLocally: (notice: LoginNoticeState) => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

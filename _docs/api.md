@@ -96,6 +96,9 @@ Codes in use today:
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
+| `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
+| `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
+| `delegation_target_invalid` | 422 | A delegation is granted to a user who doesn't hold `administrator` or is archived (see User administration). Revoking works for any user. |
 | `username_invalid` | 422 | A username that does not normalize to 3 to 64 characters from `a-z 0-9 . _ -`. |
 | `password_too_short`, `password_too_long`, `password_equals_username` | 422 | A new password that breaks the policy (12 to 128 characters, not the username; ADR-0007 D6). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
@@ -514,9 +517,10 @@ reauthentication, the change and the two redemptions.
 
 ### User administration
 
-Implemented by M2-13 (#31; spec §2, §16, ADR-0007 D4, D7, D8, D10) in
-`apps/api/app/modules/identity/` (`user_admin.py`, `user_admin_router.py`; the
-last-active-Owner guard in `service.py`).
+Implemented by M2-13 (#31) and M2-13b (#170; roles and delegations; spec §2,
+§16, ADR-0007 D4, D7, D8, D10) in `apps/api/app/modules/identity/`
+(`user_admin.py`, `user_admin_router.py`; the last-active-Owner guard and the
+delegation rules in `service.py`).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -526,6 +530,8 @@ last-active-Owner guard in `service.py`).
 | `POST /api/v1/users/{user_id}/suspend` | `require("user.manage")` + `require_recent_auth("user.suspend_or_archive")` | Body `{version}`. |
 | `POST /api/v1/users/{user_id}/archive` | `require("user.manage")` + `require_recent_auth("user.suspend_or_archive")` | Body `{version}`. |
 | `POST /api/v1/users/{user_id}/reactivate` | `require("user.manage")` | Body `{version}`. |
+| `PUT /api/v1/users/{user_id}/roles` | `require("user.role.assign")` + `require_recent_auth("user.roles.change")` | Body `{roles, version}`: the complete set, 1–7 distinct role codes. |
+| `PUT /api/v1/users/{user_id}/delegations` | `require("user.delegation.manage")` (Owners only) + `require_recent_auth("user.delegations.change")` | Body `{permissions, version}`: the complete set, 0–4 distinct delegable codes. |
 
 - **Search:** `q` matches part of the username or the display name, not
   case-sensitive; `%`, `_` and `\` match literally. Accents are not folded
@@ -567,9 +573,40 @@ last-active-Owner guard in `service.py`).
   (`change_user_state`, `remove_user_role`), behind a transaction-scoped
   advisory lock, so every caller gets it and two concurrent changes cannot
   both pass; routes never repeat it.
+- **Roles** (#170): who may assign which role follows ADR-0007 D4: Owners
+  every role; Administrators every role except Administrator (only with the
+  `user.admin_role.assign` delegation) and Owner (never). Removing a role
+  needs the same authority as adding it, and the caller must also be allowed
+  to manage the user (above), so an Administrator changes no role of an
+  Owner. Roles change in every state (an open invitation then grants the new
+  set). Added roles are applied first, then removed ones; any change ends
+  every session of the user, **including the caller's own when they change
+  their own roles** (the response is still `200`; the web app signs out
+  locally and shows a notice on the login page). Removing `owner` from the
+  only active Owner is `409 last_active_owner` and nothing changes. Removing
+  `administrator` also removes all of that user's delegated permissions.
+  `allowed_actions.assignable_roles` lists the roles the caller may add and
+  remove on this user. Order: `401` → `403 csrf_failed` → `403
+  permission_denied` → `403 reauth_required` → `422` → `404` → `403
+  permission_denied` (may not manage the user, or may not assign a role
+  added or removed) → `409 version_conflict` → `409 last_active_owner`.
+- **Delegated permissions** (#170): only an Owner grants or revokes the four
+  delegable permissions. A grant needs a user who holds `administrator` and
+  isn't archived (`422 delegation_target_invalid`); revoking works for any
+  user. A change **doesn't end the Administrator's sessions**: their next
+  request uses the new permissions. `allowed_actions.manage_delegations` is
+  true for an Owner looking at an Administrator. Order: `401` → `403
+  csrf_failed` → `403 permission_denied` → `403 reauth_required` → `422` →
+  `404` → `409 version_conflict` → `422 delegation_target_invalid`.
+- **Versions** (#170): a role or delegation change increments the user's
+  `version` (no `users` audit event: only `version`/`updated_at` change); of
+  two concurrent changes from one version the second gets `409
+  version_conflict`. The same set as today returns `200` and changes
+  nothing.
 - **Audit:** automatic only (`users` `update` with the changed fields and the
-  state, plus `identity.sessions_revoked`); no named event. `403`, `404`,
-  `409`, `422` and a body that changes nothing write no event.
+  state, `user_roles` and `user_delegations` `create`/`delete`, plus
+  `identity.sessions_revoked`); no named event. `403`, `404`, `409`, `422`
+  and a body that changes nothing write no event.
 
 ### Response headers
 

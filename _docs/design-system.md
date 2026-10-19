@@ -185,6 +185,11 @@ Rules for every user-visible string, date and amount in `apps/web`
 - **Skeleton:** the placeholder shapes are `aria-hidden="true"`. The region
   that is loading sets `aria-busy="true"` and contains a visually hidden
   (`sr-only`) loading message.
+- **Checkbox** (`components/ui/checkbox.tsx`, #170; Radix from the pinned
+  `radix-ui`): every checkbox has a visible `<label htmlFor>`; a group sits
+  in a `fieldset` with a `legend`. A disabled box says why with
+  `aria-describedby` (for example "You can't change this role."). Its
+  `after:` box widens the pointer target to 40 × 32 px (SC 2.5.8).
 - Axe runs on every story in both themes (`make test-storybook`) and a
   violation fails the run. No axe rule is disabled globally. A story-level
   rule exception needs a reason comment in the story and a line in the list
