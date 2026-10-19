@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useParams } from 'react-router';
 import { ApiError } from '@/app/api';
@@ -18,6 +18,11 @@ import {
 } from '@/components/ui/dialog';
 import { useCan } from '@/features/auth/useSession';
 import {
+  setStudentAccount,
+  type LoginAccountOption,
+} from '@/features/consent/api';
+import { ConsentSection } from '@/features/consent/ConsentSection';
+import {
   linkGuardian,
   unlinkGuardian,
   type GuardianListItem,
@@ -35,6 +40,7 @@ import {
 } from './api';
 import { fullName } from './rules';
 import { StudentAgeBadge, StudentStatusBadge } from './StudentBadges';
+import { StudentLoginSection } from './StudentLoginSection';
 import type { SavedState } from './StudentFormPages';
 import { LINK_BUTTON_CLASS, TEXT_LINK_CLASS } from './styles';
 import { useLevelLabel } from './useLevelLabel';
@@ -48,7 +54,9 @@ import { useLevelLabel } from './useLevelLabel';
 // A 404 (missing or not visible) says "This student doesn't exist.".
 // When the server sent `guardians` (staff with guardian.view, #34 I4), the
 // Guardians section follows; family.manage holders link and unlink there,
-// and the detail is refetched after either.
+// and the detail is refetched after either. Then the Login account section
+// (#35 I1: `login` sent, or family.manage) and the Consents section (#35 I2:
+// consent.record holders, hidden when the consents answer 404).
 
 export function StudentDetailPage() {
   const { t } = useTranslation();
@@ -57,6 +65,7 @@ export function StudentDetailPage() {
   const queryClient = useQueryClient();
   const canManage = useCan('student.manage');
   const canManageFamilies = useCan('family.manage');
+  const canRecordConsent = useCan('consent.record');
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -121,6 +130,28 @@ export function StudentDetailPage() {
         await unlinkGuardian(studentId, guardianId);
         await detail.refetch();
       }}
+      onSetLogin={async (userId) => {
+        const current = queryClient.getQueryData<StudentDetail>(key);
+        if (!current) {
+          return;
+        }
+        const updated = await setStudentAccount(studentId, {
+          user_id: userId,
+          version: current.version,
+        });
+        queryClient.setQueryData(key, updated);
+      }}
+      consentSection={
+        canRecordConsent ? (
+          <ConsentSection
+            studentId={studentId}
+            studentName={detail.data.given_names}
+            onChanged={async () => {
+              await detail.refetch();
+            }}
+          />
+        ) : null
+      }
     />
   );
 }
@@ -145,6 +176,15 @@ interface StudentDetailViewProps {
     q: string,
     signal: AbortSignal,
   ) => Promise<GuardianListItem[]>;
+  /** Links (an id) or unlinks (null) the login; rejects with the error. */
+  onSetLogin?: (userId: string | null) => Promise<void>;
+  /** The login dialog's account search (stories pass a stub). */
+  searchAccounts?: (
+    q: string,
+    signal: AbortSignal,
+  ) => Promise<LoginAccountOption[]>;
+  /** The Consents section (the page renders it with its own query). */
+  consentSection?: ReactNode;
 }
 
 const NO_CHANGE = () => Promise.resolve();
@@ -160,6 +200,9 @@ export function StudentDetailView({
   onLinkGuardian = NO_CHANGE,
   onUnlinkGuardian = NO_CHANGE,
   searchGuardians,
+  onSetLogin = NO_CHANGE,
+  searchAccounts,
+  consentSection = null,
 }: StudentDetailViewProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -327,6 +370,18 @@ export function StudentDetailView({
           searchGuardians={searchGuardians}
         />
       ) : null}
+
+      {student.login !== null || canManageGuardians ? (
+        <StudentLoginSection
+          login={student.login}
+          isMinor={student.is_minor}
+          canManage={canManageGuardians}
+          onChange={onSetLogin}
+          searchAccounts={searchAccounts}
+        />
+      ) : null}
+
+      {consentSection}
 
       <ActiveDialog
         open={confirming}

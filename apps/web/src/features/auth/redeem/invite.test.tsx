@@ -275,6 +275,28 @@ describe('setting the password (J4, J5)', () => {
     expect(form()).not.toBeNull();
   });
 
+  it.each([
+    [
+      'student_profile_required',
+      "This student account isn't linked to a student profile yet. Ask the center to link it.",
+    ],
+    [
+      'guardian_consent_required',
+      'The student is a minor and needs consent from a linked guardian.',
+    ],
+  ])(
+    'a student-login gate refusal (%s) shows its message and keeps the form (#35 I3)',
+    async (code, message) => {
+      stubInvite(undefined, () => problem(409, code));
+      app = await renderApp(`/invite#token=${TOKEN}`);
+
+      await setPassword();
+
+      expect(alerts(main()).join(' ')).toContain(message);
+      expect(form()).not.toBeNull();
+    },
+  );
+
   it('redeems, then signs in on /login with the notice and the username', async () => {
     const api = stubInvite();
     app = await renderApp(`/invite#token=${TOKEN}`);
