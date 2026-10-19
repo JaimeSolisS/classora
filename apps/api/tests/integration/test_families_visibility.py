@@ -76,9 +76,9 @@ def staff(client, owner):
 
 @dataclass
 class World:
-    """Family A: students SA1, SA2 and guardian GA (user UA); family B:
-    student SB1 and guardian GB (user UB); links GA–SA1 and GB–SB1. **SA2 is
-    in family A but not linked to GA.**"""
+    """Family A: students SA1, SA2, guardian GA (user UA) and co-guardian GC
+    (no account); family B: student SB1 and guardian GB (user UB); links
+    GA–SA1 and GB–SB1. **SA2 is in family A but not linked to GA.**"""
 
     f: dict[str, dict[str, Any]]
     s: dict[str, dict[str, Any]]
@@ -102,11 +102,13 @@ def build_world(url: str, client: TestClient, staff_cookie) -> World:
     guardians = {
         "GA": create_guardian(client, staff_cookie, user_id=str(users["UA"].id)),
         "GB": create_guardian(client, staff_cookie, user_id=str(users["UB"].id)),
+        "GC": create_guardian(client, staff_cookie),
     }
     for family, kind, member in (
         ("A", "students", students["SA1"]),
         ("A", "students", students["SA2"]),
         ("A", "guardians", guardians["GA"]),
+        ("A", "guardians", guardians["GC"]),
         ("B", "students", students["SB1"]),
         ("B", "guardians", guardians["GB"]),
     ):
@@ -307,7 +309,7 @@ def test_staff_see_every_guardian_of_a_family(module_seeded_url, client, world, 
 
     body = get(client, person, family_path(world.f["A"]["id"])).json()
 
-    assert guardian_ids(body) == [world.g["GA"]["id"]]
+    assert set(guardian_ids(body)) == {world.g["GA"]["id"], world.g["GC"]["id"]}
     assert world.f["B"]["id"] in family_ids(client, person)
 
 
