@@ -204,6 +204,20 @@ describes the route declarations and the 401/403/404 rule.
   every policy is applied by a route or listed in `PENDING_POLICIES`
   (`app/core/ratelimit.py`), never both. Static check only: the runtime matrix
   sends no rate-limit cases (integration tests cover the behaviour).
+- **Privacy notice (#174):** an `authenticated(notice_exempt=True)` route's
+  entry adds `notice_exempt = true` (only on `authenticated` entries); the
+  static check requires it to match the route's `AccessRule`. At runtime
+  `METHOD path notice:pending` sends every `authenticated` and `permission`
+  entry as an Owner who hasn't accepted the current notice: `403
+  privacy_notice_required`, except on notice-exempt entries, which must not
+  answer that code. Every other matrix actor, `principal_for(actor)` and every
+  user made by `persist_user` / `create_user` accepts the current version by
+  default (one audited acceptance row), so tests about something else never
+  meet the gate; pass `privacy_notice_accepted=False` (or
+  `Actor(..., notice_pending=True)`) for a user who still has to accept.
+  Version 1 is published at 2026-10-18 00:00 UTC, before the frozen clock's
+  start, so frozen-clock tests see it; a test that publishes another version
+  inserts it with raw SQL (as a migration would) in its own database.
 - Unit tests of a route declaration use a test-only app and override
   `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the
@@ -365,6 +379,13 @@ follows these rules.
   context (`POST /api/v1/auth/reauthenticate`); Tutor and Parent/Guardian
   need no reauthentication. It costs one login and one redemption call;
   count them in the budgets below.
+- **Privacy notice (#174):** every new user must accept the notice before any
+  other page. `e2e/global-setup.ts` accepts it for `demo.owner` through the
+  API, so the shared state and every `demo.owner` login start past it. After
+  a new user signs in (the header shows "Signed in as …"), call
+  `acceptPrivacyNoticeIfShown(page)` (`e2e/tests/support/auth.ts`): it asks
+  `/auth/me`, clicks "I accept" only when the notice is required and waits
+  for the page the user was going to. It costs no login.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 

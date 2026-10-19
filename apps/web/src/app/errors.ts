@@ -59,6 +59,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['guardian_already_linked', 'guardian_already_linked'],
   ['family_member_conflict', 'family_member_conflict'],
   ['family_inactive', 'family_inactive'],
+  ['privacy_notice_required', 'privacy_notice_required'],
+  ['privacy_notice_outdated', 'privacy_notice_outdated'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

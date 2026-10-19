@@ -14,6 +14,7 @@ export const TEST_USER: SessionUserBody = {
   roles: ['owner'],
   permissions: ['user.view', 'audit.view'],
   csrf_token: 'csrf-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  privacy_notice_required: false,
 };
 
 export const OTHER_USER: SessionUserBody = {
@@ -23,6 +24,7 @@ export const OTHER_USER: SessionUserBody = {
   roles: ['tutor'],
   permissions: [],
   csrf_token: 'csrf-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  privacy_notice_required: false,
 };
 
 export function problem(

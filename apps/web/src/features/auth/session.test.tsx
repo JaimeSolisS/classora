@@ -179,6 +179,7 @@ describe('CSRF token in memory only (A3)', () => {
       display_name: TEST_USER.display_name,
       roles: TEST_USER.roles,
       permissions: TEST_USER.permissions,
+      privacy_notice_required: false,
     });
     expect(cached.user).not.toHaveProperty('csrf_token');
     const everything = JSON.stringify(

@@ -20,7 +20,8 @@ resolved session's token (``app.core.csrf.verify_csrf_token``) before it
 returns the principal. Every ``authenticated()`` and ``require()`` route is
 therefore protected by construction, in the order ``401`` (no session:
 ``authentication_required``; a timed-out one: ``session_expired``, #25), ``403
-csrf_failed``, ``403 permission_denied``, then ``422``. ``public()`` routes
+csrf_failed``, ``403 privacy_notice_required`` (#174), ``403
+permission_denied``, then ``422``. ``public()`` routes
 need no token; the ``Origin`` check (``app.core.csrf.require_trusted_origin``)
 covers every route. Overriding ``get_current_principal`` in a test also skips
 the token check; override :func:`get_current_session` to keep it.
@@ -42,6 +43,17 @@ any dependency runs (FastAPI 0.143.3); that response reveals nothing.
 Protected routes pass :data:`AUTH_RESPONSES` or :data:`PERMISSION_RESPONSES`
 as ``responses=`` so the OpenAPI document lists the errors; an unsafe
 ``authenticated()`` route adds :data:`CSRF_RESPONSES`.
+
+**Privacy notice (#174; spec §9, §16).** Every signed-in user must accept the
+current privacy-notice version. :func:`authenticated` and :func:`require`
+refuse a principal whose ``privacy_notice_accepted`` is false with ``403
+privacy_notice_required`` (:class:`PrivacyNoticeRequiredError`), after the
+CSRF check and before the permission check. Only
+``authenticated(notice_exempt=True)`` skips it; the exemption is recorded on
+the route's :class:`AccessRule` (``notice_exempt``), so the permission matrix
+checks the list. ``require()`` has no exemption. The flag is computed by
+``identity.service.load_principal`` on every request (never cached), so a new
+version applies on the next request.
 
 **Reauthentication (#26).** Sensitive actions add
 ``app.core.reauth.require_recent_auth`` (or its conditional guard) next to the
@@ -88,11 +100,19 @@ class Principal:
 
     Holds no secret (no password hash, no session token). ``repr`` shows only
     the id and the role codes.
+
+    ``privacy_notice_accepted`` (#174): whether the user accepted the current
+    privacy-notice version. The request's principal always comes from
+    ``identity.service.load_principal``, which sets it on every request. The
+    default (``True``) is for principals built by hand outside a request
+    (record-policy checks, tests that override the current user); the gate
+    reads only the request's principal.
     """
 
     user_id: uuid.UUID
     roles: frozenset[str]
     permissions: frozenset[str] = field(repr=False)
+    privacy_notice_accepted: bool = field(default=True, repr=False)
 
     def has(self, permission: str) -> bool:
         return permission in self.permissions
@@ -131,6 +151,21 @@ class PermissionDeniedError(AppError):
     status = 403
     code = "permission_denied"
     detail = "You do not have permission to do this."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PrivacyNoticeRequiredError(AppError):
+    """The user has not accepted the current privacy-notice version (#174).
+
+    Raised by :func:`authenticated` and :func:`require` on every route except
+    the notice-exempt ones. Takes no arguments.
+    """
+
+    status = 403
+    code = "privacy_notice_required"
+    detail = "Accept the privacy notice to continue."
 
     def __init__(self) -> None:
         super().__init__()
@@ -254,6 +289,14 @@ def ensure_permission(principal: Principal, permission: str) -> None:
         raise PermissionDeniedError()
 
 
+def ensure_privacy_notice_accepted(principal: Principal) -> None:
+    """Raise :class:`PrivacyNoticeRequiredError` unless ``principal`` accepted
+    the current privacy-notice version (#174). Used by :func:`authenticated`
+    (unless ``notice_exempt``) and :func:`require`."""
+    if not principal.privacy_notice_accepted:
+        raise PrivacyNoticeRequiredError()
+
+
 # --- Route access declarations ---------------------------------------------------
 
 AccessKind = Literal["public", "authenticated", "permission"]
@@ -266,11 +309,16 @@ ROUTE_MARKER_ATTR: Final = "__classora_route_marker__"
 
 @dataclass(frozen=True)
 class AccessRule:
-    """The metadata of one access declaration (read by the matrix test)."""
+    """The metadata of one access declaration (read by the matrix test).
+
+    ``notice_exempt`` (#174): an ``authenticated(notice_exempt=True)`` route,
+    callable before the privacy notice is accepted.
+    """
 
     kind: AccessKind
     permission: str | None = None
     reason: str | None = None
+    notice_exempt: bool = False
 
 
 def mark_dependency[F: Callable[..., Any]](dependency: F, marker: object) -> F:
@@ -301,25 +349,42 @@ def public(*, reason: str) -> Any:
     return Depends(mark_dependency(public_access, AccessRule("public", reason=reason)))
 
 
-def authenticated() -> Any:
-    """Any signed-in user; yields the :class:`Principal`."""
+def authenticated(*, notice_exempt: bool = False) -> Any:
+    """Any signed-in user; yields the :class:`Principal`.
+
+    ``403 privacy_notice_required`` until the user accepts the current
+    privacy-notice version (#174), unless ``notice_exempt``. Exempt only the
+    routes a user needs before accepting: today ``GET /auth/me``,
+    ``POST /auth/logout`` and the two privacy-notice routes (the matrix lists
+    them; a new exemption is a reviewed matrix change, #36 adds its
+    preferences route the same way).
+    """
 
     async def authenticated_access(
         request: Request, principal: CurrentPrincipal
     ) -> Principal:
         checked = as_principal(principal)
+        if not notice_exempt:
+            ensure_privacy_notice_accepted(checked)
         record_request_actor(request, checked.user_id)
         return checked
 
-    return Depends(mark_dependency(authenticated_access, AccessRule("authenticated")))
+    return Depends(
+        mark_dependency(
+            authenticated_access,
+            AccessRule("authenticated", notice_exempt=notice_exempt),
+        )
+    )
 
 
 def require(permission: str) -> Any:
     """Holders of ``permission``; yields the :class:`Principal`.
 
-    ``401`` without a principal, then ``403`` without the permission. The code
-    format is checked here (so a typo fails at import time); catalog membership
-    is checked by the permission-matrix test.
+    ``401`` without a principal, ``403 privacy_notice_required`` before the
+    privacy notice is accepted (#174; no exemption), then ``403
+    permission_denied`` without the permission. The code format is checked
+    here (so a typo fails at import time); catalog membership is checked by
+    the permission-matrix test.
     """
     if PERMISSION_CODE_PATTERN.fullmatch(permission) is None:
         raise ValueError(f"not a permission code: {permission!r}")
@@ -328,6 +393,7 @@ def require(permission: str) -> Any:
         request: Request, principal: CurrentPrincipal
     ) -> Principal:
         checked = as_principal(principal)
+        ensure_privacy_notice_accepted(checked)
         ensure_permission(checked, permission)
         record_request_actor(request, checked.user_id)
         return checked
@@ -379,7 +445,9 @@ AUTH_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
 CSRF_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     403: problem_response_doc(
         "The request could not be verified (csrf_failed): the Origin or the"
-        " X-CSRF-Token check failed."
+        " X-CSRF-Token check failed. On a signed-in route that is not"
+        " notice-exempt, also privacy_notice_required: the user must accept"
+        " the current privacy notice first."
     ),
 }
 """``responses=`` addition for unsafe routes (``POST``, ``PUT``, ``PATCH``,
@@ -388,8 +456,9 @@ CSRF_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
 PERMISSION_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     **AUTH_RESPONSES,
     403: problem_response_doc(
-        "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE"
-        " also a failed Origin or X-CSRF-Token check (csrf_failed)."
+        "Permission denied (permission_denied); the privacy notice must be"
+        " accepted first (privacy_notice_required); on POST, PUT, PATCH and"
+        " DELETE also a failed Origin or X-CSRF-Token check (csrf_failed)."
     ),
 }
 """``responses=`` for routes declared with :func:`require`."""

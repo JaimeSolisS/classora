@@ -84,7 +84,8 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Sign out: revoke the current session and clear the cookie.
+         * @description Sign out: revoke the current session and clear the cookie. Works
+         *     before the privacy notice is accepted (#174).
          *
          *     Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
          */
@@ -104,8 +105,10 @@ export interface paths {
         };
         /**
          * Me
-         * @description The signed-in user, their roles, their effective permissions and the
-         *     session's CSRF token (the same value for the whole session).
+         * @description The signed-in user, their roles, their effective permissions, whether
+         *     they must accept the privacy notice first, and the session's CSRF token
+         *     (the same value for the whole session). Works before the privacy notice
+         *     is accepted (#174).
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -266,6 +269,50 @@ export interface paths {
          *     Needs the app's ``Origin``.
          */
         post: operations["redeem_invitation_api_v1_auth_invitation_redeem_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/privacy-notice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Privacy Notice
+         * @description The current privacy notice, in Spanish and English, and when the caller
+         *     accepted it (``null`` when they haven't).
+         */
+        get: operations["get_privacy_notice_api_v1_privacy_notice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/privacy-notice/acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Privacy Notice
+         * @description Accept the current privacy notice. ``version`` must be the version the
+         *     user was shown, and the current one. Accepting again returns the first
+         *     ``accepted_at``. Needs the app's ``Origin`` and the session's
+         *     ``X-CSRF-Token``.
+         */
+        post: operations["accept_privacy_notice_api_v1_privacy_notice_acceptance_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1790,6 +1837,62 @@ export interface components {
         /** @enum {string} */
         PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
+         * PrivacyNoticeAcceptanceRequest
+         * @description The version the user read and accepts
+         *     (``POST /api/v1/privacy-notice/acceptance``).
+         */
+        PrivacyNoticeAcceptanceRequest: {
+            /**
+             * Version
+             * @description The version shown to the user; it must be the current one.
+             */
+            version: number;
+        };
+        /**
+         * PrivacyNoticeAccepted
+         * @description An acceptance of the current version (the first one, when repeated).
+         */
+        PrivacyNoticeAccepted: {
+            /** Version */
+            version: number;
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+        };
+        /**
+         * PrivacyNoticeRead
+         * @description The current privacy notice (``GET /api/v1/privacy-notice``).
+         */
+        PrivacyNoticeRead: {
+            /**
+             * Version
+             * @description The current version number.
+             */
+            version: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Body Es
+             * @description The Spanish text: plain text, paragraphs separated by blank lines.
+             */
+            body_es: string;
+            /**
+             * Body En
+             * @description The English text: plain text, paragraphs separated by blank lines.
+             */
+            body_en: string;
+            /**
+             * Accepted At
+             * @description When the caller accepted this version, or null.
+             */
+            accepted_at: string | null;
+        };
+        /**
          * ProblemDetails
          * @description The body of every error response (RFC 9457 Problem Details).
          */
@@ -1924,6 +2027,11 @@ export interface components {
              * @description The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only.
              */
             csrf_token: string;
+            /**
+             * Privacy Notice Required
+             * @description True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout and the privacy-notice routes answers 403 privacy_notice_required.
+             */
+            privacy_notice_required: boolean;
         };
         /**
          * StudentCreate
@@ -2426,7 +2534,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2482,7 +2590,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2676,7 +2784,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2727,7 +2835,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2785,7 +2893,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2836,7 +2944,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvitationLookup"];
                 };
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2896,7 +3004,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2936,6 +3044,95 @@ export interface operations {
             };
         };
     };
+    get_privacy_notice_api_v1_privacy_notice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacyNoticeRead"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    accept_privacy_notice_api_v1_privacy_notice_acceptance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivacyNoticeAcceptanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacyNoticeAccepted"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version isn't the current one: older, unknown or not yet published (privacy_notice_outdated). Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     issue_password_reset_api_v1_password_resets_post: {
         parameters: {
             query?: never;
@@ -2967,7 +3164,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3027,7 +3224,7 @@ export interface operations {
                     "application/json": components["schemas"]["PasswordResetLookup"];
                 };
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3087,7 +3284,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3149,7 +3346,7 @@ export interface operations {
                     "application/json": components["schemas"]["RegistrationSubmitted"];
                 };
             };
-            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3220,7 +3417,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3269,7 +3466,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3336,7 +3533,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3407,7 +3604,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3456,7 +3653,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3589,7 +3786,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3660,7 +3857,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3731,7 +3928,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3802,7 +3999,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3873,7 +4070,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden). */
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3960,7 +4157,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4054,7 +4251,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4165,7 +4362,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4236,7 +4433,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4401,7 +4598,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4475,7 +4672,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4526,7 +4723,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4575,7 +4772,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4637,7 +4834,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4709,7 +4906,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4760,7 +4957,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4818,7 +5015,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4880,7 +5077,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4951,7 +5148,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5017,7 +5214,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5080,7 +5277,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5131,7 +5328,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5180,7 +5377,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5242,7 +5439,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5308,7 +5505,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5374,7 +5571,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5431,7 +5628,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5497,7 +5694,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;

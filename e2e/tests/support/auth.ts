@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { api } from './api';
 
 // The shared signed-in state (#28 H1). e2e/global-setup.ts signs the demo
 // Owner in once through the API and saves the browser state here
@@ -30,7 +31,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * users/roles.spec.ts 7 (2 by createActiveUser), students/students.spec.ts 2
  * (1 by createActiveUser), families/guardians.spec.ts 2 (1 by
  * createActiveUser), families/families.spec.ts 1 (the guardian; its account
- * is invited with the shared session, #172) = 39 attempts, 2 failures
+ * is invited with the shared session, #172), auth/privacy-notice.spec.ts 3
+ * (1 by createActiveUser), a11y/shell.spec.ts 2 (the privacy-notice scan,
+ * 1 by createActiveUser; #174) = 44 attempts, 2 failures
  * for `demo.owner`. Keep the total well under both limits; never add a
  * setting that disables the limits.
  *
@@ -40,14 +43,15 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * per user, #34). auth/invitations.spec.ts makes 3 (2 lookups, 1
  * redemption), auth/password-reset.spec.ts 5 (2 of them by
  * createActiveUser), users/suspend.spec.ts 1, users/roles.spec.ts 2,
- * students/students.spec.ts 1 and families/guardians.spec.ts 1 (all by
+ * students/students.spec.ts 1, families/guardians.spec.ts 1,
+ * auth/privacy-notice.spec.ts 1 and a11y/shell.spec.ts 1 (all by
  * createActiveUser), families/families.spec.ts 1
- * (createGuardianAccountViaPage) = 14.
+ * (createGuardianAccountViaPage) = 16.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 39;
+export const LOGIN_ATTEMPTS_PER_RUN = 44;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
-export const TOKEN_REDEMPTIONS_PER_RUN = 14;
+export const TOKEN_REDEMPTIONS_PER_RUN = 16;
 
 /**
  * Self-registration requests in one run (#169; `registration.ip` allows 10
@@ -73,4 +77,29 @@ export async function cspViolations(page: Page): Promise<string[]> {
     () =>
       (window as Window & { __cspViolations?: string[] }).__cspViolations ?? [],
   );
+}
+
+/** "I accept" in either UI language (#174). */
+const ACCEPT_BUTTON = /^(Acepto|I accept)$/;
+
+/**
+ * Accepts the privacy notice when the app shows it (#174 I1): every new user
+ * must accept the current version before any other page. Call it once the
+ * sign-in finished (the header shows "Signed in as …"); it asks /auth/me
+ * (notice-exempt) and does nothing when the notice is already accepted. On
+ * the notice page it clicks "I accept" and waits until the app returns to
+ * the page the user was going to. No login and no token redemption.
+ */
+export async function acceptPrivacyNoticeIfShown(page: Page): Promise<void> {
+  const me = await api(page, '/api/v1/auth/me');
+  const body = me.body as { privacy_notice_required?: boolean } | null;
+  if (me.status !== 200 || body?.privacy_notice_required !== true) {
+    return;
+  }
+  await expect(page).toHaveURL(/\/privacy-notice/);
+  await page
+    .getByRole('main')
+    .getByRole('button', { name: ACCEPT_BUTTON })
+    .click();
+  await expect(page).not.toHaveURL(/\/privacy-notice/);
 }

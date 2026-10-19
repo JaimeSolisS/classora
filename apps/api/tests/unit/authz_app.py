@@ -9,6 +9,8 @@ Never mounted in the real app. It has:
 - a sensitive route (#26): the delegable, reauth-bound ``payroll.finalize``
   with ``require_recent_auth("payroll.finalize")`` (the runtime matrix
   self-test reauthenticates its allowed actors and sends ``reauth:none``);
+- a notice-exempt route (#174): ``GET /sample/notice`` is
+  ``authenticated(notice_exempt=True)`` (the ``notice:pending`` self-test);
 - the ``Origin`` check of the real app (an app-level dependency) and fixed
   settings whose ``app_origin`` is ``TEST_APP_ORIGIN``;
 - a fake in-memory note store with a sample record policy (the record-level
@@ -121,6 +123,12 @@ def build_authz_app() -> FastAPI:
     @sample.get("/me", responses=AUTH_RESPONSES)
     async def sample_me(
         principal: Annotated[Principal, authenticated()],
+    ) -> dict[str, str]:
+        return {"user_id": str(principal.user_id)}
+
+    @sample.get("/notice", responses=AUTH_RESPONSES)
+    async def sample_notice(
+        principal: Annotated[Principal, authenticated(notice_exempt=True)],
     ) -> dict[str, str]:
         return {"user_id": str(principal.user_id)}
 
@@ -243,6 +251,12 @@ SAMPLE_MATRIX: dict[str, Any] = {
         },
         {"method": "GET", "path": "/sample/me", "access": "authenticated"},
         {"method": "PATCH", "path": "/sample/me", "access": "authenticated"},
+        {
+            "method": "GET",
+            "path": "/sample/notice",
+            "access": "authenticated",
+            "notice_exempt": True,
+        },
         {
             "method": "POST",
             "path": "/sample/payroll/{period_id}/finalize",

@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import {
+  acceptPrivacyNoticeIfShown,
   cspViolations,
   recordCspViolations,
   SIGNED_OUT_STATE,
@@ -143,6 +144,8 @@ test('a parent requests an account, the Owner approves it and the parent signs i
       .getByRole('banner')
       .getByText(signedInAs(common, DISPLAY_NAME)),
   ).toBeVisible();
+  // A new user lands on the privacy notice first (#174).
+  await acceptPrivacyNoticeIfShown(requester.page);
   expect(await cspViolations(requester.page)).toEqual([]);
   expect(requester.consoleErrors).toEqual([]);
   await requester.context.close();

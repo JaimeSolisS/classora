@@ -319,6 +319,7 @@ def session_user(user: User, principal: Principal, session_token: bytes) -> Sess
             "roles": sorted(principal.roles),
             "permissions": sorted(principal.permissions),
             "csrf_token": csrf_token_for(session_token),
+            "privacy_notice_required": not principal.privacy_notice_accepted,
         }
     )
 

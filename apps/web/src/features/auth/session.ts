@@ -67,6 +67,7 @@ export function acceptSessionUser(body: SessionUserBody): SessionUser {
     display_name: body.display_name,
     roles: body.roles,
     permissions: body.permissions,
+    privacy_notice_required: body.privacy_notice_required,
   };
 }
 
@@ -91,6 +92,19 @@ export async function fetchSession(signal?: AbortSignal): Promise<SessionData> {
     }
     throw error;
   }
+}
+
+/** The privacy-notice page (#174), which returns to `location` once accepted. */
+export const PRIVACY_NOTICE_PATH = '/privacy-notice';
+
+/** The privacy-notice path that returns to `location` after acceptance. */
+export function privacyNoticePath(location: {
+  pathname: string;
+  search: string;
+  hash: string;
+}): string {
+  const next = `${location.pathname}${location.search}${location.hash}`;
+  return `${PRIVACY_NOTICE_PATH}?${new URLSearchParams({ next }).toString()}`;
 }
 
 /** The login path that returns to `location` after signing in. */

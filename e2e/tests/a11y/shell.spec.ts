@@ -1,9 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { SIGNED_OUT_STATE } from '../support/auth';
+import {
+  cspViolations,
+  recordCspViolations,
+  SIGNED_OUT_STATE,
+} from '../support/auth';
+import { common } from '../support/catalog';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
+import { createActiveUser } from '../support/users';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
 // _docs/testing-guidelines.md). No rule is disabled; a per-test exclusion
@@ -24,7 +30,8 @@ const THEMES = ['light', 'dark'] as const;
 // are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
-// signed out.
+// signed out. /privacy-notice (to accept) is scanned by its own test below,
+// as a fresh user who signs in (#174 I3).
 interface ScannedRoute {
   name: string;
   path: string;
@@ -197,3 +204,76 @@ for (const theme of THEMES) {
     });
   }
 }
+
+// #174 I3: the privacy notice as a new user sees it (to accept), in both
+// themes, from one sign-in. Budgets (see support/auth.ts): 2 logins (1 by
+// createActiveUser, 1 through the form) and 1 redemption.
+test('privacy-notice (to accept) has no axe violations in light and dark', async ({
+  browser,
+  playwright,
+  baseURL,
+}) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const username = `e2e.a11ynotice.${suffix}`;
+  const password = 'e2e-a11y-notice-password';
+  await createActiveUser(playwright.request, baseURL!, {
+    username,
+    role: 'tutor',
+    password,
+    displayName: `E2E A11y Notice ${suffix}`,
+  });
+  const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
+  try {
+    const page = await context.newPage();
+    await recordCspViolations(page);
+    const consoleErrors: string[] = [];
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+    page.on('console', (message) => {
+      // The signed-out /auth/me answers 401 on purpose.
+      if (
+        message.type() === 'error' &&
+        !/Failed to load resource: the server responded with a status of 401/.test(
+          message.text(),
+        )
+      ) {
+        consoleErrors.push(message.text());
+      }
+    });
+    await page.goto('/login');
+    await page
+      .getByLabel(common.auth.login.username, { exact: true })
+      .fill(username);
+    await page
+      .getByLabel(common.auth.login.password, { exact: true })
+      .fill(password);
+    await page.getByRole('button', { name: common.auth.login.submit }).click();
+    await expect(page).toHaveURL(/\/privacy-notice\?next=/);
+
+    for (const theme of THEMES) {
+      // The stored theme choice; a reload applies it (the session cookie
+      // stays, no new login).
+      await page.evaluate((choice) => {
+        window.localStorage.setItem('classora.theme', choice);
+      }, theme);
+      await page.reload();
+      await expect(
+        page
+          .getByRole('main')
+          .getByRole('button', { name: common.privacyNotice.accept }),
+      ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+      const html = page.locator('html');
+      if (theme === 'dark') {
+        await expect(html).toHaveClass(/\bdark\b/);
+      } else {
+        await expect(html).not.toHaveClass(/\bdark\b/);
+      }
+      const violations = await scan(page);
+      expect(violations, `${theme}:\n${violations.join('\n')}`).toEqual([]);
+    }
+    expect(await cspViolations(page)).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});

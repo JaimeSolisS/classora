@@ -39,6 +39,7 @@ from app.modules.families.groupings_router import router as groupings_router
 from app.modules.families.guardians_router import router as guardians_router
 from app.modules.families.router import router as families_router
 from app.modules.identity.invitations_router import router as invitations_router
+from app.modules.identity.privacy_router import router as privacy_router
 from app.modules.identity.recovery_router import router as recovery_router
 from app.modules.identity.registrations_router import (
     router as registrations_router,
@@ -98,6 +99,7 @@ def build_app(
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(invitations_router)
+    app.include_router(privacy_router)
     app.include_router(recovery_router)
     app.include_router(registrations_router)
     app.include_router(user_admin_router)

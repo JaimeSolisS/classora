@@ -215,6 +215,7 @@ describe('after a change (K3, K4)', () => {
         display_name: TEST_USER.display_name,
         roles: TEST_USER.roles,
         permissions: TEST_USER.permissions,
+        privacy_notice_required: false,
       },
     });
     expect(JSON.stringify(cached)).not.toContain(NEW_CSRF);

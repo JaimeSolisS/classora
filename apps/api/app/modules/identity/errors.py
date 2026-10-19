@@ -209,3 +209,27 @@ class LastActiveOwnerError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class PrivacyNoticeOutdatedError(AppError):
+    """The accepted version is not the current privacy-notice version: older,
+    unknown or not yet published (#174). Nothing is written. Takes no
+    arguments.
+    """
+
+    status = 409
+    code = "privacy_notice_outdated"
+    detail = "The privacy notice changed. Read the current version first."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PrivacyNoticeUnavailableError(RuntimeError):
+    """No privacy-notice version is published (#174 A5): a deployment error,
+    because migration 0017 publishes version 1. Not an :class:`AppError`, so
+    the request fails with ``500`` (fail closed); the gate refuses every user
+    meanwhile, because nobody can have accepted a current version."""
+
+    def __init__(self) -> None:
+        super().__init__("no privacy-notice version is published")

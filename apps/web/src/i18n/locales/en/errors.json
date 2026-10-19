@@ -40,6 +40,8 @@
   "guardian_already_linked": "That guardian is already linked to this student.",
   "family_member_conflict": "Already belongs to another family. Remove them from it first.",
   "family_inactive": "Reactivate the family to add members.",
+  "privacy_notice_required": "You need to accept the privacy notice to continue.",
+  "privacy_notice_outdated": "The privacy notice changed. Please read the new version.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

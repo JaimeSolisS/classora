@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  acceptPrivacyNoticeIfShown,
   cspViolations,
   recordCspViolations,
   SIGNED_OUT_STATE,
@@ -221,6 +222,8 @@ test('managing a student profile, and a tutor who may not see it', async ({
     await expect(
       tutor.getByRole('banner').getByText(signedInAs(common, TUTOR_NAME)),
     ).toBeVisible();
+    // A new user lands on the privacy notice first (#174).
+    await acceptPrivacyNoticeIfShown(tutor);
 
     await tutor.goto(studentPath);
     await expect(

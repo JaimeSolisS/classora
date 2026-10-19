@@ -27,9 +27,18 @@
   policy is applied by a route or listed in
   :data:`~app.core.ratelimit.PENDING_POLICIES`, never both. Static only: the
   runtime cases send no rate-limit requests.
+- Privacy notice (#174): an entry's ``notice_exempt`` must match the route's
+  :class:`~app.core.authz.AccessRule` (static check; only for
+  ``authenticated``). At runtime :func:`notice_cases` adds one ``METHOD path
+  notice:pending`` case per ``authenticated`` or ``permission`` entry, sent by
+  :data:`NOTICE_PENDING_OWNER` (an Owner who has not accepted the current
+  version) with a valid ``Origin`` and CSRF token: ``403
+  privacy_notice_required`` on every entry except the notice-exempt ones,
+  which must not answer that code.
 - :func:`matrix_user_for` creates an actor's real, active database user (the
   #20 factory helper, password :data:`TEST_USER_PASSWORD`) and loads its
-  :class:`Principal`.
+  :class:`Principal`. Every actor accepts the current privacy-notice version
+  (#174 E3) except one with ``notice_pending``.
 
 Every request carries ``Origin: TEST_APP_ORIGIN``, and every unsafe request
 of a signed-in actor its session's ``X-CSRF-Token``, so CSRF never hides a
@@ -90,6 +99,7 @@ from app.modules.identity import service as identity
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
     DELEGABLE_PERMISSIONS,
+    OWNER,
     PERMISSION_CODES,
     ROLE_CODES,
 )
@@ -115,6 +125,7 @@ ENTRY_FIELDS = frozenset(
         "reauth_conditional",
         "rate_limit",
         "rate_limit_exempt",
+        "notice_exempt",
     }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -148,6 +159,7 @@ class MatrixEntry:
     reauth_conditional: Any = None
     rate_limit: Any = None
     rate_limit_exempt: Any = None
+    notice_exempt: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -161,6 +173,12 @@ class MatrixEntry:
     @property
     def allowed_roles(self) -> frozenset[str]:
         return frozenset(self.allow or ())
+
+    @property
+    def is_notice_exempt(self) -> bool:
+        """``notice_exempt = true`` (#174): callable before the privacy notice
+        is accepted."""
+        return self.notice_exempt is True
 
     @property
     def needs_reauth(self) -> bool:
@@ -264,6 +282,11 @@ def entry_problems(
         problems.append("rate_limit_exempt needs a non-empty reason")
     if entry.rate_limit is not None and entry.rate_limit_exempt is not None:
         problems.append("an entry has either rate_limit or rate_limit_exempt, not both")
+    if entry.notice_exempt is not None:
+        if not isinstance(entry.notice_exempt, bool):
+            problems.append("notice_exempt must be true or false")
+        if entry.access != "authenticated":
+            problems.append("notice_exempt is only for access = 'authenticated'")
     return problems
 
 
@@ -584,6 +607,12 @@ def check_matrix(
         if entry is None:
             continue
         problems.extend(_reauth_entry_problems(label, route, entry))
+        if rule.notice_exempt != entry.is_notice_exempt:
+            problems.append(
+                f"{label}: the route's notice_exempt is"
+                f" {str(rule.notice_exempt).lower()} but the matrix says"
+                f" {str(entry.is_notice_exempt).lower()}"
+            )
         if rule.kind != entry.access:
             problems.append(
                 f"{label}: the route is {rule.kind} but the matrix says {entry.access}"
@@ -619,6 +648,8 @@ class Actor:
 
     role: str | None = None
     delegation: str | None = None
+    notice_pending: bool = False
+    """A user who has not accepted the current privacy-notice version (#174)."""
 
     @property
     def label(self) -> str:
@@ -626,10 +657,14 @@ class Actor:
             return "anonymous"
         if self.delegation is not None:
             return f"{self.role} with delegated {self.delegation}"
+        if self.notice_pending:
+            return f"{self.role} without the privacy notice"
         return self.role
 
 
 ANONYMOUS = Actor()
+NOTICE_PENDING_OWNER = Actor(OWNER, notice_pending=True)
+"""The actor of the ``notice:pending`` cases (#174 E2)."""
 
 
 @dataclass(frozen=True)
@@ -1076,6 +1111,71 @@ def run_reauth_cases(
     ]
 
 
+# --- Privacy-notice cases (#174 E2) ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NoticeCase:
+    """A protected entry sent by an Owner who has not accepted the current
+    privacy-notice version (valid ``Origin`` and CSRF token)."""
+
+    entry: MatrixEntry
+    actor: Actor = NOTICE_PENDING_OWNER
+
+    @property
+    def id(self) -> str:
+        return f"{self.entry.label} notice:pending"
+
+
+def notice_cases(entries: Iterable[MatrixEntry]) -> list[NoticeCase]:
+    """One ``notice:pending`` case per ``authenticated`` or ``permission`` entry."""
+    return [
+        NoticeCase(entry)
+        for entry in entries
+        if entry.access in ("authenticated", "permission")
+    ]
+
+
+def check_notice_response(case: NoticeCase, response: Response) -> list[str]:
+    status, code = response.status_code, _problem_code(response)
+    got = f"got {status} {code}" if code else f"got {status}"
+    gated = (status, code) == (403, "privacy_notice_required")
+    if case.entry.is_notice_exempt:
+        if gated:
+            return [f"{case.id}: a notice-exempt route answered {status} {code}"]
+        return []
+    if not gated:
+        return [f"{case.id}: expected 403 privacy_notice_required, {got}"]
+    if response.headers.get("content-type") != PROBLEM_JSON:
+        return [f"{case.id}: 403 is not {PROBLEM_JSON}"]
+    return []
+
+
+def run_notice_case(
+    client: TestClient,
+    case: NoticeCase,
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    response = _send(client, case.entry, case.actor, users, sign_in=sign_in)
+    return check_notice_response(case, response)
+
+
+def run_notice_cases(
+    client: TestClient,
+    cases: Iterable[NoticeCase],
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    return [
+        problem
+        for case in cases
+        for problem in run_notice_case(client, case, users, sign_in=sign_in)
+    ]
+
+
 # --- Real users ----------------------------------------------------------------------
 
 
@@ -1084,7 +1184,9 @@ async def matrix_user_for(session: AsyncSession, actor: Actor) -> MatrixUser:
 
     Created with the #20 factory helper (one role, plus the delegation if any;
     password :data:`TEST_USER_PASSWORD`) and loaded with
-    ``identity.service.load_principal``. Flushes only.
+    ``identity.service.load_principal``. The user has accepted the current
+    privacy-notice version (#174 E3) unless ``actor.notice_pending``.
+    Flushes only.
     """
     if actor.role is None:
         raise ValueError("anonymous has no user")
@@ -1092,6 +1194,7 @@ async def matrix_user_for(session: AsyncSession, actor: Actor) -> MatrixUser:
         session,
         roles=[actor.role],
         delegations=[actor.delegation] if actor.delegation else [],
+        privacy_notice_accepted=not actor.notice_pending,
     )
     principal = await identity.load_principal(session, user.id)
     assert principal is not None
@@ -1111,5 +1214,6 @@ async def matrix_users_for(
 
 async def principal_for(session: AsyncSession, actor: Actor) -> Principal:
     """The principal of a new active user who is ``actor`` (for tests that
-    override ``get_current_principal`` instead of logging in)."""
+    override ``get_current_principal`` instead of logging in). It has
+    accepted the current privacy notice unless ``actor.notice_pending``."""
     return (await matrix_user_for(session, actor)).principal

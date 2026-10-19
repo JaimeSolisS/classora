@@ -99,7 +99,7 @@
             }
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -146,7 +146,7 @@
           "auth"
         ],
         "summary": "Logout",
-        "description": "Sign out: revoke the current session and clear the cookie.\n\nNeeds the app's ``Origin`` and the session's ``X-CSRF-Token``.",
+        "description": "Sign out: revoke the current session and clear the cookie. Works\nbefore the privacy notice is accepted (#174).\n\nNeeds the app's ``Origin`` and the session's ``X-CSRF-Token``.",
         "operationId": "logout_api_v1_auth_logout_post",
         "responses": {
           "204": {
@@ -163,7 +163,7 @@
             }
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -181,7 +181,7 @@
           "auth"
         ],
         "summary": "Me",
-        "description": "The signed-in user, their roles, their effective permissions and the\nsession's CSRF token (the same value for the whole session).",
+        "description": "The signed-in user, their roles, their effective permissions, whether\nthey must accept the privacy notice first, and the session's CSRF token\n(the same value for the whole session). Works before the privacy notice\nis accepted (#174).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
@@ -409,7 +409,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -494,7 +494,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -558,7 +558,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -620,7 +620,7 @@
             }
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -694,7 +694,7 @@
             "description": "Successful Response"
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -734,6 +734,110 @@
                 }
               }
             },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy-notice": {
+      "get": {
+        "tags": [
+          "privacy-notice"
+        ],
+        "summary": "Get Privacy Notice",
+        "description": "The current privacy notice, in Spanish and English, and when the caller\naccepted it (``null`` when they haven't).",
+        "operationId": "get_privacy_notice_api_v1_privacy_notice_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyNoticeRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy-notice/acceptance": {
+      "post": {
+        "tags": [
+          "privacy-notice"
+        ],
+        "summary": "Accept Privacy Notice",
+        "description": "Accept the current privacy notice. ``version`` must be the version the\nuser was shown, and the current one. Accepting again returns the first\n``accepted_at``. Needs the app's ``Origin`` and the session's\n``X-CSRF-Token``.",
+        "operationId": "accept_privacy_notice_api_v1_privacy_notice_acceptance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivacyNoticeAcceptanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyNoticeAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version isn't the current one: older, unknown or not yet published (privacy_notice_outdated). Nothing is written.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -785,7 +889,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -857,7 +961,7 @@
             }
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -931,7 +1035,7 @@
             "description": "Successful Response"
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1012,7 +1116,7 @@
             }
           },
           "403": {
-            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1127,7 +1231,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1191,7 +1295,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1275,7 +1379,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1421,7 +1525,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1485,7 +1589,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1661,7 +1765,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1755,7 +1859,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1849,7 +1953,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1943,7 +2047,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2037,7 +2141,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden).",
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2234,7 +2338,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2382,7 +2486,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2528,7 +2632,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2622,7 +2726,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2875,7 +2979,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3022,7 +3126,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3082,7 +3186,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3146,7 +3250,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3228,7 +3332,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3356,7 +3460,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3416,7 +3520,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3490,7 +3594,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3572,7 +3676,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3666,7 +3770,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3753,7 +3857,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3871,7 +3975,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3931,7 +4035,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3995,7 +4099,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4077,7 +4181,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4164,7 +4268,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4249,7 +4353,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4326,7 +4430,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4411,7 +4515,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -6226,6 +6330,89 @@
           "user.view"
         ]
       },
+      "PrivacyNoticeAcceptanceRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The version shown to the user; it must be the current one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "PrivacyNoticeAcceptanceRequest",
+        "description": "The version the user read and accepts\n(``POST /api/v1/privacy-notice/acceptance``)."
+      },
+      "PrivacyNoticeAccepted": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "accepted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accepted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "accepted_at"
+        ],
+        "title": "PrivacyNoticeAccepted",
+        "description": "An acceptance of the current version (the first one, when repeated)."
+      },
+      "PrivacyNoticeRead": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The current version number."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          },
+          "body_es": {
+            "type": "string",
+            "title": "Body Es",
+            "description": "The Spanish text: plain text, paragraphs separated by blank lines."
+          },
+          "body_en": {
+            "type": "string",
+            "title": "Body En",
+            "description": "The English text: plain text, paragraphs separated by blank lines."
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At",
+            "description": "When the caller accepted this version, or null."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "published_at",
+          "body_es",
+          "body_en",
+          "accepted_at"
+        ],
+        "title": "PrivacyNoticeRead",
+        "description": "The current privacy notice (``GET /api/v1/privacy-notice``)."
+      },
       "ProblemDetails": {
         "additionalProperties": false,
         "description": "The body of every error response (RFC 9457 Problem Details).",
@@ -6471,6 +6658,11 @@
             "minLength": 43,
             "title": "Csrf Token",
             "description": "The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only."
+          },
+          "privacy_notice_required": {
+            "type": "boolean",
+            "title": "Privacy Notice Required",
+            "description": "True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout and the privacy-notice routes answers 403 privacy_notice_required."
           }
         },
         "type": "object",
@@ -6480,7 +6672,8 @@
           "display_name",
           "roles",
           "permissions",
-          "csrf_token"
+          "csrf_token",
+          "privacy_notice_required"
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login`` and ``GET /auth/me``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."

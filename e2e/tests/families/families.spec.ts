@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
+  acceptPrivacyNoticeIfShown,
   cspViolations,
   recordCspViolations,
   SIGNED_OUT_STATE,
@@ -227,6 +228,8 @@ test('grouping a family, the one-family rule and what the guardian sees', async 
     await expect(
       parent.getByRole('banner').getByText(signedInAs(common, PARENT_NAME)),
     ).toBeVisible();
+    // A new user lands on the privacy notice first (#174).
+    await acceptPrivacyNoticeIfShown(parent);
 
     await openNav(parent, common.nav.families, '/families', f.title);
     const rows = parentMain.locator('tbody tr');

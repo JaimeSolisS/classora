@@ -15,7 +15,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Connection
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.core.db import async_direct_database_url
 from app.core.model_registry import include_name, target_metadata
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0016"
+HEAD = "0017"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -84,6 +84,7 @@ CATALOG_TABLES = ["education_levels", "subjects"]
 FAMILY_TABLES = ["student_emergency_contacts", "students"]
 GUARDIAN_TABLES = ["guardians", "student_guardians"]
 GROUPING_TABLES = ["families", "family_guardians", "family_students"]
+PRIVACY_TABLES = ["privacy_notice_acceptances", "privacy_notice_versions"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -159,6 +160,9 @@ def test_history_is_linear_with_one_head():
     groupings = script.get_revision("0016")
     assert groupings.down_revision == "0015"
     assert Path(groupings.path).name == "0016_families_groupings.py"
+    privacy = script.get_revision("0017")
+    assert privacy.down_revision == "0016"
+    assert Path(privacy.path).name == "0017_identity_privacy_notice.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -194,6 +198,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *GUARDIAN_TABLES,
             *GROUPING_TABLES,
             *IDENTITY_TABLES,
+            *PRIVACY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
             *REGISTRATION_TABLES,
@@ -1405,3 +1410,176 @@ def test_family_membership_columns_constraints_and_indexes(
         f"uq_{table}_{member}",
         f"ix_{table}_family_id",
     }
+
+
+# --- 0017: privacy-notice versions and acceptances (#174 A) --------------------------
+
+IMMUTABLE_TRIGGER = (
+    "SELECT tgname FROM pg_trigger"
+    " WHERE tgrelid = 'privacy_notice_versions'::regclass AND NOT tgisinternal"
+)
+IMMUTABLE_FUNCTION = (
+    "SELECT proname FROM pg_proc WHERE proname = 'privacy_notice_versions_immutable'"
+)
+
+
+def test_0017_adds_exactly_the_privacy_objects_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0016")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0017")
+
+    assert public_tables(fresh_database_url) - before == set(PRIVACY_TABLES)
+    assert [r.tgname for r in run_sql(fresh_database_url, IMMUTABLE_TRIGGER)] == [
+        "privacy_notice_versions_immutable"
+    ]
+    assert len(run_sql(fresh_database_url, IMMUTABLE_FUNCTION)) == 1
+
+    command.downgrade(config, "0016")
+
+    assert version_nums(fresh_database_url) == ["0016"]
+    assert public_tables(fresh_database_url) == before
+    assert run_sql(fresh_database_url, IMMUTABLE_FUNCTION) == []
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_privacy_notice_versions_columns_and_constraints(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "privacy_notice_versions") == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        # A publication number, not an optimistic-lock version (no default).
+        "version": ("integer", "NO", None, None),
+        "published_at": ("timestamp with time zone", "NO", None, None),
+        "body_es": ("text", "NO", None, None),
+        "body_en": ("text", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "privacy_notice_versions")
+    assert set(constraints) == {
+        "pk_privacy_notice_versions",
+        "uq_privacy_notice_versions_version",
+        "ck_privacy_notice_versions_version_positive",
+        "ck_privacy_notice_versions_body_es_not_blank",
+        "ck_privacy_notice_versions_body_en_not_blank",
+    }
+    assert constraints["uq_privacy_notice_versions_version"] == "UNIQUE (version)"
+
+
+def test_privacy_notice_acceptances_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "privacy_notice_acceptances") == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "user_id": ("uuid", "NO", None, None),
+        "notice_version_id": ("uuid", "NO", None, None),
+        "accepted_at": ("timestamp with time zone", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "privacy_notice_acceptances")
+    assert set(constraints) == {
+        "pk_privacy_notice_acceptances",
+        "fk_privacy_notice_acceptances_user_id_users",
+        "fk_privacy_notice_acceptances_notice_version_id",
+        "uq_privacy_notice_acceptances_user_id",
+    }
+    for fk in (
+        "fk_privacy_notice_acceptances_user_id_users",
+        "fk_privacy_notice_acceptances_notice_version_id",
+    ):
+        assert "ON DELETE RESTRICT" in constraints[fk]
+    # The unique index starts with user_id, so it serves lookups by user.
+    assert constraints["uq_privacy_notice_acceptances_user_id"] == (
+        "UNIQUE (user_id, notice_version_id)"
+    )
+    assert set(_indexes(fresh_database_url, "privacy_notice_acceptances")) == {
+        "pk_privacy_notice_acceptances",
+        "uq_privacy_notice_acceptances_user_id",
+    }
+
+
+def test_version_1_is_published_with_both_draft_texts(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    rows = run_sql(
+        fresh_database_url,
+        "SELECT version, published_at, body_es, body_en FROM privacy_notice_versions",
+    )
+
+    assert len(rows) == 1
+    [row] = rows
+    assert row.version == 1
+    assert row.published_at == datetime(2026, 10, 18, tzinfo=UTC)
+    assert row.body_es.startswith("Borrador pendiente de revisión legal.\n\n")
+    assert row.body_en.startswith("Draft pending legal review.\n\n")
+    for body in (row.body_es, row.body_en):
+        assert body == body.strip()
+        assert "\n\n\n" not in body
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE privacy_notice_versions SET body_en = 'x'",
+        "UPDATE privacy_notice_versions SET published_at = now()",
+        "DELETE FROM privacy_notice_versions",
+    ],
+)
+def test_published_versions_never_change(fresh_database_url, statement):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(DBAPIError, match="never change once published"):
+        run_sql(fresh_database_url, statement)
+    assert (
+        len(run_sql(fresh_database_url, "SELECT 1 FROM privacy_notice_versions")) == 1
+    )
+
+
+INSERT_VERSION = (
+    "INSERT INTO privacy_notice_versions (version, published_at, body_es, body_en)"
+    " VALUES (:version, now(), :es, :en)"
+)
+
+
+@pytest.mark.parametrize(
+    ("values", "constraint"),
+    [
+        ({"version": 1, "es": "a", "en": "b"}, "uq_privacy_notice_versions_version"),
+        ({"version": 0, "es": "a", "en": "b"}, "version_positive"),
+        ({"version": -1, "es": "a", "en": "b"}, "version_positive"),
+        ({"version": 2, "es": " \n\t", "en": "b"}, "body_es_not_blank"),
+        ({"version": 2, "es": "a", "en": ""}, "body_en_not_blank"),
+    ],
+)
+def test_invalid_versions_are_rejected(fresh_database_url, values, constraint):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(fresh_database_url, INSERT_VERSION, values)
+
+
+def test_a_duplicate_acceptance_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user_id = uuid.uuid7()
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO users (id, username, display_name, state)"
+        " VALUES (:id, 'notice.reader', 'Notice Reader', 'active')",
+        {"id": user_id},
+    )
+    accept = (
+        "INSERT INTO privacy_notice_acceptances"
+        " (user_id, notice_version_id, accepted_at)"
+        " SELECT :user_id, id, now() FROM privacy_notice_versions WHERE version = 1"
+    )
+    run_sql(fresh_database_url, accept, {"user_id": user_id})
+
+    with pytest.raises(IntegrityError, match="uq_privacy_notice_acceptances_user_id"):
+        run_sql(fresh_database_url, accept, {"user_id": user_id})

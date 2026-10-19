@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import {
+  acceptPrivacyNoticeIfShown,
   cspViolations,
   recordCspViolations,
   SIGNED_OUT_STATE,
@@ -89,6 +90,8 @@ async function expectSignedInAs(page: Page, name: string) {
   await expect(
     page.getByRole('banner').getByText(signedInAs(common, name)),
   ).toBeVisible();
+  // A new user lands on the privacy notice first (#174).
+  await acceptPrivacyNoticeIfShown(page);
 }
 
 test('staff issue a reset link; the person sets a new password and the old session ends', async ({

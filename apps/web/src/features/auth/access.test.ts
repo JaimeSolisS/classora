@@ -11,6 +11,7 @@ const user: SessionUser = {
   roles: ['administrator'],
   // A delegated permission arrives in `permissions` like any other.
   permissions: ['user.view', 'payroll.finalize'],
+  privacy_notice_required: false,
 };
 
 describe('canAccess', () => {

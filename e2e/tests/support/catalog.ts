@@ -208,6 +208,16 @@ type Common = {
     submit: string;
     incomplete: string;
   };
+  privacyNotice: {
+    title: string;
+    version: string;
+    intro: string;
+    textLabel: string;
+    accept: string;
+    accepted: string;
+    changed: string;
+    menu: string;
+  };
 };
 
 type Errors = {
