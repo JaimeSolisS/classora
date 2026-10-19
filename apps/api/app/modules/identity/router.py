@@ -9,10 +9,15 @@ CSRF token (``app.core.csrf``, #24); every unsafe request needs the app's
 password and opens a 5-minute window on the current session for the routes
 declared with ``app.core.reauth.require_recent_auth``.
 
+``POST /password`` (#30; ADR-0007 D8, D14) is the self-service password
+change: the current password is the proof (no reauthentication window). It
+rotates the session and returns the new CSRF token.
+
 Rate limits (#27; ``app.core.ratelimit``): login takes one ``login.ip`` unit
 per request and reserves ``login.username`` before the password check;
-reauthentication reserves ``reauth.user``. Over a limit the answer is ``429
-rate_limited`` without any password verification.
+reauthentication and the password change reserve ``reauth.user`` (one shared
+budget). Over a limit the answer is ``429 rate_limited`` without any password
+verification.
 """
 
 from typing import Annotated
@@ -35,10 +40,15 @@ from app.core.db import get_sessionmaker
 from app.core.errors import problem_response_doc
 from app.core.ratelimit import RATE_LIMIT_RESPONSES, RateLimiter, rate_limit
 from app.core.uow import UnitOfWorkDep
-from app.modules.identity import auth, sessions
-from app.modules.identity.errors import InvalidCredentialsError, ReauthFailedError
+from app.modules.identity import auth, recovery, sessions
+from app.modules.identity.errors import (
+    CurrentPasswordInvalidError,
+    InvalidCredentialsError,
+    ReauthFailedError,
+)
 from app.modules.identity.schemas import (
     LoginRequest,
+    PasswordChange,
     ReauthenticateRequest,
     ReauthenticateResponse,
     SessionUser,
@@ -186,3 +196,71 @@ async def reauthenticate(
         await auth.record_failed_reauth(sessionmaker, result)
         raise ReauthFailedError()
     return ReauthenticateResponse(reauthenticated_until=result)
+
+
+@router.post(
+    "/password",
+    responses={
+        **AUTH_RESPONSES,
+        403: problem_response_doc(
+            "The current password is incorrect (current_password_invalid), or a"
+            " failed Origin or X-CSRF-Token check (csrf_failed)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error) or the new password"
+            " breaks the policy (password_too_short, password_too_long,"
+            " password_equals_username)."
+        ),
+        **RATE_LIMIT_RESPONSES,
+    },
+)
+async def change_password(
+    principal: Annotated[Principal, authenticated()],
+    resolved: Annotated[ResolvedSession, Depends(get_current_session)],
+    limiter: Annotated[RateLimiter, rate_limit(auth.REAUTH_RATE_LIMIT)],
+    body: PasswordChange,
+    response: Response,
+    uow: UnitOfWorkDep,
+    sessionmaker: SessionmakerDep,
+    settings: SettingsDep,
+) -> SessionUser:
+    """Change the signed-in user's password, given the current one.
+
+    On success every session of the user ends, including this one, and a new
+    session replaces it: the response sets the new cookie and carries the new
+    session's ``csrf_token`` (the old cookie and token stop working). Any
+    outstanding reset link of the user stops working. A new password that
+    breaks the policy is ``422`` and costs no attempt. A wrong current
+    password is ``403 current_password_invalid``; the session stays signed in.
+    Wrong current passwords count against the same budget as
+    ``POST /reauthenticate``: after 5 in 15 minutes, ``429 rate_limited`` with
+    ``Retry-After``, without a password check and without changing the
+    session. Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
+    """
+    if resolved.session_id is None:  # pragma: no cover - the resolver sets it
+        raise AuthenticationRequiredError()
+    # The policy first: a mistake in the new password costs no attempt.
+    await recovery.check_new_password(uow.session, principal, body.new_password)
+    # End the transaction the session lookup opened, keeping its activity
+    # update (#25), so the rate-limit counter's own committed transaction
+    # never runs while this request holds a second connection.
+    await uow.session.commit()
+    result = await recovery.change_password(
+        uow.session,
+        principal,
+        resolved.session_id,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        limiter=limiter,
+    )
+    if isinstance(result, recovery.ChangeFailure):
+        # As for a failed reauthentication: end the request's transaction so
+        # its connection goes back to the pool, then commit the event on its
+        # own, because the 403 rolls the request's Unit of Work back.
+        await uow.session.rollback()
+        await recovery.record_failed_change(sessionmaker, result)
+        raise CurrentPasswordInvalidError()
+    sessions.set_session_cookie(
+        response, settings, result.token, max_age=result.limits.absolute
+    )
+    return auth.session_user(result.user, result.principal, result.token)

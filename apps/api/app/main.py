@@ -35,6 +35,7 @@ from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as administration_router
 from app.modules.identity.invitations_router import router as invitations_router
+from app.modules.identity.recovery_router import router as recovery_router
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.service import resolve_session_principal
 
@@ -89,6 +90,7 @@ def build_app(
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(invitations_router)
+    app.include_router(recovery_router)
     app.include_router(administration_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)

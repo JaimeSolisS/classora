@@ -32,10 +32,10 @@ export const Shown: Story = {
     await expect(link).toHaveAttribute('readonly');
     await expect(link).toHaveValue(args.issued.invitation_url);
     await expect(link).toHaveAccessibleDescription(
-      i18n.t('invitations.result.onceWarning'),
+      i18n.t('oneTimeLink.onceWarning'),
     );
     await expect(
-      canvas.getByRole('button', { name: i18n.t('invitations.result.copy') }),
+      canvas.getByRole('button', { name: i18n.t('oneTimeLink.copy') }),
     ).toBeVisible();
     await expect(canvas.queryByRole('img')).toBeNull();
   },

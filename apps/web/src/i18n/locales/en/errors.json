@@ -21,6 +21,8 @@
   "password_too_short": "The password must have at least 12 characters.",
   "password_too_long": "The password is too long. Use a shorter one.",
   "password_equals_username": "The password can't be the same as the username.",
+  "current_password_invalid": "The current password is incorrect.",
+  "user_not_active": "This account isn't active. If it's a pending invitation, create a new link in Invitations.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

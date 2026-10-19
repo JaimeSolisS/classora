@@ -22,12 +22,14 @@ shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
 cookie) that expire after a period of inactivity or a maximum lifetime, with
-rate limits on login, password confirmation and invitation links. The web app
+rate limits on login, password confirmation and one-time links. The web app
 has a sign-in page and sign-out, keeps users signed in with that session, and
 shows only the pages and navigation a user's role allows. Owners and
 administrators can invite people from the Invitations page: the app shows a
 one-time link (no email is sent) to hand over in person or by phone, and the
-invited person opens it to set their own password and then signs in.
+invited person opens it to set their own password and then signs in. In the
+same way, they can create a one-time password reset link from the Password
+resets page, and every signed-in user can change their own password.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
@@ -144,6 +146,17 @@ make bootstrap-owner USERNAME=<name>
 administrator). Run `make migrate` and `make seed` first. It prompts twice for
 the password, which must have at least 12 characters, and works only while no
 Owner account exists.
+
+### Owner password reset
+
+```bash
+make reset-owner-password USERNAME=<name>
+```
+
+If an Owner is locked out, `make reset-owner-password` prints a one-time link
+for that existing, active Owner account. Open it in a browser to set a new
+password; it is shown once and expires in 24 hours, and every session of the
+account ends when the new password is set.
 
 ### Logging in locally
 

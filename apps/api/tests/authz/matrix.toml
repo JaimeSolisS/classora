@@ -105,6 +105,33 @@ access = "authenticated"
 
 [[route]]
 method = "POST"
+path = "/api/v1/auth/password"
+access = "authenticated"
+# An empty body gets 422 for every role, so the matrix run rotates no session;
+# the change itself is tested in tests/integration/test_password_change.py.
+json = {}
+rate_limit = ["reauth.user"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/password-reset/lookup"
+access = "public"
+reason = "The person has no session; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/password-reset/redeem"
+access = "public"
+reason = "The person has no session; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
 path = "/api/v1/auth/reauthenticate"
 access = "authenticated"
 # An empty body gets 422: a wrong password would get 403 reauth_failed.
@@ -148,6 +175,17 @@ allow = ["owner", "administrator"]
 json = {}
 reauth = "user.invitation.staff_role"
 reauth_conditional = true
+
+[[route]]
+method = "POST"
+path = "/api/v1/password-resets"
+access = "permission"
+permission = "user.password_reset.issue"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.password_reset.issue"
 
 [[route]]
 method = "GET"

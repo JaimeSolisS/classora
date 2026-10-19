@@ -146,3 +146,35 @@ class UsernameTakenError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class CurrentPasswordInvalidError(AppError):
+    """The current password of a self-service password change is wrong (#30).
+
+    ``403``, not ``401``: the session is still valid (the web app sends the user
+    to the login page only on ``401``). A code of its own, so the form shows it
+    on the current-password field. One body for a wrong password and a user
+    without a password. Takes no arguments.
+    """
+
+    status = 403
+    code = "current_password_invalid"
+    detail = "The current password is incorrect."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class UserNotActiveError(AppError):
+    """A password reset for a user who is not ``active`` (#30).
+
+    A pending invited user gets a new invitation link (#29); a suspended or
+    archived user must be reactivated first (#31). Takes no arguments.
+    """
+
+    status = 409
+    code = "user_not_active"
+    detail = "This account is not active."
+
+    def __init__(self) -> None:
+        super().__init__()

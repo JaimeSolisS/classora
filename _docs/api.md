@@ -88,9 +88,11 @@ Codes in use today:
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
-| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication, invitation lookup and redemption); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
-| `token_invalid` | 410 | A one-time link (invitation) that is unknown, malformed, used, replaced or expired, or that can no longer be redeemed. One body for every case (see Invitations). |
+| `current_password_invalid` | 403 | `POST /api/v1/auth/password` with a wrong current password (or a user without one). The session stays signed in (see Password reset and change). |
+| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
+| `token_invalid` | 410 | A one-time link (invitation or password reset) that is unknown, malformed, used, replaced or expired, of the other kind, or that can no longer be redeemed. One body for every case (see Invitations). |
 | `username_taken` | 409 | `POST /api/v1/invitations` with a username another user already has, in any state. |
+| `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `username_invalid` | 422 | A username that does not normalize to 3 to 64 characters from `a-z 0-9 . _ -`. |
 | `password_too_short`, `password_too_long`, `password_equals_username` | 422 | A new password that breaks the policy (12 to 128 characters, not the username; ADR-0007 D6). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
@@ -299,8 +301,8 @@ lockout: a window simply ends.
 | ------ | -------- | ----- | --- | ------ |
 | `login.ip` | `POST /api/v1/auth/login` | 50 per 15 min | client IP | every request |
 | `login.username` | `POST /api/v1/auth/login` | 10 per 15 min | normalized submitted username, existing or not | failed attempts |
-| `reauth.user` | `POST /api/v1/auth/reauthenticate`, and the current-password check of the password change (#30) | 5 per 15 min | user | failed attempts |
-| `token_redemption.ip` | `POST /api/v1/auth/invitation/lookup`, `POST /api/v1/auth/invitation/redeem`, and the reset-token routes (#30); one shared budget | 20 per 15 min | client IP | every request |
+| `reauth.user` | `POST /api/v1/auth/reauthenticate` and `POST /api/v1/auth/password` (the current-password check); one shared budget | 5 per 15 min | user | failed attempts |
+| `token_redemption.ip` | `POST /api/v1/auth/invitation/lookup`, `POST /api/v1/auth/invitation/redeem`, `POST /api/v1/auth/password-reset/lookup` and `POST /api/v1/auth/password-reset/redeem`; one shared budget | 20 per 15 min | client IP | every request |
 | `registration.ip` | self-registration request (#169) | 10 per hour | client IP | every request |
 
 - **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
@@ -394,6 +396,72 @@ in `apps/api/app/modules/identity/` (`tokens.py`, `invitations.py`,
   automatic `users` and `user_roles` events. `link_id` is the id of the
   `account_tokens` row, never the token or its hash. Failed requests write no
   event.
+
+### Password reset and change
+
+Implemented by M2-12 (#30; spec §1, §14, ADR-0007 D8, D10, D11, D12, D14) in
+`apps/api/app/modules/identity/` (`recovery.py`, `recovery_router.py`, the
+`/auth/password` route in `router.py`) and `apps/api/app/cli.py`. No email is
+sent, and staff never see or choose a password: a unit test fails if a request
+body with a `password` field appears on any route other than login,
+reauthentication, the change and the two redemptions.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/password-resets` | `require("user.password_reset.issue")` + `require_recent_auth("user.password_reset.issue")` | Body `{username}`. `201` with the one-time `reset_url`. |
+| `POST /api/v1/auth/password-reset/lookup` | `public()` | Body `{token}`: the `username`, `display_name` and `expires_at` of a valid link. Changes nothing. |
+| `POST /api/v1/auth/password-reset/redeem` | `public()` | Body `{token, password}`: sets the new password and ends every session of the account (`204`). Creates no session. |
+| `POST /api/v1/auth/password` | `authenticated()` | Body `{current_password, new_password}`: the self-service change. `200` with the new session's `SessionUser`. |
+
+- **Who resets whom** (ADR-0007 D12): Owners and Administrators hold
+  `user.password_reset.issue`, and every issue needs a password
+  reauthentication in the last 5 minutes. Only a user holding the `owner`
+  **role** may reset an Owner or an Administrator (a delegated permission does
+  not count). Nobody resets their own account; they use the change. The
+  target must be `active` (`409 user_not_active`): a pending invitation gets a
+  new invitation link, a suspended or archived user is reactivated first.
+- **Order on issue:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `403 reauth_required` → `422` (body) → `404 not_found` (an invalid or
+  unknown username; letters are not case-sensitive) → `403
+  permission_denied` (self, or an Owner/Administrator target for a
+  non-Owner) → `409 user_not_active`.
+- **The link** works like an invitation link (see Invitations):
+  `reset_url` = `APP_ORIGIN + "/reset#token=<token>"`, shown once, only the
+  SHA-256 hash is stored (`account_tokens`, kind `password_reset`), valid for
+  24 hours, and a new reset replaces the earlier link. Every invalid link is
+  the same `410 token_invalid`, including an invitation token sent to the reset
+  routes (and the reverse) and a user who is no longer `active` (a reset never
+  reactivates anyone). The public routes share the `token_redemption.ip`
+  budget with invitation redemption, in the same order (`Origin` → limit →
+  body → token).
+- **Sessions:** issuing a link changes no session. Redemption sets the new
+  password and revokes **every** session of the user in the same transaction
+  (`identity.sessions_revoked`, reason `password_changed`); a policy failure
+  (`422`) changes nothing and leaves the link usable.
+- **The self-service change** asks for the current password instead of a
+  reauthentication window. Order: `401` → `403 csrf_failed` → `422` (body,
+  then the new-password policy, before any attempt is counted) → `reauth.user`
+  (`429`, the budget shared with `POST /auth/reauthenticate`; the session is
+  unchanged) → exactly one password check (`403 current_password_invalid`,
+  the session stays signed in). On success every session of the user ends,
+  the current one included, any live reset link of the user is revoked, and a
+  new session (not reauthenticated) replaces the current one: the response
+  sets the new cookie and its body carries the new `csrf_token`. The old
+  cookie and the old CSRF token stop working at once.
+- **Owner recovery from the host shell:** `make reset-owner-password
+  USERNAME=<name>` (`python -m app.cli reset-owner-password --username
+  <name>`, direct database connection) prints a reset link and its expiry for
+  an existing **active** Owner. It refuses (exit 1, nothing written) an
+  unknown username, a user without the `owner` role, a non-active Owner and a
+  database that is not at the Alembic head. It runs in every environment.
+- **Audit:** `identity.password_reset_issued` (actor: the staff member, or
+  none from the shell; `details`: `link_id`, `expires_at`, `source` `staff` or
+  `cli`), `identity.password_reset_redeemed` (no actor; `link_id`),
+  `identity.password_changed` (the user; the new `auth_session_id`) and
+  `identity.password_change_failed` (the user; the current `auth_session_id`
+  and `reason`, committed even though the request fails). No event holds a
+  password, token or hash, and the password hash is excluded from automatic
+  `users` events. `404`, `409`, `410`, `422` and `429` answers write no event.
 
 ### Response headers
 

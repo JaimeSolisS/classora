@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -49,6 +49,13 @@ seed:
 bootstrap-owner:
 	@test -n "$(USERNAME)" || { echo "usage: make bootstrap-owner USERNAME=<name>" >&2; exit 2; }
 	docker compose run --rm --build api python -m app.cli bootstrap-owner --username "$(USERNAME)"
+
+## Print a one-time password-reset link for a locked-out active Owner:
+## make reset-owner-password USERNAME=<name> (shown once; expires in 24 hours).
+# Same image and direct connection as `make bootstrap-owner` (ADR-0003); runs in every APP_ENV.
+reset-owner-password:
+	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
+	docker compose run --rm --build api python -m app.cli reset-owner-password --username "$(USERNAME)"
 
 ## Generate synthetic es_MX demo data on the host (refused unless APP_ENV is local or dev; needs .env).
 # Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.

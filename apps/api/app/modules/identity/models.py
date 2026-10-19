@@ -17,8 +17,8 @@
   cookie. ``revoked_at`` ``NULL`` means the session was not revoked; it may
   still have expired (``expires_at``, ``idle_timeout_seconds``, #25).
 - ``account_tokens``: single-use account tokens (#29; ADR-0007 D11): an
-  invitation today, a password reset in #30 (``kind``). Only the SHA-256 hash
-  of the token is stored. A partial unique index allows at most one unused,
+  an invitation (#29) or a password reset (#30) (``kind``). Only the SHA-256
+  hash of the token is stored. A partial unique index allows at most one unused,
   unreplaced token per user and kind.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
@@ -189,9 +189,9 @@ class AuthSession(Model):
     )
 
 
-ACCOUNT_TOKEN_KINDS: tuple[str, ...] = ("invitation",)
-"""The kinds of :class:`AccountToken`. #30 adds ``password_reset`` (and widens
-the CHECK in its own migration)."""
+ACCOUNT_TOKEN_KINDS: tuple[str, ...] = ("invitation", "password_reset")
+"""The kinds of :class:`AccountToken`: invitations (#29) and password resets
+(#30, which widened the CHECK in migration 0010)."""
 
 
 class AccountToken(Model):

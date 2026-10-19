@@ -2,6 +2,7 @@
 M2-08 A1, A2, M2-09 A, M2-11 B); each test uses a fresh database."""
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0009"
+HEAD = "0010"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -131,6 +132,9 @@ def test_history_is_linear_with_one_head():
     account_tokens = script.get_revision("0009")
     assert account_tokens.down_revision == "0008"
     assert Path(account_tokens.path).name == "0009_identity_account_tokens.py"
+    reset_tokens = script.get_revision("0010")
+    assert reset_tokens.down_revision == "0009"
+    assert Path(reset_tokens.path).name == "0010_identity_password_reset_tokens.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -723,3 +727,55 @@ def test_account_tokens_columns_constraints_and_indexes(fresh_database_url):
     assert "UNIQUE INDEX" in live
     assert "(user_id, kind)" in live
     assert "WHERE ((used_at IS NULL) AND (revoked_at IS NULL))" in live
+
+
+# --- 0010: password_reset account tokens (#30 A) -----------------------------------
+
+KIND_CHECK = (
+    "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint"
+    " WHERE conname = 'ck_account_tokens_kind_valid'"
+)
+TOKEN_INSERT = (
+    "INSERT INTO account_tokens (user_id, kind, token_hash, expires_at)"
+    " VALUES (:user_id, :kind, :hash, now() + interval '1 day')"
+)
+USER_INSERT = (
+    "INSERT INTO users (id, username, display_name, state)"
+    " VALUES (:id, :username, 'Migration User', 'active')"
+)
+
+
+def test_0010_widens_the_kind_check_and_downgrade_restores_it(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0009")
+    [before] = run_sql(fresh_database_url, KIND_CHECK)
+    assert "'invitation'" in before.definition
+    assert "password_reset" not in before.definition
+    command.upgrade(config, "head")
+    [after] = run_sql(fresh_database_url, KIND_CHECK)
+    assert "'invitation'" in after.definition
+    assert "'password_reset'" in after.definition
+    user_id = uuid.uuid4()
+    run_sql(fresh_database_url, USER_INSERT, {"id": user_id, "username": "m.user"})
+    for kind, fill in (("invitation", b"\x01"), ("password_reset", b"\x02")):
+        run_sql(
+            fresh_database_url,
+            TOKEN_INSERT,
+            {"user_id": user_id, "kind": kind, "hash": fill * 32},
+        )
+    with pytest.raises(IntegrityError, match="kind_valid"):
+        run_sql(
+            fresh_database_url,
+            TOKEN_INSERT,
+            {"user_id": user_id, "kind": "other", "hash": b"\x03" * 32},
+        )
+
+    command.downgrade(config, "0009")
+
+    assert version_nums(fresh_database_url) == ["0009"]
+    [restored] = run_sql(fresh_database_url, KIND_CHECK)
+    assert restored.definition == before.definition
+    kinds = run_sql(fresh_database_url, "SELECT kind FROM account_tokens")
+    assert [r.kind for r in kinds] == ["invitation"]
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]

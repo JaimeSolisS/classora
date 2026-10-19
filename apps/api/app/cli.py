@@ -1,6 +1,6 @@
 """``python -m app.cli <command>``: operator commands run from the host shell.
 
-Commands (one subparser each; #30 adds ``reset-owner-password``):
+Commands (one subparser each):
 
 ``bootstrap-owner --username <name> [--display-name <text>] [--password-stdin]``
     Creates the first Owner account (ADR-0007, D12). ``make bootstrap-owner
@@ -25,6 +25,30 @@ Commands (one subparser each; #30 adds ``reset-owner-password``):
 
     Runs in every ``APP_ENV``, including ``prod`` (go-live needs it). Exit 0 on
     success, 1 on any refusal; a refusal writes nothing, audit rows included.
+
+``reset-owner-password --username <name>``
+    Prints a one-time password-reset link for an existing active Owner who is
+    locked out (#30; ADR-0007 D12). ``make reset-owner-password
+    USERNAME=<name>`` wraps it.
+
+    1. Load settings (a configuration error prints the M1-05 message, exit 1).
+    2. Connect **directly** to PostgreSQL (ADR-0003); refuse unless the
+       database is at the Alembic head.
+    3. Normalize the username; refuse when no user has it or the user does not
+       hold the ``owner`` role ("No Owner account with this username."), or
+       when the Owner is not ``active`` (a reset cannot sign in a non-active
+       account; another active Owner can act in the app).
+    4. In one Unit of Work: issue a ``password_reset`` token with no issuer
+       (replacing any earlier reset link of the Owner) and write
+       ``identity.password_reset_issued`` (actor ``NULL``, ``source`` ``cli``).
+    5. Print the link ``{APP_ORIGIN}/reset#token=<token>`` and its expiry (UTC,
+       ISO 8601) to stdout, once; log ``owner_password_reset_issued`` with the
+       user id and username. The token is never logged or stored.
+
+    Asks for no password and changes no session: redeeming the link sets the
+    password and ends every session of the Owner. Runs in every ``APP_ENV``,
+    including ``prod`` (through SSM in AWS). Exit 0 on success, 1 on any
+    refusal; a refusal writes nothing.
 """
 
 import argparse
@@ -34,6 +58,7 @@ import logging
 import sys
 import uuid
 from collections.abc import Callable, Sequence
+from datetime import UTC
 from typing import TextIO
 
 from sqlalchemy import exists, func, select
@@ -44,6 +69,7 @@ from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.db import create_sessionmaker
 from app.core.logging import configure_logging
 from app.core.uow import UnitOfWork
+from app.modules.identity import recovery
 from app.modules.identity.models import Role, User, UserRole
 from app.modules.identity.permissions import ACTIVE, OWNER
 from app.modules.identity.service import (
@@ -214,7 +240,94 @@ def bootstrap_owner(
     return 0
 
 
-COMMANDS: dict[str, Command] = {"bootstrap-owner": bootstrap_owner}
+NO_OWNER_MESSAGE = "No Owner account with this username."
+OWNER_NOT_ACTIVE_MESSAGE = (
+    "The Owner account is {state}. A reset cannot sign in a non-active account."
+)
+
+
+async def _owner_for_reset(session: AsyncSession, raw_username: str) -> User:
+    """The active Owner named ``raw_username`` (locked), or a refusal."""
+    try:
+        username = normalize_username(raw_username)
+    except UsernameInvalidError:
+        raise Refusal(NO_OWNER_MESSAGE) from None
+    user: User | None = await session.scalar(
+        select(User).where(User.username == username).with_for_update()
+    )
+    if user is None:
+        raise Refusal(NO_OWNER_MESSAGE)
+    is_owner = await session.scalar(
+        select(
+            exists()
+            .where(UserRole.user_id == user.id)
+            .where(UserRole.role_id == Role.id)
+            .where(Role.code == OWNER)
+        )
+    )
+    if not is_owner:
+        raise Refusal(NO_OWNER_MESSAGE)
+    if user.state != ACTIVE:
+        raise Refusal(OWNER_NOT_ACTIVE_MESSAGE.format(state=user.state))
+    return user
+
+
+async def _issue_owner_reset(
+    engine: AsyncEngine, raw_username: str
+) -> tuple[uuid.UUID, str, str, str]:
+    """``(user id, username, raw token, expiry in ISO 8601)``."""
+    async with UnitOfWork(create_sessionmaker(engine)) as uow:
+        await ensure_at_head(uow.session)
+        user = await _owner_for_reset(uow.session, raw_username)
+        token = await recovery.issue_reset_token(
+            uow.session, user=user, issued_by=None, source="cli"
+        )
+        return (
+            user.id,
+            user.username,
+            token.raw,
+            token.expires_at.astimezone(UTC).isoformat(),
+        )
+
+
+def reset_owner_password(
+    args: argparse.Namespace,
+    settings: Settings,
+    *,
+    engine_factory: EngineFactory,
+    stdin: TextIO,
+    prompt: PasswordPrompt,
+) -> int:
+    async def _run() -> tuple[uuid.UUID, str, str, str]:
+        engine = engine_factory(settings)
+        try:
+            return await _issue_owner_reset(engine, args.username)
+        finally:
+            await engine.dispose()
+
+    user_id, username, raw_token, expires_at = asyncio.run(_run())
+    logger.info(
+        "owner_password_reset_issued",
+        extra={
+            "event": "owner_password_reset_issued",
+            "user_id": str(user_id),
+            "username": username,
+        },
+    )
+    print(f"Password reset link for the Owner '{username}':")
+    print(recovery.reset_url(settings.app_origin, raw_token))
+    print(f"Expires at {expires_at} (UTC).")
+    print(
+        "It is shown once and expires in 24 hours. Open it in a browser to set"
+        " a new password; every session of the account ends then."
+    )
+    return 0
+
+
+COMMANDS: dict[str, Command] = {
+    "bootstrap-owner": bootstrap_owner,
+    "reset-owner-password": reset_owner_password,
+}
 """Subcommand name -> handler(args, settings, *, engine_factory, stdin, prompt)."""
 
 
@@ -236,6 +349,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Read the password from the first line of stdin instead of a prompt.",
     )
+    reset = commands.add_parser(
+        "reset-owner-password",
+        help="Print a one-time password-reset link for an existing active Owner.",
+    )
+    reset.add_argument("--username", required=True)
     return parser
 
 

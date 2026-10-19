@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 import { i18n } from '@/i18n';
-import { InviteView } from './InviteView';
+import { InviteView } from './RedeemLinkView';
 
 // The /invite page states (#29 J, K3). No request: each story passes a state.
 

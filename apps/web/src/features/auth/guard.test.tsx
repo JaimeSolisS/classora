@@ -67,7 +67,7 @@ const navLabels = () =>
 const h1 = () => app?.container.querySelector('main h1')?.textContent;
 
 describe('route tree (F1)', () => {
-  it('has no page outside the guard except the public pages /login and /invite', () => {
+  it('has no page outside the guard except the public pages /login, /invite and /reset', () => {
     const outside: string[] = [];
     function walk(list: RouteObject[], underGuard: boolean, prefix: string) {
       for (const route of list) {
@@ -84,7 +84,7 @@ describe('route tree (F1)', () => {
       }
     }
     walk(routes, false, '');
-    expect(outside).toEqual(['/login', '/invite']);
+    expect(outside).toEqual(['/login', '/invite', '/reset']);
   });
 });
 

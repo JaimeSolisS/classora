@@ -1,7 +1,7 @@
 """Single-use account tokens (#29; ADR-0007 D11).
 
 An account token proves that its holder was given a one-time link: an
-invitation (#29) or, from #30, a password reset. The rules:
+invitation (#29) or a password reset (#30). The rules:
 
 - 32 random bytes (``secrets.token_bytes``), shown **once** as unpadded
   base64url (43 characters) in a link; only ``sha256(token)`` is stored
@@ -39,9 +39,11 @@ TOKEN_LIFETIME: Final = timedelta(hours=24)
 """How long an account token is valid (ADR-0007 D11; not a setting)."""
 
 INVITATION: Final = "invitation"
+PASSWORD_RESET: Final = "password_reset"  # noqa: S105
 
 __all__ = [
     "INVITATION",
+    "PASSWORD_RESET",
     "TOKEN_LIFETIME",
     "IssuedToken",
     "TokenInvalidError",

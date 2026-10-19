@@ -113,9 +113,7 @@ test('an invited person sets a password with the one-time link and signs in', as
     exact: true,
   });
   await expect(linkField).toBeVisible();
-  await expect(
-    main.getByText(common.invitations.result.onceWarning),
-  ).toBeVisible();
+  await expect(main.getByText(common.oneTimeLink.onceWarning)).toBeVisible();
   const link = await linkField.inputValue();
   expect(link).toMatch(/\/invite#token=[A-Za-z0-9_-]{43}$/);
   expect(await cspViolations(owner.page)).toEqual([]);

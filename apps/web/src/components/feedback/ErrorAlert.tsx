@@ -10,13 +10,20 @@ interface ErrorAlertProps {
   error: unknown;
   /** Shows a "Try again" button (for query errors). */
   onRetry?: () => void;
+  /** A page-specific message (already translated) instead of the code's. */
+  message?: string;
   className?: string;
 }
 
 // Shows a failed request: the translated message for its code and, when
 // there is one, the request ID to quote to support. Never shows the server's
 // title or detail.
-export function ErrorAlert({ error, onRetry, className }: ErrorAlertProps) {
+export function ErrorAlert({
+  error,
+  onRetry,
+  message,
+  className,
+}: ErrorAlertProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
   const requestId = errorRequestId(error);
@@ -35,7 +42,7 @@ export function ErrorAlert({ error, onRetry, className }: ErrorAlertProps) {
       />
       <div className="flex min-w-0 flex-col items-start gap-2">
         <p className="font-medium text-destructive">
-          {errorMessage(error, tErrors)}
+          {message ?? errorMessage(error, tErrors)}
         </p>
         {requestId ? <RequestReference requestId={requestId} /> : null}
         {onRetry ? (

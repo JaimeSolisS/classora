@@ -21,4 +21,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.invitations',
     permission: 'user.invite',
   },
+  {
+    to: '/password-resets',
+    labelKey: 'nav.passwordResets',
+    permission: 'user.password_reset.issue',
+  },
 ];

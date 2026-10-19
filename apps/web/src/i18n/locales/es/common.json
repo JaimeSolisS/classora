@@ -29,7 +29,8 @@
     "label": "Navegación principal",
     "toggle": "Menú",
     "home": "Inicio",
-    "invitations": "Invitaciones"
+    "invitations": "Invitaciones",
+    "passwordResets": "Restablecer contraseñas"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -62,7 +63,8 @@
       "usernameRequired": "Escribe tu nombre de usuario.",
       "passwordRequired": "Escribe tu contraseña.",
       "tooLong": "Es demasiado largo.",
-      "invitationRedeemed": "Tu contraseña quedó guardada. Inicia sesión para continuar."
+      "invitationRedeemed": "Tu contraseña quedó guardada. Inicia sesión para continuar.",
+      "passwordReset": "Tu nueva contraseña quedó guardada. Inicia sesión para continuar."
     },
     "reauth": {
       "title": "Confirma tu contraseña",
@@ -118,16 +120,8 @@
     },
     "result": {
       "title": "Enlace de invitación listo",
-      "person": "Persona",
-      "username": "Nombre de usuario",
       "role": "Rol",
-      "expires": "Vence",
-      "link": "Enlace de invitación",
-      "onceWarning": "Este enlace se muestra solo una vez. Entrégalo en persona o por teléfono. Vence en 24 horas.",
-      "copy": "Copiar enlace",
-      "copied": "Enlace copiado",
-      "copyFailed": "No se pudo copiar. El enlace está seleccionado: cópialo manualmente.",
-      "done": "Listo"
+      "link": "Enlace de invitación"
     },
     "list": {
       "title": "Invitaciones abiertas",
@@ -162,5 +156,54 @@
     "submitting": "Guardando…",
     "incomplete": "El enlace está incompleto. Abre de nuevo el enlace que te dieron.",
     "signedIn": "Iniciaste sesión como {{name}}. Este enlace es para la persona invitada. Cierra sesión y abre el enlace de nuevo."
+  },
+  "oneTimeLink": {
+    "person": "Persona",
+    "username": "Nombre de usuario",
+    "expires": "Vence",
+    "onceWarning": "Este enlace se muestra solo una vez. Entrégalo en persona o por teléfono. Vence en 24 horas.",
+    "copy": "Copiar enlace",
+    "copied": "Enlace copiado",
+    "copyFailed": "No se pudo copiar. El enlace está seleccionado: cópialo manualmente.",
+    "done": "Listo"
+  },
+  "passwordResets": {
+    "title": "Restablecer contraseñas",
+    "intro": "Crea un enlace de un solo uso para que una persona elija una nueva contraseña. No se envía ningún correo.",
+    "form": {
+      "title": "Nuevo enlace de restablecimiento",
+      "username": "Nombre de usuario",
+      "usernameRequired": "Escribe un nombre de usuario.",
+      "tooLong": "Es demasiado largo.",
+      "help": "Te pediremos tu contraseña. Las sesiones de la persona se cerrarán cuando elija su nueva contraseña.",
+      "submit": "Crear enlace de restablecimiento",
+      "submitting": "Creando…",
+      "notFound": "Ningún usuario tiene este nombre.",
+      "notAllowed": "No puedes restablecer esta cuenta. Solo un Propietario puede restablecer cuentas de Propietario y de Administrador.",
+      "self": "Para cambiar tu propia contraseña, usa Cambiar contraseña."
+    },
+    "result": {
+      "title": "Enlace de restablecimiento listo",
+      "link": "Enlace para restablecer la contraseña"
+    }
+  },
+  "reset": {
+    "title": "Restablece tu contraseña",
+    "username": "Tu usuario es:",
+    "signedIn": "Iniciaste sesión como {{name}}. Este enlace es para restablecer la contraseña de otra cuenta. Cierra sesión y abre el enlace de nuevo."
+  },
+  "account": {
+    "password": {
+      "title": "Cambiar contraseña",
+      "link": "Cambiar contraseña",
+      "username": "Nombre de usuario",
+      "current": "Contraseña actual",
+      "currentRequired": "Escribe tu contraseña actual.",
+      "new": "Nueva contraseña",
+      "confirm": "Confirma la nueva contraseña",
+      "submit": "Cambiar contraseña",
+      "submitting": "Cambiando…",
+      "done": "Cambiaste tu contraseña. Cerramos tu sesión en tus otros dispositivos."
+    }
   }
 }

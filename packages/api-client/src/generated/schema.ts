@@ -145,6 +145,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Change the signed-in user's password, given the current one.
+         *
+         *     On success every session of the user ends, including this one, and a new
+         *     session replaces it: the response sets the new cookie and carries the new
+         *     session's ``csrf_token`` (the old cookie and token stop working). Any
+         *     outstanding reset link of the user stops working. A new password that
+         *     breaks the policy is ``422`` and costs no attempt. A wrong current
+         *     password is ``403 current_password_invalid``; the session stays signed in.
+         *     Wrong current passwords count against the same budget as
+         *     ``POST /reauthenticate``: after 5 in 15 minutes, ``429 rate_limited`` with
+         *     ``Retry-After``, without a password check and without changing the
+         *     session. Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
+         */
+        post: operations["change_password_api_v1_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invitations": {
         parameters: {
             query?: never;
@@ -235,6 +266,76 @@ export interface paths {
          *     Needs the app's ``Origin``.
          */
         post: operations["redeem_invitation_api_v1_auth_invitation_redeem_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/password-resets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Password Reset
+         * @description Issue a one-time password-reset link for another user, valid for 24
+         *     hours, shown in this response only. A new link replaces the previous one.
+         *
+         *     Needs a password reauthentication in the last 5 minutes (``403
+         *     reauth_required``). Only an Owner may reset an Owner or an Administrator,
+         *     and nobody resets their own account (``403 permission_denied``; use
+         *     ``POST /api/v1/auth/password``). The user must be active (``409
+         *     user_not_active``). Their sessions end when the link is redeemed.
+         */
+        post: operations["issue_password_reset_api_v1_password_resets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-reset/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lookup Password Reset
+         * @description Who a reset link is for (the username to sign in with). Changes
+         *     nothing. Needs the app's ``Origin``.
+         */
+        post: operations["lookup_password_reset_api_v1_auth_password_reset_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-reset/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeem Password Reset
+         * @description Set a new password with a reset link; the link is used up and every
+         *     session of the account ends. Creates no session: the person signs in on
+         *     the login page. Needs the app's ``Origin``.
+         */
+        post: operations["redeem_password_reset_api_v1_auth_password_reset_redeem_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -483,6 +584,88 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * PasswordChange
+         * @description The signed-in user's current and new password (``POST /auth/password``).
+         */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /**
+         * PasswordResetCreate
+         * @description Issue a reset link for one user (``POST /api/v1/password-resets``).
+         */
+        PasswordResetCreate: {
+            /**
+             * Username
+             * @description The user's username (normalized like a login username; letters are not case-sensitive).
+             */
+            username: string;
+        };
+        /**
+         * PasswordResetIssued
+         * @description A new password-reset link (``201``).
+         *
+         *     ``reset_url`` holds the one-time token in its fragment. It is shown in this
+         *     response only: never stored, logged or returned again.
+         */
+        PasswordResetIssued: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Reset Url
+             * @description APP_ORIGIN + '/reset#token=' + the one-time token. Show it once; never store or log it.
+             */
+            reset_url: string;
+        };
+        /**
+         * PasswordResetLookup
+         * @description Who a reset link is for, so the page can show the username.
+         */
+        PasswordResetLookup: {
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * PasswordResetRedeemRequest
+         * @description The token and the new password (``POST …/password-reset/redeem``).
+         */
+        PasswordResetRedeemRequest: {
+            /** Token */
+            token: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * PasswordResetTokenRequest
+         * @description The token from a reset link (``POST …/password-reset/lookup``).
+         */
+        PasswordResetTokenRequest: {
+            /** Token */
+            token: string;
         };
         /** @enum {string} */
         PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
@@ -814,6 +997,68 @@ export interface operations {
             };
         };
     };
+    change_password_api_v1_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionUser"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The current password is incorrect (current_password_invalid), or a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_invitations_api_v1_invitations_get: {
         parameters: {
             query?: {
@@ -1074,6 +1319,197 @@ export interface operations {
                 };
             };
             /** @description The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    issue_password_reset_api_v1_password_resets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetIssued"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No user has this username (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user is not active (user_not_active). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    lookup_password_reset_api_v1_auth_password_reset_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetLookup"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The link is unknown, malformed, used, replaced or expired, or the account is no longer active (token_invalid). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeem_password_reset_api_v1_auth_password_reset_redeem_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRedeemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The link is unknown, malformed, used, replaced or expired, or the account is no longer active (token_invalid). */
             410: {
                 headers: {
                     [name: string]: unknown;
