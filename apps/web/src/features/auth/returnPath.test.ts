@@ -10,6 +10,7 @@ describe('safeReturnPath', () => {
     ['/a/b/c', '/a/b/c'],
     ['/e2e-return-path?x=1', '/e2e-return-path?x=1'],
     ['/search?q=a%26b', '/search?q=a%26b'],
+    ['/a/./b/../c?x=1', '/a/c?x=1'],
   ])('keeps %s', (raw, expected) => {
     expect(safeReturnPath(raw)).toBe(expected);
   });
@@ -30,6 +31,16 @@ describe('safeReturnPath', () => {
     ['an encoded newline', '/%0A/evil.example'],
     ['a relative path', 'students'],
     ['malformed percent-encoding', '/%E0%A4%A'],
+    ['a dot segment before //', '/.//evil.example'],
+    ['a dot-dot segment before //', '/..//evil.example'],
+    ['an encoded dot segment before //', '/%2e//evil.example'],
+    ['an encoded dot-dot segment before //', '/%2e%2e//evil.example'],
+    ['a path and dot-dot before //', '/a/..//evil.example'],
+    ['a deeper dot-dot before //', '/a/b/../..//evil.example'],
+    ['a dot segment before an encoded slash', '/./%2Fevil.example'],
+    ['a dot segment before a backslash', '/./\\evil.example'],
+    ['a dot segment before an encoded backslash', '/./%5Cevil.example'],
+    ['a dot-dot segment before an encoded backslash', '/a/../%5Cevil.example'],
     ['an empty value', ''],
     ['a missing value (null)', null],
     ['a missing value (undefined)', undefined],

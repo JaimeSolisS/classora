@@ -23,7 +23,8 @@ function isLocalPath(value: string): boolean {
  * parameter (already decoded once by URLSearchParams). It is accepted only if
  * both it and its decoded form start with a single "/" (not "//" or "/\"),
  * contain no control characters, have no scheme, resolve to this origin, and
- * do not point at /login.
+ * do not point at /login; the returned path (after dot segments are resolved)
+ * must pass the same checks.
  */
 export function safeReturnPath(raw: string | null | undefined): string {
   if (!raw) {
@@ -54,5 +55,17 @@ export function safeReturnPath(raw: string | null | undefined): string {
   if (path === '/login') {
     return FALLBACK;
   }
-  return `${url.pathname}${url.search}${url.hash}`;
+  // Check the value actually returned too: resolving dot segments can turn
+  // "/.//evil.example" or "/a/..//evil.example" into "//evil.example".
+  const result = `${url.pathname}${url.search}${url.hash}`;
+  let decodedResult: string;
+  try {
+    decodedResult = decodeURIComponent(result);
+  } catch {
+    return FALLBACK;
+  }
+  if (!isLocalPath(result) || !isLocalPath(decodedResult)) {
+    return FALLBACK;
+  }
+  return result;
 }

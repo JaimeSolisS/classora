@@ -23,9 +23,9 @@ switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
 cookie) that expire after a period of inactivity or a maximum lifetime, with
 rate limits on login and password confirmation. The web app has a sign-in
-page and sign-out, keeps users signed in with that session, asks for the
-password again before sensitive actions, and shows only the pages and
-navigation a user's role allows (there are no business screens yet).
+page and sign-out, keeps users signed in with that session, and shows only
+the pages and navigation a user's role allows (there are no business screens
+yet).
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
