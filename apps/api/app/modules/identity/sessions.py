@@ -26,6 +26,9 @@
   computed, never stored; the hourly purge deletes the row 24 hours later.
 - **Activity:** ``last_seen_at`` moves at most once per
   :data:`LAST_SEEN_INTERVAL` (:func:`touch_session`).
+- **Reauthentication** (#26): :func:`mark_reauthenticated` sets
+  ``reauthenticated_at`` of one session. Activity never moves it, and a new
+  session starts without it.
 
 Every time comes from :func:`app.core.clock.now`. Every function runs in the
 caller's Unit of Work and never commits.
@@ -243,6 +246,23 @@ async def touch_session(
         )
         .values(last_seen_at=now)
     )
+
+
+async def mark_reauthenticated(
+    session: AsyncSession, session_id: uuid.UUID, now: datetime
+) -> bool:
+    """Set ``reauthenticated_at = now`` on the unrevoked session ``session_id``.
+
+    One ``UPDATE``; returns whether a row matched (``False``: the session was
+    revoked in the meantime). Only this session: the user's others are
+    untouched (ADR-0007 D10).
+    """
+    result = await session.execute(
+        update(AuthSession)
+        .where(AuthSession.id == session_id, AuthSession.revoked_at.is_(None))
+        .values(reauthenticated_at=now)
+    )
+    return int(result.rowcount) == 1  # type: ignore[attr-defined]
 
 
 async def revoke_session(session: AsyncSession, auth_session: AuthSession) -> None:

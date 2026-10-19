@@ -99,3 +99,19 @@ class UnknownRoleError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class ReauthFailedError(AppError):
+    """A reauthentication that did not succeed (#26; ADR-0007 D10).
+
+    ``403``, not ``401``: the session is still valid (the web app sends the user
+    to the login page only on ``401``). One body for a wrong password and a
+    user without a password. Takes no arguments.
+    """
+
+    status = 403
+    code = "reauth_failed"
+    detail = "The password is incorrect."
+
+    def __init__(self) -> None:
+        super().__init__()

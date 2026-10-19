@@ -43,6 +43,12 @@ Protected routes pass :data:`AUTH_RESPONSES` or :data:`PERMISSION_RESPONSES`
 as ``responses=`` so the OpenAPI document lists the errors; an unsafe
 ``authenticated()`` route adds :data:`CSRF_RESPONSES`.
 
+**Reauthentication (#26).** Sensitive actions add
+``app.core.reauth.require_recent_auth`` (or its conditional guard) next to the
+access declaration. It carries its own marker, not an :class:`AccessRule`, so
+a route still has exactly one access rule; its check comes after
+``permission_denied`` and before ``422``.
+
 **Audit actor.** ``authenticated()`` and ``require()`` record the principal
 as the request's audit actor (``app.core.audit``), so every audit event the
 request writes names it; a ``public()`` route records none.
@@ -59,6 +65,7 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Annotated, Any, Final, Literal
 
 from fastapi import Depends, FastAPI, Request
@@ -149,15 +156,21 @@ class RecordNotFoundError(AppError):
 
 @dataclass(frozen=True)
 class ResolvedSession:
-    """The signed-in user and the raw token of the session that proved it.
+    """The signed-in user and the session that proved it.
 
     ``session_token`` is the secret from the session cookie: it is used only to
     check the CSRF token, and is never logged, stored or shown (``repr`` hides
-    it).
+    it). ``session_id`` is the session row's id and ``reauthenticated_at`` the
+    time of its last password reauthentication (``None``: never in this
+    session), read in the same query as the session (#26; the window check is
+    ``app.core.reauth``). A resolver that does not know them leaves them
+    ``None``, so a reauthentication check fails closed.
     """
 
     principal: Principal
     session_token: bytes = field(repr=False)
+    session_id: uuid.UUID | None = None
+    reauthenticated_at: datetime | None = None
 
 
 PrincipalResolver = Callable[
@@ -260,12 +273,13 @@ class AccessRule:
     reason: str | None = None
 
 
-def _mark[F: Callable[..., Any]](dependency: F, marker: object) -> F:
+def mark_dependency[F: Callable[..., Any]](dependency: F, marker: object) -> F:
+    """Attach ``marker`` to ``dependency`` (found by :func:`route_markers`)."""
     setattr(dependency, ROUTE_MARKER_ATTR, marker)
     return dependency
 
 
-def _as_principal(principal: object) -> Principal:
+def as_principal(principal: object) -> Principal:
     # get_current_principal raises when there is no user; an override that
     # returns anything else (None in a test) still counts as anonymous.
     if not isinstance(principal, Principal):
@@ -284,7 +298,7 @@ def public(*, reason: str) -> Any:
     async def public_access() -> None:
         return None
 
-    return Depends(_mark(public_access, AccessRule("public", reason=reason)))
+    return Depends(mark_dependency(public_access, AccessRule("public", reason=reason)))
 
 
 def authenticated() -> Any:
@@ -293,11 +307,11 @@ def authenticated() -> Any:
     async def authenticated_access(
         request: Request, principal: CurrentPrincipal
     ) -> Principal:
-        checked = _as_principal(principal)
+        checked = as_principal(principal)
         record_request_actor(request, checked.user_id)
         return checked
 
-    return Depends(_mark(authenticated_access, AccessRule("authenticated")))
+    return Depends(mark_dependency(authenticated_access, AccessRule("authenticated")))
 
 
 def require(permission: str) -> Any:
@@ -313,13 +327,15 @@ def require(permission: str) -> Any:
     async def permission_access(
         request: Request, principal: CurrentPrincipal
     ) -> Principal:
-        checked = _as_principal(principal)
+        checked = as_principal(principal)
         ensure_permission(checked, permission)
         record_request_actor(request, checked.user_id)
         return checked
 
     return Depends(
-        _mark(permission_access, AccessRule("permission", permission=permission))
+        mark_dependency(
+            permission_access, AccessRule("permission", permission=permission)
+        )
     )
 
 

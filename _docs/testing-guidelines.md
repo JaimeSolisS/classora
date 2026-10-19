@@ -168,6 +168,15 @@ describes the route declarations and the 401/403/404 rule.
   `METHOD path csrf:no-token` (`403 csrf_failed` on a protected route, anything
   but `403` on a public one) for every unsafe entry. CSRF tests remove or
   change the header explicitly (`tests/authz/csrf.py`).
+- **Reauthentication (M2-08):** a sensitive route's entry adds `reauth =
+  "<action>"` (and `reauth_conditional = true` for `recent_auth_guard`); the
+  static check requires it to match the route's marker, allows markers only on
+  unsafe, non-public routes, and fails an unsafe route that requires a bound
+  permission (`app/core/reauth.py`) without the marker. At runtime the allowed
+  actors of an unconditional entry reauthenticate first (denied ones do not,
+  so they still prove `permission_denied`), and `METHOD path reauth:none`
+  expects `403 reauth_required`. The owning issue tests a conditional guard's
+  two branches itself.
 - Unit tests of a route declaration use a test-only app and override
   `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the

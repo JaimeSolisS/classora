@@ -21,6 +21,22 @@
 #   Optional: `path_params` (values for the path template; default: a fixed
 #   UUID, or 1 for an int parameter) and `json` (a request body).
 #
+# Reauthentication (#26, ADR-0007 D10; actions and bound permissions in
+# apps/api/app/core/reauth.py):
+#   reauth = "<action code>"   the route carries require_recent_auth(<code>)
+#                              or recent_auth_guard(<code>); must match the
+#                              route's marker. Only on POST/PUT/PATCH/DELETE,
+#                              never on a public route.
+#   reauth_conditional = true  the route uses recent_auth_guard (the check
+#                              depends on the body; default false). Only the
+#                              static check covers it; the owning issue tests
+#                              its condition.
+#   For an unconditional entry the runtime check reauthenticates the allowed
+#   roles before the request, and adds a `reauth:none` case (an allowed role
+#   without reauthentication) that expects 403 reauth_required. An unsafe
+#   route requiring a bound permission (for example
+#   user.password_reset.issue) must carry the marker.
+#
 # The runtime check signs every role in for real (POST /api/v1/auth/login, a
 # fresh session per request); anonymous sends no cookie.
 #
@@ -57,6 +73,13 @@ access = "authenticated"
 method = "GET"
 path = "/api/v1/auth/me"
 access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/reauthenticate"
+access = "authenticated"
+# An empty body gets 422: a wrong password would get 403 reauth_failed.
+json = {}
 
 [[route]]
 method = "POST"

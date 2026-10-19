@@ -21,11 +21,22 @@ request's Unit of Work back. The submitted username is never stored (people
 type passwords into it); neither is the password.
 
 **Logout** revokes the request's own session and writes ``identity.logout``.
+
+**Reauthentication** (#26; ADR-0007 D10) checks the signed-in user's password
+with exactly one Argon2id verification (against :func:`dummy_password_hash`
+when the user has no password). On success it sets ``reauthenticated_at`` of
+the **current** session to now and writes ``identity.reauthenticated``; the
+hash is not upgraded (login does that). On failure the caller rolls the
+request's transaction back and writes ``identity.reauth_failed`` with
+:func:`record_failed_reauth` in its own committed Unit of Work, the same
+pattern as a failed login; the session and its ``reauthenticated_at`` are
+unchanged.
 """
 
 import secrets
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from functools import cache
 from typing import Final, Literal
 
@@ -33,10 +44,12 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import clock
 from app.core.audit import record_audit_event
 from app.core.authz import AuthenticationRequiredError, Principal
 from app.core.config import Settings
 from app.core.csrf import csrf_token_for
+from app.core.reauth import REAUTH_WINDOW
 from app.core.uow import UnitOfWork
 from app.modules.identity import passwords, sessions
 from app.modules.identity.errors import UsernameInvalidError
@@ -48,6 +61,8 @@ from app.modules.identity.service import load_principal, normalize_username
 LOGIN_SUCCEEDED_EVENT: Final = "identity.login_succeeded"
 LOGIN_FAILED_EVENT: Final = "identity.login_failed"
 LOGOUT_EVENT: Final = "identity.logout"
+REAUTHENTICATED_EVENT: Final = "identity.reauthenticated"
+REAUTH_FAILED_EVENT: Final = "identity.reauth_failed"
 
 FailureReason = Literal[
     "unknown_username", "no_password", "invalid_password", "not_active"
@@ -185,6 +200,75 @@ async def logout(
         record_id=principal.user_id,
         details={"auth_session_id": current.id},
     )
+
+
+ReauthFailureReason = Literal["invalid_password", "no_password"]
+
+
+@dataclass(frozen=True)
+class ReauthFailure:
+    """Why a reauthentication failed (audited, never shown to the client)."""
+
+    reason: ReauthFailureReason
+    user_id: uuid.UUID
+    auth_session_id: uuid.UUID
+
+
+async def reauthenticate(
+    session: AsyncSession,
+    principal: Principal,
+    auth_session_id: uuid.UUID,
+    password: str,
+) -> datetime | ReauthFailure:
+    """Check ``password`` for the signed-in ``principal``; on success mark the
+    session ``auth_session_id`` reauthenticated now and return the end of the
+    window (now + :data:`~app.core.reauth.REAUTH_WINDOW`).
+
+    Runs exactly one password verification, whatever the outcome. Writes
+    nothing on failure.
+    """
+    user = await session.get(User, principal.user_id)
+    if user is None:  # pragma: no cover - the session was resolved
+        raise AuthenticationRequiredError()
+    stored = user.password_hash
+    matches = passwords.verify_password(stored or dummy_password_hash(), password)
+    if stored is None:
+        return ReauthFailure("no_password", user.id, auth_session_id)
+    if not matches:
+        return ReauthFailure("invalid_password", user.id, auth_session_id)
+    now = clock.now()
+    if not await sessions.mark_reauthenticated(session, auth_session_id, now):
+        # Revoked between the resolver and this update.
+        raise AuthenticationRequiredError()
+    record_audit_event(
+        session,
+        action=REAUTHENTICATED_EVENT,
+        record_type=User.__tablename__,
+        record_id=user.id,
+        details={"auth_session_id": auth_session_id},
+    )
+    return now + REAUTH_WINDOW
+
+
+async def record_failed_reauth(
+    sessionmaker: async_sessionmaker[AsyncSession], failure: ReauthFailure
+) -> None:
+    """Write ``identity.reauth_failed`` in its own Unit of Work and commit it.
+
+    The actor is the user. The caller must have released its own transaction
+    first (one connection per request at a time).
+    """
+    async with UnitOfWork(sessionmaker, failure.user_id) as uow:
+        record_audit_event(
+            uow.session,
+            action=REAUTH_FAILED_EVENT,
+            record_type=User.__tablename__,
+            record_id=failure.user_id,
+            details={
+                "auth_session_id": failure.auth_session_id,
+                "reason": failure.reason,
+            },
+        )
 
 
 def session_user(user: User, principal: Principal, session_token: bytes) -> SessionUser:
