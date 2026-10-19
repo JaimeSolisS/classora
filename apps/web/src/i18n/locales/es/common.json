@@ -33,7 +33,8 @@
     "invitations": "Invitaciones",
     "passwordResets": "Restablecer contraseñas",
     "registrations": "Solicitudes de cuenta",
-    "catalog": "Catálogo"
+    "catalog": "Catálogo",
+    "students": "Estudiantes"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -434,6 +435,108 @@
       "nameRequired": "Escribe un nombre.",
       "nameTooLong": "El nombre puede tener hasta 100 caracteres.",
       "positionInvalid": "La posición es un número entero de 0 a 9999."
+    }
+  },
+  "students": {
+    "title": "Estudiantes",
+    "add": "Agregar estudiante",
+    "edit": "Editar estudiante",
+    "editNamed": "Editar a {{name}}",
+    "back": "Volver a estudiantes",
+    "backToStudent": "Volver al estudiante",
+    "notFound": "Este estudiante no existe.",
+    "saved": "Cambios guardados.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "notSet": "Sin dato",
+    "list": {
+      "search": "Buscar por nombre",
+      "level": "Nivel educativo",
+      "allLevels": "Todos los niveles",
+      "status": "Estado",
+      "statusAll": "Todos",
+      "empty": "No hay estudiantes con estos filtros.",
+      "noResults": "No hay resultados para esta búsqueda.",
+      "name": "Nombre",
+      "grade": "Grado",
+      "age": "Edad"
+    },
+    "fields": {
+      "givenNames": "Nombre(s)",
+      "familyNames": "Apellidos",
+      "birthdate": "Fecha de nacimiento",
+      "email": "Correo electrónico (opcional)",
+      "phone": "Teléfono (opcional)",
+      "school": "Escuela (opcional)",
+      "grade": "Grado (opcional)",
+      "level": "Nivel educativo (opcional)",
+      "levelNone": "Sin nivel",
+      "levelInactive": "(inactivo)"
+    },
+    "details": {
+      "birthdate": "Fecha de nacimiento",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "school": "Escuela",
+      "grade": "Grado",
+      "level": "Nivel educativo"
+    },
+    "contacts": {
+      "title": "Contactos de emergencia",
+      "help": "Agrega de 1 a 5 contactos. El primero se llama primero.",
+      "legend": "Contacto {{n}}",
+      "name": "Nombre",
+      "relationship": "Parentesco o relación",
+      "phone": "Teléfono",
+      "nameLabel": "Contacto {{n}}: nombre",
+      "relationshipLabel": "Contacto {{n}}: parentesco o relación",
+      "phoneLabel": "Contacto {{n}}: teléfono",
+      "add": "Agregar contacto",
+      "remove": "Quitar",
+      "moveUp": "Subir",
+      "moveDown": "Bajar",
+      "removeNamed": "Quitar contacto {{n}}",
+      "moveUpNamed": "Subir contacto {{n}}",
+      "moveDownNamed": "Bajar contacto {{n}}",
+      "lastOne": "Se necesita al menos un contacto de emergencia.",
+      "max": "Puedes registrar hasta 5 contactos."
+    },
+    "badge": {
+      "minor": "Menor de edad",
+      "adult": "Mayor de edad"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar estudiante",
+      "body": "El perfil se conserva y puedes reactivarlo."
+    },
+    "reactivate": "Reactivar",
+    "reactivateTitle": "Reactivar estudiante",
+    "reactivateBody": "El estudiante vuelve a aparecer en la lista de activos.",
+    "sections": {
+      "school": "Escuela",
+      "contact": "Contacto",
+      "personal": "Datos personales"
+    },
+    "conflict": {
+      "reload": "Recargar"
+    },
+    "validation": {
+      "nameRequired": "Escribe este dato.",
+      "nameTooLong": "Puede tener hasta 100 caracteres.",
+      "birthdateRequired": "Escribe la fecha de nacimiento.",
+      "birthdateRange": "La fecha debe estar entre el 1 de enero de 1900 y hoy.",
+      "emailInvalid": "Escribe un correo electrónico válido.",
+      "phoneInvalid": "Escribe un teléfono válido: solo números, espacios, paréntesis, puntos o guiones.",
+      "schoolTooLong": "Puede tener hasta 200 caracteres.",
+      "gradeTooLong": "Puede tener hasta 50 caracteres.",
+      "contactNameTooLong": "Puede tener hasta 200 caracteres.",
+      "relationshipTooLong": "Puede tener hasta 50 caracteres."
     }
   }
 }

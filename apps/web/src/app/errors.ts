@@ -51,6 +51,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'education_level_has_active_subjects',
   ],
   ['education_level_inactive', 'education_level_inactive'],
+  ['education_level_unavailable', 'education_level_unavailable'],
+  ['emergency_contact_unknown', 'emergency_contact_unknown'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

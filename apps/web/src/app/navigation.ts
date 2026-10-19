@@ -37,4 +37,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.catalog',
     permission: 'catalog.manage',
   },
+  // Every role holds student.view; the API filters the list (#33 I1).
+  { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
 ];

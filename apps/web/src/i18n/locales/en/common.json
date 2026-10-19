@@ -33,7 +33,8 @@
     "invitations": "Invitations",
     "passwordResets": "Password resets",
     "registrations": "Account requests",
-    "catalog": "Catalog"
+    "catalog": "Catalog",
+    "students": "Students"
   },
   "notFound": {
     "title": "Page not found",
@@ -434,6 +435,108 @@
       "nameRequired": "Enter a name.",
       "nameTooLong": "The name can have up to 100 characters.",
       "positionInvalid": "The position is a whole number from 0 to 9999."
+    }
+  },
+  "students": {
+    "title": "Students",
+    "add": "Add student",
+    "edit": "Edit student",
+    "editNamed": "Edit {{name}}",
+    "back": "Back to students",
+    "backToStudent": "Back to the student",
+    "notFound": "This student doesn't exist.",
+    "saved": "Changes saved.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "notSet": "Not set",
+    "list": {
+      "search": "Search by name",
+      "level": "Education level",
+      "allLevels": "All levels",
+      "status": "Status",
+      "statusAll": "All",
+      "empty": "No students match these filters.",
+      "noResults": "No results for this search.",
+      "name": "Name",
+      "grade": "Grade",
+      "age": "Age"
+    },
+    "fields": {
+      "givenNames": "Given names",
+      "familyNames": "Family names",
+      "birthdate": "Birthdate",
+      "email": "Email (optional)",
+      "phone": "Phone (optional)",
+      "school": "School (optional)",
+      "grade": "Grade (optional)",
+      "level": "Education level (optional)",
+      "levelNone": "None",
+      "levelInactive": "(inactive)"
+    },
+    "details": {
+      "birthdate": "Birthdate",
+      "email": "Email",
+      "phone": "Phone",
+      "school": "School",
+      "grade": "Grade",
+      "level": "Education level"
+    },
+    "contacts": {
+      "title": "Emergency contacts",
+      "help": "Add 1 to 5 contacts. The first one is called first.",
+      "legend": "Contact {{n}}",
+      "name": "Name",
+      "relationship": "Relationship",
+      "phone": "Phone",
+      "nameLabel": "Contact {{n}} name",
+      "relationshipLabel": "Contact {{n}} relationship",
+      "phoneLabel": "Contact {{n}} phone",
+      "add": "Add contact",
+      "remove": "Remove",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "removeNamed": "Remove contact {{n}}",
+      "moveUpNamed": "Move up contact {{n}}",
+      "moveDownNamed": "Move down contact {{n}}",
+      "lastOne": "At least one emergency contact is required.",
+      "max": "You can add up to 5 contacts."
+    },
+    "badge": {
+      "minor": "Minor",
+      "adult": "Adult"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate student",
+      "body": "The profile is kept and can be reactivated."
+    },
+    "reactivate": "Reactivate",
+    "reactivateTitle": "Reactivate student",
+    "reactivateBody": "The student appears in the active list again.",
+    "sections": {
+      "school": "School",
+      "contact": "Contact",
+      "personal": "Personal details"
+    },
+    "conflict": {
+      "reload": "Reload"
+    },
+    "validation": {
+      "nameRequired": "Enter this information.",
+      "nameTooLong": "It can have up to 100 characters.",
+      "birthdateRequired": "Enter the birthdate.",
+      "birthdateRange": "The date must be between January 1, 1900 and today.",
+      "emailInvalid": "Enter a valid email address.",
+      "phoneInvalid": "Enter a valid phone number: digits, spaces, parentheses, dots or hyphens only.",
+      "schoolTooLong": "It can have up to 200 characters.",
+      "gradeTooLong": "It can have up to 50 characters.",
+      "contactNameTooLong": "It can have up to 200 characters.",
+      "relationshipTooLong": "It can have up to 50 characters."
     }
   }
 }

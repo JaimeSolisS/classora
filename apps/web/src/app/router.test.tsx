@@ -62,6 +62,10 @@ describe('route tree', () => {
       'registration-requests',
       'catalog/education-levels',
       'catalog/education-levels/:levelId',
+      'students',
+      'students/new',
+      'students/:studentId',
+      'students/:studentId/edit',
       'account/password',
       '*',
     ]);
@@ -75,7 +79,12 @@ describe('route tree', () => {
     // #32 H1, I1.
     expect(children[6]!.handle).toEqual({ permission: 'catalog.manage' });
     expect(children[7]!.handle).toEqual({ permission: 'catalog.manage' });
-    expect(children[8]!.handle).toBeUndefined();
+    // #33 I1, J1, J3.
+    expect(children[8]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[9]!.handle).toEqual({ permission: 'student.manage' });
+    expect(children[10]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[11]!.handle).toEqual({ permission: 'student.manage' });
+    expect(children[12]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
