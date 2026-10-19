@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { api } from '../support/api';
 import {
+  acceptPrivacyNoticeIfShown,
   cspViolations,
   recordCspViolations,
   SIGNED_OUT_STATE,
@@ -165,6 +166,8 @@ test('an invited person sets a password with the one-time link and signs in', as
       .getByRole('banner')
       .getByText(signedInAs(common, DISPLAY_NAME)),
   ).toBeVisible();
+  // A new user lands on the privacy notice first (#174).
+  await acceptPrivacyNoticeIfShown(invited.page);
   const me = await api(invited.page, '/api/v1/auth/me');
   expect(me.status).toBe(200);
   expect((me.body as { roles: string[] }).roles).toEqual([

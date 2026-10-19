@@ -12,6 +12,9 @@ import { demoOwner } from './tests/support/credentials';
 // Then sign the demo Owner in once, through the API from a page on the web
 // origin (as the #23/#24 specs do), and save the browser state for the specs
 // that need a signed-in page (#28 H1). This is one login of the run's budget.
+// A fresh stack's demo Owner has not accepted the privacy notice yet (#174):
+// accept it here through the API, so every spec that uses the shared state
+// (or signs the demo Owner in again) starts past the notice.
 const WARM_UP_TIMEOUT_MS = 120_000;
 
 export default async function globalSetup(config: FullConfig): Promise<void> {
@@ -35,10 +38,33 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
-      return response.status;
+      if (response.status !== 200) {
+        return `login ${response.status}`;
+      }
+      const user = (await response.json()) as {
+        csrf_token: string;
+        privacy_notice_required: boolean;
+      };
+      if (!user.privacy_notice_required) {
+        return 'ok';
+      }
+      const notice = await fetch('/api/v1/privacy-notice');
+      if (notice.status !== 200) {
+        return `notice ${notice.status}`;
+      }
+      const { version } = (await notice.json()) as { version: number };
+      const accepted = await fetch('/api/v1/privacy-notice/acceptance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': user.csrf_token,
+        },
+        body: JSON.stringify({ version }),
+      });
+      return accepted.status === 200 ? 'ok' : `acceptance ${accepted.status}`;
     }, demoOwner);
-    if (status !== 200) {
-      throw new Error(`global-setup: demo Owner login returned ${status}`);
+    if (status !== 'ok') {
+      throw new Error(`global-setup: demo Owner sign-in failed (${status})`);
     }
     mkdirSync(dirname(OWNER_STATE_PATH), { recursive: true });
     await context.storageState({ path: OWNER_STATE_PATH });

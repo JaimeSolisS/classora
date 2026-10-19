@@ -86,6 +86,8 @@ Codes in use today:
 | `invalid_credentials` | 401 | `POST /api/v1/auth/login` did not succeed, for any reason (the same body whether or not the account exists). |
 | `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
+| `privacy_notice_required` | 403 | A signed-in user who hasn't accepted the current privacy-notice version, on any protected route except the notice-exempt ones (see Privacy notice). |
+| `privacy_notice_outdated` | 409 | `POST /api/v1/privacy-notice/acceptance` with a version that isn't the current one (older, unknown or not yet published); nothing is written (see Privacy notice). |
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
 | `current_password_invalid` | 403 | `POST /api/v1/auth/password` with a wrong current password (or a user without one). The session stays signed in (see Password reset and change). |
@@ -147,7 +149,9 @@ implemented by M2-03 in `apps/api/app/core/authz.py`.
   `ensure_permission(principal, permission)`.
 - **Check order.** Without a signed-in user the answer is `401
   authentication_required`; on an unsafe method a failed CSRF check is then
-  `403 csrf_failed`; without the permission it is `403 permission_denied`; on
+  `403 csrf_failed`; a user who hasn't accepted the current privacy notice
+  then gets `403 privacy_notice_required` (except on the notice-exempt routes,
+  see Privacy notice); without the permission it is `403 permission_denied`; on
   a sensitive action without a recent reauthentication it is then `403
   reauth_required` (see Reauthentication). All
   come before path, query and body validation, so an unauthorized caller never
@@ -294,7 +298,8 @@ identity module.
   `guard.ensure()` when the condition holds. The answer is `403
   reauth_required`; the body never names the action.
 - **Order:** `401` (`authentication_required` / `session_expired`) → `403
-  csrf_failed` → `403 permission_denied` → `403 reauth_required` → `422`,
+  csrf_failed` → `403 privacy_notice_required` → `403 permission_denied` →
+  `403 reauth_required` → `422`,
   wherever the declarations sit: a user without the permission is never asked
   for a password.
 - **Actions:** `SENSITIVE_ACTIONS` in `app/core/reauth.py` lists every ADR-0007
@@ -305,6 +310,59 @@ identity module.
   unsafe route requiring a bound permission (for example
   `user.password_reset.issue`) without the marker fails the matrix test.
   Markers are only for `POST`, `PUT`, `PATCH` and `DELETE`.
+
+### Privacy notice
+
+Implemented by M2-17b (#174; spec §9, §16) in the identity module
+(`privacy.py`, `privacy_router.py`) and `apps/api/app/core/authz.py`.
+
+- **Versions** live in `privacy_notice_versions` (`version`, `published_at`,
+  `body_es`, `body_en`). A version is **published by an Alembic migration**
+  (owner decision #174 E2 (a)), so it is reviewed in a pull request and the
+  same in every environment; a trigger rejects `UPDATE` and `DELETE`, so the
+  stored text is exactly what each user accepted. Migration 0017 publishes
+  **version 1**, a short placeholder whose first line says it is a draft
+  pending legal review; M10-07 (#155) publishes the final wording as a new
+  version. There is no admin page.
+- **Current version:** the highest `version` whose `published_at` is not in
+  the future (application clock), so a migration can ship a version that takes
+  effect later. With no published version every user is refused (fail closed).
+- **The gate.** Every signed-in user, whatever their roles, must accept the
+  current version. Until they do, `authenticated()` and `require()` answer
+  `403 privacy_notice_required`, after `csrf_failed` and before
+  `permission_denied` (order: `401` → `csrf_failed` →
+  `privacy_notice_required` → `permission_denied` → `reauth_required` →
+  `422`). `public()` routes are unaffected (login, one-time links,
+  registration). The flag is read with the user on **every request**, never
+  cached: a new version makes everyone accept again on their next request,
+  without signing out.
+- **Exempt routes** (`authenticated(notice_exempt=True)`, recorded on the
+  route's `AccessRule` and as `notice_exempt = true` in the permission
+  matrix): exactly `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`,
+  `GET /api/v1/privacy-notice` and `POST /api/v1/privacy-notice/acceptance`.
+  `require()` has no exemption; the self-service password change and
+  reauthentication are not exempt (the user accepts first). Adding an
+  exemption is a reviewed matrix change.
+- `SessionUser` (login, `/auth/me`, the password change) carries
+  `privacy_notice_required` (true until the current version is accepted).
+- `GET /api/v1/privacy-notice` → `200 {version, published_at, body_es,
+  body_en, accepted_at}`: both texts (plain text, paragraphs separated by blank
+  lines; the web app shows the one of its UI language) and the caller's
+  acceptance time of this version, or `null`.
+- `POST /api/v1/privacy-notice/acceptance` with `{"version": <int>}` (unknown
+  fields `422`; needs `Origin` and `X-CSRF-Token`) → `200 {version,
+  accepted_at}`. The version must be the current one, the one the client
+  showed; otherwise `409 privacy_notice_outdated` and nothing is written.
+  Accepting again returns the first `accepted_at` and writes nothing.
+- **Audit:** each acceptance is a `create` event of
+  `privacy_notice_acceptances` (`user_id`, `notice_version_id`,
+  `accepted_at`), with the user as actor and the request's ID. No named event.
+- `identity.service.current_privacy_notice()` gives the current version's id
+  (#35 stamps consent records with it); `accept_privacy_notice()` and
+  `has_accepted_current_privacy_notice()` are the other public functions.
+- **Web:** while `privacy_notice_required` is true the route guard sends every
+  page to `/privacy-notice?next=<page>` (no navigation items there); any
+  `403 privacy_notice_required` from `apiCall` refetches `/auth/me` once.
 
 ### Rate limits
 
@@ -961,7 +1019,7 @@ Approved (architecture ISSUE-X4, decided on issue #12).
     store, a log or the query cache (the cached user has no `csrf_token`).
     One `openapi-fetch` middleware, registered where `api` is created, adds
     `X-CSRF-Token` to `POST`, `PUT`, `PATCH` and `DELETE`, never to `GET`.
-  - `apiCall` handles three answers for every caller: a `401`
+  - `apiCall` handles four answers for every caller: a `401`
     `authentication_required` or `session_expired` clears the token and the
     whole query cache once and sends the user to `/login?next=<page>` (with
     the "session expired" notice only for `session_expired`); `403
@@ -969,7 +1027,10 @@ Approved (architecture ISSUE-X4, decided on issue #12).
     the user changed: then the cache is cleared and the app goes to `/`);
     `403 reauth_required` opens the password dialog and retries the request
     once after a confirmed password (cancel rejects with the original error).
-    A second `csrf_failed` or `reauth_required` reaches the caller.
+    A second `csrf_failed` or `reauth_required` reaches the caller. `403
+    privacy_notice_required` refetches `/auth/me` once (concurrent failures
+    share it; nothing is retried), and the guard then shows the privacy
+    notice (#174).
   - Login and reauthentication are direct calls, not mutations, so the
     password never enters the TanStack mutation cache. Login and logout clear
     every cached response.

@@ -68,6 +68,9 @@ into families (each student and each guardian belongs to at most one
 family), the grouping that family billing will build on. A signed-in
 guardian sees only their own family; belonging to a family doesn't show a
 child's records, which still follow the guardian's links.
+Every user must accept a versioned privacy notice before using the app, and
+again whenever a new version is published; the current text is a draft
+pending legal review.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
@@ -200,8 +203,10 @@ account ends when the new password is set.
 
 Open the web app at <http://127.0.0.1:5173> and sign in with the demo Owner
 (`demo.owner` / `classora-demo-owner`, from `make seed-demo`) or with the
-account from `make bootstrap-owner`. To call the API directly, log in against
-it and keep the session cookie, for example with the demo Owner:
+account from `make bootstrap-owner`. The first time an account signs in, the
+app shows the privacy notice; accept it to continue. To call the API directly,
+log in against it and keep the session cookie, for example with the demo
+Owner:
 
 ```bash
 curl -s -c cookies.txt -H 'Content-Type: application/json' \
@@ -217,7 +222,11 @@ curl -s -b cookies.txt -X POST -H 'Origin: http://127.0.0.1:5173' \
 Login returns the signed-in user, including a `csrf_token`, and sets the
 session cookie; `GET /api/v1/auth/me` returns the same user, roles,
 permissions and token, and `POST /api/v1/auth/logout` ends the session. A
-failed login answers `401 invalid_credentials`. After 10 failed logins for one
+failed login answers `401 invalid_credentials`. Until the account has
+accepted the current privacy notice (`privacy_notice_required` in the login
+response), other API routes answer `403 privacy_notice_required`; accept it
+with `POST /api/v1/privacy-notice/acceptance` and `{"version": 1}` (same
+headers as logout). After 10 failed logins for one
 username, or 50 login attempts from one address, in a 15-minute window, login
 answers `429 rate_limited` until the window ends (the `Retry-After` header gives
 the seconds to wait), even with the right password. Every `POST`, `PUT`,
