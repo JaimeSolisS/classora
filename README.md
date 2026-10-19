@@ -63,6 +63,11 @@ have several guardians, and a guardian several children). A signed-in
 guardian sees only their linked children (minors in full, adult students
 without personal details), never the child's other guardians, and unlinking
 takes effect on their next request.
+On the Families page, Owners and administrators group students and guardians
+into families (each student and each guardian belongs to at most one
+family), the grouping that family billing will build on. A signed-in
+guardian sees only their own family; belonging to a family doesn't show a
+child's records, which still follow the guardian's links.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

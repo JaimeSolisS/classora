@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { SIGNED_OUT_STATE } from '../support/auth';
+import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 
@@ -17,7 +18,9 @@ const THEMES = ['light', 'dark'] as const;
 // levels page and the seeded "Primaria" level's page (opened from the list),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2), /guardians, /guardians/new and the detail
-// of a guardian the scan creates and links to a new student first (#34 K2)
+// of a guardian the scan creates and links to a new student first (#34 K2),
+// /families, /families/new and the detail of a family the scan creates with
+// that student and guardian (#172 J2)
 // are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
@@ -37,6 +40,11 @@ interface ScannedRoute {
    * is then the guardian's detail.
    */
   createsGuardian?: boolean;
+  /**
+   * First create a family with a new student and guardian through the API;
+   * `path` is then the family's detail.
+   */
+  createsFamily?: boolean;
 }
 
 const ROUTES: ScannedRoute[] = [
@@ -81,6 +89,15 @@ const ROUTES: ScannedRoute[] = [
     path: '/guardians/<created>',
     signedIn: true,
     createsGuardian: true,
+  },
+  { name: 'families', path: '/families', signedIn: true },
+  { name: 'family-new', path: '/families/new', signedIn: true },
+  {
+    name: 'family-detail',
+    path: '/families/<created>',
+    signedIn: true,
+    createsGuardian: true,
+    createsFamily: true,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },
@@ -140,6 +157,15 @@ for (const theme of THEMES) {
             });
             await linkGuardianViaApi(page, id, guardianId);
             path = `/guardians/${guardianId}`;
+            if (route.createsFamily) {
+              const familyId = await createFamilyViaApi(
+                page,
+                `Familia Accesible ${sfx}`,
+              );
+              await addToFamilyViaApi(page, familyId, 'students', id);
+              await addToFamilyViaApi(page, familyId, 'guardians', guardianId);
+              path = `/families/${familyId}`;
+            }
           }
         }
         await page.goto(path);

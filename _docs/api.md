@@ -104,6 +104,8 @@ Codes in use today:
 | `guardian_account_in_use` | 409 | A guardian profile's `user_id` is already linked to another profile (see Guardians and links). |
 | `guardian_unavailable` | 422 | Linking a guardian profile that is unknown or inactive; the field error is on `["body","guardian_id"]` (see Guardians and links). |
 | `guardian_already_linked` | 409 | Linking a guardian who is already linked to this student (see Guardians and links). |
+| `family_member_conflict` | 409 | Adding a student or guardian profile who already belongs to another family; remove them from it first (see Families). |
+| `family_inactive` | 409 | Adding a member to an inactive family; reactivate it first (see Families). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -672,7 +674,7 @@ without a login.
 | ----- | ------ | ----- |
 | `GET /api/v1/students` | `require("student.view")`, list filtered by record policy | Query `q` (name search, see below), `status` (`active` (default), `inactive` or `all`), `education_level_id` (an unknown id gives an empty page), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `is_minor`, `school_grade`, `education_level` (`{id, name, is_active}` or `null`); never a birthdate or contact data. |
 | `POST /api/v1/students` | `require("student.manage")` | Body `{given_names, family_names, birthdate, email?, phone?, school_name?, school_grade?, education_level_id?, emergency_contacts: [{name, relationship, phone}] (1-5)}`. `201` with the detail. |
-| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `guardians` (#34), `version`, `created_at`, `updated_at`. |
+| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `guardians` (#34), `family` (#172), `version`, `created_at`, `updated_at`. |
 | `PATCH /api/v1/students/{student_id}` | `require("student.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `emergency_contacts` is the complete new list. |
 
 - **Who sees which student** (record policy, pure functions in
@@ -742,7 +744,7 @@ guardian without one, ADR-0007 D18).
 | ----- | ------ | ----- |
 | `GET /api/v1/guardians` | `require("guardian.view")`, list filtered by record policy | Query `q` (the Students name search), `status` (`active` (default), `inactive` or `all`), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `has_account`, `student_count`; no contact data. |
 | `POST /api/v1/guardians` | `require("family.manage")` | Body `{given_names, family_names, email?, phone?, user_id?}`. `201` with the detail. |
-| `GET /api/v1/guardians/{guardian_id}` | `require("guardian.view")` + record policy | Fields: the item's (without `student_count`) plus `email`, `phone`, `account`, `students` (`[{student_id, given_names, family_names, relationship, is_minor, is_active}]`), `version`, `created_at`, `updated_at`. |
+| `GET /api/v1/guardians/{guardian_id}` | `require("guardian.view")` + record policy | Fields: the item's (without `student_count`) plus `email`, `phone`, `account`, `students` (`[{student_id, given_names, family_names, relationship, is_minor, is_active}]`), `family` (#172), `version`, `created_at`, `updated_at`. |
 | `PATCH /api/v1/guardians/{guardian_id}` | `require("family.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `null` clears `email`, `phone` and `user_id`. |
 | `POST /api/v1/students/{student_id}/guardians` | `require("family.manage")` + record policy (student) | Body `{guardian_id, relationship}`. `201` with the student's guardian item. |
 | `DELETE /api/v1/students/{student_id}/guardians/{guardian_id}` | `require("family.manage")` + record policy (student) | `204`. An unknown student, an unknown guardian and no link are the same `404`. |
@@ -794,6 +796,70 @@ guardian without one, ADR-0007 D18).
   `create`/`update`/`delete`, unmasked; an account link is an `update` of
   `user_id`); no named event and no `details`. `403`, `404`, `409`, `422`
   and a body that changes nothing write no event.
+
+### Families
+
+Implemented by M2-16b (#172; spec §2, §6/W4, §16) in
+`apps/api/app/modules/families/`. A family groups students and guardian
+profiles; M6-05 attaches the family billing account to it (one per family).
+It has no money, ledger or billing account yet.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/families` | `require("guardian.view")`, list filtered by record policy | Query `q` (the Students name search on `name`), `status` (`active` (default), `inactive` or `all`), offset pagination. Items: `id`, `name`, `is_active`, `student_count`; no guardian count. |
+| `POST /api/v1/families` | `require("family.manage")` | Body `{name}`. `201` with the detail (`version` 1, no members). |
+| `GET /api/v1/families/{family_id}` | `require("guardian.view")` + record policy | Fields: `id`, `name`, `is_active`, `students` (`[{student_id, given_names, family_names, is_minor, is_active}]`), `guardians` (`[{guardian_id, given_names, family_names, phone, has_account, is_active}]`), `version`, `created_at`, `updated_at`; both lists by family names then given names. |
+| `PATCH /api/v1/families/{family_id}` | `require("family.manage")` + record policy | Body `{version, name?, is_active?}`; `null` is `422`. |
+| `PUT /api/v1/families/{family_id}/students/{student_id}` | `require("family.manage")` | `204`, idempotent. |
+| `DELETE /api/v1/families/{family_id}/students/{student_id}` | `require("family.manage")` | `204`. |
+| `PUT /api/v1/families/{family_id}/guardians/{guardian_id}` | `require("family.manage")` | `204`, idempotent. |
+| `DELETE /api/v1/families/{family_id}/guardians/{guardian_id}` | `require("family.manage")` | `204`. |
+
+- **One family each** (owner decision on #172, E2 (a)): a student belongs to
+  at most one family, and so does a guardian profile; the database enforces
+  it with unique constraints. A family has any number of students and
+  guardians. Names are trimmed, 1-200 characters, and not unique.
+- **Membership is not access.** What a guardian sees of a student still
+  follows the student-guardian links only (see Guardians and links). A
+  guardian can be linked to a child in another family (for example a parent
+  who doesn't pay), and a family member who isn't linked to a child doesn't
+  see that child's record (`404`). Billing (M6) follows the family; academic
+  visibility follows the link and consent (ADR-0007 D17).
+- **Adding a member (`PUT`) is idempotent:** a member already in this family
+  is `204` and writes nothing. Check order: an unknown family or member (the
+  same `404`) → an inactive family (`409 family_inactive`) → the member is in
+  **another** family (`409 family_member_conflict`; a concurrent add of one
+  member to two families gives one `204` and one `409`) → the insert.
+  Inactive students and guardian profiles may be added.
+- **Moving is remove, then add:** never one step, so a move can't happen by
+  accident (M6 may later refuse a removal while a family has open charges).
+  `DELETE` of someone who isn't a member of **this** family, or of unknown
+  ids, is `404`. Membership never changes the family's, the student's or the
+  guardian's `version`, so adding members while someone renames the family
+  causes no `409`.
+- **No hard delete:** `is_active: false` deactivates and `true` reactivates;
+  the members are kept. An inactive family takes no new members and stays
+  visible to its own guardians (with `status=inactive` or `all` in the
+  list). Check order of the `PATCH`: `422` → `404` → `409
+  version_conflict` → the update; a body that changes nothing returns `200`
+  with no new version. No reauthentication.
+- **Who sees what:** staff with `guardian.view` (Owners, Administrators,
+  Academic Coordinators, Finance Staff) see every family and every guardian
+  in it. A guardian sees only the family of their **active** profile: its
+  name and its students' names, and only their own profile in `guardians`
+  (never the co-guardians). Any other family is `404`, like a missing one,
+  and the list has at most that one row. Removing the guardian from the
+  family or deactivating their profile applies on their next request.
+  Tutors and student users get `403`.
+- **`family` on the details:** `StudentDetail.family` and
+  `GuardianDetail.family` are `{id, name}` or `null`: filled for viewers with
+  a staff role and `guardian.view`, and on `GuardianDetail` also for the
+  guardian viewing their own profile; `null` otherwise (and when the profile
+  belongs to no family).
+- **Audit:** automatic only (`families` `create`/`update`;
+  `family_students` and `family_guardians` `create`/`delete` with their
+  ids); no named event and no `details`. An idempotent re-add, `403`, `404`,
+  `409`, `422` and a body that changes nothing write no event.
 
 ### Response headers
 
