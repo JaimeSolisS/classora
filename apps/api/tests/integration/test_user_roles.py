@@ -548,3 +548,31 @@ def test_failed_changes_write_nothing(module_seeded_url, client, clock, case):
 
     assert response.status_code in (403, 404, 409, 422)
     assert audit_ids(module_seeded_url) == before
+
+
+def test_an_administrator_needs_the_delegation_to_remove_their_own_administrator_role(
+    module_seeded_url, client, clock
+):
+    # On your own record may_manage_user always holds, so only the D4 rule
+    # (removing needs the same authority as adding) refuses this.
+    plain = create_user(module_seeded_url, roles=(ADMINISTRATOR, TUTOR))
+    delegated = create_user(
+        module_seeded_url,
+        roles=(ADMINISTRATOR, TUTOR),
+        delegations=(USER_ADMIN_ROLE_ASSIGN,),
+    )
+    url = module_seeded_url
+
+    plain_cookie = staff(client, plain.username)
+    assert change(client, plain_cookie, url, plain.id, [TUTOR]) == DENIED
+    assert roles_of(url, plain.id) == [ADMINISTRATOR, TUTOR]
+    # Adding a role they may assign to themselves is fine (and signs them out).
+    assert (
+        change(client, plain_cookie, url, plain.id, [ADMINISTRATOR, TUTOR, GUARDIAN])
+        == OK
+    )
+
+    delegated_cookie = staff(client, delegated.username)
+    assert change(client, delegated_cookie, url, delegated.id, [TUTOR]) == OK
+    assert roles_of(url, delegated.id) == [TUTOR]
+    assert delegations_of(url, delegated.id) == []
