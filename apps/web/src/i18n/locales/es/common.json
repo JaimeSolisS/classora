@@ -50,5 +50,39 @@
     "reference": "Referencia: <id>{{requestId}}</id>",
     "retry": "Reintentar",
     "loading": "Cargando…"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "username": "Nombre de usuario",
+      "password": "Contraseña",
+      "submit": "Iniciar sesión",
+      "submitting": "Iniciando sesión…",
+      "usernameRequired": "Escribe tu nombre de usuario.",
+      "passwordRequired": "Escribe tu contraseña.",
+      "tooLong": "Es demasiado largo."
+    },
+    "reauth": {
+      "title": "Confirma tu contraseña",
+      "description": "Por seguridad, vuelve a escribir tu contraseña para continuar.",
+      "password": "Contraseña",
+      "passwordRequired": "Escribe tu contraseña.",
+      "confirm": "Confirmar",
+      "confirming": "Confirmando…",
+      "cancel": "Cancelar"
+    },
+    "session": {
+      "loading": "Cargando tu sesión…"
+    },
+    "userMenu": {
+      "signedInAs": "Sesión iniciada como {{name}}",
+      "signOut": "Cerrar sesión",
+      "signingOut": "Cerrando sesión…"
+    },
+    "forbidden": {
+      "title": "No tienes acceso a esta página",
+      "message": "Pide a un administrador que revise tus permisos.",
+      "backHome": "Volver al inicio"
+    }
   }
 }

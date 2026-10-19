@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { common } from './support/catalog';
 
+// The page tests run signed in (the shared demo Owner state, #28 H1): every
+// app page is behind the session guard. The /health tests need no session.
+
 test('the app shell loads without errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));

@@ -3,8 +3,12 @@ import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet } from 'react-router';
 import { Button } from '@/components/ui/button';
+import { canAccess } from '@/features/auth/access';
+import { UserMenu } from '@/features/auth/UserMenu';
+import { useSession } from '@/features/auth/useSession';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/ui';
+import { NAV_ITEMS, type NavItem } from '../navigation';
 import { APP_NAME } from '../useDocumentTitle';
 import { HeaderLanguageSwitcher, HeaderThemeSwitcher } from './HeaderSwitchers';
 
@@ -23,14 +27,26 @@ function skipToMain(event: MouseEvent<HTMLAnchorElement>) {
   }
 }
 
+interface AppLayoutProps {
+  /** The navigation items (tests pass their own). */
+  navItems?: readonly NavItem[];
+}
+
 // The shell around every page: skip link, header (brand, primary navigation,
-// theme and language switchers) and the main area. Below `lg` the navigation
-// and both switchers collapse behind a toggle; the open state lives in the
-// UI store.
-export function AppLayout() {
+// theme and language switchers, the signed-in user and "Sign out") and the
+// main area. Below `lg` the navigation, the switchers and the user menu
+// collapse behind a toggle; the open state lives in the UI store. Signed out
+// (the login page), the header has no navigation and no user menu. The items
+// shown are the ones the user may open (UX only, #28 F4).
+export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
   const { t } = useTranslation();
   const navOpen = useUiStore((state) => state.navOpen);
   const toggleNav = useUiStore((state) => state.toggleNav);
+  const session = useSession();
+  const user = session.status === 'signedIn' ? session.user : null;
+  const visibleItems = user
+    ? navItems.filter((item) => canAccess(user, item))
+    : [];
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -68,25 +84,30 @@ export function AppLayout() {
               navOpen ? 'flex' : 'hidden',
             )}
           >
-            <nav aria-label={t('nav.label')}>
-              <ul className="flex flex-col gap-1 lg:flex-row">
-                <li>
-                  <NavLink
-                    to="/"
-                    end
-                    className={cn(
-                      'inline-flex min-h-9 items-center px-2 text-sm font-medium hover:bg-muted aria-[current=page]:underline aria-[current=page]:underline-offset-4',
-                      focusRing,
-                    )}
-                  >
-                    {t('nav.home')}
-                  </NavLink>
-                </li>
-              </ul>
-            </nav>
-            <div className="flex flex-wrap gap-4 lg:ml-auto">
+            {visibleItems.length > 0 ? (
+              <nav aria-label={t('nav.label')}>
+                <ul className="flex flex-col gap-1 lg:flex-row">
+                  {visibleItems.map((item) => (
+                    <li key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        className={cn(
+                          'inline-flex min-h-9 items-center px-2 text-sm font-medium hover:bg-muted aria-[current=page]:underline aria-[current=page]:underline-offset-4',
+                          focusRing,
+                        )}
+                      >
+                        {t(item.labelKey)}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-4 lg:ml-auto">
               <HeaderThemeSwitcher />
               <HeaderLanguageSwitcher />
+              <UserMenu />
             </div>
           </div>
         </div>

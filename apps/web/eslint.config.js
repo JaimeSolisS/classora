@@ -49,6 +49,31 @@ export default defineConfig([
       ],
     },
   },
+  // Forms (#28): Zod is imported only through src/lib/forms.ts, which turns
+  // off its eval probe that the Content Security Policy would report.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/forms.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'zod',
+              message: "Import `z` from '@/lib/forms' (CSP-safe settings).",
+            },
+          ],
+          patterns: [
+            {
+              group: ['zod/*'],
+              message: "Import `z` from '@/lib/forms' (CSP-safe settings).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     files: ['**/*.js'],
     extends: [js.configs.recommended],

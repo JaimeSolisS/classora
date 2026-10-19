@@ -253,6 +253,8 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** @enum {string} */
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * ProblemDetails
          * @description The body of every error response (RFC 9457 Problem Details).
@@ -298,6 +300,8 @@ export interface components {
              */
             reauthenticated_until: string;
         };
+        /** @enum {string} */
+        RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
         /**
          * SessionUser
          * @description The signed-in user (``POST /auth/login`` and ``GET /auth/me``).
@@ -320,12 +324,12 @@ export interface components {
              * Roles
              * @description Role codes, sorted.
              */
-            roles: string[];
+            roles: components["schemas"]["RoleCode"][];
             /**
              * Permissions
              * @description Effective permission codes, sorted.
              */
-            permissions: string[];
+            permissions: components["schemas"]["PermissionCode"][];
             /**
              * Csrf Token
              * @description The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only.

@@ -50,5 +50,39 @@
     "reference": "Reference: <id>{{requestId}}</id>",
     "retry": "Try again",
     "loading": "Loading…"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "username": "Username",
+      "password": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "usernameRequired": "Enter your username.",
+      "passwordRequired": "Enter your password.",
+      "tooLong": "This is too long."
+    },
+    "reauth": {
+      "title": "Confirm your password",
+      "description": "For your security, enter your password again to continue.",
+      "password": "Password",
+      "passwordRequired": "Enter your password.",
+      "confirm": "Confirm",
+      "confirming": "Confirming…",
+      "cancel": "Cancel"
+    },
+    "session": {
+      "loading": "Loading your session…"
+    },
+    "userMenu": {
+      "signedInAs": "Signed in as {{name}}",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    },
+    "forbidden": {
+      "title": "You don't have access to this page",
+      "message": "Ask an administrator to check your permissions.",
+      "backHome": "Back to home"
+    }
   }
 }

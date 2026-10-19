@@ -22,7 +22,10 @@ shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
 cookie) that expire after a period of inactivity or a maximum lifetime, with
-rate limits on login and password confirmation; there is no login screen yet.
+rate limits on login and password confirmation. The web app has a sign-in
+page and sign-out, keeps users signed in with that session, asks for the
+password again before sensitive actions, and shows only the pages and
+navigation a user's role allows (there are no business screens yet).
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
@@ -48,9 +51,11 @@ background worker and the web app in the background, and returns once all of
 them are healthy. The API reaches PostgreSQL through PgBouncer (connection
 pooling). Then open:
 
-- Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up). Use
-  exactly this address (`127.0.0.1`, not `localhost`): it is `APP_ORIGIN`, and
-  the API refuses changes from any other origin.
+- Web app: <http://127.0.0.1:5173>. It opens the sign-in page; after signing in
+  (see [Logging in locally](#logging-in-locally)) the home page shows
+  `API: live` when the API is up. Use exactly this address (`127.0.0.1`, not
+  `localhost`): it is `APP_ORIGIN`, and the API refuses changes from any other
+  origin.
 - Liveness: <http://127.0.0.1:8000/health/live>
 - Readiness (includes PgBouncer and PostgreSQL): <http://127.0.0.1:8000/health/ready>
 
@@ -140,8 +145,10 @@ Owner account exists.
 
 ### Logging in locally
 
-The web login screen arrives with a later feature. Until then, log in against
-the API and keep the session cookie, for example with the demo Owner:
+Open the web app at <http://127.0.0.1:5173> and sign in with the demo Owner
+(`demo.owner` / `classora-demo-owner`, from `make seed-demo`) or with the
+account from `make bootstrap-owner`. To call the API directly, log in against
+it and keep the session cookie, for example with the demo Owner:
 
 ```bash
 curl -s -c cookies.txt -H 'Content-Type: application/json' \

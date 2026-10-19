@@ -1,6 +1,7 @@
 """Permission catalog, role-assignment authority and resolution (M2-02 C, G1)."""
 
 import re
+from typing import get_args
 
 import pytest
 
@@ -24,6 +25,7 @@ from app.modules.identity.permissions import (
     may_assign_role,
     resolve_permissions,
 )
+from app.modules.identity.schemas import PermissionCode, RoleCode
 
 CODE_PATTERN = re.compile(r"^[a-z_]+(\.[a-z_]+)+$")
 
@@ -235,3 +237,16 @@ def test_non_active_states_have_no_permissions(state):
     assert (
         resolve_permissions(state, [ADMINISTRATOR], ["payroll.finalize"]) == frozenset()
     )
+
+
+# --- #28 F3: the SessionUser enums list exactly the catalog --------------------
+
+
+def test_session_user_enums_match_the_catalog():
+    roles = get_args(RoleCode.__value__)
+    permissions = get_args(PermissionCode.__value__)
+    assert set(roles) == set(ROLE_CODES)
+    assert set(permissions) == PERMISSION_CODES
+    # Sorted, so the OpenAPI document and the generated unions are stable.
+    assert list(roles) == sorted(roles)
+    assert list(permissions) == sorted(permissions)

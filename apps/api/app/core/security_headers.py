@@ -12,7 +12,7 @@ value a route set is replaced:
   or script.
 
 The SPA's own headers (Content Security Policy, framing) are set where the
-SPA is served, not here (``apps/web/security-headers.ts``).
+SPA is served, not here (``apps/web/src/security-headers.ts``).
 """
 
 from typing import Final

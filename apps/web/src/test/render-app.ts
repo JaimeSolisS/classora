@@ -2,10 +2,10 @@ import type { QueryClient } from '@tanstack/react-query';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, type RouteObject } from 'react-router';
-import { vi } from 'vitest';
 import App from '@/App';
 import { createQueryClient } from '@/app/queryClient';
 import { routes } from '@/app/router';
+import { clearCsrfToken } from '@/features/auth/csrf';
 
 // Test helpers: render the real App (providers + router) on a memory router
 // with a fresh query client, as main.tsx does with the browser router.
@@ -18,6 +18,9 @@ import { routes } from '@/app/router';
 export interface RenderedApp {
   container: HTMLDivElement;
   queryClient: QueryClient;
+  router: ReturnType<typeof createMemoryRouter>;
+  /** The router's current path, search and hash. */
+  location: () => string;
   unmount: () => void;
 }
 
@@ -35,10 +38,17 @@ export function mountApp(
   return {
     container,
     queryClient,
+    router,
+    location: () => {
+      const { pathname, search, hash } = router.state.location;
+      return `${pathname}${search}${hash}`;
+    },
     unmount: () => {
       act(() => root.unmount());
       container.remove();
       queryClient.clear();
+      // The token is module state: never carried into the next test.
+      clearCsrfToken();
     },
   };
 }
@@ -67,13 +77,6 @@ export function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-/** Stubs fetch with a pending-forever response (no network in tests). */
-export function stubPendingFetch() {
-  const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
 }
 
 export function buttonNamed(

@@ -2,8 +2,44 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+# Named string enums in OpenAPI, so the generated web client gets
+# ``RoleCode`` and ``PermissionCode`` unions (#28 F3). They list exactly the
+# catalog in ``app.modules.identity.permissions`` (sorted); a unit test keeps
+# them equal to ``ROLE_CODES`` and ``PERMISSION_CODES``.
+type RoleCode = Literal[
+    "academic_coordinator",
+    "administrator",
+    "finance_staff",
+    "guardian",
+    "owner",
+    "student",
+    "tutor",
+]
+type PermissionCode = Literal[
+    "audit.view",
+    "catalog.manage",
+    "consent.record",
+    "family.manage",
+    "finance.refund.approve",
+    "guardian.view",
+    "payroll.finalize",
+    "registration.review",
+    "schedule.override",
+    "student.manage",
+    "student.view",
+    "user.admin_role.assign",
+    "user.delegation.manage",
+    "user.invite",
+    "user.manage",
+    "user.owner_role.assign",
+    "user.password_reset.issue",
+    "user.role.assign",
+    "user.view",
+]
 
 
 class LoginRequest(BaseModel):
@@ -25,8 +61,10 @@ class SessionUser(BaseModel):
     id: uuid.UUID
     username: str
     display_name: str
-    roles: list[str] = Field(description="Role codes, sorted.")
-    permissions: list[str] = Field(description="Effective permission codes, sorted.")
+    roles: list[RoleCode] = Field(description="Role codes, sorted.")
+    permissions: list[PermissionCode] = Field(
+        description="Effective permission codes, sorted."
+    )
     csrf_token: str = Field(
         description=(
             "The session's CSRF token: send it as X-CSRF-Token on POST, PUT,"

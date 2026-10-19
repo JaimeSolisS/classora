@@ -192,6 +192,31 @@ Rules for every user-visible string, date and amount in `apps/web`
 
 Story-level axe rule exceptions: none.
 
+## Forms
+
+The form stack (architecture §8), set by the login form and the password
+dialog (#28, `apps/web/src/features/auth/`):
+
+- React Hook Form with a Zod schema through `zodResolver`. Import `z` from
+  `@/lib/forms`, never from `zod` (ESLint enforces it): that module turns on
+  Zod's `jitless` mode, because the Content Security Policy has no
+  `'unsafe-eval'`.
+- Every field has a visible `<label>` linked with `htmlFor`/`id`, and the
+  right `autocomplete` token. Placeholders are never the only label.
+- Schema messages are catalog keys, translated when shown, so a language
+  switch re-renders them without losing typed values.
+- A field error sets `aria-invalid="true"` and is linked with
+  `aria-describedby` to the error text under the field. On a failed submit,
+  focus moves to the first invalid field (`shouldFocusError`).
+- Forms set `noValidate` (messages come from the catalogs) and
+  `method="post"`, and the submit handler prevents the native submission.
+- The submit button is disabled while the request is pending and shows the
+  `Spinner` with a visible label; one submit sends one request.
+- A request error shows in one `role="alert"` region (`ErrorAlert`) above the
+  fields.
+- Passwords stay in the form's own state: never in a store, browser storage,
+  a log or the TanStack cache (direct calls, not mutations).
+
 ## Feedback
 
 Loading and error primitives in `apps/web/src/components/feedback/`
