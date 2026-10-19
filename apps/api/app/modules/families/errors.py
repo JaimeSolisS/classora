@@ -92,3 +92,23 @@ class GuardianAlreadyLinkedError(AppError):
     status = 409
     code = "guardian_already_linked"
     detail = "That guardian is already linked to this student."
+
+
+# --- Family groupings (#172 G2) ----------------------------------------------------
+
+
+class FamilyMemberConflictError(AppError):
+    """The student or guardian already belongs to **another** family (owner
+    decision #172 E2 (a): one family each). Remove them from it first."""
+
+    status = 409
+    code = "family_member_conflict"
+    detail = "Already belongs to another family. Remove them from it first."
+
+
+class FamilyInactiveError(AppError):
+    """An inactive family can't receive new members."""
+
+    status = 409
+    code = "family_inactive"
+    detail = "Reactivate the family to add members."

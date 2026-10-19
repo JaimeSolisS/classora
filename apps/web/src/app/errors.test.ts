@@ -52,6 +52,8 @@ const API_CODES = [
   'guardian_account_in_use',
   'guardian_unavailable',
   'guardian_already_linked',
+  'family_member_conflict',
+  'family_inactive',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

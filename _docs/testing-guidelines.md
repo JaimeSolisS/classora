@@ -223,8 +223,12 @@ describes the route declarations and the 401/403/404 rule.
   rows: build them with `guardian_support` (API) or the
   `tests/factories/families.py` helpers `GuardianFactory` and
   `link_guardian(session, student, guardian, relationship="mother")` (for
-  #34b, #35 and later milestones). Guardian facts are loaded on every
+  #35 and later milestones). Guardian facts are loaded on every
   request; tests prove a change applies on the same session's next request.
+  Families (#172) are real rows too: `family_support` (API) or
+  `FamilyFactory` and `add_to_family(session, family, *members)` (for M6).
+  Family membership is never student access: a family test that grants a
+  guardian a student must link them (#34).
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
   that does not exist. Record policies (`can_<action>_<resource>`) are
@@ -331,6 +335,12 @@ follows these rules.
     to a guardian profile in `e2e/tests/families/guardians.spec.ts` (#34);
     it sees the linked student until the Owner unlinks it. The same rules:
     created by that test in every run, no other test may use the name.
+  - `e2e.families.parent`: the Parent/Guardian account in
+    `e2e/tests/families/families.spec.ts` (#172), invited by the shared demo
+    Owner session and redeemed without a login
+    (`support/families.ts` `createGuardianAccountViaPage`); it sees its own
+    family until the Owner removes its profile from it. The same rules:
+    created by that test in every run, no other test may use the name.
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,
@@ -340,8 +350,8 @@ follows these rules.
   suffix in their family names (for example `Ñúñez Pérez <suffix>`), and
   specs search with that suffix, so parallel tests never see each other's
   students. There are no demo students. Guardian profiles a spec creates
-  (#34) follow the same rule (`Laura Ñúñez <suffix>`); there are no demo
-  guardians.
+  (#34) and families (#172, `Familia Ñúñez <suffix>`) follow the same rule;
+  there are no demo guardians or families.
 - **Never change `demo.owner` in a spec** (its profile, state, roles or
   password): every test shares its signed-in session (`storageState`). A test
   that needs an Owner to act signs `demo.owner` in in its own fresh context

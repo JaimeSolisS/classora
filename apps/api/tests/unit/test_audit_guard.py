@@ -17,6 +17,9 @@ from app.core.audit import Audited, audited_table_names, sensitive_column_proble
 from app.core.models import Base, StandardColumns
 from app.modules.catalog.models import EducationLevel, Subject
 from app.modules.families.models import (
+    Family,
+    FamilyGuardian,
+    FamilyStudent,
     Guardian,
     Student,
     StudentEmergencyContact,
@@ -58,6 +61,9 @@ def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
         EducationLevel,
+        Family,
+        FamilyGuardian,
+        FamilyStudent,
         Guardian,
         RegistrationRequest,
         Student,
@@ -73,7 +79,7 @@ def test_the_guard_scans_the_real_audited_models():
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
     # Student profiles (#33 A5): no sensitive column either; personal fields
     # are audited unmasked (spec §9 prior and new values). Guardian profiles
-    # and links (#34 A5): the same.
+    # and links (#34 A5), families and their membership (#172 A3): the same.
     for unmasked in (
         EducationLevel,
         Subject,
@@ -81,6 +87,9 @@ def test_the_guard_scans_the_real_audited_models():
         StudentEmergencyContact,
         Guardian,
         StudentGuardian,
+        Family,
+        FamilyStudent,
+        FamilyGuardian,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()

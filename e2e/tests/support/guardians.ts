@@ -7,7 +7,16 @@ import { api, csrfTokenOf } from './api';
 
 export async function createGuardianViaApi(
   page: Page,
-  { givenNames, familyNames }: { givenNames: string; familyNames: string },
+  {
+    givenNames,
+    familyNames,
+    userId,
+  }: {
+    givenNames: string;
+    familyNames: string;
+    /** Links this login account (one holding the guardian role, #172). */
+    userId?: string;
+  },
 ): Promise<string> {
   const me = await api(page, '/api/v1/auth/me');
   expect(me.status).toBe(200);
@@ -17,6 +26,7 @@ export async function createGuardianViaApi(
       given_names: givenNames,
       family_names: familyNames,
       phone: '55 0000 0002',
+      ...(userId ? { user_id: userId } : {}),
     },
     headers: { 'X-CSRF-Token': csrfTokenOf(me) },
   });

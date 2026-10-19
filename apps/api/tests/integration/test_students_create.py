@@ -53,6 +53,7 @@ DETAIL_FIELDS = {
     "education_level",
     "personal",
     "guardians",
+    "family",
     "version",
     "created_at",
     "updated_at",

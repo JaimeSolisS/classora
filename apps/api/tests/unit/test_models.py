@@ -43,7 +43,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # identity (M2-02, auth_sessions M2-05, account_tokens M2-11,
     # registration_requests M2-11b), then catalog (education_levels and
     # subjects, M2-14), then families (students and their emergency
-    # contacts, M2-15; guardians and student_guardians, M2-16); audit_events
+    # contacts, M2-15; guardians and student_guardians, M2-16; families,
+    # family_students and family_guardians, M2-16b); audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
     assert target_metadata is Base.metadata
@@ -65,6 +66,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "student_emergency_contacts",
         "guardians",
         "student_guardians",
+        "families",
+        "family_students",
+        "family_guardians",
     }
 
 

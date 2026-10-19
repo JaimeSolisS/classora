@@ -1,5 +1,5 @@
-"""Student profiles, their emergency contacts, guardian profiles and the
-student-guardian links (spec §4, §12; #33, #34).
+"""Student profiles, their emergency contacts, guardian profiles, the
+student-guardian links and family groupings (spec §4, §12; #33, #34, #172).
 
 - ``students``: one profile per student, with or without a login (#35 links
   a login later). Personal details (``given_names``, ``family_names`` and a
@@ -30,6 +30,16 @@ creates (``unaccent()`` itself is only ``STABLE``).
   Unique per ``(student_id, guardian_id)``; created and hard-deleted, never
   edited (to change the relationship, unlink and link again). A link never
   changes either profile's ``version``.
+
+- ``families`` (#172): a named family grouping (spec §2 "family account
+  with multiple children"), which M6-05 attaches a billing account to.
+  Versioned; deactivated, never deleted. Names aren't unique.
+- ``family_students`` / ``family_guardians`` (#172): membership rows, created
+  and hard-deleted (the audit ``delete`` event keeps them). A student and a
+  guardian profile each belong to **at most one** family (owner decision #172
+  E2 (a)): ``uq_family_students_student_id`` / ``uq_family_guardians_guardian_id``.
+  Membership never changes a family's, student's or guardian's ``version``,
+  and it is **not** student access (the #34 links are).
 
 Profiles are never deleted by the application: they are deactivated
 (``is_active``). Both tables are :class:`~app.core.audit.Audited` with
@@ -100,6 +110,18 @@ exactly this constraint to ``409 guardian_account_in_use``."""
 LINK_UNIQUE: Final = "uq_student_guardians_student_guardian"
 """One link per student and guardian (#34 A3); a violation of exactly this
 constraint is ``409 guardian_already_linked``."""
+
+
+FAMILY_NAME_MAX_LENGTH: Final = 200
+FAMILY_SEARCH_INDEX: Final = "ix_families_search_name_trgm"
+FAMILY_INDEX_EXPRESSION: Final = "f_unaccent(lower(name::text))"
+"""``public.f_unaccent(lower(name))`` as PostgreSQL prints it back (see
+:data:`INDEX_EXPRESSION`)."""
+FAMILY_STUDENT_UNIQUE: Final = "uq_family_students_student_id"
+"""One family per student (#172 E2 (a)); a violation of exactly this
+constraint is ``409 family_member_conflict``."""
+FAMILY_GUARDIAN_UNIQUE: Final = "uq_family_guardians_guardian_id"
+"""One family per guardian profile (#172 E2 (a))."""
 
 
 def _trimmed(column: str) -> CheckConstraint:
@@ -241,3 +263,59 @@ class StudentGuardian(Audited, Model):
         index=True,
     )
     relationship: Mapped[str] = mapped_column(Text)
+
+
+class Family(Audited, VersionedMixin, Model):
+    """A family grouping (#172 A1): the future owner of a billing account
+    (M6-05). Membership is in :class:`FamilyStudent` and
+    :class:`FamilyGuardian`."""
+
+    __tablename__ = "families"
+    __table_args__ = (
+        _trimmed("name"),
+        _not_blank("name"),
+        Index(
+            FAMILY_SEARCH_INDEX,
+            literal_column(FAMILY_INDEX_EXPRESSION).label("search_name"),
+            postgresql_using="gin",
+            postgresql_ops={"search_name": "gin_trgm_ops"},
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(FAMILY_NAME_MAX_LENGTH))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class FamilyStudent(Audited, Model):
+    """A student's membership of a family (#172 A1): at most one per student."""
+
+    __tablename__ = "family_students"
+    __table_args__ = (UniqueConstraint("student_id", name=FAMILY_STUDENT_UNIQUE),)
+
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("families.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+
+
+class FamilyGuardian(Audited, Model):
+    """A guardian profile's membership of a family (#172 A1): at most one per
+    profile."""
+
+    __tablename__ = "family_guardians"
+    __table_args__ = (UniqueConstraint("guardian_id", name=FAMILY_GUARDIAN_UNIQUE),)
+
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("families.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    guardian_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="RESTRICT")
+    )

@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0015"
+HEAD = "0016"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -83,6 +83,7 @@ REGISTRATION_TABLES = ["registration_requests"]
 CATALOG_TABLES = ["education_levels", "subjects"]
 FAMILY_TABLES = ["student_emergency_contacts", "students"]
 GUARDIAN_TABLES = ["guardians", "student_guardians"]
+GROUPING_TABLES = ["families", "family_guardians", "family_students"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -155,6 +156,9 @@ def test_history_is_linear_with_one_head():
     guardians = script.get_revision("0015")
     assert guardians.down_revision == "0014"
     assert Path(guardians.path).name == "0015_families_guardians.py"
+    groupings = script.get_revision("0016")
+    assert groupings.down_revision == "0015"
+    assert Path(groupings.path).name == "0016_families_groupings.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -188,6 +192,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *CATALOG_TABLES,
             *FAMILY_TABLES,
             *GUARDIAN_TABLES,
+            *GROUPING_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
@@ -1310,4 +1315,93 @@ def test_student_guardians_columns_constraints_and_indexes(fresh_database_url):
         "pk_student_guardians",
         "uq_student_guardians_student_guardian",
         "ix_student_guardians_guardian_id",
+    }
+
+
+# --- 0016: family groupings (#172 A) ------------------------------------------------
+
+
+def test_0016_adds_exactly_the_family_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0015")
+    before = public_tables(fresh_database_url)
+    extensions = [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)]
+    command.upgrade(config, "0016")
+
+    assert public_tables(fresh_database_url) - before == set(GROUPING_TABLES)
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+
+    command.downgrade(config, "0015")
+
+    assert version_nums(fresh_database_url) == ["0015"]
+    assert public_tables(fresh_database_url) == before
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+    assert len(run_sql(fresh_database_url, F_UNACCENT)) == 1
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_families_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "families") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 200, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    constraints = _constraints(fresh_database_url, "families")
+    assert set(constraints) == {
+        "pk_families",
+        "ck_families_name_trimmed",
+        "ck_families_name_not_blank",
+    }
+    # The #33 A2 trim and not-blank CHECKs.
+    students = _constraints(fresh_database_url, "students")
+    assert constraints["ck_families_name_not_blank"] == students[
+        "ck_students_given_names_not_blank"
+    ].replace("given_names", "name")
+    indexes = _indexes(fresh_database_url, "families")
+    assert set(indexes) == {"pk_families", "ix_families_search_name_trgm"}
+    search = indexes["ix_families_search_name_trgm"]
+    assert "USING gin" in search
+    assert "gin_trgm_ops" in search
+    assert "f_unaccent(lower((name)::text))" in search  # as pg_indexes prints it
+
+
+@pytest.mark.parametrize(
+    ("table", "member", "target"),
+    [
+        ("family_students", "student_id", "students"),
+        ("family_guardians", "guardian_id", "guardians"),
+    ],
+)
+def test_family_membership_columns_constraints_and_indexes(
+    fresh_database_url, table, member, target
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, table) == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "family_id": ("uuid", "NO", None, None),
+        member: ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_family_id_families",
+        f"fk_{table}_{member}_{target}",
+        f"uq_{table}_{member}",
+    }
+    for fk in (f"fk_{table}_family_id_families", f"fk_{table}_{member}_{target}"):
+        assert "ON DELETE RESTRICT" in constraints[fk]
+    # One family per student and per guardian (#172 E2 (a)).
+    assert constraints[f"uq_{table}_{member}"] == f"UNIQUE ({member})"
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"uq_{table}_{member}",
+        f"ix_{table}_family_id",
     }

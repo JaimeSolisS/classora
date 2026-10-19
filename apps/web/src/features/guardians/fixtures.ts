@@ -4,6 +4,7 @@ import type {
   GuardianListItem,
   GuardianListPage,
 } from './api';
+import { NUNEZ_FAMILY_REF } from '@/features/students/fixtures';
 
 // Fixtures of the guardian pages (#34 I5, J3): synthetic people only. No
 // request.
@@ -48,6 +49,7 @@ export const LAURA: GuardianDetail = {
       is_active: false,
     },
   ],
+  family: { ...NUNEZ_FAMILY_REF },
   version: 2,
   created_at: AT,
   updated_at: AT,
@@ -67,6 +69,7 @@ export const RAMON: GuardianDetail = {
   has_account: false,
   account: null,
   students: [],
+  family: null,
   version: 1,
 };
 

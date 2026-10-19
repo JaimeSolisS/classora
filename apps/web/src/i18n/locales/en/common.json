@@ -35,7 +35,8 @@
     "registrations": "Account requests",
     "catalog": "Catalog",
     "students": "Students",
-    "guardians": "Guardians"
+    "guardians": "Guardians",
+    "families": "Families"
   },
   "notFound": {
     "title": "Page not found",
@@ -635,6 +636,82 @@
       "none": "No results.",
       "failed": "The search didn't work. Try again.",
       "results": "Results for “{{label}}”"
+    }
+  },
+  "families": {
+    "title": "Families",
+    "add": "Add family",
+    "edit": "Edit family",
+    "editNamed": "Edit {{name}}",
+    "back": "Back to families",
+    "backToFamily": "Back to the family",
+    "notFound": "This family doesn't exist.",
+    "saved": "Changes saved.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "familyLine": "Family",
+    "list": {
+      "search": "Search by name",
+      "status": "Status",
+      "statusAll": "All",
+      "empty": "No families match these filters.",
+      "noResults": "No results for this search.",
+      "name": "Name",
+      "students": "Students"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "fields": {
+      "name": "Family name"
+    },
+    "students": {
+      "title": "Students",
+      "add": "Add student",
+      "empty": "No students.",
+      "addTitle": "Add student",
+      "addBody": "Search for a student. A student can belong to one family only.",
+      "student": "Student",
+      "choose": "Choose a student from the results.",
+      "conflict": "This student already belongs to another family. Remove them from it first.",
+      "added": "Student added.",
+      "removed": "Student removed."
+    },
+    "guardians": {
+      "title": "Guardians",
+      "add": "Add guardian",
+      "empty": "No guardians.",
+      "addTitle": "Add guardian",
+      "addBody": "Search for an active guardian. A guardian can belong to one family only.",
+      "guardian": "Guardian",
+      "choose": "Choose a guardian from the results.",
+      "conflict": "This guardian already belongs to another family. Remove them from it first.",
+      "added": "Guardian added.",
+      "removed": "Guardian removed."
+    },
+    "addAction": "Add",
+    "remove": "Remove",
+    "removeNamed": "Remove {{name}}",
+    "removeTitle": "Remove from the family",
+    "removeBody": "{{name}} will no longer belong to this family.",
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate family",
+      "body": "The family and its members are kept, and it can be reactivated."
+    },
+    "reactivate": {
+      "action": "Reactivate",
+      "title": "Reactivate family",
+      "body": "The family can receive new members again."
+    },
+    "conflict": {
+      "reload": "Reload"
+    },
+    "validation": {
+      "nameRequired": "Enter the family name.",
+      "nameTooLong": "It can have up to 200 characters."
     }
   },
   "relationships": {
