@@ -11,6 +11,7 @@ for example::
 import app.core.audit  # noqa: F401  (audit_events)
 import app.core.ratelimit_models  # noqa: F401  (rate_limit_counters)
 import app.modules.catalog.models  # noqa: F401
+import app.modules.families.models  # noqa: F401
 import app.modules.identity.models  # noqa: F401
 from app.core.models import Base
 

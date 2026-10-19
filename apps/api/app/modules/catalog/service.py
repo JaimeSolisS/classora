@@ -12,6 +12,9 @@ DELETE RESTRICT``); a new or edited record offers only active ones, and an
 existing reference to a deactivated one stays valid and is still shown
 (:func:`get_education_level` returns inactive rows).
 :func:`ensure_active_education_level` checks a level a new record picks.
+:func:`get_level_for_reference` and :func:`education_level_references` give
+the id, name and active flag of levels a record points at (#33: one row,
+optionally locked ``FOR SHARE``, or one statement for a page of records).
 
 **Writes** (``catalog.manage``): create and ``PATCH`` (rename, reorder,
 deactivate, reactivate). Nothing is ever deleted. Every change sends the
@@ -39,6 +42,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
+from collections.abc import Collection
 from typing import Final
 
 from sqlalchemy import ColumnElement, Select, func, select
@@ -65,6 +69,7 @@ from app.modules.catalog.schemas import (
     CatalogStatus,
     EducationLevelCreate,
     EducationLevelDetail,
+    EducationLevelReference,
     EducationLevelUpdate,
     SubjectCreate,
     SubjectDetail,
@@ -181,6 +186,41 @@ async def ensure_active_education_level(
     row is locked ``FOR SHARE`` until the transaction ends, so it can't be
     deactivated in between."""
     await _active_level_for_share(session, level_id)
+
+
+def _reference(level: EducationLevel) -> EducationLevelReference:
+    return EducationLevelReference(
+        id=level.id, name=level.name, is_active=level.is_active
+    )
+
+
+async def get_level_for_reference(
+    session: AsyncSession, level_id: uuid.UUID, *, lock: bool
+) -> EducationLevelReference | None:
+    """The level a record points at (active or not), or ``None`` when unknown.
+
+    With ``lock`` the row is locked ``FOR SHARE`` until the transaction ends,
+    so a level checked as active can't be deactivated before the record that
+    picks it commits (#33 C2). One statement.
+    """
+    query = select(EducationLevel).where(EducationLevel.id == level_id)
+    if lock:
+        query = query.with_for_update(read=True)
+    level = await session.scalar(query.execution_options(populate_existing=True))
+    return None if level is None else _reference(level)
+
+
+async def education_level_references(
+    session: AsyncSession, level_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, EducationLevelReference]:
+    """The levels with these ids (unknown ids are left out), in one statement;
+    none when ``level_ids`` is empty."""
+    if not level_ids:
+        return {}
+    levels = await session.scalars(
+        select(EducationLevel).where(EducationLevel.id.in_(set(level_ids)))
+    )
+    return {level.id: _reference(level) for level in levels}
 
 
 def _subjects_query() -> Select[Subject, str]:

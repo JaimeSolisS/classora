@@ -729,6 +729,59 @@ export interface paths {
         patch: operations["update_subject_api_v1_subjects__subject_id__patch"];
         trace?: never;
     };
+    "/api/v1/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Students
+         * @description The students the caller may see. With ``q``: by relevance, then by
+         *     family names and given names; without: by family names, given names.
+         */
+        get: operations["list_students_api_v1_students_get"];
+        put?: never;
+        /**
+         * Create Student
+         * @description Add an active student profile with 1 to 5 emergency contacts.
+         */
+        post: operations["create_student_api_v1_students_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student
+         * @description One student profile. ``personal`` is ``null`` for a viewer with
+         *     limited access.
+         */
+        get: operations["get_student_api_v1_students__student_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Student
+         * @description Change a profile: the fields sent, ``is_active`` to deactivate or
+         *     reactivate, and ``emergency_contacts`` as the complete new list (items
+         *     with an ``id`` keep that contact, without one add a contact, contacts
+         *     left out are removed). Fields not sent stay unchanged.
+         */
+        patch: operations["update_student_api_v1_students__student_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -833,6 +886,23 @@ export interface components {
             updated_at: string;
         };
         /**
+         * EducationLevelReference
+         * @description A level as another module's record shows it (#33): its id, current
+         *     name and whether it is still active (an inactive level stays assigned and
+         *     is shown as such).
+         */
+        EducationLevelReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
          * EducationLevelUpdate
          * @description A change to a level (``PATCH /api/v1/education-levels/{level_id}``)
          *     with the ``version`` the caller loaded. Fields not sent stay unchanged.
@@ -846,6 +916,58 @@ export interface components {
             sort_order?: number | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * EmergencyContact
+         * @description One emergency contact; ``position`` 1 is called first.
+         */
+        EmergencyContact: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Relationship */
+            relationship: string;
+            /** Phone */
+            phone: string;
+            /** Position */
+            position: number;
+        };
+        /**
+         * EmergencyContactCreate
+         * @description A new emergency contact. Its place in the list is its ``position``.
+         */
+        EmergencyContactCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Relationship
+             * @description Free text, for example Madre or Vecina.
+             */
+            relationship: string;
+            /** Phone */
+            phone: string;
+        };
+        /**
+         * EmergencyContactUpdate
+         * @description An emergency contact in a ``PATCH``: with the ``id`` of one of this
+         *     student's contacts to keep (and update) it, without one to add it.
+         */
+        EmergencyContactUpdate: {
+            /** Name */
+            name: string;
+            /**
+             * Relationship
+             * @description Free text, for example Madre or Vecina.
+             */
+            relationship: string;
+            /** Phone */
+            phone: string;
+            /** Id */
+            id?: string | null;
         };
         /**
          * FieldError
@@ -1030,6 +1152,17 @@ export interface components {
         OffsetPage_RegistrationRequestItem_: {
             /** Items */
             items: components["schemas"]["RegistrationRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[StudentListItem] */
+        OffsetPage_StudentListItem_: {
+            /** Items */
+            items: components["schemas"]["StudentListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -1278,6 +1411,160 @@ export interface components {
              * @description The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only.
              */
             csrf_token: string;
+        };
+        /**
+         * StudentCreate
+         * @description A new student profile (``POST /api/v1/students``). It starts active.
+         *     The list order of ``emergency_contacts`` (1 to 5) is their order.
+         */
+        StudentCreate: {
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /**
+             * Birthdate
+             * Format: date
+             * @description YYYY-MM-DD, from 1900-01-01 up to today in the center's time zone.
+             */
+            birthdate: string;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** School Name */
+            school_name?: string | null;
+            /**
+             * School Grade
+             * @description Free text, for example 2.º de secundaria.
+             */
+            school_grade?: string | null;
+            /**
+             * Education Level Id
+             * @description An active level of the catalog.
+             */
+            education_level_id?: string | null;
+            /** Emergency Contacts */
+            emergency_contacts: components["schemas"]["EmergencyContactCreate"][];
+        };
+        /**
+         * StudentDetail
+         * @description One student profile. ``personal`` is ``null`` for a viewer with
+         *     limited access (Finance Staff, assigned tutors).
+         */
+        StudentDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Minor */
+            is_minor: boolean;
+            /** School Name */
+            school_name: string | null;
+            /** School Grade */
+            school_grade: string | null;
+            /** @description Shown even when the level is inactive. */
+            education_level: components["schemas"]["EducationLevelReference"] | null;
+            personal: components["schemas"]["StudentPersonal"] | null;
+            /**
+             * Version
+             * @description Send it back with every change.
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * StudentListItem
+         * @description One student in the list. No birthdate or contact data (spec §16).
+         */
+        StudentListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Is Minor
+             * @description Under 18 today in the center's time zone (ADR-0007 D17).
+             */
+            is_minor: boolean;
+            /** School Grade */
+            school_grade: string | null;
+            education_level: components["schemas"]["EducationLevelReference"] | null;
+        };
+        /**
+         * StudentPersonal
+         * @description The personal part of a profile, only for full-access viewers.
+         */
+        StudentPersonal: {
+            /**
+             * Birthdate
+             * Format: date
+             */
+            birthdate: string;
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+            /**
+             * Emergency Contacts
+             * @description In position order.
+             */
+            emergency_contacts: components["schemas"]["EmergencyContact"][];
+        };
+        /** @enum {string} */
+        StudentStatus: "active" | "inactive" | "all";
+        /**
+         * StudentUpdate
+         * @description A change to a profile (``PATCH /api/v1/students/{student_id}``) with
+         *     the ``version`` the caller loaded. ``emergency_contacts``, when sent, is
+         *     the complete new list (contacts left out are removed).
+         */
+        StudentUpdate: {
+            /** Version */
+            version: number;
+            /** Given Names */
+            given_names?: string | null;
+            /** Family Names */
+            family_names?: string | null;
+            /** Birthdate */
+            birthdate?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** School Name */
+            school_name?: string | null;
+            /** School Grade */
+            school_grade?: string | null;
+            /** Education Level Id */
+            education_level_id?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Emergency Contacts */
+            emergency_contacts?: components["schemas"]["EmergencyContactUpdate"][] | null;
         };
         /**
          * SubjectCreate
@@ -3573,6 +3860,242 @@ export interface operations {
                 };
             };
             /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another record already has this name, ignoring case; inactive records count (name_taken). (within the level) Or the subject is reactivated while its level is inactive (education_level_inactive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_students_api_v1_students_get: {
+        parameters: {
+            query?: {
+                /** @description Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words). */
+                q?: string | null;
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["StudentStatus"];
+                /** @description Only this level's students (unknown: an empty page). */
+                education_level_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_StudentListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_student_api_v1_students_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_api_v1_students__student_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_student_api_v1_students__student_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student changed since it was loaded (version_conflict); reload and retry. */
             409: {
                 headers: {
                     [name: string]: unknown;

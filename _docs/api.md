@@ -98,6 +98,8 @@ Codes in use today:
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
+| `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
+| `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -655,6 +657,72 @@ exactly one level and never moves to another.
 - **Audit:** automatic only (`education_levels` and `subjects` `create` and
   `update` with the changed fields); no named event. `403`, `404`, `409`,
   `422` and a body that changes nothing write no event.
+
+### Students
+
+Implemented by M2-15 (#33; spec §2, §4, §16) in
+`apps/api/app/modules/families/`. A profile for every student, with or
+without a login.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/students` | `require("student.view")`, list filtered by record policy | Query `q` (name search, see below), `status` (`active` (default), `inactive` or `all`), `education_level_id` (an unknown id gives an empty page), offset pagination. Items: `id`, `given_names`, `family_names`, `is_active`, `is_minor`, `school_grade`, `education_level` (`{id, name, is_active}` or `null`); never a birthdate or contact data. |
+| `POST /api/v1/students` | `require("student.manage")` | Body `{given_names, family_names, birthdate, email?, phone?, school_name?, school_grade?, education_level_id?, emergency_contacts: [{name, relationship, phone}] (1-5)}`. `201` with the detail. |
+| `GET /api/v1/students/{student_id}` | `require("student.view")` + record policy | Fields: the list item's plus `school_name`, `personal`, `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/students/{student_id}` | `require("student.manage")` + record policy | Body `{version, ...}`: any create field and `is_active`; `emergency_contacts` is the complete new list. |
+
+- **Who sees which student** (record policy, pure functions in
+  `families/permissions.py`): Owners, Administrators, Academic Coordinators
+  and Finance Staff see every student. Tutors see only the students of their
+  current assignments; assignments arrive with scheduling (M4), so until
+  then tutors see none. Guardians see their linked students (#34) and a
+  student user their own profile (#35); both see none until those issues.
+  A student the caller may not see is `404 not_found`, exactly like a
+  missing one, and the list leaves it out (never `403`/`404` for hidden
+  rows).
+- **How much** (owner decision on #33, E2 (a)): `personal` (`birthdate`,
+  `email`, `phone`, `emergency_contacts` in position order) is present only
+  for full-access viewers: holders of `student.manage`, and later a linked
+  guardian and the student themselves. For Finance Staff and assigned
+  tutors `personal` is `null`. `is_minor` (under 18 today in the center's
+  time zone, ADR-0007 D17) is shown to every viewer.
+- **Search** (`q`, 1-100 characters, at most 5 words): ignores case and
+  accents (`José` = `jose`, `Ñúñez` = `nunez`) and word order (`garcia jose`
+  finds José García); `%`, `_` and `\` match literally. A name also matches
+  when it is similar enough to `q` (`pg_trgm` word similarity at its default
+  threshold, for example `Gonzales` finds González). With `q`, results are
+  ordered by similarity, then by family names and given names (accents
+  ignored); without `q`, by family names, given names. The search text never
+  reaches the access log (it has no query string).
+- **Fields:** strings are trimmed; for an optional string, `""` is `null`.
+  Names 1-100 characters; `birthdate` `YYYY-MM-DD`, from 1900-01-01 up to
+  today in the center's time zone (a later date is `422 validation_error` on
+  `["body","birthdate"]`); `email`/`phone` with the user-profile patterns
+  (see User administration); `school_name` up to 200, `school_grade` up to 50
+  characters (free text). Duplicates (same name and birthdate) are allowed.
+- **Education level:** only an active level can be picked (`422
+  education_level_unavailable`); a level that was deactivated after it was
+  assigned stays, is shown with `is_active: false` and may be kept.
+- **Emergency contacts, whole-list replace:** a `PATCH` that sends
+  `emergency_contacts` sends the complete list (1-5). An item with the `id`
+  of one of this student's contacts updates it; an item without `id` adds
+  one; a contact left out is removed; the list order is the position (1 is
+  called first). An unknown or repeated `id` is `422
+  emergency_contact_unknown` and changes nothing.
+- **Updates:** fields not sent stay unchanged; `null` clears `email`,
+  `phone`, `school_name`, `school_grade` and `education_level_id`, and is
+  `422` for any other field. Any change, a contacts-only one included,
+  increments the profile's `version` once. Check order: `422` → `404` →
+  `409 version_conflict` → `422` (future birthdate,
+  `emergency_contact_unknown`, `education_level_unavailable`). A body that
+  changes nothing returns `200` with no new version.
+- **No hard delete:** `is_active: false` deactivates and `true` reactivates;
+  everything else is kept and the profile stays editable. Deletion and
+  anonymization belong to retention (M10-07). No reauthentication.
+- **Audit:** automatic only (`students` and `student_emergency_contacts`
+  `create`/`update`/`delete` with the changed fields, unmasked; a
+  contacts-only change writes only contact events); no named event. `403`,
+  `404`, `409`, `422` and a body that changes nothing write no event.
 
 ### Response headers
 

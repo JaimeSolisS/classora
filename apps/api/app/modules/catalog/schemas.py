@@ -102,3 +102,13 @@ class SubjectDetail(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class EducationLevelReference(BaseModel):
+    """A level as another module's record shows it (#33): its id, current
+    name and whether it is still active (an inactive level stays assigned and
+    is shown as such)."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool

@@ -116,6 +116,31 @@ def test_the_real_tree_is_scanned():
     ]
 
 
+def test_families_imports_only_core_and_the_catalog_public_api():
+    # #33 H3: families uses app.core, its own files and catalog.service /
+    # catalog.schemas only; catalog imports nothing from families.
+    def targets(module: str) -> set[str]:
+        found: set[str] = set()
+        for path in (API_ROOT / "app" / "modules" / module).rglob("*.py"):
+            name = module_name(API_ROOT, path)
+            package = name if path.name == "__init__.py" else name[:-1]
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                found.update(import_targets(node, package))
+        return {t for t in found if t.startswith("app.")}
+
+    allowed = (
+        "app.core.",
+        "app.modules.families.",
+        "app.modules.catalog.service",
+        "app.modules.catalog.schemas",
+    )
+    families = targets("families")
+    assert "app.modules.catalog.service" in families  # the scan found imports
+    assert not {t for t in families if not t.startswith(allowed)}
+    assert not {t for t in targets("catalog") if "families" in t}
+
+
 # --- The checker on a synthetic tree (B5) ----------------------------------------
 
 FORBIDDEN_SOURCE = """\
