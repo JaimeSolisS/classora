@@ -17,7 +17,10 @@ from sqlalchemy import event
 
 from app.core.db import create_sessionmaker
 from app.core.uow import UnitOfWork
-from app.modules.families.errors import StudentProfileRequiredError
+from app.modules.families.errors import (
+    GuardianConsentRequiredError,
+    StudentProfileRequiredError,
+)
 from app.modules.identity import service as identity
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
@@ -396,3 +399,23 @@ def test_without_a_registered_gate_a_student_activation_raises(
         lambda s: identity.change_user_state(s, user_id=tutor.id, new_state="active"),
     )
     assert user_state(module_seeded_url, tutor.id) == "active"
+
+
+def test_a_consent_counts_only_while_its_guardian_is_linked(module_seeded_url):
+    """Defence in depth (B3 valid = still linked): even an unrevoked record
+    stops counting when the link is gone (unlinking normally revokes it)."""
+    person = create_user(module_seeded_url, roles=(STUDENT,), state="suspended")
+    student_id = minor_profile_for(module_seeded_url, person.id, consenting=True)
+    run_sql(
+        module_seeded_url,
+        "DELETE FROM student_guardians WHERE student_id = :id",
+        {"id": student_id},
+    )
+
+    with pytest.raises(GuardianConsentRequiredError):
+        in_uow(
+            module_seeded_url,
+            lambda s: identity.change_user_state(
+                s, user_id=person.id, new_state="active"
+            ),
+        )
