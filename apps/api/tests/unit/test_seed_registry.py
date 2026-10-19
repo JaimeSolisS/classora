@@ -8,9 +8,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.models import StandardColumns
+from app.modules.catalog.models import EducationLevel
 from app.modules.identity.models import User, UserDelegation, UserRole
 from app.modules.identity.permissions import PERMISSIONS, ROLE_CODES, ROLE_PERMISSIONS
 from app.seeds import runner
+from app.seeds.education_levels import InsertOnlySeed
 from app.seeds.registry import REFERENCE_SEEDS, UpsertSeed
 from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult, upsert_rows
@@ -76,6 +78,26 @@ def test_identity_seeds_are_registered_in_dependency_order():
         "identity.permissions",
         "identity.roles",
         "identity.role_permissions",
+    ]
+
+
+def test_education_levels_come_after_the_identity_seeds():
+    # Insert-only through the ORM (#32 B1, B2), so not an UpsertSeed.
+    names = [seed.name for seed in REFERENCE_SEEDS]
+    assert names == [
+        "identity.permissions",
+        "identity.roles",
+        "identity.role_permissions",
+        "catalog.education_levels",
+    ]
+    seed = REFERENCE_SEEDS[3]
+    assert isinstance(seed, InsertOnlySeed)
+    assert seed.model is EducationLevel
+    assert list(seed.rows) == [
+        {"seed_key": "elementary", "name": "Primaria", "sort_order": 10},
+        {"seed_key": "middle_school", "name": "Secundaria", "sort_order": 20},
+        {"seed_key": "high_school", "name": "Preparatoria", "sort_order": 30},
+        {"seed_key": "university", "name": "Universidad", "sort_order": 40},
     ]
 
 
@@ -171,7 +193,7 @@ def test_summary_of_an_empty_registry():
 
 
 def test_alembic_heads_reads_the_migration_scripts():
-    assert runner.alembic_heads() == {"0012"}
+    assert runner.alembic_heads() == {"0013"}
 
 
 def test_configuration_error_exits_1_without_traceback(capsys):

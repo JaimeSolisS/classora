@@ -1,0 +1,97 @@
+"""Catalog tables (spec §4, §12; #32).
+
+- ``education_levels``: a level (Primaria, Secundaria, …) with a position
+  (``sort_order``) for lists. ``seed_key`` is set only on the rows the
+  ``catalog.education_levels`` reference seed created, so the seed recognizes
+  them after a rename; it never appears in the API.
+- ``subjects``: a subject taught at exactly one level. Its level never
+  changes.
+
+Names are free text, stored once and shown as stored in every language
+(owner decision #32 E1 (a)). They are trimmed (CHECK ``name = btrim(name)``),
+never blank, and unique ignoring case: level names across all levels, subject
+names within their level. Inactive rows count, so a duplicate is never
+created next to a deactivated record. Uniqueness does not fold accents.
+
+Nothing is deleted: rows are deactivated (``is_active``) and can be
+reactivated, so later records keep valid references (``ON DELETE RESTRICT``).
+Both tables are :class:`~app.core.audit.Audited` with nothing excluded or
+masked (#22) and versioned (optimistic concurrency, architecture §4.4).
+"""
+
+import uuid
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.audit import Audited
+from app.core.models import Model, VersionedMixin
+
+NAME_MAX_LENGTH = 100
+SORT_ORDER_MAX = 9999
+SEED_KEY_PATTERN = "^[a-z][a-z_]*$"
+
+# Explicit names of the expression indexes (NAMING_CONVENTION has no column
+# name to use for them); the service maps a violation of either to
+# 409 name_taken.
+LEVEL_NAME_INDEX = "uq_education_levels_name_ci"
+SUBJECT_NAME_INDEX = "uq_subjects_level_name_ci"
+
+
+def _name_checks() -> tuple[CheckConstraint, CheckConstraint]:
+    return (
+        CheckConstraint("name = btrim(name)", name="name_trimmed"),
+        CheckConstraint("name ~ '[^[:space:]]'", name="name_not_blank"),
+    )
+
+
+class EducationLevel(Audited, VersionedMixin, Model):
+    __tablename__ = "education_levels"
+    __table_args__ = (
+        *_name_checks(),
+        CheckConstraint(
+            f"sort_order BETWEEN 0 AND {SORT_ORDER_MAX}", name="sort_order_range"
+        ),
+        CheckConstraint(f"seed_key ~ '{SEED_KEY_PATTERN}'", name="seed_key_format"),
+        Index(LEVEL_NAME_INDEX, func.lower(text("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    sort_order: Mapped[int] = mapped_column(SmallInteger)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    seed_key: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True)
+
+
+class Subject(Audited, VersionedMixin, Model):
+    __tablename__ = "subjects"
+    __table_args__ = (
+        *_name_checks(),
+        Index(
+            SUBJECT_NAME_INDEX,
+            text("education_level_id"),
+            func.lower(text("name")),
+            unique=True,
+        ),
+    )
+
+    education_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("education_levels.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )

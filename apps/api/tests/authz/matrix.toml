@@ -157,6 +157,44 @@ rate_limit_exempt = "Local/DEV only; takes no credentials or tokens"
 
 [[route]]
 method = "GET"
+path = "/api/v1/education-levels"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/education-levels"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/education-levels/{level_id}"
+access = "authenticated"
+# The placeholder id is no level: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/education-levels/{level_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/education-levels/{level_id}/subjects"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/invitations"
 access = "permission"
 permission = "user.invite"
@@ -218,6 +256,26 @@ access = "permission"
 permission = "registration.review"
 allow = ["owner", "administrator"]
 # The placeholder id is no request: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects"
+access = "authenticated"
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects/{subject_id}"
+access = "authenticated"
+# The placeholder id is no subject: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/subjects/{subject_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
 
 [[route]]
 method = "GET"

@@ -37,12 +37,21 @@ async def all_events(sessionmaker) -> list[AuditEvent]:
 
 
 async def test_reference_seeds_write_no_audit_rows(seeded_url):
-    # Roles, permissions and role permissions are not audited (ADR-0007).
+    # Roles, permissions and role permissions are not audited (ADR-0007). Only
+    # the first run's four education-level creates exist (#32 B2); a rerun
+    # writes nothing.
     engine = runner.create_seed_engine(settings_for(seeded_url))
     try:
         await runner.run_reference_seeds(engine)  # a rerun, too
         async with create_sessionmaker(engine)() as session:
-            assert await session.scalar(select(func.count(AuditEvent.id))) == 0
+            rows = (
+                await session.execute(
+                    select(AuditEvent.record_type, func.count(AuditEvent.id)).group_by(
+                        AuditEvent.record_type
+                    )
+                )
+            ).all()
+            assert [tuple(row) for row in rows] == [("education_levels", 4)]
     finally:
         await engine.dispose()
 

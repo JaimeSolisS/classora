@@ -45,6 +45,10 @@ On the same page, Owners and administrators can change a person's roles
 (after confirming their password; the person is signed out and signs in with
 the new roles), and Owners can delegate selected permissions to
 administrators, which take effect without signing them out.
+On the Catalog page, Owners and administrators maintain the education levels
+and the subjects taught at each level; records are deactivated instead of
+deleted, and four example levels (Primaria, Secundaria, Preparatoria,
+Universidad) are created by the reference seed.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

@@ -448,7 +448,15 @@ def test_a_malformed_body_is_a_validation_error(seeded_url, client, body):
     assert response.json()["code"] == "validation_error"
     assert response.headers.get_list("set-cookie") == []
     assert TEST_USER_PASSWORD not in response.text
-    assert run_sql(seeded_url, "SELECT count(*) FROM audit_events")[0][0] == 0
+    # Only the reference seed's education-level events (#32 B2) exist.
+    assert (
+        run_sql(
+            seeded_url,
+            "SELECT count(*) FROM audit_events"
+            " WHERE record_type IS DISTINCT FROM 'education_levels'",
+        )[0][0]
+        == 0
+    )
 
 
 def test_the_longest_accepted_values_reach_the_credential_check(seeded_url, client):

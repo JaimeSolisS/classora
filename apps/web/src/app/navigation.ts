@@ -32,4 +32,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.registrations',
     permission: 'registration.review',
   },
+  {
+    to: '/catalog/education-levels',
+    labelKey: 'nav.catalog',
+    permission: 'catalog.manage',
+  },
 ];

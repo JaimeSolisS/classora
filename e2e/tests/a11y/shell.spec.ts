@@ -11,7 +11,9 @@ const THEMES = ['light', 'dark'] as const;
 
 // Home, 404, /users, a user's detail (demo.owner's own record, opened from
 // the list: its id is not known in advance), /invitations,
-// /password-resets, /registration-requests and /account/password are behind
+// /password-resets, /registration-requests, /account/password, the catalog
+// levels page and the seeded "Primaria" level's page (opened from the list)
+// are behind
 // the guard: scanned signed in (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
 // signed out.
@@ -21,6 +23,8 @@ interface ScannedRoute {
   signedIn: boolean;
   /** Then open this row of the list (its link text) and scan its page. */
   openRow?: string;
+  /** The URL of the page `openRow` opens. */
+  openedPath?: RegExp;
 }
 
 const ROUTES: ScannedRoute[] = [
@@ -31,6 +35,7 @@ const ROUTES: ScannedRoute[] = [
     path: '/users?q=demo.owner',
     signedIn: true,
     openRow: 'Demo Owner',
+    openedPath: /\/users\/[0-9a-f-]{36}$/,
   },
   { name: '404', path: '/e2e-route-that-does-not-exist', signedIn: true },
   { name: 'invitations', path: '/invitations', signedIn: true },
@@ -41,6 +46,14 @@ const ROUTES: ScannedRoute[] = [
     signedIn: true,
   },
   { name: 'account-password', path: '/account/password', signedIn: true },
+  { name: 'catalog', path: '/catalog/education-levels', signedIn: true },
+  {
+    name: 'catalog-level',
+    path: '/catalog/education-levels',
+    signedIn: true,
+    openRow: 'Primaria',
+    openedPath: /\/catalog\/education-levels\/[0-9a-f-]{36}$/,
+  },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },
   { name: 'reset', path: '/reset', signedIn: false },
@@ -90,7 +103,7 @@ for (const theme of THEMES) {
             .getByRole('main')
             .getByRole('link', { name, exact: true })
             .click();
-          await expect(page).toHaveURL(/\/users\/[0-9a-f-]{36}$/);
+          await expect(page).toHaveURL(route.openedPath!);
           await expect(
             page.getByRole('heading', { level: 1, name, exact: true }),
           ).toBeVisible();

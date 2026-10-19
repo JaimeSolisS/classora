@@ -1,5 +1,5 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A); each test uses a fresh database."""
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -63,7 +63,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0012"
+HEAD = "0013"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -79,6 +79,7 @@ AUTH_TABLES = ["auth_sessions"]
 RATE_LIMIT_TABLES = ["rate_limit_counters"]
 ACCOUNT_TOKEN_TABLES = ["account_tokens"]
 REGISTRATION_TABLES = ["registration_requests"]
+CATALOG_TABLES = ["education_levels", "subjects"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -142,6 +143,9 @@ def test_history_is_linear_with_one_head():
     contact = script.get_revision("0012")
     assert contact.down_revision == "0011"
     assert Path(contact.path).name == "0012_identity_user_contact.py"
+    catalog = script.get_revision("0013")
+    assert catalog.down_revision == "0012"
+    assert Path(catalog.path).name == "0013_catalog_education_levels_subjects.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -170,6 +174,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             "audit_events",
             *ACCOUNT_TOKEN_TABLES,
             *AUTH_TABLES,
+            *CATALOG_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
@@ -796,7 +801,7 @@ def test_downgrade_to_0010_drops_exactly_registration_requests(fresh_database_ur
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0010")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0011")
     assert public_tables(fresh_database_url) - before == set(REGISTRATION_TABLES)
 
     command.downgrade(config, "0010")
@@ -912,3 +917,130 @@ def test_0012_adds_the_contact_columns_and_downgrade_drops_exactly_them(
     assert run_sql(fresh_database_url, USERS_CHECKS) == checks_before
     command.upgrade(config, "head")
     assert version_nums(fresh_database_url) == [HEAD]
+
+
+# --- 0013: catalog education_levels and subjects (#32 A) ----------------------------
+
+
+def test_downgrade_to_0012_drops_exactly_the_catalog_tables(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0012")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(CATALOG_TABLES)
+
+    command.downgrade(config, "0012")
+
+    assert version_nums(fresh_database_url) == ["0012"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def _columns(dsn: str, table: str) -> dict[str, tuple[Any, ...]]:
+    rows = run_sql(
+        dsn,
+        "SELECT column_name, data_type, is_nullable, character_maximum_length,"
+        " column_default FROM information_schema.columns WHERE table_name = :t",
+        {"t": table},
+    )
+    return {
+        r.column_name: (
+            r.data_type,
+            r.is_nullable,
+            r.character_maximum_length,
+            r.column_default,
+        )
+        for r in rows
+    }
+
+
+def _constraints(dsn: str, table: str) -> dict[str, str]:
+    rows = run_sql(
+        dsn,
+        "SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint"
+        " WHERE conrelid = CAST(:t AS regclass) AND contype <> 'n'",
+        {"t": table},
+    )
+    return {r.conname: r.definition for r in rows}
+
+
+def _indexes(dsn: str, table: str) -> dict[str, str]:
+    rows = run_sql(
+        dsn,
+        "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = :t",
+        {"t": table},
+    )
+    return {r.indexname: r.indexdef for r in rows}
+
+
+STANDARD_COLUMNS = {
+    "id": ("uuid", "NO", None, "uuidv7()"),
+    "created_at": ("timestamp with time zone", "NO", None, "now()"),
+    "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+    "version": ("integer", "NO", None, "1"),
+}
+
+
+def test_education_levels_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "education_levels") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 100, None),
+        "sort_order": ("smallint", "NO", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+        "seed_key": ("character varying", "YES", 40, None),
+    }
+    constraints = _constraints(fresh_database_url, "education_levels")
+    assert set(constraints) == {
+        "pk_education_levels",
+        "uq_education_levels_seed_key",
+        "ck_education_levels_name_trimmed",
+        "ck_education_levels_name_not_blank",
+        "ck_education_levels_sort_order_range",
+        "ck_education_levels_seed_key_format",
+    }
+    assert "btrim" in constraints["ck_education_levels_name_trimmed"]
+    assert "9999" in constraints["ck_education_levels_sort_order_range"]
+    indexes = _indexes(fresh_database_url, "education_levels")
+    assert set(indexes) == {
+        "pk_education_levels",
+        "uq_education_levels_seed_key",
+        "uq_education_levels_name_ci",
+    }
+    assert "UNIQUE INDEX" in indexes["uq_education_levels_name_ci"]
+    assert "lower((name)::text)" in indexes["uq_education_levels_name_ci"]
+
+
+def test_subjects_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "subjects") == {
+        **STANDARD_COLUMNS,
+        "education_level_id": ("uuid", "NO", None, None),
+        "name": ("character varying", "NO", 100, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    constraints = _constraints(fresh_database_url, "subjects")
+    assert set(constraints) == {
+        "pk_subjects",
+        "fk_subjects_education_level_id_education_levels",
+        "ck_subjects_name_trimmed",
+        "ck_subjects_name_not_blank",
+    }
+    assert (
+        "ON DELETE RESTRICT"
+        in (constraints["fk_subjects_education_level_id_education_levels"])
+    )
+    indexes = _indexes(fresh_database_url, "subjects")
+    assert set(indexes) == {
+        "pk_subjects",
+        "ix_subjects_education_level_id",
+        "uq_subjects_level_name_ci",
+    }
+    assert "UNIQUE INDEX" in indexes["uq_subjects_level_name_ci"]
+    assert (
+        "(education_level_id, lower((name)::text))"
+        in indexes["uq_subjects_level_name_ci"]
+    )

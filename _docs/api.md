@@ -95,6 +95,9 @@ Codes in use today:
 | `registration_already_decided` | 409 | Approving or rejecting a registration request that was already approved or rejected, or whose account is no longer `pending` (see Registration requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
+| `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
+| `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
+| `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -608,6 +611,51 @@ delegation rules in `service.py`).
   `identity.sessions_revoked`); no named event. `403`, `404`, `409`, `422`
   and a body that changes nothing write no event.
 
+### Academic catalog
+
+Implemented by M2-14 (#32; spec §4, §12) in `apps/api/app/modules/catalog/`.
+Education levels and the subjects taught at each level. A subject belongs to
+exactly one level and never moves to another.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/education-levels` | `authenticated()` | Query `status` (`active` (default), `inactive` or `all`), offset pagination. Sorted by `sort_order`, then name (not case-sensitive). |
+| `POST /api/v1/education-levels` | `require("catalog.manage")` | Body `{name, sort_order?}`; without `sort_order` the level goes last (the highest + 10, at most 9999). `201`. |
+| `GET /api/v1/education-levels/{level_id}` | `authenticated()` | Active or inactive. Fields: `id`, `name`, `sort_order`, `is_active`, `active_subject_count`, `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/education-levels/{level_id}` | `require("catalog.manage")` | Body `{version, name?, sort_order?, is_active?}`. |
+| `POST /api/v1/education-levels/{level_id}/subjects` | `require("catalog.manage")` | Body `{name}`. `201`. |
+| `GET /api/v1/subjects` | `authenticated()` | Query `education_level_id` (an unknown id gives an empty page), `status` (as above), offset pagination. Sorted by the level's position and name, then the subject's name. |
+| `GET /api/v1/subjects/{subject_id}` | `authenticated()` | Active or inactive. Fields: `id`, `education_level_id`, `education_level_name`, `name`, `is_active`, `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/subjects/{subject_id}` | `require("catalog.manage")` | Body `{version, name?, is_active?}`; `education_level_id` can't be sent (`422`). |
+
+- **Read for every signed-in user**, students and guardians included: later
+  screens offer the catalog in selects. The lists default to `status=active`,
+  the values a new record may choose.
+- **Deactivation instead of deletion:** nothing is deleted; `is_active:
+  false` deactivates and `true` reactivates. Records that already point at a
+  deactivated level or subject keep it.
+- **An active subject always has an active level:** a level with an active
+  subject can't be deactivated (`409 education_level_has_active_subjects`),
+  and a subject can't be created or reactivated under an inactive level (`409
+  education_level_inactive`). Renaming or deactivating a subject of an
+  inactive level is allowed.
+- **Names** are trimmed, 1 to 100 characters, free text stored once and shown
+  as stored in every language. They are unique ignoring case (not accents):
+  level names across all levels, subject names within their level, inactive
+  records included (`409 name_taken`). Renaming to another case of the same
+  name is allowed.
+- **Updates:** fields not sent stay unchanged; `null` and unknown fields are
+  `422`. Check order: `422` → `404` → `409 version_conflict` → `409
+  name_taken` → `409 education_level_has_active_subjects` /
+  `education_level_inactive`. A body that changes nothing returns `200` with
+  no new version.
+- **Reference data:** `make seed` inserts four example levels (Primaria,
+  Secundaria, Preparatoria, Universidad) once; later runs never change or
+  restore them.
+- **Audit:** automatic only (`education_levels` and `subjects` `create` and
+  `update` with the changed fields); no named event. `403`, `404`, `409`,
+  `422` and a body that changes nothing write no event.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one
@@ -646,7 +694,8 @@ M1-09 in `apps/api/app/core/pagination.py`.
    integer `version`; every update request body sends back the `version` the
    client loaded; a mismatch returns `409 version_conflict` and changes
    nothing. Approved (architecture ISSUE-D5), implemented by M2-13 (`users`:
-   `PATCH /api/v1/users/{user_id}` and the state routes). The
+   `PATCH /api/v1/users/{user_id}` and the state routes) and M2-14
+   (`education_levels`, `subjects`: their `PATCH` routes). The
    `version_conflict` error exists since M1-09.
 
 ## Idempotency
