@@ -58,13 +58,37 @@ export const JOSE: StudentDetail = {
       },
     ],
   },
+  guardians: [
+    {
+      guardian_id: '00000000-0000-4000-8000-0000000f0001',
+      given_names: 'Laura',
+      family_names: 'Ñúñez Prieto',
+      relationship: 'mother',
+      phone: '+52 00 1234 5678',
+      is_active: true,
+      has_account: true,
+    },
+    {
+      guardian_id: '00000000-0000-4000-8000-0000000f0002',
+      given_names: 'Ramón',
+      family_names: 'Pérez Solís',
+      relationship: 'grandparent',
+      phone: null,
+      is_active: false,
+      has_account: false,
+    },
+  ],
   version: 3,
   created_at: AT,
   updated_at: AT,
 };
 
-/** José as Finance Staff or an assigned tutor see him (limited). */
-export const JOSE_LIMITED: StudentDetail = { ...JOSE, personal: null };
+/** José as an assigned tutor sees him (limited, no guardians). */
+export const JOSE_LIMITED: StudentDetail = {
+  ...JOSE,
+  personal: null,
+  guardians: null,
+};
 
 /** A student whose level was deactivated after it was assigned. */
 export const ANA_INACTIVE_LEVEL: StudentDetail = {

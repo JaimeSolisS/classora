@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useCan } from '@/features/auth/useSession';
+import {
+  linkGuardian,
+  unlinkGuardian,
+  type GuardianListItem,
+  type StudentGuardianCreate,
+} from '@/features/guardians/api';
+import { StudentGuardiansSection } from '@/features/guardians/StudentGuardiansSection';
 import { useFormatters } from '@/lib/formatters';
 import {
   fetchStudent,
@@ -38,6 +45,9 @@ import { useLevelLabel } from './useLevelLabel';
 // "hidden" placeholder). With student.manage: "Edit" and "Deactivate" /
 // "Reactivate" behind a confirmation dialog that sends {version, is_active}.
 // A 404 (missing or not visible) says "This student doesn't exist.".
+// When the server sent `guardians` (staff with guardian.view, #34 I4), the
+// Guardians section follows; family.manage holders link and unlink there,
+// and the detail is refetched after either.
 
 export function StudentDetailPage() {
   const { t } = useTranslation();
@@ -45,6 +55,7 @@ export function StudentDetailPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const canManage = useCan('student.manage');
+  const canManageFamilies = useCan('family.manage');
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -100,6 +111,15 @@ export function StudentDetailPage() {
       onReload={async () => {
         await detail.refetch();
       }}
+      canManageGuardians={canManageFamilies}
+      onLinkGuardian={async (body) => {
+        await linkGuardian(studentId, body);
+        await detail.refetch();
+      }}
+      onUnlinkGuardian={async (guardianId) => {
+        await unlinkGuardian(studentId, guardianId);
+        await detail.refetch();
+      }}
     />
   );
 }
@@ -113,7 +133,20 @@ interface StudentDetailViewProps {
   /** Deactivates (false) or reactivates (true); rejects with the error. */
   onSetActive: (active: boolean) => Promise<void>;
   onReload: () => Promise<void>;
+  /** The caller holds family.manage: link and unlink guardians. */
+  canManageGuardians?: boolean;
+  /** Links a guardian, then refreshes; rejects with the error to show. */
+  onLinkGuardian?: (body: StudentGuardianCreate) => Promise<void>;
+  /** Unlinks a guardian, then refreshes; rejects with the error to show. */
+  onUnlinkGuardian?: (guardianId: string) => Promise<void>;
+  /** The link dialog's guardian search (stories pass a stub). */
+  searchGuardians?: (
+    q: string,
+    signal: AbortSignal,
+  ) => Promise<GuardianListItem[]>;
 }
+
+const NO_CHANGE = () => Promise.resolve();
 
 /** The detail page's content, without any query (stories use it). */
 export function StudentDetailView({
@@ -122,6 +155,10 @@ export function StudentDetailView({
   initiallySaved = false,
   onSetActive,
   onReload,
+  canManageGuardians = false,
+  onLinkGuardian = NO_CHANGE,
+  onUnlinkGuardian = NO_CHANGE,
+  searchGuardians,
 }: StudentDetailViewProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -277,6 +314,16 @@ export function StudentDetailView({
             </ol>
           </section>
         </>
+      ) : null}
+
+      {student.guardians ? (
+        <StudentGuardiansSection
+          guardians={student.guardians}
+          canManage={canManageGuardians}
+          onLink={onLinkGuardian}
+          onUnlink={onUnlinkGuardian}
+          searchGuardians={searchGuardians}
+        />
       ) : null}
 
       <ActiveDialog
