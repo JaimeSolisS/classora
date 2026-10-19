@@ -13,6 +13,7 @@ type Common = {
     invitations: string;
     passwordResets: string;
     registrations: string;
+    catalog: string;
   };
   roles: Record<string, string>;
   delegations: Record<string, { label: string; description: string }>;
@@ -82,6 +83,25 @@ type Common = {
     delegations: { title: string; save: string; saved: string };
   };
   userStates: Record<'pending' | 'active' | 'suspended' | 'archived', string>;
+  catalog: {
+    title: string;
+    levels: {
+      add: string;
+      edit: string;
+      name: string;
+      inactiveNote: string;
+      back: string;
+    };
+    subjects: { title: string; add: string; edit: string };
+    status: { active: string; inactive: string };
+    actions: {
+      editNamed: string;
+      deactivate: string;
+      save: string;
+      cancel: string;
+    };
+    saved: string;
+  };
   registrations: {
     title: string;
     approve: string;
@@ -102,6 +122,8 @@ type Errors = {
   invalid_credentials: string;
   token_invalid: string;
   current_password_invalid: string;
+  name_taken: string;
+  education_level_has_active_subjects: string;
 };
 
 function read<T>(path: string): T {

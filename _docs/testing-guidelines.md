@@ -309,6 +309,11 @@ follows these rules.
     delegation from the demo Owner in `e2e/tests/users/roles.spec.ts`
     (#170). The same rules: created by that test in every run, no other test
     may use the names.
+- **Catalog data** (#32): names a spec creates (levels, subjects) carry a
+  unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
+  rename, reorder or deactivate the seeded levels (Primaria, Secundaria,
+  Preparatoria, Universidad): `e2e/tests/catalog/levels-subjects.spec.ts`
+  expects them first, in that order.
 - **Never change `demo.owner` in a spec** (its profile, state, roles or
   password): every test shares its signed-in session (`storageState`). A test
   that needs an Owner to act signs `demo.owner` in in its own fresh context

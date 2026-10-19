@@ -245,6 +245,13 @@ Loading and error primitives in `apps/web/src/components/feedback/`
 - **`StateBadge`** (`features/users/admin`, #31): a user's state as a short
   text badge; the border style only reinforces the word, so the state never
   depends on colour alone.
+- **`CatalogStatusBadge`** (`features/catalog`, #32): "Active" or
+  "Inactive" for a catalog record, the same text-first badge.
+- **`CatalogItemDialog`** (`features/catalog`, #32): the add/edit dialog of
+  a catalog record (name, and for levels an optional position), with
+  Deactivate/Reactivate when editing. A `name_taken` error goes on the name
+  field; other errors, `version_conflict` with "Reload", go in the dialog's
+  alert; focus returns to the button that opened it. Later catalogs reuse it.
 - Render errors are caught by the route error page (inside the layout), the
   root error page and the app-level boundary. None of them shows the error
   message or stack.
