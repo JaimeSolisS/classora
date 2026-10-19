@@ -10,6 +10,7 @@ from typing import Any
 import factory
 import pytest
 
+from tests.authz.csrf import origin_for
 from tests.factories import demo
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +29,7 @@ def failing_engine_factory(settings: Any) -> Any:
 def env(monkeypatch):
     def _set(app_env: str) -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", CLOSED_PORT_DSN)
         monkeypatch.setenv("DATABASE_DIRECT_URL", CLOSED_PORT_DSN)
 
@@ -90,6 +92,7 @@ def test_prod_refusal_as_a_process_returns_immediately():
     }
     environment |= {
         "APP_ENV": "prod",
+        "APP_ORIGIN": origin_for("prod"),
         "DATABASE_URL": CLOSED_PORT_DSN,
         "DATABASE_DIRECT_URL": CLOSED_PORT_DSN,
     }

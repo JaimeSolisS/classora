@@ -1,7 +1,9 @@
 """``/api/v1/auth``: login, logout and the signed-in user (#23).
 
 The session lives in an HTTP-only cookie (``app.modules.identity.sessions``);
-the server stores only the token's hash.
+the server stores only the token's hash. Login and ``/me`` return the session's
+CSRF token (``app.core.csrf``, #24); every unsafe request needs the app's
+``Origin``, and logout also the ``X-CSRF-Token`` header.
 """
 
 from typing import Annotated
@@ -9,7 +11,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.authz import AUTH_RESPONSES, Principal, authenticated, public
+from app.core.authz import (
+    AUTH_RESPONSES,
+    CSRF_RESPONSES,
+    Principal,
+    authenticated,
+    public,
+)
 from app.core.config import Settings, get_settings
 from app.core.db import get_sessionmaker
 from app.core.errors import problem_response_doc
@@ -31,7 +39,10 @@ LOGIN_PUBLIC_REASON = (
 @router.post(
     "/login",
     dependencies=[public(reason=LOGIN_PUBLIC_REASON)],
-    responses={401: problem_response_doc("The username or password is incorrect.")},
+    responses={
+        401: problem_response_doc("The username or password is incorrect."),
+        **CSRF_RESPONSES,
+    },
 )
 async def login(
     body: LoginRequest,
@@ -46,7 +57,8 @@ async def login(
     """Sign in with a username and password; sets the session cookie.
 
     Every login issues a new session; a live session on the request's cookie
-    is revoked. Any failure is the same ``401 invalid_credentials``.
+    is revoked. Any failure is the same ``401 invalid_credentials``. The body
+    carries the new session's ``csrf_token``. Needs the app's ``Origin``.
     """
     result = await auth.login(
         uow.session,
@@ -65,10 +77,10 @@ async def login(
         await auth.record_failed_login(sessionmaker, result)
         raise InvalidCredentialsError()
     sessions.set_session_cookie(response, settings, result.token)
-    return auth.session_user(result.user, result.principal)
+    return auth.session_user(result.user, result.principal, result.token)
 
 
-@router.post("/logout", status_code=204, responses=AUTH_RESPONSES)
+@router.post("/logout", status_code=204, responses={**AUTH_RESPONSES, **CSRF_RESPONSES})
 async def logout(
     principal: Annotated[Principal, authenticated()],
     request: Request,
@@ -76,7 +88,10 @@ async def logout(
     uow: UnitOfWorkDep,
     settings: SettingsDep,
 ) -> None:
-    """Sign out: revoke the current session and clear the cookie."""
+    """Sign out: revoke the current session and clear the cookie.
+
+    Needs the app's ``Origin`` and the session's ``X-CSRF-Token``.
+    """
     await auth.logout(uow.session, request, settings, principal)
     sessions.clear_session_cookie(response, settings)
 
@@ -84,7 +99,10 @@ async def logout(
 @router.get("/me", responses=AUTH_RESPONSES)
 async def me(
     principal: Annotated[Principal, authenticated()],
+    request: Request,
     uow: UnitOfWorkDep,
+    settings: SettingsDep,
 ) -> SessionUser:
-    """The signed-in user, their roles and their effective permissions."""
-    return await auth.current_session_user(uow.session, principal)
+    """The signed-in user, their roles, their effective permissions and the
+    session's CSRF token (the same value for the whole session)."""
+    return await auth.current_session_user(uow.session, request, settings, principal)

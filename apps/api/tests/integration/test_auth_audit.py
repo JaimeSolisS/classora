@@ -20,12 +20,12 @@ from tests.factories.identity import TEST_USER_PASSWORD
 from tests.integration.auth_support import (
     LOGOUT,
     ME,
-    ORIGIN,
     auth_client,
     cookie_header,
     create_user,
     login,
     only_set_cookie,
+    signed_headers,
     token_of,
 )
 from tests.integration.conftest import run_sql, short_lived_engine
@@ -185,7 +185,7 @@ def test_logout_event_names_the_user_as_actor(seeded_url, client):
     [row] = run_sql(seeded_url, "SELECT id FROM auth_sessions")
 
     client.cookies.clear()
-    response = client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
+    response = client.post(LOGOUT, headers=signed_headers(cookie))
 
     assert response.status_code == 204
     succeeded, logout = login_events(seeded_url)
@@ -218,7 +218,7 @@ def test_no_password_token_or_hash_in_any_audit_row(seeded_url, client):
     login(client, user.username, WRONG_PASSWORD)
     login(client, "nobody.here", WRONG_PASSWORD)
     client.cookies.clear()
-    client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
+    client.post(LOGOUT, headers=signed_headers(cookie))
     token_hash = hashlib.sha256(token_of(cookie)).hexdigest()
 
     assert [e.action for e in login_events(seeded_url)] == [
@@ -313,7 +313,7 @@ def test_no_password_token_or_hash_in_logs(seeded_url, caplog, capsys):
         client.cookies.clear()
         assert client.get(ME, headers=cookie_header(cookie)).status_code == 200
         client.cookies.clear()
-        client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
+        client.post(LOGOUT, headers=signed_headers(cookie))
     token = token_of(cookie)
     secrets = [
         TEST_USER_PASSWORD,

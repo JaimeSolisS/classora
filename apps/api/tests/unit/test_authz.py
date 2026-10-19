@@ -36,6 +36,7 @@ from app.modules.identity.permissions import (
     TUTOR,
     USER_VIEW,
 )
+from tests.authz.csrf import ORIGIN_HEADER
 from tests.unit.authz_app import build_authz_app
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +60,9 @@ def app() -> FastAPI:
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app, raise_server_exceptions=False) as test_client:
+    with TestClient(
+        app, raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as test_client:
         yield test_client
 
 

@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.audit import record_audit_event
 from app.core.authz import AuthenticationRequiredError, Principal
 from app.core.config import Settings
+from app.core.csrf import csrf_token_for
 from app.core.uow import UnitOfWork
 from app.modules.identity import passwords, sessions
 from app.modules.identity.errors import UsernameInvalidError
@@ -182,21 +183,26 @@ async def logout(
     )
 
 
-def session_user(user: User, principal: Principal) -> SessionUser:
+def session_user(user: User, principal: Principal, session_token: bytes) -> SessionUser:
+    """The :class:`SessionUser` of ``user``, with the CSRF token of the
+    session whose raw token is ``session_token`` (#24)."""
     return SessionUser(
         id=user.id,
         username=user.username,
         display_name=user.display_name,
         roles=sorted(principal.roles),
         permissions=sorted(principal.permissions),
+        csrf_token=csrf_token_for(session_token),
     )
 
 
 async def current_session_user(
-    session: AsyncSession, principal: Principal
+    session: AsyncSession, request: Request, settings: Settings, principal: Principal
 ) -> SessionUser:
-    """The :class:`SessionUser` of the signed-in ``principal``."""
+    """The :class:`SessionUser` of the signed-in ``principal``, with the CSRF
+    token of the request's own session (recomputed from its cookie)."""
     user = await session.get(User, principal.user_id)
-    if user is None:  # pragma: no cover - the principal was just loaded
+    token = sessions.request_token(request, settings)
+    if user is None or token is None:  # pragma: no cover - the session was resolved
         raise AuthenticationRequiredError()
-    return session_user(user, principal)
+    return session_user(user, principal, token)

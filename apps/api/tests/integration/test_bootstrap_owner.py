@@ -11,6 +11,7 @@ import pytest
 
 from app import cli
 from app.seeds import runner
+from tests.authz.csrf import origin_for
 from tests.integration.conftest import run_sql
 
 PASSWORD = "bootstrap-pass-123"
@@ -41,6 +42,7 @@ def no_prompt(text: str) -> str:
 def env_for(monkeypatch):
     def _set(dsn: str, app_env: str = "local") -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", "postgresql://u:pw@127.0.0.1:1/pooled")
         monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
 

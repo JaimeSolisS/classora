@@ -84,6 +84,7 @@ Codes in use today:
 | `authentication_required` | 401 | No signed-in user on an `authenticated()` or `require()` route. |
 | `invalid_credentials` | 401 | `POST /api/v1/auth/login` did not succeed, for any reason (the same body whether or not the account exists). |
 | `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
+| `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
 | `internal_error` | 500 | Any unexpected exception. |
@@ -110,16 +111,19 @@ implemented by M2-03 in `apps/api/app/core/authz.py`.
   it before any other dependency. Protected routes pass
   `responses=AUTH_RESPONSES` (`authenticated()`) or
   `responses=PERMISSION_RESPONSES` (`require()`), so the OpenAPI document lists
-  their `401`/`403`. The permission matrix (`_docs/testing-guidelines.md`)
+  their `401`/`403`; an unsafe `authenticated()` or `public()` route also adds
+  `CSRF_RESPONSES` (its `403 csrf_failed`). The permission matrix (`_docs/testing-guidelines.md`)
   fails CI for a route without a declaration.
 - **The current user** comes only from `get_current_principal`. A `Principal`
   holds the user id, role codes and effective permissions, never a secret.
   Services, workflows and jobs check a permission outside a route with
   `ensure_permission(principal, permission)`.
 - **Check order.** Without a signed-in user the answer is `401
-  authentication_required`; without the permission it is `403
-  permission_denied`. Both come before path, query and body validation, so an
-  unauthorized caller never sees a `422`. Exception: a body that is not
+  authentication_required`; on an unsafe method a failed CSRF check is then
+  `403 csrf_failed`; without the permission it is `403 permission_denied`. All
+  come before path, query and body validation, so an unauthorized caller never
+  sees a `422`. (A foreign `Origin` is refused even before the session, see
+  below.) Exception: a body that is not
   parseable JSON gets `422` before any check (FastAPI parses it first); that
   response reveals nothing.
 - **Records: 404, not 403, for what the caller may not see.** Services apply
@@ -163,6 +167,52 @@ Implemented by M2-05 (ADR-0007 D7, D8) in `apps/api/app/modules/identity/`.
 - **Rotation:** every login issues a new session; a live session on the
   request's cookie is revoked, and a token supplied by the client is never
   adopted.
+- **CSRF token:** login and `/auth/me` also return `csrf_token`, the session's
+  CSRF token (see below).
+
+### CSRF and `Origin`
+
+Implemented by M2-06 (ADR-0007 D9) in `apps/api/app/core/csrf.py`. The
+browser-side headers (Content Security Policy) are in
+[`security-headers.md`](security-headers.md).
+
+- **Unsafe methods** are `POST`, `PUT`, `PATCH` and `DELETE`. `GET`, `HEAD` and
+  `OPTIONS` are never checked, so they must never change state.
+- **`Origin` (every route, `public()` ones included).** The request must carry
+  exactly one `Origin` header equal to `APP_ORIGIN`, the origin the SPA is
+  served from (`http://127.0.0.1:5173` locally; the `https://` hostname when
+  deployed). A missing, `null`, duplicated or different value (another scheme,
+  host or port; `localhost` is not `127.0.0.1`) is `403 csrf_failed`. The check
+  runs before authentication, so a foreign origin gets `403` even without a
+  session. Unknown paths and wrong methods still answer `404` and `405`.
+  `public()` routes (login, and later token redemption and registration) rely
+  on this check plus `SameSite`.
+- **Token (every `authenticated()`/`require()` route).** An unsafe request
+  also needs the header `X-CSRF-Token`, exactly once, equal to the session's
+  token. The token is derived from the session token (base64url of
+  HMAC-SHA256, 43 characters), so nothing extra is stored: it is the same for
+  the whole session and in every tab, and changes on every login. `POST
+  /api/v1/auth/login` returns the new session's token and `GET
+  /api/v1/auth/me` the current one (`csrf_token`). It is never in a cookie.
+- **Order:** `403 csrf_failed` for the `Origin` → `401` without a session →
+  `403 csrf_failed` for the token → `403 permission_denied` → `422`.
+- **The SPA** keeps the token in memory only (never `localStorage`,
+  `sessionStorage` or a cookie), sends it on every unsafe request, and calls
+  `/auth/me` again after a reload. On `csrf_failed` it refetches `/auth/me` and
+  retries once (#28).
+- **Errors and logs:** both checks answer the same `403 csrf_failed` body. The
+  API logs one `WARNING` on `app.security` with the reason (`origin_missing`,
+  `origin_mismatch`, `token_missing`, `token_invalid`), the method and the
+  path, never the `Origin` value, the token or the cookie. Failures are not
+  audited.
+- **Swagger UI** (`/docs` on the API port) cannot send unsafe requests: its
+  origin is not the app origin.
+
+### Response headers
+
+Every API response, errors included, carries exactly one
+`Cache-Control: no-store` and one `X-Content-Type-Options: nosniff`
+(`apps/api/app/core/security_headers.py`); a value a route sets is replaced.
 
 ## Request IDs
 

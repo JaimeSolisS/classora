@@ -15,6 +15,8 @@ services:
     # variable is passed empty, which the API treats as missing or unset.
     environment:
       APP_ENV: ${APP_ENV:-}
+      # The web app's origin: unsafe requests from any other Origin get 403.
+      APP_ORIGIN: ${APP_ORIGIN:-}
       # Pooled: request traffic goes through PgBouncer (transaction mode).
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}
       # Direct: Alembic (and later LISTEN) bypass PgBouncer.
@@ -49,6 +51,7 @@ services:
     # Same settings as the api (validated at startup; see .env.example).
     environment:
       APP_ENV: ${APP_ENV:-}
+      APP_ORIGIN: ${APP_ORIGIN:-}
       # The worker never uses the pooled URL; it is passed so the same settings
       # validate in both containers.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}

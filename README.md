@@ -21,8 +21,10 @@ It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
-cookie); there is no login screen yet. No other product features are
-implemented yet.
+cookie); there is no login screen yet. Requests that change data are protected
+by an `Origin` check and a CSRF token, and the web app is served with a
+Content Security Policy and other security headers. No other product features
+are implemented yet.
 
 ## Prerequisites
 
@@ -45,7 +47,9 @@ background worker and the web app in the background, and returns once all of
 them are healthy. The API reaches PostgreSQL through PgBouncer (connection
 pooling). Then open:
 
-- Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up)
+- Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up). Use
+  exactly this address (`127.0.0.1`, not `localhost`): it is `APP_ORIGIN`, and
+  the API refuses changes from any other origin.
 - Liveness: <http://127.0.0.1:8000/health/live>
 - Readiness (includes PgBouncer and PostgreSQL): <http://127.0.0.1:8000/health/ready>
 
@@ -58,8 +62,9 @@ The background worker (`worker`, built from the same image as the API) runs
 queued and periodic jobs. It processes jobs only after `make migrate` (below)
 has created its tables; until then it waits and logs that it needs
 `make migrate`. Follow its logs with `docker compose logs -f worker`. In local
-and dev, `curl -X POST http://127.0.0.1:8000/api/v1/dev/demo-jobs` queues a
-demo job to check that the worker runs it.
+and dev,
+`curl -X POST -H 'Origin: http://127.0.0.1:5173' http://127.0.0.1:8000/api/v1/dev/demo-jobs`
+queues a demo job to check that the worker runs it.
 
 Stop the stack with `docker compose down` (data is kept in a named volume;
 `docker compose down -v` deletes it).
@@ -143,12 +148,20 @@ curl -s -c cookies.txt -H 'Content-Type: application/json' \
   -d '{"username": "demo.owner", "password": "classora-demo-owner"}' \
   http://127.0.0.1:8000/api/v1/auth/login
 curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/auth/me
+curl -s -b cookies.txt -X POST -H 'Origin: http://127.0.0.1:5173' \
+  -H 'X-CSRF-Token: <csrf_token from the login response>' \
+  http://127.0.0.1:8000/api/v1/auth/logout
 ```
 
-Login returns the signed-in user and sets the session cookie;
-`GET /api/v1/auth/me` returns the same user, roles and permissions, and
-`POST /api/v1/auth/logout` ends the session. A failed login always answers
-`401 invalid_credentials`.
+Login returns the signed-in user, including a `csrf_token`, and sets the
+session cookie; `GET /api/v1/auth/me` returns the same user, roles,
+permissions and token, and `POST /api/v1/auth/logout` ends the session. A
+failed login always answers `401 invalid_credentials`. Every `POST`, `PUT`,
+`PATCH` or `DELETE` must send `Origin: http://127.0.0.1:5173` (the
+`APP_ORIGIN`), and once signed in also the `X-CSRF-Token` header; otherwise
+the API answers `403 csrf_failed`. For the same reason the Swagger UI on the
+API port cannot send them. Details: [`_docs/api.md`](_docs/api.md) and
+[`_docs/security-headers.md`](_docs/security-headers.md).
 
 ## Configuration
 
@@ -159,6 +172,11 @@ to start on a missing or invalid value; `docker compose logs api` (or
 `logs worker`) shows a short `Configuration error` message naming each bad
 variable. `WORKER_SHUTDOWN_TIMEOUT_SECONDS` (default 20, 1 to 30) sets how long
 a stopping worker lets running jobs finish before aborting them.
+
+`APP_ORIGIN` (required, `http://127.0.0.1:5173` in `.env.example`) is the web
+app's origin. Change it together with `WEB_PORT`; `http` is accepted only with
+`APP_ENV=local`. An `.env` created before it existed must get the line (or be
+refreshed from `.env.example`), or the API refuses to start.
 
 `SESSION_COOKIE_SECURE=false` (the `.env.example` value) is for local plain
 HTTP only: it switches the session cookie to `classora_session` without the
@@ -204,7 +222,7 @@ runs reuse it.
 End-to-end tests (Playwright) run against their own Compose stack:
 
 ```bash
-make e2e               # smoke, accessibility (axe, light and dark) and session-cookie tests in headless Chromium
+make e2e               # smoke, accessibility (axe, light and dark), session-cookie and CSRF, and security-header tests in headless Chromium
 ```
 
 `make e2e` builds and starts a separate Compose project, `classora-e2e`, on its
@@ -322,6 +340,7 @@ request.
 - [Architecture](_docs/architecture.md)
 - [Design system](_docs/design-system.md) (tokens, theming, accessibility rules)
 - [API conventions](_docs/api.md) (paths, errors, pagination, versions, client workflow)
+- [Security headers](_docs/security-headers.md) (Content Security Policy, API headers, `Origin` and CSRF)
 - [Testing guidelines](_docs/testing-guidelines.md) (test layers, fixtures, permission matrix, financial invariants, E2E, accessibility)
 - [Agent instructions](AGENTS.md)
 - [Delivery process](_docs/process.md) (agent workflow and contribution guidance)

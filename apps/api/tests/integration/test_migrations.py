@@ -14,6 +14,7 @@ from sqlalchemy.engine import Connection
 
 from app.core.db import async_direct_database_url
 from app.core.model_registry import include_name, target_metadata
+from tests.authz.csrf import origin_for
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -343,6 +344,7 @@ def test_metadata_matches_migrations(fresh_database_url):
 
 def test_env_reads_the_direct_url_from_settings(fresh_database_url, monkeypatch):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     # Closed port: migrating through DATABASE_URL would fail.
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:pw@127.0.0.1:1/unused")
     monkeypatch.setenv("DATABASE_DIRECT_URL", fresh_database_url)

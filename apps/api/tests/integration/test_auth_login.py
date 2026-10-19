@@ -21,8 +21,10 @@ from tests.integration.auth_support import (
     auth_client,
     cookie_header,
     create_user,
+    csrf_for,
     login,
     only_set_cookie,
+    signed_headers,
     token_of,
 )
 from tests.integration.conftest import run_sql
@@ -105,7 +107,7 @@ def test_logout_clears_the_cookie_with_the_same_attributes(
     with auth_client(seeded_url, secure=secure) as client:
         cookie = only_set_cookie(login(client, user.username))
         client.cookies.clear()
-        response = client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
+        response = client.post(LOGOUT, headers=signed_headers(cookie))
 
     assert response.status_code == 204
     assert response.content == b""
@@ -147,6 +149,7 @@ def test_success_returns_the_session_user(seeded_url, client):
         "display_name": "Ana Ruiz",
         "roles": ["guardian", "tutor"],
         "permissions": ["consent.record", "guardian.view", "student.view"],
+        "csrf_token": csrf_for(only_set_cookie(response)),
     }
     cookie = only_set_cookie(response)
     assert cookie.value not in response.text
@@ -441,11 +444,11 @@ def test_the_longest_accepted_values_reach_the_credential_check(seeded_url, clie
     assert_invalid_credentials(response)
 
 
-def test_login_documents_401_and_422_as_problem_details(client):
+def test_login_documents_401_403_and_422_as_problem_details(client):
     document = client.app.openapi()  # type: ignore[attr-defined]
     responses = document["paths"][LOGIN]["post"]["responses"]
 
-    for status in ("401", "422"):
+    for status in ("401", "403", "422"):
         schema = responses[status]["content"][PROBLEM_JSON]["schema"]
         assert schema == {"$ref": PROBLEM_DETAILS_REF}
     assert set(document["components"]["schemas"]["SessionUser"]["properties"]) == {
@@ -454,4 +457,5 @@ def test_login_documents_401_and_422_as_problem_details(client):
         "display_name",
         "roles",
         "permissions",
+        "csrf_token",
     }

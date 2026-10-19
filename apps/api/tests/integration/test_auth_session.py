@@ -22,6 +22,7 @@ from app.modules.identity.permissions import (
     SUSPENDED,
     TUTOR,
 )
+from tests.authz.csrf import CSRF_HEADER
 from tests.integration.auth_support import (
     LOGOUT,
     ME,
@@ -32,6 +33,7 @@ from tests.integration.auth_support import (
     create_user,
     login,
     only_set_cookie,
+    signed_headers,
 )
 from tests.integration.conftest import run_sql, short_lived_engine
 
@@ -95,9 +97,11 @@ def test_the_cookie_jar_round_trip(seeded_url, client):
     user = create_user(seeded_url)
     client.cookies.clear()
 
-    assert login(client, user.username).status_code == 200
+    response = login(client, user.username)
+    assert response.status_code == 200
     assert client.get(ME).status_code == 200
-    assert client.post(LOGOUT, headers=ORIGIN).status_code == 204
+    token = response.json()["csrf_token"]
+    assert client.post(LOGOUT, headers={CSRF_HEADER: token}).status_code == 204
     assert_unauthenticated(client.get(ME))
 
 
@@ -215,10 +219,11 @@ def test_login_me_logout_me(seeded_url, client):
         "display_name",
         "roles",
         "permissions",
+        "csrf_token",
     }
 
     client.cookies.clear()
-    logout = client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
+    logout = client.post(LOGOUT, headers=signed_headers(cookie))
     assert logout.status_code == 204
 
     assert_unauthenticated(me(client, cookie))
@@ -232,10 +237,7 @@ def test_logout_leaves_the_users_other_sessions_valid(seeded_url, client):
     laptop = signed_in(client, user.username)
 
     client.cookies.clear()
-    assert (
-        client.post(LOGOUT, headers={**ORIGIN, **cookie_header(phone)}).status_code
-        == 204
-    )
+    assert client.post(LOGOUT, headers=signed_headers(phone)).status_code == 204
 
     assert_unauthenticated(me(client, phone))
     assert me(client, laptop).status_code == 200
@@ -254,14 +256,9 @@ def test_logout_twice_is_401_the_second_time(seeded_url, client):
     cookie = signed_in(client, user.username)
 
     client.cookies.clear()
-    assert (
-        client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)}).status_code
-        == 204
-    )
+    assert client.post(LOGOUT, headers=signed_headers(cookie)).status_code == 204
     client.cookies.clear()
-    assert_unauthenticated(
-        client.post(LOGOUT, headers={**ORIGIN, **cookie_header(cookie)})
-    )
+    assert_unauthenticated(client.post(LOGOUT, headers=signed_headers(cookie)))
 
 
 @pytest.mark.parametrize(

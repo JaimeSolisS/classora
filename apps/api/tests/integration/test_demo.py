@@ -4,6 +4,7 @@ import pytest
 from alembic import command
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import persist_batch
 from tests.integration.conftest import run_sql
@@ -39,6 +40,7 @@ def migrated_url(tables_url: str) -> str:
 def env_for(monkeypatch):
     def _set(app_env: str, dsn: str) -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", dsn)
         monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
 

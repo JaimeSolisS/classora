@@ -16,6 +16,7 @@ from app.seeds import runner
 from app.seeds.registry import REFERENCE_SEEDS, UpsertSeed
 from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult
+from tests.authz.csrf import origin_for
 from tests.integration.conftest import run_sql_async, settings_for
 
 pytestmark = pytest.mark.anyio
@@ -216,6 +217,7 @@ async def test_reference_seeds_create_no_users(engine, head_url):
 
 def test_make_seed_prints_counts_only(head_url, monkeypatch, capsys):
     monkeypatch.setenv("APP_ENV", "prod")  # reference seeds run everywhere
+    monkeypatch.setenv("APP_ORIGIN", origin_for("prod"))
     monkeypatch.setenv("DATABASE_URL", head_url)
     monkeypatch.setenv("DATABASE_DIRECT_URL", head_url)
 

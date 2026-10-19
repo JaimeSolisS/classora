@@ -26,6 +26,7 @@ from app.core.config import Settings
 from app.core.demo_jobs import FAIL_ATTEMPTS, FAIL_RETRY
 from app.main import create_app
 from app.worker import run as run_worker_process
+from tests.authz.csrf import ORIGIN_HEADER, origin_for
 from tests.integration.conftest import run_sql_async, settings_for
 from tests.integration.test_migrations import alembic_config
 
@@ -438,9 +439,12 @@ def api_client(
     pgbouncer_url: str, jobs_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", through_pgbouncer(pgbouncer_url, jobs_url))
     monkeypatch.setenv("DATABASE_DIRECT_URL", jobs_url)
-    with TestClient(create_app(), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(), raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as client:
         yield client
 
 

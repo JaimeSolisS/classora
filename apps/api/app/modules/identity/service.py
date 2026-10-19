@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import Principal
+from app.core.authz import Principal, ResolvedSession
 from app.core.config import Settings
 from app.modules.identity import sessions
 from app.modules.identity.errors import (
@@ -179,8 +179,9 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
 
 async def resolve_session_principal(
     request: Request, session: AsyncSession, settings: Settings
-) -> Principal | None:
-    """The principal of the request's session cookie, or ``None`` (#23).
+) -> ResolvedSession | None:
+    """The principal of the request's session cookie with its raw token, or
+    ``None`` (#23; the token lets core check the CSRF token, #24).
 
     ``None`` for a missing cookie, a value that is not a valid token, an
     unknown or revoked session, or a user who is not ``active``. Reads only
@@ -192,7 +193,10 @@ async def resolve_session_principal(
     auth_session = await sessions.find_live_session(session, token)
     if auth_session is None:
         return None
-    return await load_principal(session, auth_session.user_id)
+    principal = await load_principal(session, auth_session.user_id)
+    if principal is None:
+        return None
+    return ResolvedSession(principal=principal, session_token=token)
 
 
 async def _check_delegation(

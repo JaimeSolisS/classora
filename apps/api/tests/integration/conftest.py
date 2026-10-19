@@ -44,6 +44,7 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from app.core.config import Settings
 from app.core.db import async_database_url
+from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.integration.models import TestBase
 
 # Socket the Ryuk reaper container mounts, as seen by the Docker daemon (not the
@@ -138,6 +139,7 @@ def settings_for(
     """
     return Settings(
         app_env="local",
+        app_origin=TEST_APP_ORIGIN,
         database_url=SecretStr(dsn),
         database_direct_url=SecretStr(direct_dsn or dsn),
         session_cookie_secure=session_cookie_secure,
@@ -238,3 +240,31 @@ def seeded_url(head_url: str) -> str:
 
     asyncio.run(_seed())
     return head_url
+
+
+@pytest.fixture(scope="module")
+def module_seeded_url(database_url: str) -> Iterator[str]:
+    """A database at head with every reference seed applied, shared by the
+    tests of one module (they must not depend on each other's rows)."""
+    from alembic import command
+
+    from app.seeds import runner
+    from tests.integration.test_migrations import alembic_config
+
+    name = f"test_{uuid.uuid4().hex}"
+    run_sql(database_url, f'CREATE DATABASE "{name}"', autocommit=True)
+    url = make_url(database_url).set(database=name).render_as_string(False)
+    try:
+        command.upgrade(alembic_config(url), "head")
+
+        async def _seed() -> None:
+            engine = runner.create_seed_engine(settings_for(url))
+            try:
+                await runner.run_reference_seeds(engine)
+            finally:
+                await engine.dispose()
+
+        asyncio.run(_seed())
+        yield url
+    finally:
+        run_sql(database_url, f'DROP DATABASE "{name}" WITH (FORCE)', autocommit=True)

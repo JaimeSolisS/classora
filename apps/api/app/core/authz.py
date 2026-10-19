@@ -6,12 +6,23 @@ them (``identity.service.load_principal``). This module stays below the domain
 modules (ADR-0002) and imports none of them.
 
 **Current user.** :func:`get_current_principal` is the only dependency that
-yields the signed-in user. It calls the :data:`PrincipalResolver` that the app
-registered with :func:`register_principal_resolver` (``build_app`` registers
-the identity module's session resolver, #23), so this module still imports no
-domain module. Without a registered resolver it answers
-``401 authentication_required`` (fails closed). Tests replace it through
-``app.dependency_overrides``.
+yields the signed-in user. It gets the request's session from
+:func:`get_current_session`, which calls the :data:`PrincipalResolver` that
+the app registered with :func:`register_principal_resolver` (``build_app``
+registers the identity module's session resolver, #23), so this module still
+imports no domain module. Without a registered resolver it answers
+``401 authentication_required`` (fails closed). Tests replace either
+dependency through ``app.dependency_overrides``.
+
+**CSRF (#24).** On ``POST``, ``PUT``, ``PATCH`` and ``DELETE``,
+:func:`get_current_principal` checks the ``X-CSRF-Token`` header against the
+resolved session's token (``app.core.csrf.verify_csrf_token``) before it
+returns the principal. Every ``authenticated()`` and ``require()`` route is
+therefore protected by construction, in the order ``401`` (no session), ``403
+csrf_failed``, ``403 permission_denied``, then ``422``. ``public()`` routes
+need no token; the ``Origin`` check (``app.core.csrf.require_trusted_origin``)
+covers every route. Overriding ``get_current_principal`` in a test also skips
+the token check; override :func:`get_current_session` to keep it.
 
 **Route access.** Every route declares exactly one of:
 
@@ -28,7 +39,8 @@ parameters, so an unauthorized caller gets ``401``/``403``, never ``422``. The
 exception: a body that is not parseable JSON is rejected with ``422`` before
 any dependency runs (FastAPI 0.143.3); that response reveals nothing.
 Protected routes pass :data:`AUTH_RESPONSES` or :data:`PERMISSION_RESPONSES`
-as ``responses=`` so the OpenAPI document lists the errors.
+as ``responses=`` so the OpenAPI document lists the errors; an unsafe
+``authenticated()`` route adds :data:`CSRF_RESPONSES`.
 
 **Audit actor.** ``authenticated()`` and ``require()`` record the principal
 as the request's audit actor (``app.core.audit``), so every audit event the
@@ -55,6 +67,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import record_request_actor
 from app.core.config import Settings, get_settings
+from app.core.csrf import verify_csrf_token
 from app.core.errors import AppError, problem_response_doc
 from app.core.uow import UnitOfWorkDep
 
@@ -117,13 +130,27 @@ class RecordNotFoundError(AppError):
 # --- The current-user seam -------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ResolvedSession:
+    """The signed-in user and the raw token of the session that proved it.
+
+    ``session_token`` is the secret from the session cookie: it is used only to
+    check the CSRF token, and is never logged, stored or shown (``repr`` hides
+    it).
+    """
+
+    principal: Principal
+    session_token: bytes = field(repr=False)
+
+
 PrincipalResolver = Callable[
-    [Request, AsyncSession, Settings], Awaitable[Principal | None]
+    [Request, AsyncSession, Settings], Awaitable[ResolvedSession | None]
 ]
-"""Resolves the request's credentials (the session cookie) to a principal.
+"""Resolves the request's credentials (the session cookie) to a session.
 
 Called with the request, the request's Unit of Work session and the settings;
-returns ``None`` when there is no signed-in user. It must not write.
+returns the principal together with the raw session token, or ``None`` when
+there is no signed-in user. It must not write.
 """
 
 PRINCIPAL_RESOLVER_STATE: Final = "principal_resolver"
@@ -146,25 +173,41 @@ def _registered_resolver(request: Request) -> PrincipalResolver:
     return resolver
 
 
-async def get_current_principal(
+async def get_current_session(
     request: Request,
     resolver: Annotated[PrincipalResolver, Depends(_registered_resolver)],
     uow: UnitOfWorkDep,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> Principal:
-    """The signed-in user: the only dependency that yields it.
+) -> ResolvedSession:
+    """The request's signed-in session (no CSRF check yet).
 
     Calls the app's registered :data:`PrincipalResolver` (since #23: session
     cookie -> live ``auth_sessions`` row -> ``identity.service.load_principal``)
-    in the request's Unit of Work. No resolver, or no principal, raises
-    :class:`AuthenticationRequiredError`. Tests replace it through
-    ``app.dependency_overrides[get_current_principal]``, and the cookie mode
-    through ``app.dependency_overrides[get_settings]``.
+    in the request's Unit of Work. No resolver, or no session, raises
+    :class:`AuthenticationRequiredError`.
     """
-    principal = await resolver(request, uow.session, settings)
-    if principal is None:
+    resolved = await resolver(request, uow.session, settings)
+    if resolved is None:
         raise AuthenticationRequiredError()
-    return principal
+    return resolved
+
+
+async def get_current_principal(
+    request: Request,
+    resolved: Annotated[ResolvedSession, Depends(get_current_session)],
+) -> Principal:
+    """The signed-in user: the only dependency that yields it.
+
+    The session comes from :func:`get_current_session`, which calls the app's
+    registered :data:`PrincipalResolver` (``401`` without a session).
+    On ``POST``, ``PUT``, ``PATCH`` and ``DELETE`` the ``X-CSRF-Token`` header
+    must then match the session (``403 csrf_failed`` otherwise, #24). Tests
+    replace it through ``app.dependency_overrides[get_current_principal]``
+    (which skips the CSRF check) or :func:`get_current_session` (which keeps
+    it), and the cookie mode through ``app.dependency_overrides[get_settings]``.
+    """
+    verify_csrf_token(request, resolved.session_token)
+    return resolved.principal
 
 
 def ensure_permission(principal: Principal, permission: str) -> None:
@@ -295,9 +338,21 @@ AUTH_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
 }
 """``responses=`` for routes declared with :func:`authenticated`."""
 
+CSRF_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
+    403: problem_response_doc(
+        "The request could not be verified (csrf_failed): the Origin or the"
+        " X-CSRF-Token check failed."
+    ),
+}
+"""``responses=`` addition for unsafe routes (``POST``, ``PUT``, ``PATCH``,
+``DELETE``) declared with :func:`authenticated` or :func:`public`."""
+
 PERMISSION_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     **AUTH_RESPONSES,
-    403: problem_response_doc("Permission denied."),
+    403: problem_response_doc(
+        "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE"
+        " also a failed Origin or X-CSRF-Token check (csrf_failed)."
+    ),
 }
 """``responses=`` for routes declared with :func:`require`."""
 
