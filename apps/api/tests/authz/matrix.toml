@@ -21,6 +21,9 @@
 #   Optional: `path_params` (values for the path template; default: a fixed
 #   UUID, or 1 for an int parameter) and `json` (a request body).
 #
+# The runtime check signs every role in for real (POST /api/v1/auth/login, a
+# fresh session per request); anonymous sends no cookie.
+#
 # Example:
 #
 #   [[route]]
@@ -36,6 +39,24 @@ path = "/api/v1/audit-events"
 access = "permission"
 permission = "audit.view"
 allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/login"
+access = "public"
+reason = "Signing in needs no session; CSRF for login is the Origin check plus SameSite (#24)"
+# An empty body gets 422: a well-formed wrong login would get 401 invalid_credentials.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/logout"
+access = "authenticated"
+
+[[route]]
+method = "GET"
+path = "/api/v1/auth/me"
+access = "authenticated"
 
 [[route]]
 method = "POST"

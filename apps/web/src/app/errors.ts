@@ -25,6 +25,7 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['version_conflict', 'version_conflict'],
   ['authentication_required', 'authentication_required'],
   ['permission_denied', 'permission_denied'],
+  ['invalid_credentials', 'invalid_credentials'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

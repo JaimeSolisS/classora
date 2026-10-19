@@ -57,3 +57,19 @@ class DelegationTargetInvalidError(AppError):
     detail = (
         "Delegated permissions are granted only to Administrators who are not archived."
     )
+
+
+class InvalidCredentialsError(AppError):
+    """A login that did not succeed, for any reason (ADR-0007 D7).
+
+    One fixed body for an unknown username, a wrong password, a user without a
+    password and a user who is not active, so a response never reveals whether
+    an account exists. Takes no arguments, so nothing else can leak.
+    """
+
+    status = 401
+    code = "invalid_credentials"
+    detail = "The username or password is incorrect."
+
+    def __init__(self) -> None:
+        super().__init__()

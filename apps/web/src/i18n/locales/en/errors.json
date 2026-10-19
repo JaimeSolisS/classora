@@ -9,6 +9,7 @@
   "version_conflict": "Someone else changed this record. Reload it and try again.",
   "authentication_required": "Sign in to continue.",
   "permission_denied": "You don't have permission to do this.",
+  "invalid_credentials": "The username or password is incorrect.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

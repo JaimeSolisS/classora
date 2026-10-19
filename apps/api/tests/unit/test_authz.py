@@ -111,7 +111,8 @@ def test_principal_repr_shows_only_the_id_and_roles():
 # --- A2, A3: the seam and the errors ------------------------------------------------
 
 
-def test_the_real_current_principal_always_answers_401(app, client):
+def test_without_a_registered_resolver_the_real_dependency_answers_401(app, client):
+    # The sample app registers no PrincipalResolver: fails closed (#23 C2).
     response = client.get("/sample/me")
 
     assert_problem(response, 401, "authentication_required", "Sign in to continue.")
@@ -137,7 +138,7 @@ def test_error_classes():
 def test_current_principal_docstring_names_the_seam():
     doc = get_current_principal.__doc__ or ""
 
-    assert "#23" in doc
+    assert "PrincipalResolver" in doc
     assert "dependency_overrides" in doc
 
 

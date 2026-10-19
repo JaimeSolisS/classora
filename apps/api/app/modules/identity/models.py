@@ -12,25 +12,34 @@
   Administrator. A composite foreign key to ``permissions (id, delegable)``
   plus ``permission_delegable = true`` makes the database reject a delegation
   of a non-delegable permission.
+- ``auth_sessions``: login sessions (#23, ADR-0007 D1, D8). Only the SHA-256
+  hash of the session token is stored; the token itself exists only in the
+  cookie. ``revoked_at`` ``NULL`` means the session is live.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
 ``users``, ``user_roles`` and ``user_delegations`` are :class:`~app.core.audit.Audited`
 (#22): every change is an audit event, and ``password_hash`` is never stored in
 one. ``roles``, ``permissions`` and ``role_permissions`` are reference data
-fixed in code (ADR-0007) and are not audited.
+fixed in code (ADR-0007) and are not audited. ``auth_sessions`` is not audited
+either: it holds token hashes and changes on every login; login and logout
+write explicit events instead (``app.modules.identity.sessions``).
 """
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -124,4 +133,30 @@ class UserDelegation(Audited, Model):
     )
     granted_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+
+class AuthSession(Model):
+    """One login session (ADR-0007 D1, D8). Not audited (see the module doc).
+
+    Expiry (#25), the CSRF token (#24) and reauthentication (#26) add their own
+    columns in their own migrations.
+    """
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        CheckConstraint("octet_length(token_hash) = 32", name="token_hash_length"),
+    )
+
+    # Indexed: #25 revokes every session of a user.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    # sha256(token): the raw token is never stored.
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

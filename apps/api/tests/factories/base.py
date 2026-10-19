@@ -37,6 +37,7 @@ Types (ADR-0004)
     - Instants: timezone-aware UTC ``datetime``: use :func:`instant`.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -111,6 +112,16 @@ async def persist_batch(
     return instances
 
 
+@dataclass(frozen=True)
+class GeneratorSkipped:
+    """What a demo generator returns when it writes nothing on purpose.
+
+    ``make seed-demo`` prints ``<name>: skipped (<reason>)``.
+    """
+
+    reason: str
+
+
 # --- Declarations --------------------------------------------------------------
 
 
@@ -155,6 +166,7 @@ __all__ = [
     "RESERVED_EMAIL_DOMAINS",
     "ClassoraFactory",
     "FactoryCreateError",
+    "GeneratorSkipped",
     "calendar_date",
     "get_faker",
     "instant",

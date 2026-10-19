@@ -6,8 +6,11 @@ them (``identity.service.load_principal``). This module stays below the domain
 modules (ADR-0002) and imports none of them.
 
 **Current user.** :func:`get_current_principal` is the only dependency that
-yields the signed-in user. Until login exists (#23) it always answers
-``401 authentication_required``; tests replace it through
+yields the signed-in user. It calls the :data:`PrincipalResolver` that the app
+registered with :func:`register_principal_resolver` (``build_app`` registers
+the identity module's session resolver, #23), so this module still imports no
+domain module. Without a registered resolver it answers
+``401 authentication_required`` (fails closed). Tests replace it through
 ``app.dependency_overrides``.
 
 **Route access.** Every route declares exactly one of:
@@ -41,16 +44,19 @@ caller may not act on is ``403 permission_denied``. Policies are pure
 
 import re
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Final, Literal
 
-from fastapi import Depends, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute, RouteContext
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import record_request_actor
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError, problem_response_doc
+from app.core.uow import UnitOfWorkDep
 
 # --- Principal and errors --------------------------------------------------------
 
@@ -111,16 +117,54 @@ class RecordNotFoundError(AppError):
 # --- The current-user seam -------------------------------------------------------
 
 
-async def get_current_principal() -> Principal:
+PrincipalResolver = Callable[
+    [Request, AsyncSession, Settings], Awaitable[Principal | None]
+]
+"""Resolves the request's credentials (the session cookie) to a principal.
+
+Called with the request, the request's Unit of Work session and the settings;
+returns ``None`` when there is no signed-in user. It must not write.
+"""
+
+PRINCIPAL_RESOLVER_STATE: Final = "principal_resolver"
+"""``app.state`` attribute holding the registered :data:`PrincipalResolver`."""
+
+
+def register_principal_resolver(app: FastAPI, resolver: PrincipalResolver) -> None:
+    """Make ``resolver`` the way ``app`` finds the signed-in user."""
+    setattr(app.state, PRINCIPAL_RESOLVER_STATE, resolver)
+
+
+def _registered_resolver(request: Request) -> PrincipalResolver:
+    # Solved before the Unit of Work and the settings, so an app without a
+    # resolver (a test-only app without a database) answers 401, never 500.
+    resolver: PrincipalResolver | None = getattr(
+        request.app.state, PRINCIPAL_RESOLVER_STATE, None
+    )
+    if resolver is None:
+        raise AuthenticationRequiredError()
+    return resolver
+
+
+async def get_current_principal(
+    request: Request,
+    resolver: Annotated[PrincipalResolver, Depends(_registered_resolver)],
+    uow: UnitOfWorkDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Principal:
     """The signed-in user: the only dependency that yields it.
 
-    No authentication mechanism exists yet, so this always raises
-    :class:`AuthenticationRequiredError`. #23 replaces this body with session
-    resolution (session -> user -> ``identity.service.load_principal``; no
-    principal -> ``401``). Tests replace it through
-    ``app.dependency_overrides[get_current_principal]``.
+    Calls the app's registered :data:`PrincipalResolver` (since #23: session
+    cookie -> live ``auth_sessions`` row -> ``identity.service.load_principal``)
+    in the request's Unit of Work. No resolver, or no principal, raises
+    :class:`AuthenticationRequiredError`. Tests replace it through
+    ``app.dependency_overrides[get_current_principal]``, and the cookie mode
+    through ``app.dependency_overrides[get_settings]``.
     """
-    raise AuthenticationRequiredError()
+    principal = await resolver(request, uow.session, settings)
+    if principal is None:
+        raise AuthenticationRequiredError()
+    return principal
 
 
 def ensure_permission(principal: Principal, permission: str) -> None:

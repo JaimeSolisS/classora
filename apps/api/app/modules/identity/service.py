@@ -8,7 +8,9 @@
   and :data:`STAFF_ROLES` (D4; ``permissions.py``).
 - Delegation: :func:`grant_delegation` and :func:`revoke_delegation`.
 - Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
-  of an active user; #23 calls it after resolving a session).
+  of an active user) and :func:`resolve_session_principal`, the
+  :data:`~app.core.authz.PrincipalResolver` that ``build_app`` registers
+  (session cookie -> live ``auth_sessions`` row -> :func:`load_principal`; #23).
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -17,11 +19,14 @@ import re
 import uuid
 from collections import defaultdict
 
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal
+from app.core.config import Settings
+from app.modules.identity import sessions
 from app.modules.identity.errors import (
     DelegationForbiddenError,
     DelegationTargetInvalidError,
@@ -81,6 +86,7 @@ __all__ = [
     "needs_rehash",
     "normalize_username",
     "resolve_permissions",
+    "resolve_session_principal",
     "revoke_delegation",
     "validate_password",
     "verify_password",
@@ -169,6 +175,24 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         roles=frozenset(await _user_roles(session, user_id)),
         permissions=await effective_permissions(session, user_id),
     )
+
+
+async def resolve_session_principal(
+    request: Request, session: AsyncSession, settings: Settings
+) -> Principal | None:
+    """The principal of the request's session cookie, or ``None`` (#23).
+
+    ``None`` for a missing cookie, a value that is not a valid token, an
+    unknown or revoked session, or a user who is not ``active``. Reads only
+    the current mode's cookie name. Writes nothing.
+    """
+    token = sessions.request_token(request, settings)
+    if token is None:
+        return None
+    auth_session = await sessions.find_live_session(session, token)
+    if auth_session is None:
+        return None
+    return await load_principal(session, auth_session.user_id)
 
 
 async def _check_delegation(

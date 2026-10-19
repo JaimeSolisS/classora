@@ -142,10 +142,12 @@ describes the route declarations and the 401/403/404 rule.
   one test per entry and actor (`METHOD path as role`): anonymous, each of the
   seven roles, and, for a delegable permission, an Administrator holding that
   delegation (no separate entry needed). Every `401`/`403` must be Problem
-  Details with the expected `code`. Principals come from real users in a
-  migrated, seeded Testcontainers database through one harness function,
-  `principal_for` in `tests/authz/harness.py`; it is the seam that switches to
-  real logins when login exists.
+  Details with the expected `code`. Every actor is a real, active user in a
+  migrated, seeded Testcontainers database (`matrix_user_for` in
+  `tests/authz/harness.py`), and each case logs in through
+  `POST /api/v1/auth/login` and sends that fresh session's cookie (M2-05).
+  Only the runner's self-test on the test-only sample app overrides
+  `get_current_principal`.
 - Unit tests of a route declaration use a test-only app and override
   `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the
@@ -224,7 +226,11 @@ follows these rules.
 - Named fixtures that tests read (for example one account per role, from M2)
   are added by their domain task as deterministic demo generators with
   documented keys. The task that adds them also lists them in this section.
-  Named E2E fixtures: none yet.
+  Named E2E fixtures:
+  - `demo.owner` (password `classora-demo-owner`): an active Owner, from the
+    `identity.demo_owner` demo generator. It exists only in local stacks
+    (`APP_ENV=local`, including the E2E stack); the E2E tests read it from
+    `e2e/tests/support/credentials.ts`.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 

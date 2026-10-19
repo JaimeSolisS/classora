@@ -24,6 +24,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.authz import register_principal_resolver
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.conventions import install_conventions
 from app.core.db import create_engine, create_sessionmaker
@@ -32,6 +33,8 @@ from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as administration_router
+from app.modules.identity.router import router as identity_router
+from app.modules.identity.service import resolve_session_principal
 
 
 @asynccontextmanager
@@ -65,12 +68,16 @@ def build_app(
 ) -> FastAPI:
     """The app without settings validation: metadata, conventions, routers.
 
+    Registers the identity module's session resolver, so
+    ``get_current_principal`` resolves the session cookie (#23).
     ``include_dev_routes`` mounts the local/DEV demo job route; the exported
     contract (``app.core.openapi``) never includes it.
     """
     app = FastAPI(title=API_TITLE, version=API_VERSION, debug=False, lifespan=lifespan)
     install_conventions(app)
+    register_principal_resolver(app, resolve_session_principal)
     app.include_router(health_router)
+    app.include_router(identity_router)
     app.include_router(administration_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
