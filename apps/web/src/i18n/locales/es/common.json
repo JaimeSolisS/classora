@@ -28,7 +28,8 @@
   "nav": {
     "label": "Navegación principal",
     "toggle": "Menú",
-    "home": "Inicio"
+    "home": "Inicio",
+    "invitations": "Invitaciones"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -60,7 +61,8 @@
       "submitting": "Iniciando sesión…",
       "usernameRequired": "Escribe tu nombre de usuario.",
       "passwordRequired": "Escribe tu contraseña.",
-      "tooLong": "Es demasiado largo."
+      "tooLong": "Es demasiado largo.",
+      "invitationRedeemed": "Tu contraseña quedó guardada. Inicia sesión para continuar."
     },
     "reauth": {
       "title": "Confirma tu contraseña",
@@ -84,5 +86,81 @@
       "message": "Pide a un administrador que revise tus permisos.",
       "backHome": "Volver al inicio"
     }
+  },
+  "common": {
+    "usernameHint": "De 3 a 64 caracteres: letras, números, punto, guion o guion bajo."
+  },
+  "roles": {
+    "owner": "Propietario",
+    "administrator": "Administrador",
+    "academic_coordinator": "Coordinador académico",
+    "finance_staff": "Personal de finanzas",
+    "tutor": "Tutor",
+    "student": "Estudiante",
+    "guardian": "Padre, madre o tutor legal"
+  },
+  "invitations": {
+    "title": "Invitaciones",
+    "intro": "Invita a una persona con un enlace de un solo uso. No se envía ningún correo.",
+    "form": {
+      "title": "Nueva invitación",
+      "username": "Nombre de usuario",
+      "displayName": "Nombre para mostrar",
+      "role": "Rol",
+      "chooseRole": "Elige un rol",
+      "usernameRequired": "Escribe un nombre de usuario.",
+      "displayNameRequired": "Escribe un nombre para mostrar.",
+      "roleRequired": "Elige un rol.",
+      "tooLong": "Es demasiado largo.",
+      "submit": "Crear invitación",
+      "submitting": "Creando…",
+      "staffNote": "Para un rol del personal te pediremos tu contraseña."
+    },
+    "result": {
+      "title": "Enlace de invitación listo",
+      "person": "Persona",
+      "username": "Nombre de usuario",
+      "role": "Rol",
+      "expires": "Vence",
+      "link": "Enlace de invitación",
+      "onceWarning": "Este enlace se muestra solo una vez. Entrégalo en persona o por teléfono. Vence en 24 horas.",
+      "copy": "Copiar enlace",
+      "copied": "Enlace copiado",
+      "copyFailed": "No se pudo copiar. El enlace está seleccionado: cópialo manualmente.",
+      "done": "Listo"
+    },
+    "list": {
+      "title": "Invitaciones abiertas",
+      "username": "Nombre de usuario",
+      "displayName": "Nombre para mostrar",
+      "role": "Rol",
+      "status": "Estado",
+      "actions": "Acciones",
+      "reissue": "Nuevo enlace",
+      "reissueFor": "Nuevo enlace para {{username}}",
+      "activeUntil": "Activa hasta {{date}}",
+      "expired": "Vencida",
+      "empty": "No hay invitaciones abiertas.",
+      "pagination": "Páginas",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "range": "{{from}}–{{to}} de {{total}}"
+    }
+  },
+  "invite": {
+    "title": "Crea tu contraseña",
+    "checking": "Revisando tu enlace…",
+    "welcome": "Hola, {{name}}. Tu usuario es:",
+    "username": "Usuario",
+    "newPassword": "Nueva contraseña",
+    "confirmPassword": "Confirma la contraseña",
+    "passwordHint": "Usa al menos 12 caracteres.",
+    "passwordRequired": "Escribe una contraseña.",
+    "tooLong": "Usa como máximo 128 caracteres.",
+    "mismatch": "Las contraseñas no coinciden.",
+    "submit": "Guardar contraseña",
+    "submitting": "Guardando…",
+    "incomplete": "El enlace está incompleto. Abre de nuevo el enlace que te dieron.",
+    "signedIn": "Iniciaste sesión como {{name}}. Este enlace es para la persona invitada. Cierra sesión y abre el enlace de nuevo."
   }
 }

@@ -821,10 +821,10 @@ def test_the_real_matrix_declares_the_auth_rate_limits():
         "reauth.user"
     ]
     assert entries[("POST", "/api/v1/dev/demo-jobs")].rate_limit_exempt
-    assert dict(PENDING_POLICIES) == {
-        "token_redemption.ip": "#29, #30",
-        "registration.ip": "#29",
-    }
+    for path in ("/api/v1/auth/invitation/lookup", "/api/v1/auth/invitation/redeem"):
+        assert entries[("POST", path)].rate_limit == ["token_redemption.ip"]
+    # #29 applies token_redemption.ip; self-registration moved to #169.
+    assert dict(PENDING_POLICIES) == {"registration.ip": "#169"}
 
 
 def test_removing_the_login_limit_is_reported():

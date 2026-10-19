@@ -145,6 +145,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invitations
+         * @description The open invitations (pending users without a password who have a
+         *     link), latest link first. Holds no link or token.
+         */
+        get: operations["list_invitations_api_v1_invitations_get"];
+        put?: never;
+        /**
+         * Create Invitation
+         * @description Invite a person for one role: a pending user without a password and a
+         *     one-time link, valid for 24 hours, shown in this response only.
+         *
+         *     The caller must be allowed to assign the role (``403 permission_denied``).
+         *     Owner, Administrator, Academic coordinator and Finance staff need a
+         *     password reauthentication in the last 5 minutes (``403
+         *     reauth_required``).
+         */
+        post: operations["create_invitation_api_v1_invitations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations/{user_id}/reissue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reissue Invitation
+         * @description Issue a new link for an open invitation; the earlier link stops
+         *     working. The same role and reauthentication rules as creating one, for
+         *     every role the user holds.
+         */
+        post: operations["reissue_invitation_api_v1_invitations__user_id__reissue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/invitation/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lookup Invitation
+         * @description Who an invitation link is for (the username to sign in with). Changes
+         *     nothing. Needs the app's ``Origin``.
+         */
+        post: operations["lookup_invitation_api_v1_auth_invitation_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/invitation/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeem Invitation
+         * @description Set the invited person's password and activate the account; the link
+         *     is used up. Creates no session: the person signs in on the login page.
+         *     Needs the app's ``Origin``.
+         */
+        post: operations["redeem_invitation_api_v1_auth_invitation_redeem_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-events": {
         parameters: {
             query?: never;
@@ -244,6 +340,130 @@ export interface components {
             status: "ok";
         };
         /**
+         * InvitationCreate
+         * @description Invite one person for one role (``POST /api/v1/invitations``).
+         */
+        InvitationCreate: {
+            /**
+             * Username
+             * @description Normalized like a login username: 3 to 64 characters from a-z, 0-9, '.', '_' and '-' (letters are not case-sensitive).
+             */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            role: components["schemas"]["RoleCode"];
+        };
+        /**
+         * InvitationIssued
+         * @description A new invitation link (``201``) or a replacement (``200`` on reissue).
+         *
+         *     ``invitation_url`` holds the one-time token in its fragment. It is shown
+         *     in this response only: never stored, logged or returned again.
+         */
+        InvitationIssued: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Roles
+             * @description Role codes, sorted.
+             */
+            roles: components["schemas"]["RoleCode"][];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Invitation Url
+             * @description APP_ORIGIN + '/invite#token=' + the one-time token. Show it once; never store or log it.
+             */
+            invitation_url: string;
+        };
+        /**
+         * InvitationListItem
+         * @description One open invitation: a pending user without a password who has an
+         *     invitation link. Holds no token or hash.
+         */
+        InvitationListItem: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Roles
+             * @description Role codes, sorted.
+             */
+            roles: components["schemas"]["RoleCode"][];
+            /**
+             * Status
+             * @description active: the latest link can still be used.
+             * @enum {string}
+             */
+            status: "active" | "expired";
+            /**
+             * Expires At
+             * Format: date-time
+             * @description When the latest link expires.
+             */
+            expires_at: string;
+            /**
+             * Issued At
+             * Format: date-time
+             * @description When the latest link was issued.
+             */
+            issued_at: string;
+        };
+        /**
+         * InvitationLookup
+         * @description Who an invitation link is for, so the page can show the username.
+         */
+        InvitationLookup: {
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Roles
+             * @description Role codes, sorted.
+             */
+            roles: components["schemas"]["RoleCode"][];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * InvitationRedeemRequest
+         * @description The token and the new password (``POST …/invitation/redeem``).
+         */
+        InvitationRedeemRequest: {
+            /** Token */
+            token: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * InvitationTokenRequest
+         * @description The token from an invitation link (``POST …/invitation/lookup``).
+         */
+        InvitationTokenRequest: {
+            /** Token */
+            token: string;
+        };
+        /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
          */
@@ -252,6 +472,17 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** OffsetPage[InvitationListItem] */
+        OffsetPage_InvitationListItem_: {
+            /** Items */
+            items: components["schemas"]["InvitationListItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** @enum {string} */
         PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
@@ -554,6 +785,296 @@ export interface operations {
             };
             /** @description The password is incorrect (reauth_failed), or a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_invitations_api_v1_invitations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_InvitationListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_invitation_api_v1_invitations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssued"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The username is already taken (username_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reissue_invitation_api_v1_invitations__user_id__reissue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssued"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not an open invitation (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    lookup_invitation_api_v1_auth_invitation_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationLookup"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeem_invitation_api_v1_auth_invitation_redeem_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationRedeemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid). */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 # Named string enums in OpenAPI, so the generated web client gets
 # ``RoleCode`` and ``PermissionCode`` unions (#28 F3). They list exactly the
@@ -93,3 +93,82 @@ class ReauthenticateResponse(BaseModel):
             " (ISO 8601, UTC). Activity does not extend it."
         )
     )
+
+
+# --- Invitations (#29) ---------------------------------------------------------------
+
+DisplayName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+
+
+class InvitationCreate(BaseModel):
+    """Invite one person for one role (``POST /api/v1/invitations``)."""
+
+    username: str = Field(
+        min_length=1,
+        max_length=256,
+        description=(
+            "Normalized like a login username: 3 to 64 characters from a-z,"
+            " 0-9, '.', '_' and '-' (letters are not case-sensitive)."
+        ),
+    )
+    display_name: DisplayName
+    role: RoleCode
+
+
+class InvitationIssued(BaseModel):
+    """A new invitation link (``201``) or a replacement (``200`` on reissue).
+
+    ``invitation_url`` holds the one-time token in its fragment. It is shown
+    in this response only: never stored, logged or returned again.
+    """
+
+    user_id: uuid.UUID
+    username: str
+    display_name: str
+    roles: list[RoleCode] = Field(description="Role codes, sorted.")
+    expires_at: datetime
+    invitation_url: str = Field(
+        description=(
+            "APP_ORIGIN + '/invite#token=' + the one-time token. Show it once;"
+            " never store or log it."
+        )
+    )
+
+
+class InvitationListItem(BaseModel):
+    """One open invitation: a pending user without a password who has an
+    invitation link. Holds no token or hash."""
+
+    user_id: uuid.UUID
+    username: str
+    display_name: str
+    roles: list[RoleCode] = Field(description="Role codes, sorted.")
+    status: Literal["active", "expired"] = Field(
+        description="active: the latest link can still be used."
+    )
+    expires_at: datetime = Field(description="When the latest link expires.")
+    issued_at: datetime = Field(description="When the latest link was issued.")
+
+
+class InvitationTokenRequest(BaseModel):
+    """The token from an invitation link (``POST …/invitation/lookup``)."""
+
+    token: str = Field(min_length=1, max_length=256, repr=False)
+
+
+class InvitationRedeemRequest(BaseModel):
+    """The token and the new password (``POST …/invitation/redeem``)."""
+
+    token: str = Field(min_length=1, max_length=256, repr=False)
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class InvitationLookup(BaseModel):
+    """Who an invitation link is for, so the page can show the username."""
+
+    username: str
+    display_name: str
+    roles: list[RoleCode] = Field(description="Role codes, sorted.")
+    expires_at: datetime

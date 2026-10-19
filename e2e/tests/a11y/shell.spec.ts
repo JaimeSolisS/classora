@@ -9,12 +9,15 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 const THEMES = ['light', 'dark'] as const;
 
-// Home and 404 are behind the guard: scanned signed in (the shared state).
-// /login is scanned signed out.
+// Home, 404 and /invitations are behind the guard: scanned signed in (the
+// shared state). /login and /invite (the "incomplete link" state: no token)
+// are scanned signed out.
 const ROUTES = [
   { name: 'home', path: '/', signedIn: true },
   { name: '404', path: '/e2e-route-that-does-not-exist', signedIn: true },
+  { name: 'invitations', path: '/invitations', signedIn: true },
   { name: 'login', path: '/login', signedIn: false },
+  { name: 'invite', path: '/invite', signedIn: false },
 ];
 
 // Under machine load, the first pages of a cold dev server (and the session

@@ -512,9 +512,9 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 ### 10.7 Identity, security and privacy
 
 #### ISSUE-S1 — Account recovery and activation without email (M; spec §18.2 open)
-- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md), which also records who may reset whom, the Owner bootstrap and reset commands, and the self-registration rules.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md) (amended by #29), which also records who may reset whom, the Owner bootstrap and reset commands, and the self-registration rules.
   - Invitations and password resets use **single-use, time-limited tokens** (32 random bytes, 24 h, stored only as a SHA-256 hash). A new token invalidates any unredeemed token of the same kind; a used or expired token returns `410`.
-  - An authorized staff member generates the token in the app and shows it once as a link and a QR code. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
+  - An authorized staff member generates the token in the app and shows it once as a link. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
   - Self-registration requests (Parent/Guardian or Student only) stay `pending` until an administrator approves them.
   - Considered and rejected: transactional-only email (for example, Amazon SES) restricted to authentication messages, which would be a **scope change** to spec §1 and §14.
 

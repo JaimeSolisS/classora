@@ -287,6 +287,10 @@ follows these rules.
     `identity.demo_owner` demo generator. It exists only in local stacks
     (`APP_ENV=local`, including the E2E stack); the E2E tests read it from
     `e2e/tests/support/credentials.ts`.
+  - `e2e.coordinator`: the Academic coordinator that
+    `e2e/tests/auth/invitations.spec.ts` invites and activates (#29). It is
+    created by that test in every run (unique per run, because every run
+    starts from an empty database); no other test may use the name.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 
@@ -318,6 +322,13 @@ follows these rules.
   `make e2e` starts from an empty volume, so the budget is per run. Keep the
   count in `LOGIN_ATTEMPTS_PER_RUN` (`e2e/tests/support/auth.ts`) up to date
   and well under both limits; never add a setting that disables the limits.
+  One-time links share one `token_redemption.ip` budget of 20 lookups and
+  redemptions per 15 minutes (#29); keep `TOKEN_REDEMPTIONS_PER_RUN` up to
+  date too.
+- **Reauthentication dialog:** a test that needs the password dialog signs in
+  with a fresh login in its own fresh context (#29 L1), never with the shared
+  `storageState`: parallel tests share that session and its reauthentication
+  mark.
 - A failing run keeps the trace (`trace.zip`), a screenshot and the Compose
   logs in `e2e/test-results/`. Open a trace from the repository root with
   `corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`

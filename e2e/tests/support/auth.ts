@@ -21,11 +21,19 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * per 15 minutes, and `demo.owner` has 10 failures per 15 minutes. Every
  * `make e2e` starts from an empty volume, so the budget is per run. Logins in
  * the whole run today: global setup 1, auth/session.spec.ts 8 (2 of them
- * wrong passwords), security/headers.spec.ts 1 = 10 attempts, 2 failures.
- * Keep the total well under both limits; never add a setting that disables
- * the limits.
+ * wrong passwords), security/headers.spec.ts 1, auth/invitations.spec.ts 2
+ * = 12 attempts, 2 failures. Keep the total well under both limits; never add
+ * a setting that disables the limits.
+ *
+ * Token redemption (#29, ADR-0008 D15): `token_redemption.ip` allows 20
+ * lookups and redemptions per 15 minutes for the run's one IP.
+ * auth/invitations.spec.ts makes 3 (2 lookups, 1 redemption), below the
+ * budget of TOKEN_REDEMPTIONS_PER_RUN.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 10;
+export const LOGIN_ATTEMPTS_PER_RUN = 12;
+
+/** Invitation lookups and redemptions in one run (see above). */
+export const TOKEN_REDEMPTIONS_PER_RUN = 3;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

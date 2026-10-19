@@ -288,6 +288,382 @@
         }
       }
     },
+    "/api/v1/invitations": {
+      "post": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Create Invitation",
+        "description": "Invite a person for one role: a pending user without a password and a\none-time link, valid for 24 hours, shown in this response only.\n\nThe caller must be allowed to assign the role (``403 permission_denied``).\nOwner, Administrator, Academic coordinator and Finance staff need a\npassword reauthentication in the last 5 minutes (``403\nreauth_required``).",
+        "operationId": "create_invitation_api_v1_invitations_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationIssued"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The username is already taken (username_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "List Invitations",
+        "description": "The open invitations (pending users without a password who have a\nlink), latest link first. Holds no link or token.",
+        "operationId": "list_invitations_api_v1_invitations_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_InvitationListItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invitations/{user_id}/reissue": {
+      "post": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Reissue Invitation",
+        "description": "Issue a new link for an open invitation; the earlier link stops\nworking. The same role and reauthentication rules as creating one, for\nevery role the user holds.",
+        "operationId": "reissue_invitation_api_v1_invitations__user_id__reissue_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationIssued"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an open invitation (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invitation/lookup": {
+      "post": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Lookup Invitation",
+        "description": "Who an invitation link is for (the username to sign in with). Changes\nnothing. Needs the app's ``Origin``.",
+        "operationId": "lookup_invitation_api_v1_auth_invitation_lookup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationLookup"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (rate_limited). Retry after the number of seconds in Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the limit's window ends.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1.0
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invitation/redeem": {
+      "post": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Redeem Invitation",
+        "description": "Set the invited person's password and activate the account; the link\nis used up. Creates no session: the person signs in on the login page.\nNeeds the app's ``Origin``.",
+        "operationId": "redeem_invitation_api_v1_auth_invitation_redeem_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationRedeemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The link is unknown, malformed, used, replaced or expired, or the invitation can no longer be redeemed (token_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (rate_limited). Retry after the number of seconds in Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the limit's window ends.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1.0
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-events": {
       "get": {
         "tags": [
@@ -677,6 +1053,211 @@
         "title": "HealthStatus",
         "description": "The success body of both health probes."
       },
+      "InvitationCreate": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Username",
+            "description": "Normalized like a login username: 3 to 64 characters from a-z, 0-9, '.', '_' and '-' (letters are not case-sensitive)."
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleCode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "display_name",
+          "role"
+        ],
+        "title": "InvitationCreate",
+        "description": "Invite one person for one role (``POST /api/v1/invitations``)."
+      },
+      "InvitationIssued": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Role codes, sorted."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "invitation_url": {
+            "type": "string",
+            "title": "Invitation Url",
+            "description": "APP_ORIGIN + '/invite#token=' + the one-time token. Show it once; never store or log it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "roles",
+          "expires_at",
+          "invitation_url"
+        ],
+        "title": "InvitationIssued",
+        "description": "A new invitation link (``201``) or a replacement (``200`` on reissue).\n\n``invitation_url`` holds the one-time token in its fragment. It is shown\nin this response only: never stored, logged or returned again."
+      },
+      "InvitationListItem": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Role codes, sorted."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "expired"
+            ],
+            "title": "Status",
+            "description": "active: the latest link can still be used."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When the latest link expires."
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Issued At",
+            "description": "When the latest link was issued."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "roles",
+          "status",
+          "expires_at",
+          "issued_at"
+        ],
+        "title": "InvitationListItem",
+        "description": "One open invitation: a pending user without a password who has an\ninvitation link. Holds no token or hash."
+      },
+      "InvitationLookup": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Role codes, sorted."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "display_name",
+          "roles",
+          "expires_at"
+        ],
+        "title": "InvitationLookup",
+        "description": "Who an invitation link is for, so the page can show the username."
+      },
+      "InvitationRedeemRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Token"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "InvitationRedeemRequest",
+        "description": "The token and the new password (``POST …/invitation/redeem``)."
+      },
+      "InvitationTokenRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "InvitationTokenRequest",
+        "description": "The token from an invitation link (``POST …/invitation/lookup``)."
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -699,6 +1280,37 @@
         ],
         "title": "LoginRequest",
         "description": "Username and password. The bounds do not depend on any account."
+      },
+      "OffsetPage_InvitationListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvitationListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[InvitationListItem]"
       },
       "PermissionCode": {
         "type": "string",

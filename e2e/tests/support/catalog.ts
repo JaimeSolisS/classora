@@ -7,20 +7,42 @@ import { readFileSync } from 'node:fs';
 type Common = {
   apiStatus: { live: string };
   notFound: { title: string };
-  nav: { home: string };
+  nav: { home: string; invitations: string };
+  roles: Record<string, string>;
   auth: {
     login: {
       title: string;
       username: string;
       password: string;
       submit: string;
+      invitationRedeemed: string;
     };
+    reauth: { password: string; confirm: string };
     userMenu: { signedInAs: string; signOut: string };
+  };
+  invitations: {
+    title: string;
+    form: {
+      username: string;
+      displayName: string;
+      role: string;
+      submit: string;
+    };
+    result: { link: string; onceWarning: string };
+  };
+  invite: {
+    title: string;
+    username: string;
+    newPassword: string;
+    confirmPassword: string;
+    submit: string;
+    incomplete: string;
   };
 };
 
 type Errors = {
   invalid_credentials: string;
+  token_invalid: string;
 };
 
 function read<T>(path: string): T {

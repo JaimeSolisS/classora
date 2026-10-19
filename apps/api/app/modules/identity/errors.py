@@ -115,3 +115,34 @@ class ReauthFailedError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class TokenInvalidError(AppError):
+    """An account token that cannot be used (#29; ADR-0007 D11).
+
+    One code and one fixed body for every case: unknown, malformed, used,
+    replaced or expired, a token of another kind, or a user who can no longer
+    redeem it. The response never reveals which case applies. Takes no
+    arguments, so the token can never reach the body.
+    """
+
+    status = 410
+    code = "token_invalid"
+    detail = "This link is no longer valid. Ask the center for a new one."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class UsernameTakenError(AppError):
+    """The normalized username belongs to another user, in any state (#29).
+
+    Never echoes the username. Takes no arguments.
+    """
+
+    status = 409
+    code = "username_taken"
+    detail = "That username is already taken."
+
+    def __init__(self) -> None:
+        super().__init__()
