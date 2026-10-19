@@ -1,5 +1,5 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B); each test uses a fresh database."""
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -63,7 +63,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0011"
+HEAD = "0012"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -139,6 +139,9 @@ def test_history_is_linear_with_one_head():
     registrations = script.get_revision("0011")
     assert registrations.down_revision == "0010"
     assert Path(registrations.path).name == "0011_identity_registration_requests.py"
+    contact = script.get_revision("0012")
+    assert contact.down_revision == "0011"
+    assert Path(contact.path).name == "0012_identity_user_contact.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -857,3 +860,55 @@ def test_registration_requests_columns_constraints_and_indexes(fresh_database_ur
         "(status, created_at, id)"
         in by_name["ix_registration_requests_status_created_at_id"]
     )
+
+
+# --- 0012: users contact fields (#31 A) ---------------------------------------------
+
+USERS_COLUMNS = (
+    "SELECT column_name, data_type, is_nullable, character_maximum_length"
+    " FROM information_schema.columns WHERE table_name = 'users'"
+)
+USERS_CHECKS = (
+    "SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint"
+    " WHERE conrelid = 'users'::regclass AND contype = 'c' ORDER BY conname"
+)
+
+
+def test_0012_adds_the_contact_columns_and_downgrade_drops_exactly_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0011")
+    columns_before = {r.column_name for r in run_sql(fresh_database_url, USERS_COLUMNS)}
+    checks_before = run_sql(fresh_database_url, USERS_CHECKS)
+    command.upgrade(config, "head")
+
+    columns = {
+        r.column_name: (r.data_type, r.is_nullable, r.character_maximum_length)
+        for r in run_sql(fresh_database_url, USERS_COLUMNS)
+    }
+    assert set(columns) - columns_before == {"email", "phone"}
+    assert columns["email"] == ("character varying", "YES", 254)
+    assert columns["phone"] == ("character varying", "YES", 32)
+    checks = {r.conname for r in run_sql(fresh_database_url, USERS_CHECKS)}
+    assert checks - {r.conname for r in checks_before} == {
+        "ck_users_email_format",
+        "ck_users_phone_format",
+    }
+    # Not unique: family members may share contact fields.
+    unique = run_sql(
+        fresh_database_url,
+        "SELECT indexdef FROM pg_indexes WHERE tablename = 'users'"
+        " AND (indexdef LIKE '%email%' OR indexdef LIKE '%phone%')",
+    )
+    assert unique == []
+
+    command.downgrade(config, "0011")
+
+    assert version_nums(fresh_database_url) == ["0011"]
+    assert {
+        r.column_name for r in run_sql(fresh_database_url, USERS_COLUMNS)
+    } == columns_before
+    assert run_sql(fresh_database_url, USERS_CHECKS) == checks_before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]

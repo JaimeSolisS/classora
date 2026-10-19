@@ -29,6 +29,7 @@
     "label": "Main navigation",
     "toggle": "Menu",
     "home": "Home",
+    "users": "Users",
     "invitations": "Invitations",
     "passwordResets": "Password resets",
     "registrations": "Account requests"
@@ -267,5 +268,85 @@
     "cancel": "Cancel",
     "approved": "Request approved.",
     "rejected": "Request rejected."
+  },
+  "users": {
+    "title": "Users",
+    "list": {
+      "search": "Search by name or username",
+      "role": "Role",
+      "state": "Status",
+      "allRoles": "All roles",
+      "allStates": "All states",
+      "displayName": "Name",
+      "username": "Username",
+      "roles": "Roles",
+      "createdAt": "Created",
+      "empty": "No users match these filters.",
+      "pagination": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}",
+      "invite": "Invite user",
+      "noRoles": "None"
+    },
+    "detail": {
+      "username": "Username",
+      "state": "Status",
+      "roles": "Roles",
+      "noRoles": "No roles",
+      "pendingInvitation": "Invitation not redeemed yet",
+      "pendingRequest": "Account request awaiting review",
+      "notFound": "This user doesn't exist.",
+      "backToList": "Back to users"
+    },
+    "profile": {
+      "title": "Profile",
+      "displayName": "Name",
+      "email": "Email (optional)",
+      "phone": "Phone (optional)",
+      "contactHelp": "For contact only. Never used to sign in.",
+      "notSet": "Not set",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Changes saved.",
+      "displayNameRequired": "Enter a name.",
+      "displayNameTooLong": "Use at most 200 characters.",
+      "emailInvalid": "Enter an email address like name@example.com, or leave it empty.",
+      "phoneInvalid": "Enter a phone number with 7 to 32 digits, spaces or ( ) . - characters, or leave it empty."
+    },
+    "status": {
+      "title": "Account status",
+      "suspend": "Suspend",
+      "archive": "Archive",
+      "reactivate": "Reactivate",
+      "suspendTitle": "Suspend account",
+      "archiveTitle": "Archive account",
+      "archiveInvitationTitle": "Cancel invitation",
+      "reactivateTitle": "Reactivate account",
+      "suspendConfirm": "Suspend {{name}}? All their sessions end and they can't sign in until you reactivate them. We'll ask for your password.",
+      "archiveConfirm": "Archive {{name}}? Their sessions end and they can't sign in. Their history is kept and you can reactivate them later. We'll ask for your password.",
+      "archiveInvitationConfirm": "Cancel {{name}}'s invitation? The link stops working. We'll ask for your password.",
+      "reactivateConfirm": "Reactivate {{name}}? They can sign in again.",
+      "cancel": "Cancel",
+      "working": "Saving…",
+      "suspended": "The account is suspended. Their sessions have ended.",
+      "archived": "The account is archived.",
+      "reactivated": "They can sign in with their existing password.",
+      "reactivatedNoPassword": "This person has no password yet. Issue a password reset link."
+    },
+    "reset": {
+      "title": "Password",
+      "intro": "We'll ask for your password. The person's sessions end when they set the new password.",
+      "create": "Create password reset link"
+    },
+    "conflict": {
+      "reload": "Reload"
+    }
+  },
+  "userStates": {
+    "pending": "Pending",
+    "active": "Active",
+    "suspended": "Suspended",
+    "archived": "Archived"
   }
 }

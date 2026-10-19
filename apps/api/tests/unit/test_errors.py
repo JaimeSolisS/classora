@@ -199,6 +199,11 @@ def test_production_app_has_no_demo_route(
         "/api/v1/registration-requests",
         "/api/v1/registration-requests/{request_id}/approve",
         "/api/v1/registration-requests/{request_id}/reject",
+        "/api/v1/users",
+        "/api/v1/users/{user_id}",
+        "/api/v1/users/{user_id}/suspend",
+        "/api/v1/users/{user_id}/archive",
+        "/api/v1/users/{user_id}/reactivate",
     }
     top_level = {getattr(r, "path", None) for r in app.routes} - {None}
     assert top_level == {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}

@@ -9,12 +9,29 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 const THEMES = ['light', 'dark'] as const;
 
-// Home, 404, /invitations, /password-resets, /registration-requests and
-// /account/password are behind the guard: scanned signed in (the shared
-// state). /login, /invite and /reset (the "incomplete link" state: no token)
-// and /register are scanned signed out.
-const ROUTES = [
+// Home, 404, /users, a user's detail (demo.owner's own record, opened from
+// the list: its id is not known in advance), /invitations,
+// /password-resets, /registration-requests and /account/password are behind
+// the guard: scanned signed in (the shared state). /login, /invite and
+// /reset (the "incomplete link" state: no token) and /register are scanned
+// signed out.
+interface ScannedRoute {
+  name: string;
+  path: string;
+  signedIn: boolean;
+  /** Then open this row of the list (its link text) and scan its page. */
+  openRow?: string;
+}
+
+const ROUTES: ScannedRoute[] = [
   { name: 'home', path: '/', signedIn: true },
+  { name: 'users', path: '/users', signedIn: true },
+  {
+    name: 'user-detail',
+    path: '/users?q=demo.owner',
+    signedIn: true,
+    openRow: 'Demo Owner',
+  },
   { name: '404', path: '/e2e-route-that-does-not-exist', signedIn: true },
   { name: 'invitations', path: '/invitations', signedIn: true },
   { name: 'password-resets', path: '/password-resets', signedIn: true },
@@ -67,6 +84,17 @@ for (const theme of THEMES) {
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
           timeout: FIRST_RENDER_TIMEOUT_MS,
         });
+        if (route.openRow) {
+          const name = route.openRow;
+          await page
+            .getByRole('main')
+            .getByRole('link', { name, exact: true })
+            .click();
+          await expect(page).toHaveURL(/\/users\/[0-9a-f-]{36}$/);
+          await expect(
+            page.getByRole('heading', { level: 1, name, exact: true }),
+          ).toBeVisible();
+        }
         const html = page.locator('html');
         if (theme === 'dark') {
           await expect(html).toHaveClass(/\bdark\b/);

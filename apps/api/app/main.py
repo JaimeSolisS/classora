@@ -41,6 +41,7 @@ from app.modules.identity.registrations_router import (
 )
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.service import resolve_session_principal
+from app.modules.identity.user_admin_router import router as user_admin_router
 
 
 @asynccontextmanager
@@ -95,6 +96,7 @@ def build_app(
     app.include_router(invitations_router)
     app.include_router(recovery_router)
     app.include_router(registrations_router)
+    app.include_router(user_admin_router)
     app.include_router(administration_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)

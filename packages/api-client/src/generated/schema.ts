@@ -429,6 +429,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Users
+         * @description Search users by part of the username or display name (not
+         *     case-sensitive; accents are not folded), filtered by one role and one
+         *     state. Sorted by display name, then username. No contact fields.
+         */
+        get: operations["list_users_api_v1_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User
+         * @description One user's account with the caller's ``allowed_actions``.
+         */
+        get: operations["get_user_api_v1_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update User
+         * @description Change the display name, email or phone (fields not sent stay
+         *     unchanged; ``""`` or ``null`` clears a contact field). Contact fields are
+         *     never used to sign in. The username never changes.
+         */
+        patch: operations["update_user_api_v1_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suspend User
+         * @description Suspend an active user: every session ends and they cannot sign in
+         *     until reactivated. Needs a password reauthentication in the last 5
+         *     minutes.
+         */
+        post: operations["suspend_user_api_v1_users__user_id__suspend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive User
+         * @description Archive an active or suspended user, or cancel an open invitation (a
+         *     pending user without a password). Every session ends; the history is
+         *     kept. Needs a password reauthentication in the last 5 minutes.
+         */
+        post: operations["archive_user_api_v1_users__user_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate User
+         * @description Reactivate a suspended or archived user. Old sessions stay ended and
+         *     the password is unchanged (a user without one needs a reset link).
+         */
+        post: operations["reactivate_user_api_v1_users__user_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-events": {
         parameters: {
             query?: never;
@@ -504,6 +617,8 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** @enum {string} */
+        DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
         /**
          * FieldError
          * @description One field-level error: location, Pydantic error type and message.
@@ -676,6 +791,17 @@ export interface components {
         OffsetPage_RegistrationRequestItem_: {
             /** Items */
             items: components["schemas"]["RegistrationRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[UserListItem] */
+        OffsetPage_UserListItem_: {
+            /** Items */
+            items: components["schemas"]["UserListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -902,6 +1028,128 @@ export interface components {
              * @description The session's CSRF token: send it as X-CSRF-Token on POST, PUT, PATCH and DELETE. Keep it in memory only.
              */
             csrf_token: string;
+        };
+        /**
+         * UserAllowedActions
+         * @description What the caller may do to this user, computed by the server with the
+         *     routes' rules (the routes stay the authority). The last-active-Owner guard
+         *     is not considered (the server answers ``409 last_active_owner``).
+         */
+        UserAllowedActions: {
+            /** Edit */
+            edit: boolean;
+            /** Suspend */
+            suspend: boolean;
+            /** Archive */
+            archive: boolean;
+            /** Reactivate */
+            reactivate: boolean;
+            /** Reset Password */
+            reset_password: boolean;
+        };
+        /**
+         * UserDetail
+         * @description One user's account. Holds no password hash or token.
+         */
+        UserDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+            /**
+             * Roles
+             * @description Role codes, in the catalog order.
+             */
+            roles: components["schemas"]["RoleCode"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+            /**
+             * Version
+             * @description Send it back with every change.
+             */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Delegations
+             * @description Delegated permission codes, sorted (read-only here).
+             */
+            delegations: components["schemas"]["DelegablePermissionCode"][];
+            /**
+             * Password Set
+             * @description Whether the account has a password: a pending account without one is an open invitation, with one a registration request.
+             */
+            password_set: boolean;
+            allowed_actions: components["schemas"]["UserAllowedActions"];
+        };
+        /**
+         * UserListItem
+         * @description One user in the list. No contact fields, password data or delegations
+         *     (spec §16: minimal exposure).
+         */
+        UserListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+            /**
+             * Roles
+             * @description Role codes, in the catalog order.
+             */
+            roles: components["schemas"]["RoleCode"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        UserState: "pending" | "active" | "suspended" | "archived";
+        /**
+         * UserStateChange
+         * @description Suspend, archive or reactivate: the version the caller loaded.
+         */
+        UserStateChange: {
+            /** Version */
+            version: number;
+        };
+        /**
+         * UserUpdate
+         * @description A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not
+         *     sent stay unchanged; ``""`` or ``null`` clears ``email`` or ``phone``. The
+         *     username never changes (ADR-0007 D7).
+         */
+        UserUpdate: {
+            /** Version */
+            version: number;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
         };
     };
     responses: never;
@@ -1921,6 +2169,401 @@ export interface operations {
                 };
             };
             /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_users_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                role?: components["schemas"]["RoleCode"] | null;
+                state?: components["schemas"]["UserState"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_UserListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_user_api_v1_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_user_api_v1_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The caller lacks user.manage, or may not manage this user: they must be able to assign every role the user holds; nobody changes their own state (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    suspend_user_api_v1_users__user_id__suspend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserStateChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    archive_user_api_v1_users__user_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserStateChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reactivate_user_api_v1_users__user_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserStateChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
             409: {
                 headers: {
                     [name: string]: unknown;

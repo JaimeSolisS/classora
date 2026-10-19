@@ -38,6 +38,8 @@ const API_CODES = [
   'current_password_invalid',
   'user_not_active',
   'registration_already_decided',
+  'last_active_owner',
+  'user_state_transition_invalid',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

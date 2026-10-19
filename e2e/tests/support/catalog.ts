@@ -9,6 +9,7 @@ type Common = {
   notFound: { title: string };
   nav: {
     home: string;
+    users: string;
     invitations: string;
     passwordResets: string;
     registrations: string;
@@ -24,7 +25,7 @@ type Common = {
       passwordReset: string;
       requestAccount: string;
     };
-    reauth: { password: string; confirm: string };
+    reauth: { title: string; password: string; confirm: string };
     userMenu: { signedInAs: string; signOut: string };
   };
   invitations: {
@@ -66,6 +67,18 @@ type Common = {
     sent: string;
     backToLogin: string;
   };
+  users: {
+    title: string;
+    list: { search: string };
+    status: {
+      suspend: string;
+      archive: string;
+      reactivate: string;
+      suspendTitle: string;
+      reactivateTitle: string;
+    };
+  };
+  userStates: Record<'pending' | 'active' | 'suspended' | 'archived', string>;
   registrations: {
     title: string;
     approve: string;

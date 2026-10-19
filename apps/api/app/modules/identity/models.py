@@ -3,7 +3,8 @@
 - ``users``: a login account. ``username`` is stored normalized (lower-case
   ASCII, see ``service.normalize_username``) and the CHECK enforces the form,
   so no ``citext`` extension is needed. ``password_hash`` is ``NULL`` until the
-  account has a password (an unredeemed invitation, #29).
+  account has a password (an unredeemed invitation, #29). ``email`` and
+  ``phone`` are optional contact fields (#31), never used to sign in.
 - ``roles``, ``permissions``: reference rows seeded from
   :mod:`app.modules.identity.permissions`.
 - ``role_permissions``, ``user_roles``: the role permission sets and each
@@ -65,6 +66,13 @@ from app.modules.identity.permissions import USER_STATES
 
 USERNAME_PATTERN = "^[a-z0-9._-]{3,64}$"
 
+# Contact fields (#31; ADR-0007 D7: optional, never used to sign in). The same
+# patterns are applied by the request schemas (``schemas.UserUpdate``).
+EMAIL_PATTERN = r"^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$"
+PHONE_PATTERN = r"^\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+EMAIL_MAX_LENGTH = 254
+PHONE_MAX_LENGTH = 32
+
 
 class User(Audited, VersionedMixin, Model):
     __tablename__ = "users"
@@ -76,12 +84,18 @@ class User(Audited, VersionedMixin, Model):
             "state IN ({})".format(", ".join(f"'{s}'" for s in USER_STATES)),
             name="state_valid",
         ),
+        CheckConstraint(f"email ~ '{EMAIL_PATTERN}'", name="email_format"),
+        CheckConstraint(f"phone ~ '{PHONE_PATTERN}'", name="phone_format"),
     )
 
     username: Mapped[str] = mapped_column(String(64), unique=True)
     display_name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     state: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    # Optional contact fields (#31): not unique (family members may share
+    # them) and never a login identifier (ADR-0007 D7).
+    email: Mapped[str | None] = mapped_column(String(EMAIL_MAX_LENGTH), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(PHONE_MAX_LENGTH), nullable=True)
 
 
 class Role(Model):

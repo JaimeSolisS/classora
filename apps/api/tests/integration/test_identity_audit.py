@@ -60,7 +60,14 @@ async def test_creating_a_user_writes_a_create_without_the_hash(sessionmaker):
     assert created.action == "create"
     assert created.changes is not None
     assert "password_hash" not in created.changes
-    assert set(created.changes) == {"username", "display_name", "state"}
+    # email and phone (#31) are audited like the other columns.
+    assert set(created.changes) == {
+        "username",
+        "display_name",
+        "state",
+        "email",
+        "phone",
+    }
     assert created.changes["username"] == {"old": None, "new": "ana.audit"}
     assert created.changes["state"] == {"old": None, "new": "active"}
     assert role.action == "create"

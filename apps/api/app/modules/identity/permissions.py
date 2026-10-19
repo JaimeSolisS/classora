@@ -159,6 +159,116 @@ def may_assign_role(actor_permissions: Collection[str], role: str) -> bool:
     return False
 
 
+def may_manage_user(
+    actor_permissions: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> bool:
+    """Whether the actor may manage the target's account (#31; ADR-0007 D4 as
+    amended by #31): edit the profile, suspend, archive, reactivate (and, in
+    #170, change roles).
+
+    Only for a holder of ``user.manage``. Then true when the actor **is** the
+    target (their own profile; the routes refuse self state changes), or when
+    :func:`may_assign_role` holds for **every** role the target has. A target
+    without roles can be managed by any holder of ``user.manage``. So an
+    Administrator manages neither an Owner nor another Administrator, unless
+    they hold the ``user.admin_role.assign`` delegation (Administrators only).
+    """
+    if USER_MANAGE not in actor_permissions:
+        return False
+    if actor_id == target_id:
+        return True
+    return all(may_assign_role(actor_permissions, role) for role in target_roles)
+
+
+OWNER_ONLY_RESET_TARGETS: frozenset[str] = frozenset({OWNER, ADMINISTRATOR})
+"""Only a holder of the ``owner`` role may reset a user holding one of these
+roles (ADR-0007 D12)."""
+
+
+def may_reset_password_of(
+    actor_roles: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> bool:
+    """The #30 authority rule for issuing a password reset (ADR-0007 D12),
+    without the permission and state checks: nobody resets their own account,
+    and only the ``owner`` **role** (a delegation does not count) resets an
+    Owner or an Administrator."""
+    if actor_id == target_id:
+        return False
+    return not (OWNER_ONLY_RESET_TARGETS.intersection(target_roles)) or (
+        OWNER in actor_roles
+    )
+
+
+@dataclass(frozen=True)
+class UserActions:
+    """What the caller may do to one user (``UserDetail.allowed_actions``)."""
+
+    edit: bool
+    suspend: bool
+    archive: bool
+    reactivate: bool
+    reset_password: bool
+
+
+def allowed_user_actions(
+    *,
+    actor_id: object,
+    actor_roles: Collection[str],
+    actor_permissions: Collection[str],
+    target_id: object,
+    target_state: str,
+    target_roles: Collection[str],
+    target_password_set: bool,
+) -> UserActions:
+    """The actions the user detail page offers (#31 E2), computed with the
+    same rules as the routes. The routes stay the authority.
+
+    - ``edit``: :func:`may_manage_user`.
+    - ``suspend``: an ``active`` target; ``archive``: ``active``,
+      ``suspended``, or ``pending`` without a password (an open invitation);
+      ``reactivate``: ``suspended`` or ``archived``. All three need
+      :func:`may_manage_user` and are false for the caller's own account.
+    - ``reset_password``: ``user.password_reset.issue``, an ``active`` target
+      and :func:`may_reset_password_of` (#30 C2).
+
+    The last-active-Owner guard is not considered: the server answers ``409
+    last_active_owner``.
+    """
+    manage = may_manage_user(
+        actor_permissions,
+        actor_id=actor_id,
+        target_id=target_id,
+        target_roles=target_roles,
+    )
+    change_state = manage and actor_id != target_id
+    return UserActions(
+        edit=manage,
+        suspend=change_state and target_state == ACTIVE,
+        archive=change_state
+        and (
+            target_state in (ACTIVE, SUSPENDED)
+            or (target_state == PENDING and not target_password_set)
+        ),
+        reactivate=change_state and target_state in (SUSPENDED, ARCHIVED),
+        reset_password=USER_PASSWORD_RESET_ISSUE in actor_permissions
+        and target_state == ACTIVE
+        and may_reset_password_of(
+            actor_roles,
+            actor_id=actor_id,
+            target_id=target_id,
+            target_roles=target_roles,
+        ),
+    )
+
+
 def resolve_permissions(
     state: str,
     roles: Iterable[str],

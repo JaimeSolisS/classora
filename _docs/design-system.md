@@ -234,8 +234,12 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   `destructive` tokens and an `aria-hidden` icon. It shows the translated
   message for the error's code and, when there is one, a "Reference" line
   with the request ID in a selectable monospace element that users can quote
-  to support. Pass `onRetry` for a query error to show "Try again". The
-  server's `title` and `detail` are never shown.
+  to support. Pass `onRetry` for a query error to show "Try again" (or, with
+  `retryLabel`, another action such as "Reload" after a `version_conflict`).
+  The server's `title` and `detail` are never shown.
+- **`StateBadge`** (`features/users/admin`, #31): a user's state as a short
+  text badge; the border style only reinforces the word, so the state never
+  depends on colour alone.
 - Render errors are caught by the route error page (inside the layout), the
   root error page and the app-level boundary. None of them shows the error
   message or stack.

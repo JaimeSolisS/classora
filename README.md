@@ -35,6 +35,12 @@ Parents, guardians and students can request an account from the sign-in page;
 the account works only after an Owner or administrator confirms their
 identity and approves it on the Account requests page (or rejects it).
 Approving a request never enrolls anyone.
+On the Users page, Owners and administrators can search and filter every
+account, edit a person's name and optional contact details (never used to
+sign in), create a password reset link for them, and suspend, archive or
+reactivate their account; suspending or archiving asks for the password again
+and ends that person's sessions, and the last active Owner can never be
+suspended or archived.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

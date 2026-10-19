@@ -127,7 +127,7 @@ describe('route and navigation (I1)', () => {
 
     app = await renderApp('/password-resets');
 
-    expect(navItems()).toEqual(['Home']);
+    expect(navItems()).toEqual(['Home', 'Users']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

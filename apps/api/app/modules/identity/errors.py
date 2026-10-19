@@ -192,3 +192,20 @@ class RegistrationAlreadyDecidedError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class LastActiveOwnerError(AppError):
+    """Suspending or archiving the last active Owner, or taking the ``owner``
+    role from them (#31; ADR-0007 D4). Raised only inside
+    ``service.change_user_state`` and ``service.remove_user_role``. Takes no
+    arguments.
+    """
+
+    status = 409
+    code = "last_active_owner"
+    detail = (
+        "This is the only active Owner account. Activate or assign another Owner first."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()

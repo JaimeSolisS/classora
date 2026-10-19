@@ -301,6 +301,13 @@ follows these rules.
     that test in every run, no other test may use the name. The run's one IP
     sends 1 of the 10 registration requests `registration.ip` allows per hour
     (`REGISTRATIONS_PER_RUN` in `e2e/tests/support/auth.ts`).
+  - `e2e.suspend.tutor`: the Tutor whom the demo Owner suspends and
+    reactivates in `e2e/tests/users/suspend.spec.ts` (#31). The same rules:
+    created by that test in every run, no other test may use the name.
+- **Never change `demo.owner` in a spec** (its profile, state, roles or
+  password): every test shares its signed-in session (`storageState`). A test
+  that needs an Owner to act signs `demo.owner` in in its own fresh context
+  and changes only the users it created.
 - **`createActiveUser(playwright.request, baseURL, { username, role,
   password })`** (`e2e/tests/support/users.ts`, #30) creates an active Tutor
   or Parent/Guardian through the API in its own fresh API context: the demo

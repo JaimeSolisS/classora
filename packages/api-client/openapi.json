@@ -1317,6 +1317,580 @@
         }
       }
     },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List Users",
+        "description": "Search users by part of the username or display name (not\ncase-sensitive; accents are not folded), filtered by one role and one\nstate. Sorted by display name, then username. No contact fields.",
+        "operationId": "list_users_api_v1_users_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RoleCode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UserState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_UserListItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get User",
+        "description": "One user's account with the caller's ``allowed_actions``.",
+        "operationId": "get_user_api_v1_users__user_id__get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User",
+        "description": "Change the display name, email or phone (fields not sent stay\nunchanged; ``\"\"`` or ``null`` clears a contact field). Contact fields are\nnever used to sign in. The username never changes.",
+        "operationId": "update_user_api_v1_users__user_id__patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks user.manage, or may not manage this user: they must be able to assign every role the user holds; nobody changes their own state (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/suspend": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Suspend User",
+        "description": "Suspend an active user: every session ends and they cannot sign in\nuntil reactivated. Needs a password reauthentication in the last 5\nminutes.",
+        "operationId": "suspend_user_api_v1_users__user_id__suspend_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStateChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/archive": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Archive User",
+        "description": "Archive an active or suspended user, or cancel an open invitation (a\npending user without a password). Every session ends; the history is\nkept. Needs a password reauthentication in the last 5 minutes.",
+        "operationId": "archive_user_api_v1_users__user_id__archive_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStateChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/reactivate": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Reactivate User",
+        "description": "Reactivate a suspended or archived user. Old sessions stay ended and\nthe password is unchanged (a user without one needs a reset link).",
+        "operationId": "reactivate_user_api_v1_users__user_id__reactivate_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStateChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may not manage this user, or it is their own account (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-events": {
       "get": {
         "tags": [
@@ -1655,6 +2229,15 @@
           "next_cursor"
         ],
         "title": "CursorPage[AuditEventListItem]"
+      },
+      "DelegablePermissionCode": {
+        "type": "string",
+        "enum": [
+          "finance.refund.approve",
+          "payroll.finalize",
+          "schedule.override",
+          "user.admin_role.assign"
+        ]
       },
       "FieldError": {
         "additionalProperties": false,
@@ -1995,6 +2578,37 @@
           "offset"
         ],
         "title": "OffsetPage[RegistrationRequestItem]"
+      },
+      "OffsetPage_UserListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[UserListItem]"
       },
       "PasswordChange": {
         "properties": {
@@ -2419,6 +3033,261 @@
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login`` and ``GET /auth/me``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
+      },
+      "UserAllowedActions": {
+        "properties": {
+          "edit": {
+            "type": "boolean",
+            "title": "Edit"
+          },
+          "suspend": {
+            "type": "boolean",
+            "title": "Suspend"
+          },
+          "archive": {
+            "type": "boolean",
+            "title": "Archive"
+          },
+          "reactivate": {
+            "type": "boolean",
+            "title": "Reactivate"
+          },
+          "reset_password": {
+            "type": "boolean",
+            "title": "Reset Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "edit",
+          "suspend",
+          "archive",
+          "reactivate",
+          "reset_password"
+        ],
+        "title": "UserAllowedActions",
+        "description": "What the caller may do to this user, computed by the server with the\nroutes' rules (the routes stay the authority). The last-active-Owner guard\nis not considered (the server answers ``409 last_active_owner``)."
+      },
+      "UserDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Role codes, in the catalog order."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with every change."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "delegations": {
+            "items": {
+              "$ref": "#/components/schemas/DelegablePermissionCode"
+            },
+            "type": "array",
+            "title": "Delegations",
+            "description": "Delegated permission codes, sorted (read-only here)."
+          },
+          "password_set": {
+            "type": "boolean",
+            "title": "Password Set",
+            "description": "Whether the account has a password: a pending account without one is an open invitation, with one a registration request."
+          },
+          "allowed_actions": {
+            "$ref": "#/components/schemas/UserAllowedActions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "state",
+          "roles",
+          "created_at",
+          "email",
+          "phone",
+          "version",
+          "updated_at",
+          "delegations",
+          "password_set",
+          "allowed_actions"
+        ],
+        "title": "UserDetail",
+        "description": "One user's account. Holds no password hash or token."
+      },
+      "UserListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleCode"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Role codes, in the catalog order."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "state",
+          "roles",
+          "created_at"
+        ],
+        "title": "UserListItem",
+        "description": "One user in the list. No contact fields, password data or delegations\n(spec §16: minimal exposure)."
+      },
+      "UserState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "active",
+          "suspended",
+          "archived"
+        ]
+      },
+      "UserStateChange": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UserStateChange",
+        "description": "Suspend, archive or reactivate: the version the caller loaded."
+      },
+      "UserUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UserUpdate",
+        "description": "A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not\nsent stay unchanged; ``\"\"`` or ``null`` clears ``email`` or ``phone``. The\nusername never changes (ADR-0007 D7)."
       }
     }
   }

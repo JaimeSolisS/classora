@@ -92,6 +92,48 @@ async def test_unknown_state_fails(seeded_url):
         await add_user(seeded_url, "ana", state="deleted")
 
 
+# --- Contact fields (#31 A2) ---
+
+
+async def set_contact(dsn: str, column: str, value: str) -> None:
+    user_id = await add_user(dsn)
+    await run_sql_async(
+        dsn,
+        f"UPDATE users SET {column} = :value WHERE id = :id",  # noqa: S608 (fixed names)
+        {"value": value, "id": user_id},
+    )
+
+
+@pytest.mark.parametrize(
+    ("column", "value"), [("email", "a@b.co"), ("phone", "+52 (55) 1234-5678")]
+)
+async def test_valid_contact_fields_are_accepted(seeded_url, column, value):
+    await set_contact(seeded_url, column, value)
+
+    rows = await run_sql_async(seeded_url, f"SELECT {column} AS v FROM users")  # noqa: S608
+    assert [r.v for r in rows] == [value]
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("email", "ab"), ("email", "a b@c.d"), ("phone", "12"), ("phone", "phone-ext")],
+)
+async def test_invalid_contact_fields_fail(seeded_url, column, value):
+    with pytest.raises(IntegrityError, match=f"ck_users_{column}_format"):
+        await set_contact(seeded_url, column, value)
+
+
+async def test_contact_fields_are_not_unique(seeded_url):
+    for username in ("ana", "beto"):
+        user_id = await add_user(seeded_url, username)
+        await run_sql_async(
+            seeded_url,
+            "UPDATE users SET email = 'family@example.com', phone = '5512345678'"
+            " WHERE id = :id",
+            {"id": user_id},
+        )
+
+
 async def test_duplicate_user_role_fails(seeded_url):
     user_id = await add_user(seeded_url)
     await add_user_role(seeded_url, user_id, "tutor")

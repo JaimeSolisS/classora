@@ -7,6 +7,8 @@ import { RegisterPage } from '@/features/auth/register/RegisterPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
 import { RegistrationRequestsPage } from '@/features/users/registrations/RegistrationRequestsPage';
+import { UserDetailPage } from '@/features/users/admin/UserDetailPage';
+import { UsersPage } from '@/features/users/admin/UsersPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
@@ -69,6 +71,16 @@ export const routes: RouteObject[] = [
         errorElement: <RouteErrorPage />,
         children: [
           { index: true, element: <HomePage /> },
+          {
+            path: 'users',
+            element: <UsersPage />,
+            handle: { permission: 'user.view' },
+          },
+          {
+            path: 'users/:userId',
+            element: <UserDetailPage />,
+            handle: { permission: 'user.view' },
+          },
           {
             path: 'invitations',
             element: <InvitationsPage />,
