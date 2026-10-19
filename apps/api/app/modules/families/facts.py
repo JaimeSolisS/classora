@@ -10,6 +10,8 @@ role) applies on the caller's next request without a new login:
 - ``guardian``: the students linked to the caller's **active** guardian
   profile (``linked_student_ids``, one statement) and, for the guardian
   routes, that profile's id (``own_guardian_id``, one statement);
+- ``guardian`` on the family routes (#172): the family of the caller's
+  active profile (``own_family_id``, one statement);
 - ``student``: ``own_student_id`` stays ``None`` until #35 links a login to
   its profile.
 
@@ -23,10 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal
 from app.modules.families.assignments import TutorAssignmentSource
-from app.modules.families.models import Guardian, StudentGuardian
+from app.modules.families.models import FamilyGuardian, Guardian, StudentGuardian
 from app.modules.families.permissions import (
     GUARDIAN,
     TUTOR,
+    FamilyAccessFacts,
     GuardianAccessFacts,
     StudentAccessFacts,
 )
@@ -70,3 +73,19 @@ async def load_guardian_facts(
         )
     )
     return GuardianAccessFacts(own_guardian_id=own)
+
+
+async def load_family_facts(
+    session: AsyncSession, principal: Principal
+) -> FamilyAccessFacts:
+    """The family of the caller's active guardian profile, only for a
+    ``guardian`` (one statement). Membership never adds to
+    ``linked_student_ids``: it is not student access."""
+    if GUARDIAN not in principal.roles:
+        return FamilyAccessFacts()
+    own: uuid.UUID | None = await session.scalar(
+        select(FamilyGuardian.family_id)
+        .join(Guardian, Guardian.id == FamilyGuardian.guardian_id)
+        .where(Guardian.user_id == principal.user_id, Guardian.is_active.is_(True))
+    )
+    return FamilyAccessFacts(own_family_id=own)

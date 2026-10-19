@@ -23,7 +23,9 @@ row; its audit ``delete`` event keeps the values.
 **Reads** (``guardian.view``): staff with ``guardian.view`` see every profile;
 a ``guardian`` sees only their own active profile (``can_view_guardian``); a
 hidden profile is ``404``, the same as a missing one. ``account`` (username,
-display name, state) is shown only to ``family.manage`` holders.
+display name, state) is shown only to ``family.manage`` holders. ``family``
+(#172 E1) is shown to every viewer of the profile: staff with
+``guardian.view`` and the guardian viewing their own profile.
 
 **Audit:** automatic only (#22): ``guardians`` and ``student_guardians``
 ``create``/``update``/``delete`` events with the actor and request ID; an
@@ -53,6 +55,7 @@ from app.modules.families.errors import (
     GuardianUnavailableError,
 )
 from app.modules.families.facts import load_access_facts, load_guardian_facts
+from app.modules.families.groupings import family_of_guardian
 from app.modules.families.models import (
     GUARDIAN_USER_UNIQUE,
     LINK_UNIQUE,
@@ -173,6 +176,7 @@ async def _detail(
         has_account=guardian.user_id is not None,
         account=account,
         students=await _students_of(session, guardian.id),
+        family=await family_of_guardian(session, guardian.id),
         version=guardian.version,
         created_at=guardian.created_at,
         updated_at=guardian.updated_at,

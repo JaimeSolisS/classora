@@ -3784,6 +3784,664 @@
           }
         }
       }
+    },
+    "/api/v1/families": {
+      "get": {
+        "tags": [
+          "families"
+        ],
+        "summary": "List Families",
+        "description": "The families the caller may see (a guardian: only their own). With\n``q``: by relevance, then by name.",
+        "operationId": "list_families_api_v1_families_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words).",
+              "title": "Q"
+            },
+            "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FamilyStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_FamilyListItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Create Family",
+        "description": "Add an active family with no members; add them afterwards.",
+        "operationId": "create_family_api_v1_families_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}": {
+      "get": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Get Family",
+        "description": "One family with its students and guardians (a guardian sees only\ntheir own profile among the guardians).",
+        "operationId": "get_family_api_v1_families__family_id__get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Update Family",
+        "description": "Rename, deactivate or reactivate a family. Deactivating keeps its\nmembers; an inactive family takes no new ones.",
+        "operationId": "update_family_api_v1_families__family_id__patch",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The family changed since it was loaded (version_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/students/{student_id}": {
+      "put": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Add Family Student",
+        "description": "Add the student to the family. Idempotent: a student already in this\nfamily is a no-op. To move a student, remove them from their family\nfirst.",
+        "operationId": "add_family_student_api_v1_families__family_id__students__student_id__put",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The family is inactive (family_inactive); or the member already belongs to another family (family_member_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Remove Family Student",
+        "description": "Remove the student from this family.",
+        "operationId": "remove_family_student_api_v1_families__family_id__students__student_id__delete",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or member, or the member isn't in this family (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/guardians/{guardian_id}": {
+      "put": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Add Family Guardian",
+        "description": "Add the guardian profile to the family (idempotent). Membership grants\nno access to the family's students: that follows the links.",
+        "operationId": "add_family_guardian_api_v1_families__family_id__guardians__guardian_id__put",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "guardian_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guardian Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The family is inactive (family_inactive); or the member already belongs to another family (family_member_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "families"
+        ],
+        "summary": "Remove Family Guardian",
+        "description": "Remove the guardian profile from this family. Its account stops seeing\nthe family on its next request.",
+        "operationId": "remove_family_guardian_api_v1_families__family_id__guardians__guardian_id__delete",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "guardian_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guardian Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or member, or the member isn't in this family (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4225,6 +4883,265 @@
         "title": "EmergencyContactUpdate",
         "description": "An emergency contact in a ``PATCH``: with the ``id`` of one of this\nstudent's contacts to keep (and update) it, without one to add it."
       },
+      "FamilyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "For example Familia García López."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "FamilyCreate",
+        "description": "A new family (``POST /api/v1/families``): active, with no members."
+      },
+      "FamilyDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyStudentItem"
+            },
+            "type": "array",
+            "title": "Students"
+          },
+          "guardians": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyGuardianItem"
+            },
+            "type": "array",
+            "title": "Guardians",
+            "description": "Every guardian of the family for a viewer with a staff role; only their own profile for a guardian."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with every change."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active",
+          "students",
+          "guardians",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FamilyDetail",
+        "description": "One family with its members, each list by family names then given\nnames. A guardian viewer sees only their own profile in ``guardians``."
+      },
+      "FamilyGuardianItem": {
+        "properties": {
+          "guardian_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Guardian Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "has_account": {
+            "type": "boolean",
+            "title": "Has Account"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "guardian_id",
+          "given_names",
+          "family_names",
+          "phone",
+          "has_account",
+          "is_active"
+        ],
+        "title": "FamilyGuardianItem",
+        "description": "A guardian profile of the family."
+      },
+      "FamilyListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "student_count": {
+            "type": "integer",
+            "title": "Student Count",
+            "description": "The number of member students."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active",
+          "student_count"
+        ],
+        "title": "FamilyListItem",
+        "description": "One family in the list (no guardian count: a guardian viewer can't\nlearn how many co-guardians exist)."
+      },
+      "FamilyReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "FamilyReference",
+        "description": "The family a student or guardian belongs to (#172 E1)."
+      },
+      "FamilyStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive",
+          "all"
+        ]
+      },
+      "FamilyStudentItem": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_id",
+          "given_names",
+          "family_names",
+          "is_minor",
+          "is_active"
+        ],
+        "title": "FamilyStudentItem",
+        "description": "A student of the family. Membership is not access: the student's own\nrecord still follows the viewer's links."
+      },
+      "FamilyUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "FamilyUpdate",
+        "description": "A change to a family (``PATCH /api/v1/families/{id}``) with the\n``version`` the caller loaded. ``is_active`` deactivates or reactivates;\nthe members are kept."
+      },
       "FieldError": {
         "additionalProperties": false,
         "description": "One field-level error: location, Pydantic error type and message.",
@@ -4415,6 +5332,17 @@
             "title": "Students",
             "description": "By family names, then given names."
           },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -4442,6 +5370,7 @@
           "has_account",
           "account",
           "students",
+          "family",
           "version",
           "created_at",
           "updated_at"
@@ -4914,6 +5843,37 @@
           "offset"
         ],
         "title": "OffsetPage[EducationLevelDetail]"
+      },
+      "OffsetPage_FamilyListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[FamilyListItem]"
       },
       "OffsetPage_GuardianListItem_": {
         "properties": {
@@ -5712,6 +6672,17 @@
             "title": "Guardians",
             "description": "The linked guardians, by family names then given names; null unless the viewer holds a staff role and guardian.view."
           },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it. Shown only to viewers with a staff role and guardian.view."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
@@ -5740,6 +6711,7 @@
           "education_level",
           "personal",
           "guardians",
+          "family",
           "version",
           "created_at",
           "updated_at"

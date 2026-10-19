@@ -195,6 +195,73 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/families"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The record policy filters the list: a guardian sees only the family of their
+# active profile (#172 D2).
+
+[[route]]
+method = "POST"
+path = "/api/v1/families"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The placeholder id is no family: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/families/{family_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no membership: 404 for the allowed roles.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no family or guardian: 404 for the allowed roles.
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/families/{family_id}/students/{student_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no membership: 404 for the allowed roles.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/families/{family_id}/students/{student_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no family or student: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/guardians"
 access = "permission"
 permission = "guardian.view"

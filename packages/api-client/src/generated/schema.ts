@@ -876,6 +876,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/families": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Families
+         * @description The families the caller may see (a guardian: only their own). With
+         *     ``q``: by relevance, then by name.
+         */
+        get: operations["list_families_api_v1_families_get"];
+        put?: never;
+        /**
+         * Create Family
+         * @description Add an active family with no members; add them afterwards.
+         */
+        post: operations["create_family_api_v1_families_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Family
+         * @description One family with its students and guardians (a guardian sees only
+         *     their own profile among the guardians).
+         */
+        get: operations["get_family_api_v1_families__family_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Family
+         * @description Rename, deactivate or reactivate a family. Deactivating keeps its
+         *     members; an inactive family takes no new ones.
+         */
+        patch: operations["update_family_api_v1_families__family_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/students/{student_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Family Student
+         * @description Add the student to the family. Idempotent: a student already in this
+         *     family is a no-op. To move a student, remove them from their family
+         *     first.
+         */
+        put: operations["add_family_student_api_v1_families__family_id__students__student_id__put"];
+        post?: never;
+        /**
+         * Remove Family Student
+         * @description Remove the student from this family.
+         */
+        delete: operations["remove_family_student_api_v1_families__family_id__students__student_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/guardians/{guardian_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Family Guardian
+         * @description Add the guardian profile to the family (idempotent). Membership grants
+         *     no access to the family's students: that follows the links.
+         */
+        put: operations["add_family_guardian_api_v1_families__family_id__guardians__guardian_id__put"];
+        post?: never;
+        /**
+         * Remove Family Guardian
+         * @description Remove the guardian profile from this family. Its account stops seeing
+         *     the family on its next request.
+         */
+        delete: operations["remove_family_guardian_api_v1_families__family_id__guardians__guardian_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1064,6 +1167,146 @@ export interface components {
             id?: string | null;
         };
         /**
+         * FamilyCreate
+         * @description A new family (``POST /api/v1/families``): active, with no members.
+         */
+        FamilyCreate: {
+            /**
+             * Name
+             * @description For example Familia García López.
+             */
+            name: string;
+        };
+        /**
+         * FamilyDetail
+         * @description One family with its members, each list by family names then given
+         *     names. A guardian viewer sees only their own profile in ``guardians``.
+         */
+        FamilyDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Students */
+            students: components["schemas"]["FamilyStudentItem"][];
+            /**
+             * Guardians
+             * @description Every guardian of the family for a viewer with a staff role; only their own profile for a guardian.
+             */
+            guardians: components["schemas"]["FamilyGuardianItem"][];
+            /**
+             * Version
+             * @description Send it back with every change.
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * FamilyGuardianItem
+         * @description A guardian profile of the family.
+         */
+        FamilyGuardianItem: {
+            /**
+             * Guardian Id
+             * Format: uuid
+             */
+            guardian_id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Phone */
+            phone: string | null;
+            /** Has Account */
+            has_account: boolean;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * FamilyListItem
+         * @description One family in the list (no guardian count: a guardian viewer can't
+         *     learn how many co-guardians exist).
+         */
+        FamilyListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Student Count
+             * @description The number of member students.
+             */
+            student_count: number;
+        };
+        /**
+         * FamilyReference
+         * @description The family a student or guardian belongs to (#172 E1).
+         */
+        FamilyReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** @enum {string} */
+        FamilyStatus: "active" | "inactive" | "all";
+        /**
+         * FamilyStudentItem
+         * @description A student of the family. Membership is not access: the student's own
+         *     record still follows the viewer's links.
+         */
+        FamilyStudentItem: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Given Names */
+            given_names: string;
+            /** Family Names */
+            family_names: string;
+            /** Is Minor */
+            is_minor: boolean;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * FamilyUpdate
+         * @description A change to a family (``PATCH /api/v1/families/{id}``) with the
+         *     ``version`` the caller loaded. ``is_active`` deactivates or reactivates;
+         *     the members are kept.
+         */
+        FamilyUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * FieldError
          * @description One field-level error: location, Pydantic error type and message.
          */
@@ -1141,6 +1384,8 @@ export interface components {
              * @description By family names, then given names.
              */
             students: components["schemas"]["GuardianStudentItem"][];
+            /** @description The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it. */
+            family: components["schemas"]["FamilyReference"] | null;
             /**
              * Version
              * @description Send it back with every change.
@@ -1376,6 +1621,17 @@ export interface components {
         OffsetPage_EducationLevelDetail_: {
             /** Items */
             items: components["schemas"]["EducationLevelDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[FamilyListItem] */
+        OffsetPage_FamilyListItem_: {
+            /** Items */
+            items: components["schemas"]["FamilyListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -1737,6 +1993,8 @@ export interface components {
              * @description The linked guardians, by family names then given names; null unless the viewer holds a staff role and guardian.view.
              */
             guardians: components["schemas"]["StudentGuardianItem"][] | null;
+            /** @description The family this profile belongs to (#172); null when it belongs to none or the viewer may not see it. Shown only to viewers with a staff role and guardian.view. */
+            family: components["schemas"]["FamilyReference"] | null;
             /**
              * Version
              * @description Send it back with every change.
@@ -4769,6 +5027,486 @@ export interface operations {
                 };
             };
             /** @description No such student, guardian or link between them (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_families_api_v1_families_get: {
+        parameters: {
+            query?: {
+                /** @description Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words). */
+                q?: string | null;
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["FamilyStatus"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_FamilyListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_family_api_v1_families_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FamilyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_family_api_v1_families__family_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_family_api_v1_families__family_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FamilyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The family changed since it was loaded (version_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_family_student_api_v1_families__family_id__students__student_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The family is inactive (family_inactive); or the member already belongs to another family (family_member_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    remove_family_student_api_v1_families__family_id__students__student_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family or member, or the member isn't in this family (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_family_guardian_api_v1_families__family_id__guardians__guardian_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                guardian_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or not visible (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The family is inactive (family_inactive); or the member already belongs to another family (family_member_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    remove_family_guardian_api_v1_families__family_id__guardians__guardian_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                guardian_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family or member, or the member isn't in this family (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;

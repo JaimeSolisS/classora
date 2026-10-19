@@ -31,6 +31,11 @@ their own (``GuardianAccessFacts.own_guardian_id``, the active profile linked
 to their account). The co-guardians of a student are shown only to staff
 (:func:`sees_student_guardians`).
 
+**Families** (:func:`can_view_family`, #172 D1): a staff role together with
+``guardian.view`` sees every family; a ``guardian`` sees only the family of
+their active profile (``FamilyAccessFacts.own_family_id``). Family membership
+grants no student access.
+
 The role and permission codes are the #20 catalog's, repeated here because
 this module imports no other module's internals (ADR-0002);
 ``tests/unit/test_student_policy.py`` checks they match
@@ -176,4 +181,39 @@ def can_view_guardian(
         return True
     return GUARDIAN in principal.roles and (
         facts.own_guardian_id is not None and guardian_id == facts.own_guardian_id
+    )
+
+
+# --- Family groupings (#172 D) ----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FamilyAccessFacts:
+    """The caller's own family: loaded only for a caller holding ``guardian``;
+    the family of their **active** guardian profile, or ``None``."""
+
+    own_family_id: uuid.UUID | None = None
+
+
+NO_FAMILY_FACTS: Final = FamilyAccessFacts()
+
+
+def sees_every_family(principal: Principal) -> bool:
+    """A staff role together with ``guardian.view`` (#172: there is no
+    ``family.view``; reads use ``guardian.view``). The same rule as
+    :func:`sees_every_guardian`."""
+    return sees_every_guardian(principal)
+
+
+def can_view_family(
+    principal: Principal, family_id: uuid.UUID, facts: FamilyAccessFacts
+) -> bool:
+    """Whether the caller may see this family (#172 D1): every family for a
+    staff role with ``guardian.view``; for a ``guardian``, only the family of
+    their active profile. Membership is never student access: what a
+    guardian sees of a student follows the links only (#34)."""
+    if sees_every_family(principal):
+        return True
+    return GUARDIAN in principal.roles and (
+        facts.own_family_id is not None and family_id == facts.own_family_id
     )

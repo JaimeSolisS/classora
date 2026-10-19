@@ -1,5 +1,6 @@
 """The name search of the families lists (ISSUE-D6, accepted on #33; #34 C5
-uses the same predicate for guardians).
+uses the same predicate for guardians, and #172 B3 for family names through
+:func:`text_search_condition`, with ``name`` the family's one name column).
 
 With ``n(x) = public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
 family_names``, a row matches ``q`` when every whitespace-separated term of
@@ -46,11 +47,7 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def name_search_condition(
-    q: str, given_names: Any, family_names: Any
-) -> ColumnElement[bool]:
-    """The predicate of ``q`` (already trimmed, at most five terms)."""
-    name = search_name(given_names, family_names)
+def _condition(q: str, name: ColumnElement[str]) -> ColumnElement[bool]:
     every_term = and_(
         *(
             name.like(
@@ -63,6 +60,13 @@ def name_search_condition(
     return or_(every_term, similar)
 
 
+def name_search_condition(
+    q: str, given_names: Any, family_names: Any
+) -> ColumnElement[bool]:
+    """The predicate of ``q`` (already trimmed, at most five terms)."""
+    return _condition(q, search_name(given_names, family_names))
+
+
 def relevance(q: str, given_names: Any, family_names: Any) -> ColumnElement[float]:
     """``word_similarity(n(q), n(name))``, the first sort key of a search."""
     return func.word_similarity(
@@ -73,3 +77,17 @@ def relevance(q: str, given_names: Any, family_names: Any) -> ColumnElement[floa
 def default_order(given_names: Any, family_names: Any, row_id: Any) -> tuple[Any, ...]:
     """``n(family_names)``, ``n(given_names)``, ``id``."""
     return (normalized(family_names), normalized(given_names), row_id)
+
+
+# --- One name column (families, #172 B3) -------------------------------------------
+
+
+def text_search_condition(q: str, column: Any) -> ColumnElement[bool]:
+    """The same predicate on one column: ``n(column)`` (the families index
+    expression ``public.f_unaccent(lower(name))``)."""
+    return _condition(q, normalized(column))
+
+
+def text_relevance(q: str, column: Any) -> ColumnElement[float]:
+    """``word_similarity(n(q), n(column))``."""
+    return func.word_similarity(normalized(literal(q)), normalized(column), type_=Float)

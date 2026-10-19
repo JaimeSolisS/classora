@@ -12,6 +12,9 @@ emergency contacts. It is ``null`` for a viewer with limited access (owner
 decision #33 E2 (a)); list items never carry it. ``StudentDetail.guardians``
 is ``null`` for viewers without a staff role and ``guardian.view`` (#34 E1).
 
+Family bodies (#172) follow them too: ``name`` is trimmed (1-200 characters,
+never blank) and ``null`` for ``name`` or ``is_active`` is ``422``.
+
 Guardian bodies (#34) follow the same rules: in ``GuardianUpdate`` ``null``
 clears ``email``, ``phone`` and ``user_id``, and is ``422`` for a name or
 ``is_active``.
@@ -37,6 +40,7 @@ from app.modules.families.models import (
     CONTACT_NAME_MAX_LENGTH,
     EARLIEST_BIRTHDATE,
     EMAIL_MAX_LENGTH,
+    FAMILY_NAME_MAX_LENGTH,
     MAX_CONTACTS,
     NAME_MAX_LENGTH,
     PHONE_MAX_LENGTH,
@@ -274,6 +278,19 @@ class StudentGuardianItem(BaseModel):
     has_account: bool = Field(description="The profile is linked to a login.")
 
 
+class FamilyReference(BaseModel):
+    """The family a student or guardian belongs to (#172 E1)."""
+
+    id: uuid.UUID
+    name: str
+
+
+FAMILY_FIELD_DESCRIPTION = (
+    "The family this profile belongs to (#172); null when it belongs to none"
+    " or the viewer may not see it."
+)
+
+
 class StudentDetail(BaseModel):
     """One student profile. ``personal`` is ``null`` for a viewer with
     limited access (Finance Staff, assigned tutors, a linked guardian of an
@@ -296,6 +313,10 @@ class StudentDetail(BaseModel):
             "The linked guardians, by family names then given names; null"
             " unless the viewer holds a staff role and guardian.view."
         )
+    )
+    family: FamilyReference | None = Field(
+        description=FAMILY_FIELD_DESCRIPTION
+        + " Shown only to viewers with a staff role and guardian.view."
     )
     version: int = Field(description="Send it back with every change.")
     created_at: datetime
@@ -408,6 +429,7 @@ class GuardianDetail(BaseModel):
     students: list[GuardianStudentItem] = Field(
         description="By family names, then given names."
     )
+    family: FamilyReference | None = Field(description=FAMILY_FIELD_DESCRIPTION)
     version: int = Field(description="Send it back with every change.")
     created_at: datetime
     updated_at: datetime
@@ -418,3 +440,86 @@ class StudentGuardianCreate(_Body):
 
     guardian_id: uuid.UUID = Field(description="An active guardian profile.")
     relationship: GuardianRelationship
+
+
+# --- Family groupings (#172) --------------------------------------------------------
+
+# The status filter of the families list.
+type FamilyStatus = Literal["active", "inactive", "all"]
+
+FamilyName = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=FAMILY_NAME_MAX_LENGTH
+    ),
+]
+"""A family name: trimmed, 1-200 characters, never blank. Not unique."""
+
+
+class FamilyCreate(_Body):
+    """A new family (``POST /api/v1/families``): active, with no members."""
+
+    name: FamilyName = Field(description="For example Familia García López.")
+
+
+class FamilyUpdate(_Body):
+    """A change to a family (``PATCH /api/v1/families/{id}``) with the
+    ``version`` the caller loaded. ``is_active`` deactivates or reactivates;
+    the members are kept."""
+
+    version: int = Field(ge=1)
+    name: FamilyName | None = None
+    is_active: bool | None = None
+
+    _fields_not_null = field_validator("name", "is_active")(_not_null)
+
+
+class FamilyListItem(BaseModel):
+    """One family in the list (no guardian count: a guardian viewer can't
+    learn how many co-guardians exist)."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+    student_count: int = Field(description="The number of member students.")
+
+
+class FamilyStudentItem(BaseModel):
+    """A student of the family. Membership is not access: the student's own
+    record still follows the viewer's links."""
+
+    student_id: uuid.UUID
+    given_names: str
+    family_names: str
+    is_minor: bool
+    is_active: bool
+
+
+class FamilyGuardianItem(BaseModel):
+    """A guardian profile of the family."""
+
+    guardian_id: uuid.UUID
+    given_names: str
+    family_names: str
+    phone: str | None
+    has_account: bool
+    is_active: bool
+
+
+class FamilyDetail(BaseModel):
+    """One family with its members, each list by family names then given
+    names. A guardian viewer sees only their own profile in ``guardians``."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+    students: list[FamilyStudentItem]
+    guardians: list[FamilyGuardianItem] = Field(
+        description=(
+            "Every guardian of the family for a viewer with a staff role; only"
+            " their own profile for a guardian."
+        )
+    )
+    version: int = Field(description="Send it back with every change.")
+    created_at: datetime
+    updated_at: datetime

@@ -14,6 +14,10 @@ student's guardians for staff with ``guardian.view`` (#34 E1).
 not_found``, the same as a missing one; the list leaves hidden students out
 and never answers ``403``/``404`` for them.
 
+**Families** (#172): the family grouping functions live in ``groupings.py``
+and are public through this module. The detail shows the student's family to
+staff with ``guardian.view``. Family membership is never student access.
+
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
 family_names``, a student matches ``q`` when every whitespace-separated term
@@ -69,6 +73,7 @@ from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import EducationLevelReference
+from app.modules.families import groupings as _groupings
 from app.modules.families import guardians as _guardians
 from app.modules.families import search
 from app.modules.families.ages import is_minor
@@ -91,6 +96,7 @@ from app.modules.families.permissions import (
 )
 from app.modules.families.schemas import (
     EmergencyContact,
+    FamilyReference,
     StudentCreate,
     StudentDetail,
     StudentGuardianItem,
@@ -101,16 +107,24 @@ from app.modules.families.schemas import (
 )
 
 __all__ = [
+    "add_family_guardian",
+    "add_family_student",
+    "create_family",
     "create_guardian",
     "create_student",
+    "get_family",
     "get_guardian",
     "get_student",
     "is_minor",
     "link_guardian",
+    "list_families",
     "list_guardians",
     "list_students",
     "load_access_facts",
+    "remove_family_guardian",
+    "remove_family_student",
     "unlink_guardian",
+    "update_family",
     "update_guardian",
     "update_student",
 ]
@@ -122,6 +136,17 @@ link_guardian = _guardians.link_guardian
 list_guardians = _guardians.list_guardians
 unlink_guardian = _guardians.unlink_guardian
 update_guardian = _guardians.update_guardian
+
+# Family groupings (#172), public through this module (ADR-0002; M6-05 builds
+# the billing account on ``families``).
+add_family_guardian = _groupings.add_guardian
+add_family_student = _groupings.add_student
+create_family = _groupings.create_family
+get_family = _groupings.get_family
+list_families = _groupings.list_families
+remove_family_guardian = _groupings.remove_guardian
+remove_family_student = _groupings.remove_student
+update_family = _groupings.update_family
 
 # --- Search expressions ----------------------------------------------------------
 
@@ -207,6 +232,7 @@ def _detail(
     access: AccessLevel,
     contacts: Iterable[StudentEmergencyContact],
     guardians: list[StudentGuardianItem] | None,
+    family: FamilyReference | None = None,
 ) -> StudentDetail:
     personal = None
     if access == "full":
@@ -229,6 +255,7 @@ def _detail(
         education_level=level,
         personal=personal,
         guardians=guardians,
+        family=family,
         version=student.version,
         created_at=student.created_at,
         updated_at=student.updated_at,
@@ -249,14 +276,17 @@ async def _detail_for(
     if access == "full" and contacts is None:
         contacts = await _contacts_of(session, student.id)
     guardians = None
+    family = None
     if sees_student_guardians(principal):
         guardians = await _guardians.student_guardian_items(session, student.id)
+        family = await _groupings.family_of_student(session, student.id)
     return _detail(
         student,
         level=level,
         access=access,
         contacts=contacts or (),
         guardians=guardians,
+        family=family,
     )
 
 
