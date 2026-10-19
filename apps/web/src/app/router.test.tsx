@@ -60,6 +60,8 @@ describe('route tree', () => {
       'invitations',
       'password-resets',
       'registration-requests',
+      'catalog/education-levels',
+      'catalog/education-levels/:levelId',
       'account/password',
       '*',
     ]);
@@ -70,7 +72,10 @@ describe('route tree', () => {
       permission: 'user.password_reset.issue',
     });
     expect(children[5]!.handle).toEqual({ permission: 'registration.review' });
-    expect(children[6]!.handle).toBeUndefined();
+    // #32 H1, I1.
+    expect(children[6]!.handle).toEqual({ permission: 'catalog.manage' });
+    expect(children[7]!.handle).toEqual({ permission: 'catalog.manage' });
+    expect(children[8]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

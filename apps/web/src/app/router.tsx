@@ -1,6 +1,8 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { LevelPage } from '@/features/catalog/LevelPage';
+import { LevelsPage } from '@/features/catalog/LevelsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
@@ -95,6 +97,16 @@ export const routes: RouteObject[] = [
             path: 'registration-requests',
             element: <RegistrationRequestsPage />,
             handle: { permission: 'registration.review' },
+          },
+          {
+            path: 'catalog/education-levels',
+            element: <LevelsPage />,
+            handle: { permission: 'catalog.manage' },
+          },
+          {
+            path: 'catalog/education-levels/:levelId',
+            element: <LevelPage />,
+            handle: { permission: 'catalog.manage' },
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

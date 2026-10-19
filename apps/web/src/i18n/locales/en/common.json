@@ -32,7 +32,8 @@
     "users": "Users",
     "invitations": "Invitations",
     "passwordResets": "Password resets",
-    "registrations": "Account requests"
+    "registrations": "Account requests",
+    "catalog": "Catalog"
   },
   "notFound": {
     "title": "Page not found",
@@ -388,5 +389,51 @@
     "active": "Active",
     "suspended": "Suspended",
     "archived": "Archived"
+  },
+  "catalog": {
+    "title": "Education levels and subjects",
+    "levels": {
+      "add": "Add level",
+      "edit": "Edit level",
+      "name": "Name",
+      "position": "Position",
+      "positionHelp": "Sets the order in lists. Leave it empty to place it last.",
+      "activeSubjects": "Active subjects",
+      "status": "Status",
+      "actions": "Actions",
+      "empty": "There are no education levels yet.",
+      "notFound": "This education level doesn't exist.",
+      "back": "Back to education levels",
+      "inactiveNote": "This level is inactive. Reactivate it to add or reactivate subjects."
+    },
+    "subjects": {
+      "title": "Subjects",
+      "add": "Add subject",
+      "edit": "Edit subject",
+      "empty": "This level has no subjects yet."
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "edit": "Edit",
+      "editNamed": "Edit {{name}}",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saving": "Saving…"
+    },
+    "deactivateHelp": "It can no longer be chosen for new records. Existing records don't change.",
+    "saved": "Saved.",
+    "conflict": {
+      "reload": "Reload"
+    },
+    "validation": {
+      "nameRequired": "Enter a name.",
+      "nameTooLong": "The name can have up to 100 characters.",
+      "positionInvalid": "The position is a whole number from 0 to 9999."
+    }
   }
 }

@@ -43,6 +43,9 @@ const API_CODES = [
   'delegation_forbidden',
   'permission_not_delegable',
   'delegation_target_invalid',
+  'name_taken',
+  'education_level_has_active_subjects',
+  'education_level_inactive',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

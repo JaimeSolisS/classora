@@ -32,7 +32,8 @@
     "users": "Usuarios",
     "invitations": "Invitaciones",
     "passwordResets": "Restablecer contraseñas",
-    "registrations": "Solicitudes de cuenta"
+    "registrations": "Solicitudes de cuenta",
+    "catalog": "Catálogo"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -388,5 +389,51 @@
     "active": "Activo",
     "suspended": "Suspendido",
     "archived": "Archivado"
+  },
+  "catalog": {
+    "title": "Niveles educativos y materias",
+    "levels": {
+      "add": "Agregar nivel",
+      "edit": "Editar nivel",
+      "name": "Nombre",
+      "position": "Posición",
+      "positionHelp": "Define el orden en las listas. Déjalo vacío para colocarlo al final.",
+      "activeSubjects": "Materias activas",
+      "status": "Estado",
+      "actions": "Acciones",
+      "empty": "Aún no hay niveles educativos.",
+      "notFound": "Este nivel educativo no existe.",
+      "back": "Volver a niveles educativos",
+      "inactiveNote": "Este nivel está inactivo. Reactívalo para agregar o reactivar materias."
+    },
+    "subjects": {
+      "title": "Materias",
+      "add": "Agregar materia",
+      "edit": "Editar materia",
+      "empty": "Este nivel aún no tiene materias."
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "actions": {
+      "edit": "Editar",
+      "editNamed": "Editar {{name}}",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "saving": "Guardando…"
+    },
+    "deactivateHelp": "Ya no se podrá elegir en registros nuevos. Los registros existentes no cambian.",
+    "saved": "Guardado.",
+    "conflict": {
+      "reload": "Recargar"
+    },
+    "validation": {
+      "nameRequired": "Escribe un nombre.",
+      "nameTooLong": "El nombre puede tener hasta 100 caracteres.",
+      "positionInvalid": "La posición es un número entero de 0 a 9999."
+    }
   }
 }
