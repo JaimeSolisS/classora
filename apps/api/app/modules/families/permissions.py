@@ -12,8 +12,8 @@ Pure functions, no I/O: the service loads the facts about the caller
   empty until M4 replaces the stub source);
 - ``guardian``: the students in ``linked_student_ids`` (the links of the
   caller's **active** guardian profile, #34);
-- ``student``: the profile ``own_student_id`` (``None`` until #35 links a
-  login to its profile).
+- ``student``: the profile ``own_student_id`` (the profile linked to the
+  caller's login, #35).
 
 A student that is not visible is ``404 not_found``, the same as a missing
 one (``authorize_record``); a list leaves it out.
@@ -21,9 +21,10 @@ one (``authorize_record``); a list leaves it out.
 **How much of it** (:func:`student_access_level`, owner decision #33 E2 (a)):
 ``full`` (the ``personal`` part: birthdate, contact details, emergency
 contacts) for holders of ``student.manage``, a linked guardian of a **minor**
-(owner decision #34 E3 (a)) and the student themselves; ``limited`` for every
-other viewer (Finance Staff, assigned tutors, a linked guardian of an adult
-student until #35 records the student's consent, ADR-0007 D17).
+(owner decision #34 E3 (a)), a linked guardian of an adult who gave that
+guardian a ``guardian_academic_access`` consent (#35 E4 (a)) and the student
+themselves; ``limited`` for every other viewer (Finance Staff, assigned
+tutors, a linked guardian of an adult without that consent, ADR-0007 D17).
 
 **Guardian profiles** (:func:`can_view_guardian`, #34 F1): a staff role
 together with ``guardian.view`` sees every profile; a ``guardian`` sees only
@@ -64,6 +65,7 @@ STUDENT_VIEW: Final = "student.view"
 STUDENT_MANAGE: Final = "student.manage"
 GUARDIAN_VIEW: Final = "guardian.view"
 FAMILY_MANAGE: Final = "family.manage"
+CONSENT_RECORD: Final = "consent.record"
 
 type AccessLevel = Literal["full", "limited"]
 
@@ -78,7 +80,12 @@ class StudentAccessFacts:
     linked_student_ids: frozenset[uuid.UUID] = frozenset()
     """Guardian: the students linked to their active guardian profile (#34)."""
     own_student_id: uuid.UUID | None = None
-    """Student user: their own profile (#35)."""
+    """Student user: their own profile (#35; ``students.user_id``, whatever
+    the profile's ``is_active``)."""
+    academic_consent_student_ids: frozenset[uuid.UUID] = frozenset()
+    """Guardian: the linked students with an active
+    ``guardian_academic_access`` consent for the caller's own active profile
+    (#35 E4 (a), per guardian)."""
 
 
 NO_FACTS: Final = StudentAccessFacts()
@@ -127,24 +134,43 @@ def student_access_level(
     stays pure. With several roles, the highest level wins (``full`` >
     ``limited``).
 
-    A linked guardian gets ``full`` for a minor and ``limited`` for an adult
-    (owner decision #34 E3 (a); ADR-0007 D17). #35 adds an adult-consent fact
-    (for example ``consented_adult_student_ids``) that upgrades a linked
-    guardian of an adult who consented to ``full``.
+    A linked guardian gets ``full`` for a minor and, for an adult, only when
+    the student gave **that** guardian a ``guardian_academic_access`` consent
+    (:func:`guardian_has_academic_access`; owner decisions #34 E3 (a), #35 E4
+    (a); ADR-0007 D17); otherwise ``limited``.
     """
     if not can_view_student(principal, student_id, facts):
         return None
     if principal.has(STUDENT_MANAGE):
         return "full"
-    if (
-        GUARDIAN in principal.roles
-        and student_id in facts.linked_student_ids
-        and is_minor
+    if guardian_has_academic_access(
+        principal, student_id, is_minor=is_minor, facts=facts
     ):
         return "full"
     if STUDENT in principal.roles and facts.own_student_id == student_id:
         return "full"
     return "limited"
+
+
+def guardian_has_academic_access(
+    principal: Principal,
+    student_id: uuid.UUID,
+    *,
+    is_minor: bool,
+    facts: StudentAccessFacts,
+) -> bool:
+    """Whether the caller, **as a linked guardian**, may see the student's
+    academic records (ADR-0007 D17; #35 F2).
+
+    A guardian linked to the student through their active profile: always
+    for a minor; for an adult only with an active ``guardian_academic_access``
+    consent naming their own profile (owner decision #35 E4 (a), per
+    guardian). The fact M4-M5 academic policies must use for guardian reads;
+    never re-query consents.
+    """
+    if GUARDIAN not in principal.roles or student_id not in facts.linked_student_ids:
+        return False
+    return is_minor or student_id in facts.academic_consent_student_ids
 
 
 def sees_student_guardians(principal: Principal) -> bool:
@@ -217,3 +243,144 @@ def can_view_family(
     return GUARDIAN in principal.roles and (
         facts.own_family_id is not None and family_id == facts.own_family_id
     )
+
+
+# --- Consent records (#35 D1) -------------------------------------------------------
+
+STUDENT_LOGIN: Final = "student_login"
+GUARDIAN_ACADEMIC_ACCESS: Final = "guardian_academic_access"
+IN_APP: Final = "in_app"
+PAPER: Final = "paper"
+IN_PERSON: Final = "in_person"
+
+CONSENT_STAFF_ROLES: Final = frozenset({OWNER, ADMINISTRATOR})
+"""The staff roles that hold ``consent.record`` (#20 catalog; a unit test
+keeps it equal to the seeded role permissions)."""
+
+type ConsentClause = Literal["staff", "guardian", "student"]
+
+
+@dataclass(frozen=True)
+class ConsentContext:
+    """The caller's relation to one student, loaded by the service.
+
+    ``guardian_id`` is the caller's own **active** guardian profile when it is
+    linked to this student (else ``None``); ``own_student`` says the student
+    is the caller's own profile (``StudentAccessFacts.own_student_id``)."""
+
+    guardian_id: uuid.UUID | None = None
+    own_student: bool = False
+
+
+@dataclass(frozen=True)
+class ConsentRule:
+    """What one clause of the record policy allows (D1)."""
+
+    clause: ConsentClause
+    scopes: frozenset[str]
+    methods: frozenset[str]
+
+
+STAFF_RULE: Final = ConsentRule(
+    "staff",
+    frozenset({STUDENT_LOGIN, GUARDIAN_ACADEMIC_ACCESS}),
+    frozenset({PAPER, IN_PERSON}),
+)
+GUARDIAN_RULE: Final = ConsentRule(
+    "guardian", frozenset({STUDENT_LOGIN}), frozenset({IN_APP})
+)
+STUDENT_RULE: Final = ConsentRule(
+    "student", frozenset({GUARDIAN_ACADEMIC_ACCESS}), frozenset({IN_APP})
+)
+
+
+def is_consent_staff(principal: Principal) -> bool:
+    """A staff role that holds ``consent.record`` (Owner, Administrator)
+    together with the permission: every student and every record."""
+    return bool(CONSENT_STAFF_ROLES & principal.roles) and principal.has(CONSENT_RECORD)
+
+
+def consent_rules(
+    principal: Principal, context: ConsentContext
+) -> tuple[ConsentRule, ...]:
+    """The clauses that apply to the caller for this student, staff first
+    (the union of a multi-role caller's roles). Empty: the student is hidden
+    on the consent routes (``404``)."""
+    if not principal.has(CONSENT_RECORD):
+        return ()
+    rules: list[ConsentRule] = []
+    if is_consent_staff(principal):
+        rules.append(STAFF_RULE)
+    if GUARDIAN in principal.roles and context.guardian_id is not None:
+        rules.append(GUARDIAN_RULE)
+    if STUDENT in principal.roles and context.own_student:
+        rules.append(STUDENT_RULE)
+    return tuple(rules)
+
+
+def can_see_consents_of(principal: Principal, context: ConsentContext) -> bool:
+    """Whether the student's consent routes are visible to the caller."""
+    return bool(consent_rules(principal, context))
+
+
+def can_see_consent(
+    principal: Principal, context: ConsentContext, *, guardian_id: uuid.UUID
+) -> bool:
+    """Whether one record of a visible student is visible: staff and the
+    student themselves see every record; a guardian only the records naming
+    their own profile."""
+    for rule in consent_rules(principal, context):
+        if rule.clause in ("staff", "student"):
+            return True
+        if guardian_id == context.guardian_id:
+            return True
+    return False
+
+
+def recordable_scopes(principal: Principal, context: ConsentContext) -> frozenset[str]:
+    """The scopes the caller may record for this student (before the age
+    rule)."""
+    scopes: set[str] = set()
+    for rule in consent_rules(principal, context):
+        scopes |= rule.scopes
+    return frozenset(scopes)
+
+
+def rule_for(
+    principal: Principal, context: ConsentContext, *, scope: str, method: str
+) -> ConsentRule | None:
+    """The first clause allowing both ``scope`` and ``method``, or ``None``."""
+    for rule in consent_rules(principal, context):
+        if scope in rule.scopes and method in rule.methods:
+            return rule
+    return None
+
+
+def can_revoke_consent(
+    principal: Principal,
+    context: ConsentContext,
+    *,
+    scope: str,
+    guardian_id: uuid.UUID,
+) -> bool:
+    """Staff revoke any record; a guardian their own ``student_login``
+    records; a student the ``guardian_academic_access`` records of their own
+    student (D1)."""
+    for rule in consent_rules(principal, context):
+        if rule.clause == "staff":
+            return True
+        if (
+            rule.clause == "guardian"
+            and scope == STUDENT_LOGIN
+            and guardian_id == context.guardian_id
+        ):
+            return True
+        if rule.clause == "student" and scope == GUARDIAN_ACADEMIC_ACCESS:
+            return True
+    return False
+
+
+def applies_at_age(scope: str, *, is_minor: bool) -> bool:
+    """``student_login`` only for a minor; ``guardian_academic_access`` only
+    for an adult (#35 D3 step 6)."""
+    return is_minor if scope == STUDENT_LOGIN else not is_minor

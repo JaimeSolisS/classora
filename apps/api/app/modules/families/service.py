@@ -73,9 +73,10 @@ from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import EducationLevelReference
+from app.modules.families import consent as _consent
 from app.modules.families import groupings as _groupings
 from app.modules.families import guardians as _guardians
-from app.modules.families import search
+from app.modules.families import logins, search
 from app.modules.families.ages import is_minor
 from app.modules.families.assignments import TutorAssignmentSource
 from app.modules.families.errors import (
@@ -86,6 +87,7 @@ from app.modules.families.errors import (
 from app.modules.families.facts import load_access_facts
 from app.modules.families.models import Student, StudentEmergencyContact
 from app.modules.families.permissions import (
+    FAMILY_MANAGE,
     AccessLevel,
     StudentAccessFacts,
     can_view_student,
@@ -97,21 +99,26 @@ from app.modules.families.permissions import (
 from app.modules.families.schemas import (
     EmergencyContact,
     FamilyReference,
+    StudentAccountUpdate,
     StudentCreate,
     StudentDetail,
     StudentGuardianItem,
     StudentListItem,
+    StudentLogin,
     StudentPersonal,
     StudentStatus,
     StudentUpdate,
 )
+from app.modules.identity import service as identity
 
 __all__ = [
+    "STUDENT_LOGIN_GATE",
     "add_family_guardian",
     "add_family_student",
     "create_family",
     "create_guardian",
     "create_student",
+    "get_consents",
     "get_family",
     "get_guardian",
     "get_student",
@@ -121,8 +128,11 @@ __all__ = [
     "list_guardians",
     "list_students",
     "load_access_facts",
+    "record_consent",
     "remove_family_guardian",
     "remove_family_student",
+    "revoke_consent",
+    "set_student_account",
     "unlink_guardian",
     "update_family",
     "update_guardian",
@@ -136,6 +146,14 @@ link_guardian = _guardians.link_guardian
 list_guardians = _guardians.list_guardians
 unlink_guardian = _guardians.unlink_guardian
 update_guardian = _guardians.update_guardian
+
+# Consent records and the student-login gate (#35), public through this module.
+get_consents = _consent.get_consents
+record_consent = _consent.record_consent
+revoke_consent = _consent.revoke_consent
+STUDENT_LOGIN_GATE = logins.STUDENT_LOGIN_GATE
+"""The ``identity.service.StudentLoginGate`` the composition roots register
+(the API app factory, ``app.cli`` and ``app.worker``)."""
 
 # Family groupings (#172), public through this module (ADR-0002; M6-05 builds
 # the billing account on ``families``).
@@ -233,6 +251,7 @@ def _detail(
     contacts: Iterable[StudentEmergencyContact],
     guardians: list[StudentGuardianItem] | None,
     family: FamilyReference | None = None,
+    login: StudentLogin | None = None,
 ) -> StudentDetail:
     personal = None
     if access == "full":
@@ -256,6 +275,7 @@ def _detail(
         personal=personal,
         guardians=guardians,
         family=family,
+        login=login,
         version=student.version,
         created_at=student.created_at,
         updated_at=student.updated_at,
@@ -287,6 +307,24 @@ async def _detail_for(
         contacts=contacts or (),
         guardians=guardians,
         family=family,
+        login=await _login_of(session, principal, student),
+    )
+
+
+async def _login_of(
+    session: AsyncSession, principal: Principal, student: Student
+) -> StudentLogin | None:
+    """The linked login, only for ``family.manage`` holders (#35 C3)."""
+    if student.user_id is None or not principal.has(FAMILY_MANAGE):
+        return None
+    reference = await identity.get_account_reference(session, student.user_id)
+    if reference is None:  # pragma: no cover - the FK guarantees it
+        return None
+    return StudentLogin(
+        user_id=reference.id,
+        username=reference.username,
+        display_name=reference.display_name,
+        state=reference.state,
     )
 
 
@@ -557,7 +595,9 @@ async def update_student(
     """Change the sent fields and, when sent, replace the contact list.
 
     Order (after the body's ``422``): ``404`` (missing or hidden) → ``409
-    version_conflict`` → a future birthdate (``422 validation_error``) →
+    version_conflict`` → a future birthdate (``422 validation_error``) → a
+    birthdate that makes an active student login a minor's without a valid
+    consent (``409 guardian_consent_required``, #35 E5) →
     ``422 emergency_contact_unknown`` → ``422 education_level_unavailable``
     (only when the level changes; keeping an inactive one is allowed) → the
     update. The student row is locked ``FOR UPDATE`` first.
@@ -576,6 +616,9 @@ async def update_student(
     }
     if "birthdate" in changes:
         _ensure_not_in_future(changes["birthdate"])
+        # #35 E5: never turn an active student login into a minor's login
+        # without a guardian's consent.
+        await logins.ensure_birthdate_allowed(session, student, changes["birthdate"])
     current = await _contacts_of(session, student.id)
     plan = _ContactPlan(updates=[], inserts=[], deletes=[])
     if "emergency_contacts" in sent:
@@ -622,3 +665,32 @@ async def update_student(
         level=level,
         contacts=contacts,
     )
+
+
+async def set_student_account(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    source: TutorAssignmentSource,
+    student_id: uuid.UUID,
+    body: StudentAccountUpdate,
+) -> StudentDetail:
+    """Link a login account to the profile, or unlink it (#35 C).
+
+    Order (after the body's ``422``): ``404`` → ``409 version_conflict`` →
+    ``422 student_account_unavailable`` → ``409 student_account_in_use`` →
+    the gate for this student when the account is active and holds
+    ``student`` (``409 guardian_consent_required``) → the update (a
+    ``students`` ``update`` event of ``user_id``). The row is locked ``FOR
+    UPDATE`` first.
+    """
+    facts = await load_access_facts(session, principal, source)
+    student = authorize_record(
+        await _student_for_update(session, student_id),
+        can_view=lambda record: can_view_student(principal, record.id, facts),
+    )
+    await logins.link_account(
+        session, student, user_id=body.user_id, version=body.version
+    )
+    access = _access(principal, student, facts) or "limited"
+    return await _detail_for(session, student, principal=principal, access=access)

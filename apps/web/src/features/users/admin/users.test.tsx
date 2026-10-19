@@ -702,6 +702,33 @@ describe('account status (K3, K4, K6, K7)', () => {
     );
   });
 
+  it.each([
+    [
+      'student_profile_required',
+      "This student account isn't linked to a student profile yet. Ask the center to link it.",
+    ],
+    [
+      'guardian_consent_required',
+      'The student is a minor and needs consent from a linked guardian.',
+    ],
+  ])(
+    'reactivating a student refused by the gate (%s) shows its message (#35 I3)',
+    async (code, message) => {
+      stub(OWNER, {
+        [DETAIL]: () => jsonResponse(200, SUSPENDED),
+        [action('reactivate')]: () => problem(409, code),
+      });
+      app = await renderApp(`/users/${TUTOR_ID}`);
+
+      await click(buttonNamed(main(), 'Reactivate'));
+      await click(
+        buttonNamed(dialogTitled('Reactivate account')!, 'Reactivate'),
+      );
+
+      expect(document.body.textContent).toContain(message);
+    },
+  );
+
   it('reactivating someone without a password says to issue a reset link', async () => {
     stub(OWNER, {
       [DETAIL]: () =>

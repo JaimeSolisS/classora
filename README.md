@@ -61,8 +61,14 @@ parent or guardian (with or without a login), link it to the guardian's
 account, and link guardians to students with a relationship (a child may
 have several guardians, and a guardian several children). A signed-in
 guardian sees only their linked children (minors in full, adult students
-without personal details), never the child's other guardians, and unlinking
-takes effect on their next request.
+only with the student's consent), never the child's other guardians, and
+unlinking takes effect on their next request.
+A student profile can have an optional login. A minor's login works only
+while a linked guardian has consented (in the app, or recorded by staff on
+paper or in person, stamped with the privacy-notice version); withdrawing
+the last consent suspends the login. Adult students choose, guardian by
+guardian, who sees their records. A signed-in student sees only their own
+record.
 On the Families page, Owners and administrators group students and guardians
 into families (each student and each guardian belongs to at most one
 family), the grouping that family billing will build on. A signed-in

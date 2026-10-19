@@ -17,6 +17,7 @@ of Work and never commits.
 """
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 
 from sqlalchemy import ColumnElement, exists, select
@@ -126,6 +127,22 @@ async def accept_privacy_notice(
             raise
         return winner
     return acceptance
+
+
+async def privacy_notice_versions(
+    session: AsyncSession, version_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """The version number of each id in ``version_ids`` (one statement; none
+    for an empty set). For records that stamp a version (#35 consents)."""
+    ids = set(version_ids)
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(PrivacyNoticeVersion.id, PrivacyNoticeVersion.version).where(
+            PrivacyNoticeVersion.id.in_(ids)
+        )
+    )
+    return {row.id: row.version for row in rows}
 
 
 async def has_accepted_current_privacy_notice(

@@ -291,6 +291,16 @@ FAMILY_FIELD_DESCRIPTION = (
 )
 
 
+class StudentLogin(BaseModel):
+    """The student's login account, shown only to ``family.manage`` holders
+    (#35 C3)."""
+
+    user_id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+
+
 class StudentDetail(BaseModel):
     """One student profile. ``personal`` is ``null`` for a viewer with
     limited access (Finance Staff, assigned tutors, a linked guardian of an
@@ -317,6 +327,12 @@ class StudentDetail(BaseModel):
     family: FamilyReference | None = Field(
         description=FAMILY_FIELD_DESCRIPTION
         + " Shown only to viewers with a staff role and guardian.view."
+    )
+    login: StudentLogin | None = Field(
+        description=(
+            "The linked login account (#35); null when none is linked or the"
+            " viewer doesn't hold family.manage."
+        ),
     )
     version: int = Field(description="Send it back with every change.")
     created_at: datetime
@@ -523,3 +539,121 @@ class FamilyDetail(BaseModel):
     version: int = Field(description="Send it back with every change.")
     created_at: datetime
     updated_at: datetime
+
+
+# --- Student logins and consent records (#35) -------------------------------------
+
+
+class StudentAccountUpdate(_Body):
+    """Link a login account to the profile, or ``null`` to unlink it (``PUT
+    /api/v1/students/{student_id}/account``), with the ``version`` the caller
+    loaded."""
+
+    user_id: uuid.UUID | None = Field(
+        description=(
+            "An account that isn't archived and isn't linked to another"
+            " student, or null to unlink."
+        )
+    )
+    version: int = Field(ge=1)
+
+
+type ConsentScope = Literal["student_login", "guardian_academic_access"]
+"""``constants.CONSENT_SCOPES`` (a unit test keeps both equal)."""
+
+type ConsentMethod = Literal["in_app", "paper", "in_person"]
+"""``constants.CONSENT_METHODS`` (a unit test keeps both equal)."""
+
+type RevocationCause = Literal["revoked", "guardian_unlinked"]
+"""``constants.REVOCATION_CAUSES`` (a unit test keeps both equal)."""
+
+
+class ConsentCreate(_Body):
+    """A consent (``POST /api/v1/students/{student_id}/consents``)."""
+
+    scope: ConsentScope = Field(
+        description=(
+            "student_login (a guardian allows a minor's login) or"
+            " guardian_academic_access (an adult student shares academic"
+            " records with this guardian)."
+        )
+    )
+    guardian_id: uuid.UUID = Field(
+        description=(
+            "For student_login, the guardian who consents; for"
+            " guardian_academic_access, the guardian who receives access. An"
+            " active guardian linked to the student."
+        )
+    )
+    method: ConsentMethod = Field(
+        description="Staff: paper or in_person. A guardian or a student: in_app."
+    )
+
+
+class ConsentRecordItem(BaseModel):
+    """One consent record as the viewer sees it."""
+
+    id: uuid.UUID
+    scope: ConsentScope
+    guardian_id: uuid.UUID
+    guardian_given_names: str
+    guardian_family_names: str
+    method: ConsentMethod
+    notice_version: int = Field(
+        description="The privacy-notice version current when it was given."
+    )
+    granted_at: datetime
+    revoked_at: datetime | None
+    revocation_cause: RevocationCause | None
+    can_revoke: bool = Field(description="The viewer may revoke it now.")
+    suspends_login_on_revoke: bool = Field(
+        description=(
+            "Revoking it would suspend the student's login (the last valid"
+            " student_login consent of a minor with an active login)."
+        )
+    )
+
+
+class ConsentGuardianOption(BaseModel):
+    """A linked guardian the viewer may name in a consent."""
+
+    guardian_id: uuid.UUID
+    given_names: str
+    family_names: str
+    relationship: GuardianRelationship
+    is_active: bool
+
+
+class ConsentOverview(BaseModel):
+    """A student's consents as the viewer may see them (``GET
+    /api/v1/students/{student_id}/consents``)."""
+
+    student_id: uuid.UUID
+    is_minor: bool
+    login_state: UserState | None = Field(
+        description="The linked login's state, or null when none is linked."
+    )
+    current_notice_version: int = Field(
+        description="The privacy-notice version a new consent records."
+    )
+    guardians: list[ConsentGuardianOption] = Field(
+        description=(
+            "Staff: every linked guardian; a guardian: themselves; a student:"
+            " their own linked guardians."
+        )
+    )
+    consents: list[ConsentRecordItem] = Field(
+        description="Active records first, then by granted_at, newest first."
+    )
+    can_record: list[ConsentScope] = Field(
+        description="The scopes the viewer may record now (by role and age)."
+    )
+
+
+class ConsentRevocation(BaseModel):
+    """The revoked record (``POST …/consents/{consent_id}/revoke``)."""
+
+    consent: ConsentRecordItem
+    student_login_suspended: bool = Field(
+        description="The revocation suspended the student's login."
+    )

@@ -45,7 +45,7 @@ from app.core.authz import Principal, RecordNotFoundError, authorize_record
 from app.core.clock import center_today
 from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
-from app.modules.families import search
+from app.modules.families import consent, logins, search
 from app.modules.families.ages import is_minor
 from app.modules.families.assignments import TutorAssignmentSource
 from app.modules.families.errors import (
@@ -397,7 +397,27 @@ async def update_guardian(
         for name, value in changes.items():
             setattr(guardian, name, value)
         await _flush_profile(session, guardian)
+    if changes.get("is_active") is False:
+        await _reevaluate_students_of(session, guardian.id)
     return await _detail(session, principal, guardian)
+
+
+async def _reevaluate_students_of(
+    session: AsyncSession, guardian_id: uuid.UUID
+) -> None:
+    """#35 E4: a deactivated profile's consents stop counting; check the
+    login of each linked student (in id order, each locked login → student)."""
+    student_ids = await session.scalars(
+        select(StudentGuardian.student_id)
+        .where(StudentGuardian.guardian_id == guardian_id)
+        .order_by(StudentGuardian.student_id)
+    )
+    for student_id in list(student_ids):
+        student = await logins.lock_student_with_login(session, student_id)
+        if student is not None:  # pragma: no branch - the FK guarantees it
+            await logins.reevaluate_login(
+                session, student, cause="guardian_deactivated"
+            )
 
 
 # --- Links -----------------------------------------------------------------------
@@ -485,8 +505,17 @@ async def unlink_guardian(
     guardian_id: uuid.UUID,
 ) -> None:
     """Delete the link. An unknown student, an unknown guardian and no link
-    between them are the same ``404 not_found``."""
-    student = await _visible_student(session, principal, source, student_id)
+    between them are the same ``404 not_found``.
+
+    #35 E3: the guardian's active consent records for the student are revoked
+    (cause ``guardian_unlinked``) and the student's login is checked again
+    (``logins.reevaluate_login``); the login, then the student row, are
+    locked first."""
+    facts = await load_access_facts(session, principal, source)
+    student = authorize_record(
+        await logins.lock_student_with_login(session, student_id),
+        can_view=lambda record: can_view_student(principal, record.id, facts),
+    )
     link = await session.scalar(
         select(StudentGuardian).where(
             StudentGuardian.student_id == student.id,
@@ -495,8 +524,14 @@ async def unlink_guardian(
     )
     if link is None:
         raise RecordNotFoundError()
+    consent_id = await consent.revoke_on_unlink(
+        session, principal=principal, student=student, guardian_id=guardian_id
+    )
     await session.delete(link)
     await session.flush()
+    await logins.reevaluate_login(
+        session, student, cause="guardian_unlinked", consent_id=consent_id
+    )
 
 
 __all__ = [

@@ -149,6 +149,21 @@ type Common = {
       linked: string;
       unlinked: string;
     };
+    login: { title: string };
+  };
+  consent: {
+    title: string;
+    active: string;
+    allowLogin: string;
+    loginGiven: string;
+    withdraw: string;
+    share: string;
+    stopSharing: string;
+    confirm: string;
+    revokeTitle: string;
+    revokeWarning: string;
+    recorded: string;
+    revokedStatus: string;
   };
   guardians: {
     title: string;
@@ -226,6 +241,7 @@ type Errors = {
   current_password_invalid: string;
   name_taken: string;
   education_level_has_active_subjects: string;
+  guardian_consent_required: string;
 };
 
 function read<T>(path: string): T {

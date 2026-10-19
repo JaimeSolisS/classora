@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from app.modules.identity.permissions import OWNER
 from tests.integration.auth_support import auth_client, create_user
 from tests.integration.conftest import run_sql
+from tests.integration.consent_support import adult_profile_for
 from tests.integration.lifecycle_support import code_of, signed_in
 from tests.integration.registration_support import (
     approve,
@@ -84,8 +85,13 @@ def test_submit_approve_and_reject_change_only_the_allowed_tables(
     assert submitted["registration_requests"] == before["registration_requests"] + 2
     assert submitted["user_roles"] == before["user_roles"]
 
-    approved_id = request_row(module_seeded_url, approved).id
-    assert code_of(approve(client, cookie, approved_id)) == (200, None)
+    approved_row = request_row(module_seeded_url, approved)
+    if role == "student":
+        # A Student approval needs a linked profile (#35 H5): an adult's,
+        # created outside the counted steps.
+        adult_profile_for(module_seeded_url, approved_row.user_id)
+        submitted = row_counts(module_seeded_url)
+    assert code_of(approve(client, cookie, approved_row.id)) == (200, None)
     after_approval = row_counts(module_seeded_url)
     assert changed(submitted, after_approval) <= MAY_CHANGE
     assert after_approval["user_roles"] == submitted["user_roles"] + 1

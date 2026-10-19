@@ -112,3 +112,134 @@ class FamilyInactiveError(AppError):
     status = 409
     code = "family_inactive"
     detail = "Reactivate the family to add members."
+
+
+# --- Student logins and consent (#35 H2) ------------------------------------------
+
+
+class StudentProfileRequiredError(AppError):
+    """A ``student`` account can't be active without a linked student profile
+    (#35 B3): the profile's birthdate decides whether consent is needed."""
+
+    status = 409
+    code = "student_profile_required"
+    detail = (
+        "This student account isn't linked to a student profile yet."
+        " Ask the center to link it."
+    )
+
+
+class GuardianConsentRequiredError(AppError):
+    """The student is a minor without a valid ``student_login`` consent from a
+    linked, active guardian (ADR-0007 D18). On the birthdate change (#35 E5)
+    it carries a field error on ``["body", "birthdate"]``."""
+
+    status = 409
+    code = "guardian_consent_required"
+    detail = "The student is a minor and needs consent from a linked guardian."
+
+    def __init__(self, *, errors: Sequence[FieldError] | None = None) -> None:
+        super().__init__(errors=errors)
+
+
+class StudentAccountUnavailableError(AppError):
+    """The account to link is unknown or archived. Field error on
+    ``["body", "user_id"]``."""
+
+    status = 422
+    code = "student_account_unavailable"
+    detail = "Choose an account that isn't archived."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "user_id"],
+                    "code": "student_account_unavailable",
+                    "message": "Choose an account that isn't archived.",
+                }
+            ]
+        )
+
+
+class StudentAccountInUseError(AppError):
+    """The account is already linked to another student profile."""
+
+    status = 409
+    code = "student_account_in_use"
+    detail = "That account is already linked to another student."
+
+
+class ConsentMethodInvalidError(AppError):
+    """The method is not one the caller may use (staff: ``paper`` or
+    ``in_person``; a guardian or a student: ``in_app``)."""
+
+    status = 422
+    code = "consent_method_invalid"
+    detail = "That method isn't allowed."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "method"],
+                    "code": "consent_method_invalid",
+                    "message": "That method isn't allowed.",
+                }
+            ]
+        )
+
+
+class ConsentGuardianInvalidError(AppError):
+    """The guardian is not linked to the student, or inactive."""
+
+    status = 422
+    code = "consent_guardian_invalid"
+    detail = "Choose an active guardian linked to this student."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "guardian_id"],
+                    "code": "consent_guardian_invalid",
+                    "message": "Choose an active guardian linked to this student.",
+                }
+            ]
+        )
+
+
+class ConsentNotApplicableError(AppError):
+    """``student_login`` for an adult, or ``guardian_academic_access`` for a
+    minor."""
+
+    status = 422
+    code = "consent_not_applicable"
+    detail = "That consent doesn't apply at the student's age."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "scope"],
+                    "code": "consent_not_applicable",
+                    "message": "That consent doesn't apply at the student's age.",
+                }
+            ]
+        )
+
+
+class ConsentAlreadyGivenError(AppError):
+    """An active record for the student, guardian and scope already exists."""
+
+    status = 409
+    code = "consent_already_given"
+    detail = "That consent is already active."
+
+
+class ConsentAlreadyRevokedError(AppError):
+    """The record was already revoked."""
+
+    status = 409
+    code = "consent_already_revoked"
+    detail = "That consent was already revoked."

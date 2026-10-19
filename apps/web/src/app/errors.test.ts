@@ -56,6 +56,15 @@ const API_CODES = [
   'family_inactive',
   'privacy_notice_required',
   'privacy_notice_outdated',
+  'student_profile_required',
+  'guardian_consent_required',
+  'student_account_unavailable',
+  'student_account_in_use',
+  'consent_method_invalid',
+  'consent_guardian_invalid',
+  'consent_not_applicable',
+  'consent_already_given',
+  'consent_already_revoked',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

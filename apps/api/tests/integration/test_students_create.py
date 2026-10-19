@@ -54,6 +54,7 @@ DETAIL_FIELDS = {
     "personal",
     "guardians",
     "family",
+    "login",
     "version",
     "created_at",
     "updated_at",

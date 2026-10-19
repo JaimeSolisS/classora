@@ -30,6 +30,7 @@ from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import user_admin
+from app.modules.identity.errors import STUDENT_LOGIN_GATE_DOC
 from app.modules.identity.permissions import (
     USER_DELEGATION_MANAGE,
     USER_MANAGE,
@@ -65,7 +66,7 @@ MANAGE_DENIED = problem_response_doc(
 STATE_CONFLICTS = problem_response_doc(
     f"{VERSION_CONFLICT} Or the user cannot move to this state from their"
     " current one (user_state_transition_invalid), or this is the only active"
-    " Owner (last_active_owner)."
+    " Owner (last_active_owner). Reactivation only: " + STUDENT_LOGIN_GATE_DOC
 )
 BODY_INVALID = problem_response_doc("The body is not valid (validation_error).")
 
@@ -231,7 +232,8 @@ async def reactivate_user(
         404: NOT_FOUND,
         409: problem_response_doc(
             f"{VERSION_CONFLICT} Or the change removes owner from the only"
-            " active Owner (last_active_owner); nothing changes."
+            " active Owner (last_active_owner); nothing changes. Adding student"
+            " to an active account: " + STUDENT_LOGIN_GATE_DOC
         ),
         422: problem_response_doc(
             "The body is not valid: no role, more than 7, a repeated or"

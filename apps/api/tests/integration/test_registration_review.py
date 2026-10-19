@@ -23,6 +23,7 @@ from app.modules.identity.permissions import (
 from tests.conftest import CLOCK_START
 from tests.integration.auth_support import CreatedUser, auth_client, create_user, login
 from tests.integration.conftest import reset_rate_limits, run_sql
+from tests.integration.consent_support import adult_profile_for
 from tests.integration.lifecycle_support import (
     code_of,
     events,
@@ -65,11 +66,15 @@ def administrator(module_seeded_url: str) -> CreatedUser:
 
 
 def requested(url: str, client: TestClient, role: str = "guardian") -> Any:
-    """A new pending request (its joined row, see ``request_row``)."""
+    """A new pending request (its joined row, see ``request_row``). A Student
+    request's account gets a linked adult profile, so its approval passes the
+    student-login gate (#35 H5)."""
     username = unique_username()
     assert code_of(register(client, username=username, role=role)) == ACCEPTED
     row = request_row(url, username)
     assert row is not None
+    if role == "student":
+        adult_profile_for(url, row.user_id)
     return row
 
 

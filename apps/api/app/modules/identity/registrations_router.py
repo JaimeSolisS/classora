@@ -33,6 +33,7 @@ from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.ratelimit import RATE_LIMIT_RESPONSES, rate_limit
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import registrations
+from app.modules.identity.errors import STUDENT_LOGIN_GATE_DOC
 from app.modules.identity.permissions import REGISTRATION_REVIEW
 from app.modules.identity.schemas import (
     RegistrationCreate,
@@ -53,7 +54,8 @@ DECISION_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: problem_response_doc("No such registration request (not_found)."),
     409: problem_response_doc(
         "The request was already approved or rejected, or its account is no"
-        " longer pending (registration_already_decided)."
+        " longer pending (registration_already_decided). Approval only: "
+        + STUDENT_LOGIN_GATE_DOC
     ),
 }
 

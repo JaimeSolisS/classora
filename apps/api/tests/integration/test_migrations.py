@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0017"
+HEAD = "0018"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -85,6 +85,7 @@ FAMILY_TABLES = ["student_emergency_contacts", "students"]
 GUARDIAN_TABLES = ["guardians", "student_guardians"]
 GROUPING_TABLES = ["families", "family_guardians", "family_students"]
 PRIVACY_TABLES = ["privacy_notice_acceptances", "privacy_notice_versions"]
+CONSENT_TABLES = ["consent_records"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -163,6 +164,9 @@ def test_history_is_linear_with_one_head():
     privacy = script.get_revision("0017")
     assert privacy.down_revision == "0016"
     assert Path(privacy.path).name == "0017_identity_privacy_notice.py"
+    consent = script.get_revision("0018")
+    assert consent.down_revision == "0017"
+    assert Path(consent.path).name == "0018_families_consent.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -194,6 +198,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ACCOUNT_TOKEN_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
+            *CONSENT_TABLES,
             *FAMILY_TABLES,
             *GUARDIAN_TABLES,
             *GROUPING_TABLES,
@@ -1130,11 +1135,14 @@ def test_students_columns_constraints_and_indexes(fresh_database_url):
         "school_grade": ("character varying", "YES", 50, None),
         "education_level_id": ("uuid", "YES", None, None),
         "is_active": ("boolean", "NO", None, "true"),
+        "user_id": ("uuid", "YES", None, None),  # #35
     }
     constraints = _constraints(fresh_database_url, "students")
     assert set(constraints) == {
         "pk_students",
         "fk_students_education_level_id_education_levels",
+        "fk_students_user_id_users",
+        "uq_students_user_id",
         "ck_students_given_names_trimmed",
         "ck_students_given_names_not_blank",
         "ck_students_family_names_trimmed",
@@ -1150,11 +1158,14 @@ def test_students_columns_constraints_and_indexes(fresh_database_url):
         in constraints["fk_students_education_level_id_education_levels"]
     )
     assert "1900-01-01" in constraints["ck_students_birthdate_min"]
+    assert "ON DELETE RESTRICT" in constraints["fk_students_user_id_users"]
+    assert constraints["uq_students_user_id"] == "UNIQUE (user_id)"
     indexes = _indexes(fresh_database_url, "students")
     assert set(indexes) == {
         "pk_students",
         "ix_students_education_level_id",
         "ix_students_search_name_trgm",
+        "uq_students_user_id",
     }
     search = indexes["ix_students_search_name_trgm"]
     assert "USING gin" in search
@@ -1583,3 +1594,224 @@ def test_a_duplicate_acceptance_is_rejected(fresh_database_url):
 
     with pytest.raises(IntegrityError, match="uq_privacy_notice_acceptances_user_id"):
         run_sql(fresh_database_url, accept, {"user_id": user_id})
+
+
+# --- 0018: student logins and consent records (#35 A) --------------------------------
+
+
+def test_0018_adds_exactly_the_consent_objects_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0017")
+    before = public_tables(fresh_database_url)
+    students_before = _columns(fresh_database_url, "students")
+    command.upgrade(config, "0018")
+
+    assert public_tables(fresh_database_url) - before == set(CONSENT_TABLES)
+    assert set(_columns(fresh_database_url, "students")) - set(students_before) == {
+        "user_id"
+    }
+
+    command.downgrade(config, "0017")
+
+    assert version_nums(fresh_database_url) == ["0017"]
+    assert public_tables(fresh_database_url) == before
+    assert _columns(fresh_database_url, "students") == students_before
+    assert "uq_students_user_id" not in _constraints(fresh_database_url, "students")
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_consent_records_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "consent_records") == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "student_id": ("uuid", "NO", None, None),
+        "guardian_id": ("uuid", "NO", None, None),
+        "scope": ("text", "NO", None, None),
+        "method": ("text", "NO", None, None),
+        "notice_version_id": ("uuid", "NO", None, None),
+        "granted_at": ("timestamp with time zone", "NO", None, None),
+        "recorded_by_user_id": ("uuid", "NO", None, None),
+        "revoked_at": ("timestamp with time zone", "YES", None, None),
+        "revoked_by_user_id": ("uuid", "YES", None, None),
+        "revocation_cause": ("text", "YES", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "consent_records")
+    fks = {
+        "fk_consent_records_student_id_students",
+        "fk_consent_records_guardian_id_guardians",
+        "fk_consent_records_notice_version_id",
+        "fk_consent_records_recorded_by_user_id_users",
+        "fk_consent_records_revoked_by_user_id_users",
+    }
+    assert set(constraints) == {
+        "pk_consent_records",
+        *fks,
+        "ck_consent_records_scope_valid",
+        "ck_consent_records_method_valid",
+        "ck_consent_records_revocation_cause_valid",
+        "ck_consent_records_revocation_complete",
+    }
+    for fk in fks:
+        assert "ON DELETE RESTRICT" in constraints[fk]
+    assert (
+        "privacy_notice_versions(id)"
+        in constraints["fk_consent_records_notice_version_id"]
+    )
+    indexes = _indexes(fresh_database_url, "consent_records")
+    assert set(indexes) == {
+        "pk_consent_records",
+        "ix_consent_records_student_id",
+        "uq_consent_records_active",
+    }
+    active = indexes["uq_consent_records_active"]
+    assert "UNIQUE INDEX" in active
+    assert "(student_id, guardian_id, scope)" in active
+    assert "WHERE (revoked_at IS NULL)" in active
+
+
+def _consent_world(dsn: str) -> dict[str, uuid.UUID]:
+    """A user, a student, a guardian (raw SQL) and the id of notice v1."""
+    ids = {name: uuid.uuid7() for name in ("user", "other", "student", "guardian")}
+    for name in ("user", "other"):
+        run_sql(
+            dsn,
+            "INSERT INTO users (id, username, display_name, state)"
+            " VALUES (:id, :username, 'Consent Tester', 'active')",
+            {"id": ids[name], "username": f"consent.{name}"},
+        )
+    run_sql(
+        dsn,
+        "INSERT INTO students (id, given_names, family_names, birthdate)"
+        " VALUES (:id, 'Ana', 'Prueba', DATE '2014-03-01')",
+        {"id": ids["student"]},
+    )
+    run_sql(
+        dsn,
+        "INSERT INTO guardians (id, given_names, family_names)"
+        " VALUES (:id, 'Laura', 'Prueba')",
+        {"id": ids["guardian"]},
+    )
+    [row] = run_sql(dsn, "SELECT id FROM privacy_notice_versions WHERE version = 1")
+    ids["notice"] = row.id
+    return ids
+
+
+INSERT_CONSENT = (
+    "INSERT INTO consent_records (student_id, guardian_id, scope, method,"
+    " notice_version_id, granted_at, recorded_by_user_id, revoked_at,"
+    " revoked_by_user_id, revocation_cause)"
+    " VALUES (:student, :guardian, :scope, :method, :notice, now(), :user,"
+    " :revoked_at, :revoked_by, :cause)"
+)
+
+
+def _consent_values(
+    ids: dict[str, uuid.UUID], **overrides: object
+) -> dict[str, object]:
+    values: dict[str, object] = {
+        "student": ids["student"],
+        "guardian": ids["guardian"],
+        "scope": "student_login",
+        "method": "paper",
+        "notice": ids["notice"],
+        "user": ids["user"],
+        "revoked_at": None,
+        "revoked_by": None,
+        "cause": None,
+    }
+    values.update(overrides)
+    return values
+
+
+def test_a_second_student_with_the_same_login_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    ids = _consent_world(fresh_database_url)
+    link = "UPDATE students SET user_id = :user WHERE id = :student"
+    run_sql(fresh_database_url, link, {"user": ids["user"], "student": ids["student"]})
+    other = uuid.uuid7()
+    with pytest.raises(IntegrityError, match="uq_students_user_id"):
+        run_sql(
+            fresh_database_url,
+            "INSERT INTO students (id, given_names, family_names, birthdate, user_id)"
+            " VALUES (:id, 'Otro', 'Prueba', DATE '2010-01-01', :user)",
+            {"id": other, "user": ids["user"]},
+        )
+
+
+def test_deleting_a_user_linked_to_a_student_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    ids = _consent_world(fresh_database_url)
+    run_sql(
+        fresh_database_url,
+        "UPDATE students SET user_id = :user WHERE id = :student",
+        {"user": ids["user"], "student": ids["student"]},
+    )
+
+    with pytest.raises(IntegrityError, match="fk_students_user_id_users"):
+        run_sql(
+            fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": ids["user"]}
+        )
+
+
+def test_one_active_record_per_student_guardian_and_scope(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    ids = _consent_world(fresh_database_url)
+    revoked = _consent_values(
+        ids,
+        revoked_at=datetime(2026, 1, 1, tzinfo=UTC),
+        revoked_by=ids["user"],
+        cause="revoked",
+    )
+    run_sql(fresh_database_url, INSERT_CONSENT, revoked)
+    # A revoked one plus a new active one is accepted, and another scope too.
+    run_sql(fresh_database_url, INSERT_CONSENT, _consent_values(ids))
+    run_sql(
+        fresh_database_url,
+        INSERT_CONSENT,
+        _consent_values(ids, scope="guardian_academic_access", method="in_app"),
+    )
+
+    with pytest.raises(IntegrityError, match="uq_consent_records_active"):
+        run_sql(
+            fresh_database_url, INSERT_CONSENT, _consent_values(ids, method="in_app")
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"scope": "everything"}, "ck_consent_records_scope_valid"),
+        ({"method": "email"}, "ck_consent_records_method_valid"),
+        (
+            {
+                "revoked_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "revoked_by": "user",
+                "cause": "expired",
+            },
+            "ck_consent_records_revocation_cause_valid",
+        ),
+        ({"revoked_at": datetime(2026, 1, 1, tzinfo=UTC)}, "revocation_complete"),
+        ({"revoked_by": "user"}, "revocation_complete"),
+        ({"cause": "revoked"}, "revocation_complete"),
+        (
+            {"revoked_at": datetime(2026, 1, 1, tzinfo=UTC), "cause": "revoked"},
+            "revocation_complete",
+        ),
+    ],
+)
+def test_invalid_consent_records_are_rejected(
+    fresh_database_url, overrides, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    ids = _consent_world(fresh_database_url)
+    if overrides.get("revoked_by") == "user":
+        overrides = {**overrides, "revoked_by": ids["user"]}
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(fresh_database_url, INSERT_CONSENT, _consent_values(ids, **overrides))

@@ -243,6 +243,17 @@ describes the route declarations and the 401/403/404 rule.
   `FamilyFactory` and `add_to_family(session, family, *members)` (for M6).
   Family membership is never student access: a family test that grants a
   guardian a student must link them (#34).
+  Student logins (#35): an account holding `student` passes the
+  student-login gate only with a linked profile, so a test that activates a
+  student (redemption, approval, reactivation, adding the role) first links
+  one with `student_login(session, student, user_id)` (an adult's,
+  `birthdate=ADULT_BIRTHDATE`, needs nothing more; a minor needs a
+  `login_consent(session, student, guardian, recorded_by=...)` from a linked,
+  active guardian). `consent_support.adult_profile_for(url, user_id)` and
+  `minor_profile_for(url, user_id, consenting=True)` commit both. Never
+  weaken the gate in a test. The root conftest registers the families gate
+  for every test (`student_login_gate`, autouse); `no_student_login_gate`
+  unregisters it to prove the fail-closed path.
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
   that does not exist. Record policies (`can_<action>_<resource>`) are
@@ -355,6 +366,16 @@ follows these rules.
     (`support/families.ts` `createGuardianAccountViaPage`); it sees its own
     family until the Owner removes its profile from it. The same rules:
     created by that test in every run, no other test may use the name.
+  - `e2e.consent.parent`, `e2e.consent.student`, `e2e.consent.adultparent`
+    and `e2e.consent.adult`: the parents and students of
+    `e2e/tests/families/consent.spec.ts` (#35). The parents and the adult
+    student are self-registrations the Owner's shared session approves
+    (`support/consent.ts` `createApprovedAccount`, no login and no token
+    redemption); the minor's account is invited and linked to the profile
+    with `createStudentLogin(page, {username, displayName, studentId})`
+    (`support/consent.ts`), which returns the invitation link without
+    redeeming it. The same rules: created by that test in every run, no
+    other test may use the names.
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,

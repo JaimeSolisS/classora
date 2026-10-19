@@ -85,6 +85,7 @@ export const JOSE: StudentDetail = {
     },
   ],
   family: { ...NUNEZ_FAMILY_REF },
+  login: null,
   version: 3,
   created_at: AT,
   updated_at: AT,

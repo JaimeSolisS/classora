@@ -41,6 +41,8 @@ from app.core.jobs import (
     worker_healthcheck_connector,
 )
 from app.core.logging import configure_logging
+from app.modules.families import service as families_service
+from app.modules.identity.service import register_student_login_gate
 
 logger = logging.getLogger("app.worker")
 
@@ -157,6 +159,9 @@ async def healthcheck(settings: Settings) -> bool:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Jobs that change a user's state pass the families student-login gate
+    # (#35 B1), as in the API.
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         settings = load_settings()

@@ -7,6 +7,7 @@ import {
 } from '../support/auth';
 import { common } from '../support/catalog';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
+import { recordConsentViaApi } from '../support/consent';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 import { createActiveUser } from '../support/users';
@@ -23,7 +24,8 @@ const THEMES = ['light', 'dark'] as const;
 // /password-resets, /registration-requests, /account/password, the catalog
 // levels page and the seeded "Primaria" level's page (opened from the list),
 // /students, /students/new and the detail of a student the scan creates
-// through the API first (#33 L2), /guardians, /guardians/new and the detail
+// through the API first (#33 L2; with a linked guardian and a paper consent,
+// so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
 // of a guardian the scan creates and links to a new student first (#34 K2),
 // /families, /families/new and the detail of a family the scan creates with
 // that student and guardian (#172 J2)
@@ -52,6 +54,11 @@ interface ScannedRoute {
    * `path` is then the family's detail.
    */
   createsFamily?: boolean;
+  /**
+   * Also link a guardian to the created student and record a paper consent,
+   * then wait for the Consents section (#35 K4) before scanning.
+   */
+  withConsent?: boolean;
 }
 
 const ROUTES: ScannedRoute[] = [
@@ -88,6 +95,7 @@ const ROUTES: ScannedRoute[] = [
     path: '/students/<created>',
     signedIn: true,
     createsStudent: true,
+    withConsent: true,
   },
   { name: 'guardians', path: '/guardians', signedIn: true },
   { name: 'guardian-new', path: '/guardians/new', signedIn: true },
@@ -157,6 +165,14 @@ for (const theme of THEMES) {
             familyNames: `Accesible ${sfx}`,
           });
           path = `/students/${id}`;
+          if (route.withConsent) {
+            const guardianId = await createGuardianViaApi(page, {
+              givenNames: 'Elena',
+              familyNames: `Accesible ${sfx}`,
+            });
+            await linkGuardianViaApi(page, id, guardianId);
+            await recordConsentViaApi(page, id, guardianId);
+          }
           if (route.createsGuardian) {
             const guardianId = await createGuardianViaApi(page, {
               givenNames: 'Elena',
@@ -180,6 +196,18 @@ for (const theme of THEMES) {
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
           timeout: FIRST_RENDER_TIMEOUT_MS,
         });
+        if (route.withConsent) {
+          // The login account and consent sections (#35 K4) load after the
+          // heading.
+          await expect(
+            page
+              .getByRole('main')
+              .getByRole('heading', { level: 2, name: common.consent.title }),
+          ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+          await expect(
+            page.getByRole('main').getByText(common.consent.active),
+          ).toBeVisible();
+        }
         if (route.openRow) {
           const name = route.openRow;
           await page
