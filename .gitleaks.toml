@@ -30,3 +30,15 @@ condition = "AND"
 paths = ['''^apps/web/src/features/auth/redeem/invite\.test\.tsx$''']
 regexTarget = "match"
 regexes = ['''AbCdEfGhIjKlMnOpXyStUvWxYz0123456789-_AbCdE''']
+
+# A false positive on a code line in the password-change route (M2-12, #30,
+# commit c4ac01a): `result.token, max_age=result.limits.absolute` reads as a
+# key/value pair. The line was reshaped in the next commit; this entry keeps
+# the branch history scannable. No secret is involved.
+[[allowlists]]
+description = "Session-cookie call in the password-change route (code, not a secret)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/api/app/modules/identity/router\.py$''']
+regexTarget = "match"
+regexes = ['''token, max_age=result\.limits\.absolute''']

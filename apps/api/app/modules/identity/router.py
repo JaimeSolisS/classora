@@ -260,7 +260,7 @@ async def change_password(
         await uow.session.rollback()
         await recovery.record_failed_change(sessionmaker, result)
         raise CurrentPasswordInvalidError()
-    sessions.set_session_cookie(
-        response, settings, result.token, max_age=result.limits.absolute
-    )
+    # Max-Age = the new session's absolute timeout (#25), as on login.
+    lifetime = result.limits.absolute
+    sessions.set_session_cookie(response, settings, result.token, max_age=lifetime)
     return auth.session_user(result.user, result.principal, result.token)
