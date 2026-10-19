@@ -44,6 +44,8 @@ pnpm-debug.log*
 test-results/
 playwright-report/
 blob-report/
+# The shared signed-in storageState written by e2e/global-setup.ts.
+e2e/.auth/
 
 # --- Terraform (infrastructure/terraform) ------------------------------------
 # .terraform.lock.hcl is intentionally tracked.

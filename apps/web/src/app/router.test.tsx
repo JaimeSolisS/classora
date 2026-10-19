@@ -2,16 +2,13 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
 import { resetUiStore, useUiStore } from '@/stores/ui';
-import {
-  buttonNamed,
-  renderApp,
-  stubPendingFetch,
-  type RenderedApp,
-} from '@/test/render-app';
+import { stubSignedIn } from '@/test/api-stub';
+import { buttonNamed, renderApp, type RenderedApp } from '@/test/render-app';
 import { routes } from './router';
 
 // B/H7: route tree, layout, 404, skip link, guard, nav toggle and the header
-// switchers.
+// switchers. Signed in through a stubbed /auth/me (#28 I2): every page sits
+// behind the guard.
 
 let app: RenderedApp | undefined;
 
@@ -20,7 +17,7 @@ const FOCUSABLE =
 
 beforeEach(() => {
   applyLanguage('en');
-  stubPendingFetch();
+  stubSignedIn();
 });
 
 afterEach(() => {
@@ -32,13 +29,17 @@ afterEach(() => {
 });
 
 describe('route tree', () => {
-  it('is layout → guard → home and 404, nothing else', () => {
+  it('is layout → login and guard → home and 404, nothing else', () => {
     expect(routes).toHaveLength(1);
     const [root] = routes;
     expect(root!.path).toBe('/');
     expect(root!.errorElement).toBeTruthy();
-    const [guard] = root!.children!;
-    expect(root!.children).toHaveLength(1);
+    const [login, guard] = root!.children!;
+    expect(root!.children).toHaveLength(2);
+    // /login is the only page outside the guard (#28 B1).
+    expect(login!.path).toBe('login');
+    expect(login!.children).toBeUndefined();
+    expect(guard!.id).toBe('guard');
     expect(guard!.path).toBeUndefined();
     expect(guard!.errorElement).toBeTruthy();
     const children = guard!.children!;
@@ -72,7 +73,7 @@ describe('home', () => {
     );
   });
 
-  it('renders the guard route child (RouteGuard renders its Outlet)', async () => {
+  it('renders the guard route child for a signed-in user', async () => {
     app = await renderApp('/');
     expect(app.container.querySelector('[role="status"]')).not.toBeNull();
   });

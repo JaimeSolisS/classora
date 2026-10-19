@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage, i18n } from './i18n';
 import { LANGUAGE_STORAGE_KEY } from './i18n/language';
+import { stubSignedIn, type Responder } from './test/api-stub';
 import {
   buttonNamed,
   jsonResponse,
@@ -12,6 +13,13 @@ import {
 
 // Home page (C5): the health check runs through TanStack Query and the
 // central API helper, rendered through the router with a fresh query client.
+// Signed in through a stubbed /auth/me (#28 I2): the home page is behind the
+// guard.
+
+/** Signed in; GET /health/live answers with `health`. */
+function stubHealth(health: Responder) {
+  return stubSignedIn({ 'GET /health/live': health });
+}
 
 let app: RenderedApp | undefined;
 
@@ -37,19 +45,17 @@ afterEach(() => {
 
 describe('Home page API status', () => {
   it('shows the product name and checks /health/live on the same origin', async () => {
-    const fetchMock = vi.fn((request: Request) => {
-      void request;
-      return Promise.resolve(jsonResponse(200, { status: 'ok' }));
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const stub = stubHealth(() => jsonResponse(200, { status: 'ok' }));
 
     app = await renderApp('/');
 
     expect(app.container.querySelector('h1')?.textContent).toBe('Classora');
     expect(document.title).toBe('Classora');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stub.calls('GET /health/live')).toHaveLength(1);
     // The API client passes one Request object to fetch.
-    const request = fetchMock.mock.calls[0]![0];
+    const request = stub.fetch.mock.calls
+      .map(([r]) => r)
+      .find((r) => r.url.endsWith('/health/live'))!;
     const url = new URL(request.url);
     expect(request.method).toBe('GET');
     expect(url.pathname).toBe('/health/live');
@@ -59,10 +65,7 @@ describe('Home page API status', () => {
   });
 
   it('shows "API: checking…" while the request is pending', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise<Response>(() => {})),
-    );
+    stubHealth(() => new Promise<Response>(() => {}));
 
     app = await renderApp('/');
 
@@ -70,10 +73,7 @@ describe('Home page API status', () => {
   });
 
   it('shows "API: live" for 200 with {"status":"ok"}', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'ok' }))),
-    );
+    stubHealth(() => jsonResponse(200, { status: 'ok' }));
 
     app = await renderApp('/');
 
@@ -81,22 +81,16 @@ describe('Home page API status', () => {
   });
 
   it('shows "API: unreachable" for a 503 response, without retrying', async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse(503, { status: 'ok' })),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const stub = stubHealth(() => jsonResponse(503, { status: 'ok' }));
 
     app = await renderApp('/');
 
     expect(statusText()).toBe('API: unreachable');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stub.calls('GET /health/live')).toHaveLength(1);
   });
 
   it('shows "API: unreachable" for a 200 with an unexpected body', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'down' }))),
-    );
+    stubHealth(() => jsonResponse(200, { status: 'down' }));
 
     app = await renderApp('/');
 
@@ -104,10 +98,7 @@ describe('Home page API status', () => {
   });
 
   it('shows "API: unreachable" when fetch rejects (network error)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
-    );
+    stubHealth(() => Promise.reject(new TypeError('Failed to fetch')));
 
     app = await renderApp('/');
 
@@ -116,16 +107,13 @@ describe('Home page API status', () => {
 
   it('shows "API: unreachable" when there is no response within 5 seconds', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        (request: Request) =>
-          new Promise<Response>((_resolve, reject) => {
-            request.signal.addEventListener('abort', () =>
-              reject(new DOMException('Aborted', 'AbortError')),
-            );
-          }),
-      ),
+    stubHealth(
+      (request) =>
+        new Promise<Response>((_resolve, reject) => {
+          request.signal.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        }),
     );
 
     app = mountApp('/');
@@ -152,10 +140,7 @@ describe('Home page language', () => {
     'renders the page and both switchers in %s on the first render',
     async (language, status, themeLabel, languageLabel) => {
       applyLanguage(language);
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() => Promise.resolve(jsonResponse(200, { status: 'ok' }))),
-      );
+      stubHealth(() => jsonResponse(200, { status: 'ok' }));
 
       app = await renderApp('/');
 
@@ -174,10 +159,7 @@ describe('Home page language', () => {
 
   it('switches language in place: no remount, status kept, stored', async () => {
     applyLanguage('es');
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse(200, { status: 'ok' })),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const stub = stubHealth(() => jsonResponse(200, { status: 'ok' }));
     app = await renderApp('/');
     const { container } = app;
     const heading = container.querySelector('h1');
@@ -193,7 +175,7 @@ describe('Home page language', () => {
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
     // Same DOM node and no second health check: the app was not remounted.
     expect(container.querySelector('h1')).toBe(heading);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stub.calls('GET /health/live')).toHaveLength(1);
 
     act(() => buttonNamed(container, 'Español').click());
     expect(statusText()).toBe('API: activa');

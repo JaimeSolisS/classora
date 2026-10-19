@@ -427,5 +427,31 @@ Approved (architecture ISSUE-X4, decided on issue #12).
   retried. Mutations never retry, and financial mutations are never
   optimistic. When an API task adds a new `code`, it adds the message key to
   `errors.json` in both `es` and `en` and maps it in `errors.ts`.
+- **Session, CSRF and reauthentication in the web app** (#28,
+  `apps/web/src/features/auth/`):
+  - The session is one TanStack query, `['auth', 'me']` (`GET /auth/me`).
+    Both `401` codes resolve to "signed out", never to a query error. It is
+    never polled (no `refetchInterval`), so an idle tab does not keep its
+    session alive; it refetches on window focus once older than 60 seconds.
+  - The CSRF token lives in one module variable (`features/auth/csrf.ts`),
+    set from the login and every `/auth/me` response and cleared on every
+    sign-out. It is never stored in browser storage, a cookie, the URL, a
+    store, a log or the query cache (the cached user has no `csrf_token`).
+    One `openapi-fetch` middleware, registered where `api` is created, adds
+    `X-CSRF-Token` to `POST`, `PUT`, `PATCH` and `DELETE`, never to `GET`.
+  - `apiCall` handles three answers for every caller: a `401`
+    `authentication_required` or `session_expired` clears the token and the
+    whole query cache once and sends the user to `/login?next=<page>` (with
+    the "session expired" notice only for `session_expired`); `403
+    csrf_failed` refetches `/auth/me` and retries the request once (never if
+    the user changed: then the cache is cleared and the app goes to `/`);
+    `403 reauth_required` opens the password dialog and retries the request
+    once after a confirmed password (cancel rejects with the original error).
+    A second `csrf_failed` or `reauth_required` reaches the caller.
+  - Login and reauthentication are direct calls, not mutations, so the
+    password never enters the TanStack mutation cache. Login and logout clear
+    every cached response.
+  - Route guards and hidden navigation are UX only; the API checks every
+    request (spec §16).
 - The local/DEV demo job route (`/api/v1/dev/demo-jobs`) is served only when
   `APP_ENV` is `local` or `dev` and is not part of the exported document.

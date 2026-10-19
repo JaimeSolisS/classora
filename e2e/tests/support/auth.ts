@@ -1,0 +1,48 @@
+import { fileURLToPath } from 'node:url';
+import type { Page } from '@playwright/test';
+
+// The shared signed-in state (#28 H1). e2e/global-setup.ts signs the demo
+// Owner in once through the API and saves the browser state here
+// (gitignored); every test starts from it unless it opts out. The shared
+// session is never logged out.
+export const OWNER_STATE_PATH = fileURLToPath(
+  new URL('../../.auth/owner.json', import.meta.url),
+);
+
+/**
+ * For tests that log in or out (#28 H2): a context WITHOUT the shared state.
+ * A login sent with the shared cookie would revoke the shared session (#23
+ * rotation), and a logout would end it.
+ */
+export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
+
+/**
+ * Login budget (#27, ADR-0008): one run shares one `login.ip` budget of 50
+ * per 15 minutes, and `demo.owner` has 10 failures per 15 minutes. Every
+ * `make e2e` starts from an empty volume, so the budget is per run. Logins in
+ * the whole run today: global setup 1, auth/session.spec.ts 8 (2 of them
+ * wrong passwords), security/headers.spec.ts 1 = 10 attempts, 2 failures.
+ * Keep the total well under both limits; never add a setting that disables
+ * the limits.
+ */
+export const LOGIN_ATTEMPTS_PER_RUN = 10;
+
+/** Records CSP violations from the first script on (the #24 listener). */
+export async function recordCspViolations(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const target = window as Window & { __cspViolations?: string[] };
+    target.__cspViolations = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      target.__cspViolations?.push(
+        `${event.violatedDirective} ${event.blockedURI}`,
+      );
+    });
+  });
+}
+
+export async function cspViolations(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      (window as Window & { __cspViolations?: string[] }).__cspViolations ?? [],
+  );
+}

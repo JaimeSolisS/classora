@@ -31,6 +31,9 @@ does not run the Storybook story tests or E2E.
   replaces many manual clicks, not an API test.
 - A component's states (loading, empty, error, disabled) and its accessibility
   are covered by stories, not by E2E.
+- Route guards and hidden navigation items are tested in Vitest (test-only
+  routes and items). They are UX only and never replace the API permission
+  matrix.
 
 ## Fixtures and test data
 
@@ -302,6 +305,19 @@ follows these rules.
 - Viewports: desktop Chromium only. A task that names "mobile viewport" adds a
   project.
 - A new route gets an axe scan (next section).
+- **Signed-in state (#28):** `e2e/global-setup.ts` signs the demo Owner in
+  once through the API and saves Playwright `storageState` to
+  `e2e/.auth/owner.json` (gitignored); every test starts signed in from it.
+  The shared session is never logged out.
+- **Fresh contexts for login and logout:** a test that logs in or out uses
+  `test.use({ storageState: SIGNED_OUT_STATE })`
+  (`e2e/tests/support/auth.ts`). A login sent with the shared cookie would
+  revoke the shared session (#23 rotation), and a logout would end it.
+- **Login budget:** the whole run shares one `login.ip` budget of 50 per 15
+  minutes, and `demo.owner` has 10 failures per 15 minutes (#27). Each
+  `make e2e` starts from an empty volume, so the budget is per run. Keep the
+  count in `LOGIN_ATTEMPTS_PER_RUN` (`e2e/tests/support/auth.ts`) up to date
+  and well under both limits; never add a setting that disables the limits.
 - A failing run keeps the trace (`trace.zip`), a screenshot and the Compose
   logs in `e2e/test-results/`. Open a trace from the repository root with
   `corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`

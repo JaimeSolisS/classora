@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
 import {
   DEVELOPMENT_HEADERS,
   PRODUCTION_HEADERS,
-} from './src/security-headers';
+} from './src/security-headers.ts';
 
 // Story tests: every story (with its play function and the axe check) runs
 // headlessly in Chromium, once per theme through the `theme` toolbar global.
@@ -54,7 +54,8 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
-      // Enforced (not Report-Only), also on the proxied API responses.
+      // Enforced (not Report-Only) on the pages the dev server serves. The
+      // proxied API responses keep the API's own headers (no CSP).
       headers: appDevServer ? { ...DEVELOPMENT_HEADERS } : undefined,
       proxy: {
         '/health': apiTarget,

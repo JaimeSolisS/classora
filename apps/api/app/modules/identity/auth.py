@@ -309,13 +309,17 @@ async def record_failed_reauth(
 def session_user(user: User, principal: Principal, session_token: bytes) -> SessionUser:
     """The :class:`SessionUser` of ``user``, with the CSRF token of the
     session whose raw token is ``session_token`` (#24)."""
-    return SessionUser(
-        id=user.id,
-        username=user.username,
-        display_name=user.display_name,
-        roles=sorted(principal.roles),
-        permissions=sorted(principal.permissions),
-        csrf_token=csrf_token_for(session_token),
+    # model_validate: the role and permission codes are checked against the
+    # RoleCode and PermissionCode enums of the schema (#28 F3).
+    return SessionUser.model_validate(
+        {
+            "id": user.id,
+            "username": user.username,
+            "display_name": user.display_name,
+            "roles": sorted(principal.roles),
+            "permissions": sorted(principal.permissions),
+            "csrf_token": csrf_token_for(session_token),
+        }
     )
 
 

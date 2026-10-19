@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
+import { SIGNED_OUT_STATE } from '../support/auth';
 import { demoOwner } from '../support/credentials';
 
 // Security headers in Chromium (#24 H2): the web app runs under the enforced
@@ -41,41 +42,46 @@ test('an API response through the web origin is no-store and nosniff', async ({
   expect(response.headers()['x-content-type-options']).toBe('nosniff');
 });
 
-test('the app and a sign-in round trip cause no CSP violation', async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    window.__cspViolations = [];
-    document.addEventListener('securitypolicyviolation', (event) => {
-      window.__cspViolations?.push(
-        `${event.violatedDirective} ${event.blockedURI}`,
-      );
+test.describe('a sign-in round trip', () => {
+  // Logs in and out: a fresh context, never the shared session (#28 H2).
+  test.use({ storageState: SIGNED_OUT_STATE });
+
+  test('the app and a sign-in round trip cause no CSP violation', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      window.__cspViolations = [];
+      document.addEventListener('securitypolicyviolation', (event) => {
+        window.__cspViolations?.push(
+          `${event.violatedDirective} ${event.blockedURI}`,
+        );
+      });
     });
-  });
-  const cspConsoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (/content security policy/i.test(message.text())) {
-      cspConsoleErrors.push(message.text());
-    }
-  });
+    const cspConsoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (/content security policy/i.test(message.text())) {
+        cspConsoleErrors.push(message.text());
+      }
+    });
 
-  await page.goto('/');
-  await expect(page.getByRole('main')).toBeVisible();
-  const login = await api(page, '/api/v1/auth/login', {
-    method: 'POST',
-    json: demoOwner,
-  });
-  expect(login.status).toBe(200);
-  const me = await api(page, '/api/v1/auth/me');
-  expect(me.status).toBe(200);
-  const logout = await api(page, '/api/v1/auth/logout', {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': csrfTokenOf(login) },
-  });
-  expect(logout.status).toBe(204);
+    await page.goto('/');
+    await expect(page.getByRole('main')).toBeVisible();
+    const login = await api(page, '/api/v1/auth/login', {
+      method: 'POST',
+      json: demoOwner,
+    });
+    expect(login.status).toBe(200);
+    const me = await api(page, '/api/v1/auth/me');
+    expect(me.status).toBe(200);
+    const logout = await api(page, '/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfTokenOf(login) },
+    });
+    expect(logout.status).toBe(204);
 
-  expect(await page.evaluate(() => window.__cspViolations)).toEqual([]);
-  expect(cspConsoleErrors).toEqual([]);
+    expect(await page.evaluate(() => window.__cspViolations)).toEqual([]);
+    expect(cspConsoleErrors).toEqual([]);
+  });
 });
 
 test('a page that embeds the app in an iframe does not render it', async ({

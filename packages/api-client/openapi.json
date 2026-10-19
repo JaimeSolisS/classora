@@ -700,6 +700,30 @@
         "title": "LoginRequest",
         "description": "Username and password. The bounds do not depend on any account."
       },
+      "PermissionCode": {
+        "type": "string",
+        "enum": [
+          "audit.view",
+          "catalog.manage",
+          "consent.record",
+          "family.manage",
+          "finance.refund.approve",
+          "guardian.view",
+          "payroll.finalize",
+          "registration.review",
+          "schedule.override",
+          "student.manage",
+          "student.view",
+          "user.admin_role.assign",
+          "user.delegation.manage",
+          "user.invite",
+          "user.manage",
+          "user.owner_role.assign",
+          "user.password_reset.issue",
+          "user.role.assign",
+          "user.view"
+        ]
+      },
       "ProblemDetails": {
         "additionalProperties": false,
         "description": "The body of every error response (RFC 9457 Problem Details).",
@@ -779,6 +803,18 @@
         "title": "ReauthenticateResponse",
         "description": "The end of the session's reauthentication window (#26).\n\nHolds no token, hash or session id."
       },
+      "RoleCode": {
+        "type": "string",
+        "enum": [
+          "academic_coordinator",
+          "administrator",
+          "finance_staff",
+          "guardian",
+          "owner",
+          "student",
+          "tutor"
+        ]
+      },
       "SessionUser": {
         "properties": {
           "id": {
@@ -796,7 +832,7 @@
           },
           "roles": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/RoleCode"
             },
             "type": "array",
             "title": "Roles",
@@ -804,7 +840,7 @@
           },
           "permissions": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PermissionCode"
             },
             "type": "array",
             "title": "Permissions",
