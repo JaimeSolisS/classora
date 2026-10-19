@@ -1,0 +1,598 @@
+"""Student profiles and emergency contacts (#33; spec §2, §4, §9, §16).
+
+**Reads** (``student.view``): :func:`list_students` and :func:`get_student`.
+Who sees which student, and how much of it, is decided by the pure policies
+in :mod:`app.modules.families.permissions`; this module loads the facts
+(:func:`load_access_facts`): a tutor's current assignments from the
+:class:`~app.modules.families.assignments.TutorAssignmentSource` (a stub until
+M4), a guardian's links (#34) and a student user's own profile (#35), each
+only for a caller who holds that role. A hidden student is ``404
+not_found``, the same as a missing one; the list leaves hidden students out
+and never answers ``403``/``404`` for them.
+
+**Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
+public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
+family_names``, a student matches ``q`` when every whitespace-separated term
+of ``q`` (at most five) is a substring of ``n(name)`` (``%``, ``_`` and ``\\``
+match literally, so terms match in any order), **or** ``n(q) <% n(name)``
+(``pg_trgm`` word similarity at its default threshold, which tolerates
+typos). Results are ordered by ``word_similarity(n(q), n(name))``, then the
+default order: ``n(family_names)``, ``n(given_names)``, ``id``. Both
+predicates use the GIN trigram index on ``n(name)``.
+
+**Writes** (``student.manage``): :func:`create_student` and
+:func:`update_student`. Profiles are never deleted, only deactivated
+(``is_active``). An update sends the ``version`` the caller loaded; the row
+is locked ``FOR UPDATE`` before the version check, so of two changes from
+one version the second gets ``409 version_conflict``. Emergency contacts are
+replaced as a whole list (1-5) whose order sets ``position``; any change,
+a contacts-only one included, increments ``students.version`` exactly once.
+A body that changes nothing changes no version and writes no event.
+
+**Education level:** only an active level can be picked
+(``catalog.service.get_level_for_reference`` with a ``FOR SHARE`` lock, so a
+concurrent deactivation can't slip in); an already assigned inactive level
+may be kept. ``422 education_level_unavailable`` otherwise.
+
+**Audit:** automatic only (#22): ``create``/``update``/``delete`` events of
+``students`` and ``student_emergency_contacts`` with the actor and request
+ID. No named event and no ``details`` key. A contacts-only change writes only
+contact events (the version bump changes no audited column).
+
+**Ages:** :func:`is_minor` (re-exported from ``ages``) with
+``app.core.clock.center_today()``; #35 uses both.
+
+Every function runs in the caller's Unit of Work and never commits.
+"""
+
+import uuid
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Final
+
+from sqlalchemy import (
+    ColumnElement,
+    Float,
+    String,
+    and_,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.authz import Principal, authorize_record
+from app.core.clock import center_today
+from app.core.errors import FieldError
+from app.core.models import ensure_version
+from app.core.pagination import OffsetPage, OffsetParams
+from app.modules.catalog import service as catalog
+from app.modules.catalog.schemas import EducationLevelReference
+from app.modules.families.ages import is_minor
+from app.modules.families.assignments import TutorAssignmentSource
+from app.modules.families.errors import (
+    BirthdateInFutureError,
+    EducationLevelUnavailableError,
+    EmergencyContactUnknownError,
+)
+from app.modules.families.models import Student, StudentEmergencyContact
+from app.modules.families.permissions import (
+    TUTOR,
+    AccessLevel,
+    StudentAccessFacts,
+    can_view_student,
+    sees_every_student,
+    student_access_level,
+    visible_student_ids,
+)
+from app.modules.families.schemas import (
+    EmergencyContact,
+    StudentCreate,
+    StudentDetail,
+    StudentListItem,
+    StudentPersonal,
+    StudentStatus,
+    StudentUpdate,
+    search_terms,
+)
+
+__all__ = [
+    "create_student",
+    "get_student",
+    "is_minor",
+    "list_students",
+    "load_access_facts",
+    "update_student",
+]
+
+# --- Facts -----------------------------------------------------------------------
+
+
+async def load_access_facts(
+    session: AsyncSession, principal: Principal, source: TutorAssignmentSource
+) -> StudentAccessFacts:
+    """What the caller is linked to, loaded only for the roles they hold.
+
+    - ``tutor``: the current assignments from ``source`` (always empty until
+      M4 replaces :class:`~app.modules.families.assignments.NoTutorAssignments`);
+    - ``guardian``: ``linked_student_ids`` stays empty until #34 loads
+      guardian links (per request, never cached, so an unlink applies on the
+      next request);
+    - ``student``: ``own_student_id`` stays ``None`` until #35 links a login
+      to its profile.
+    """
+    assigned: frozenset[uuid.UUID] = frozenset()
+    if TUTOR in principal.roles:
+        assigned = await source.student_ids_for_tutor(session, principal.user_id)
+    return StudentAccessFacts(assigned_student_ids=assigned)
+
+
+# --- Search expressions ----------------------------------------------------------
+
+
+def _normalized(expression: Any) -> ColumnElement[str]:
+    """``public.f_unaccent(lower(expression))``."""
+    return func.public.f_unaccent(func.lower(expression), type_=String)
+
+
+def _search_name() -> ColumnElement[str]:
+    # Exactly the indexed expression (models.SEARCH_EXPRESSION): the separator
+    # is an SQL literal, not a bound parameter, so the planner can match the
+    # GIN index.
+    full_name = Student.given_names.op("||")(literal_column("' '")).op("||")(
+        Student.family_names
+    )
+    return _normalized(full_name)
+
+
+def _escape_like(term: str) -> str:
+    """``term`` for a ``LIKE`` pattern with PostgreSQL's default escape
+    character (``\\``): ``%``, ``_`` and ``\\`` match literally."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def search_condition(q: str) -> ColumnElement[bool]:
+    """The E2 predicate of ``q`` (already trimmed, at most five terms)."""
+    name = _search_name()
+    every_term = and_(
+        *(
+            name.like(
+                literal("%") + _normalized(literal(_escape_like(term))) + literal("%")
+            )
+            for term in search_terms(q)
+        )
+    )
+    similar = _normalized(literal(q)).op("<%", is_comparison=True)(name)
+    return or_(every_term, similar)
+
+
+def _relevance(q: str) -> ColumnElement[float]:
+    return func.word_similarity(_normalized(literal(q)), _search_name(), type_=Float)
+
+
+DEFAULT_ORDER: Final = (
+    _normalized(Student.family_names),
+    _normalized(Student.given_names),
+    Student.id,
+)
+
+
+# --- Projections -----------------------------------------------------------------
+
+
+def _status_conditions(status: StudentStatus) -> list[ColumnElement[bool]]:
+    if status == "active":
+        return [Student.is_active.is_(True)]
+    if status == "inactive":
+        return [Student.is_active.is_(False)]
+    return []
+
+
+def _list_item(
+    student: Student,
+    levels: dict[uuid.UUID, EducationLevelReference],
+    today: date,
+) -> StudentListItem:
+    level_id = student.education_level_id
+    return StudentListItem(
+        id=student.id,
+        given_names=student.given_names,
+        family_names=student.family_names,
+        is_active=student.is_active,
+        is_minor=is_minor(student.birthdate, today),
+        school_grade=student.school_grade,
+        education_level=levels.get(level_id) if level_id is not None else None,
+    )
+
+
+async def _contacts_of(
+    session: AsyncSession, student_id: uuid.UUID
+) -> list[StudentEmergencyContact]:
+    return list(
+        await session.scalars(
+            select(StudentEmergencyContact)
+            .where(StudentEmergencyContact.student_id == student_id)
+            .order_by(StudentEmergencyContact.position)
+        )
+    )
+
+
+def _contact(row: StudentEmergencyContact) -> EmergencyContact:
+    return EmergencyContact(
+        id=row.id,
+        name=row.name,
+        relationship=row.relationship,
+        phone=row.phone,
+        position=row.position,
+    )
+
+
+async def _level_of(
+    session: AsyncSession, student: Student
+) -> EducationLevelReference | None:
+    if student.education_level_id is None:
+        return None
+    return await catalog.get_level_for_reference(
+        session, student.education_level_id, lock=False
+    )
+
+
+def _detail(
+    student: Student,
+    *,
+    level: EducationLevelReference | None,
+    access: AccessLevel,
+    contacts: Iterable[StudentEmergencyContact],
+) -> StudentDetail:
+    personal = None
+    if access == "full":
+        personal = StudentPersonal(
+            birthdate=student.birthdate,
+            email=student.email,
+            phone=student.phone,
+            emergency_contacts=[
+                _contact(row) for row in sorted(contacts, key=lambda c: c.position)
+            ],
+        )
+    return StudentDetail(
+        id=student.id,
+        given_names=student.given_names,
+        family_names=student.family_names,
+        is_active=student.is_active,
+        is_minor=is_minor(student.birthdate, center_today()),
+        school_name=student.school_name,
+        school_grade=student.school_grade,
+        education_level=level,
+        personal=personal,
+        version=student.version,
+        created_at=student.created_at,
+        updated_at=student.updated_at,
+    )
+
+
+async def _detail_for(
+    session: AsyncSession,
+    student: Student,
+    *,
+    access: AccessLevel,
+    level: EducationLevelReference | None = None,
+    contacts: Sequence[StudentEmergencyContact] | None = None,
+) -> StudentDetail:
+    if level is None:
+        level = await _level_of(session, student)
+    if access == "full" and contacts is None:
+        contacts = await _contacts_of(session, student.id)
+    return _detail(student, level=level, access=access, contacts=contacts or ())
+
+
+# --- Reads -----------------------------------------------------------------------
+
+
+async def list_students(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    source: TutorAssignmentSource,
+    q: str | None,
+    status: StudentStatus,
+    education_level_id: uuid.UUID | None,
+    page: OffsetParams,
+) -> OffsetPage[StudentListItem]:
+    """The students the caller may see that match every filter.
+
+    At most three statements for a caller who sees every student (the page,
+    the total and the page's level names through ``catalog.service``;
+    ADR-0002 forbids a cross-module join). Any other caller sees only
+    ``assigned ∪ linked ∪ own``; when that is empty, the page is empty and no
+    statement is sent.
+    """
+    conditions = _status_conditions(status)
+    if not sees_every_student(principal):
+        facts = await load_access_facts(session, principal, source)
+        visible = visible_student_ids(principal, facts)
+        if not visible:
+            return OffsetPage[StudentListItem](
+                items=[], total=0, limit=page.limit, offset=page.offset
+            )
+        conditions.append(Student.id.in_(visible))
+    if education_level_id is not None:
+        conditions.append(Student.education_level_id == education_level_id)
+    order: list[Any] = list(DEFAULT_ORDER)
+    if q:
+        conditions.append(search_condition(q))
+        order.insert(0, _relevance(q).desc())
+    students = list(
+        await session.scalars(
+            select(Student)
+            .where(*conditions)
+            .order_by(*order)
+            .limit(page.limit)
+            .offset(page.offset)
+        )
+    )
+    total = await session.scalar(select(func.count(Student.id)).where(*conditions))
+    levels = await catalog.education_level_references(
+        session,
+        {s.education_level_id for s in students if s.education_level_id is not None},
+    )
+    today = center_today()
+    return OffsetPage[StudentListItem](
+        items=[_list_item(student, levels, today) for student in students],
+        total=total or 0,
+        limit=page.limit,
+        offset=page.offset,
+    )
+
+
+async def get_student(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    source: TutorAssignmentSource,
+    student_id: uuid.UUID,
+) -> StudentDetail:
+    """One student: ``404 not_found`` when missing or hidden; ``personal``
+    only for a full-access viewer."""
+    facts = await load_access_facts(session, principal, source)
+    student = authorize_record(
+        await session.get(Student, student_id),
+        can_view=lambda record: can_view_student(principal, record.id, facts),
+    )
+    access = student_access_level(principal, student.id, facts)
+    if access is None:  # pragma: no cover - authorize_record already checked
+        raise AssertionError("visible student without an access level")
+    return await _detail_for(session, student, access=access)
+
+
+# --- Writes ----------------------------------------------------------------------
+
+LEVEL_PATH: Final[list[str | int]] = ["body", "education_level_id"]
+
+
+async def _available_level(
+    session: AsyncSession, level_id: uuid.UUID
+) -> EducationLevelReference:
+    """An active level, locked ``FOR SHARE``; else ``422
+    education_level_unavailable``."""
+    level = await catalog.get_level_for_reference(session, level_id, lock=True)
+    if level is None or not level.is_active:
+        raise EducationLevelUnavailableError(
+            errors=[
+                {
+                    "path": LEVEL_PATH,
+                    "code": "education_level_unavailable",
+                    "message": "Choose an active education level.",
+                }
+            ]
+        )
+    return level
+
+
+def _ensure_not_in_future(birthdate: date) -> None:
+    if birthdate > center_today():
+        raise BirthdateInFutureError()
+
+
+async def create_student(
+    session: AsyncSession, *, principal: Principal, body: StudentCreate
+) -> StudentDetail:
+    """A new active profile with its contacts in the given order.
+
+    After the body's ``422``: a future birthdate (``422 validation_error``)
+    → an unknown or inactive level (``422 education_level_unavailable``) →
+    the inserts.
+    """
+    _ensure_not_in_future(body.birthdate)
+    level = None
+    if body.education_level_id is not None:
+        level = await _available_level(session, body.education_level_id)
+    student = Student(
+        given_names=body.given_names,
+        family_names=body.family_names,
+        birthdate=body.birthdate,
+        email=body.email,
+        phone=body.phone,
+        school_name=body.school_name,
+        school_grade=body.school_grade,
+        education_level_id=body.education_level_id,
+        is_active=True,
+    )
+    session.add(student)
+    await session.flush()
+    contacts = [
+        StudentEmergencyContact(
+            student_id=student.id,
+            name=item.name,
+            relationship=item.relationship,
+            phone=item.phone,
+            position=position,
+        )
+        for position, item in enumerate(body.emergency_contacts, start=1)
+    ]
+    session.add_all(contacts)
+    await session.flush()
+    access = student_access_level(principal, student.id, StudentAccessFacts())
+    return _detail(student, level=level, access=access or "limited", contacts=contacts)
+
+
+PROFILE_FIELDS: Final = (
+    "given_names",
+    "family_names",
+    "birthdate",
+    "email",
+    "phone",
+    "school_name",
+    "school_grade",
+    "is_active",
+)
+CONTACT_FIELDS: Final = ("name", "relationship", "phone")
+
+
+@dataclass
+class _ContactPlan:
+    """The changes a whole-list replace makes to a student's contacts."""
+
+    updates: list[tuple[StudentEmergencyContact, dict[str, Any]]]
+    inserts: list[StudentEmergencyContact]
+    deletes: list[StudentEmergencyContact]
+
+    @property
+    def changes_anything(self) -> bool:
+        return bool(self.updates or self.inserts or self.deletes)
+
+
+def _unknown_contact(index: int) -> FieldError:
+    return {
+        "path": ["body", "emergency_contacts", index, "id"],
+        "code": "emergency_contact_unknown",
+        "message": "Not one of this student's emergency contacts.",
+    }
+
+
+def _plan_contacts(
+    student: Student,
+    current: Sequence[StudentEmergencyContact],
+    body: StudentUpdate,
+) -> _ContactPlan:
+    """Compare the sent list with the current contacts (``422
+    emergency_contact_unknown`` for an id that isn't this student's or is
+    sent twice; nothing has changed yet)."""
+    items = body.emergency_contacts or []
+    by_id = {row.id: row for row in current}
+    seen: set[uuid.UUID] = set()
+    errors = []
+    for index, item in enumerate(items):
+        if item.id is None:
+            continue
+        if item.id not in by_id or item.id in seen:
+            errors.append(_unknown_contact(index))
+        seen.add(item.id)
+    if errors:
+        raise EmergencyContactUnknownError(errors=errors)
+    plan = _ContactPlan(updates=[], inserts=[], deletes=[])
+    for position, item in enumerate(items, start=1):
+        wanted = {
+            "name": item.name,
+            "relationship": item.relationship,
+            "phone": item.phone,
+            "position": position,
+        }
+        if item.id is None:
+            plan.inserts.append(
+                StudentEmergencyContact(student_id=student.id, **wanted)
+            )
+            continue
+        row = by_id[item.id]
+        changed = {
+            key: value for key, value in wanted.items() if getattr(row, key) != value
+        }
+        if changed:
+            plan.updates.append((row, changed))
+    plan.deletes = [row for row in current if row.id not in seen]
+    return plan
+
+
+async def _student_for_update(
+    session: AsyncSession, student_id: uuid.UUID
+) -> Student | None:
+    student: Student | None = await session.scalar(
+        select(Student)
+        .where(Student.id == student_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return student
+
+
+async def update_student(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    source: TutorAssignmentSource,
+    student_id: uuid.UUID,
+    body: StudentUpdate,
+) -> StudentDetail:
+    """Change the sent fields and, when sent, replace the contact list.
+
+    Order (after the body's ``422``): ``404`` (missing or hidden) → ``409
+    version_conflict`` → a future birthdate (``422 validation_error``) →
+    ``422 emergency_contact_unknown`` → ``422 education_level_unavailable``
+    (only when the level changes; keeping an inactive one is allowed) → the
+    update. The student row is locked ``FOR UPDATE`` first.
+    """
+    facts = await load_access_facts(session, principal, source)
+    student = authorize_record(
+        await _student_for_update(session, student_id),
+        can_view=lambda record: can_view_student(principal, record.id, facts),
+    )
+    ensure_version(student, body.version)
+    sent = body.model_fields_set
+    changes: dict[str, Any] = {
+        name: getattr(body, name)
+        for name in PROFILE_FIELDS
+        if name in sent and getattr(body, name) != getattr(student, name)
+    }
+    if "birthdate" in changes:
+        _ensure_not_in_future(changes["birthdate"])
+    current = await _contacts_of(session, student.id)
+    plan = _ContactPlan(updates=[], inserts=[], deletes=[])
+    if "emergency_contacts" in sent:
+        plan = _plan_contacts(student, current, body)
+    level: EducationLevelReference | None = None
+    if (
+        "education_level_id" in sent
+        and body.education_level_id != student.education_level_id
+    ):
+        if body.education_level_id is not None:
+            level = await _available_level(session, body.education_level_id)
+        changes["education_level_id"] = body.education_level_id
+    access = student_access_level(principal, student.id, facts) or "limited"
+    if not changes and not plan.changes_anything:
+        return await _detail_for(session, student, access=access, contacts=current)
+
+    # One versioned UPDATE of the student row: the changed columns, or, for
+    # a contacts-only change, only updated_at (left out of the audit, so no
+    # students event is written).
+    if changes:
+        for name, value in changes.items():
+            setattr(student, name, value)
+    else:
+        student.updated_at = func.now()
+    await session.flush()
+    await session.refresh(student, ["updated_at"])
+
+    for row, changed in plan.updates:
+        for name, value in changed.items():
+            setattr(row, name, value)
+    session.add_all(plan.inserts)
+    for row in plan.deletes:
+        await session.delete(row)
+    await session.flush()
+    deleted = {row.id for row in plan.deletes}
+    contacts = [row for row in current if row.id not in deleted] + plan.inserts
+    return await _detail_for(
+        session, student, access=access, level=level, contacts=contacts
+    )

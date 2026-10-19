@@ -32,6 +32,8 @@
   "name_taken": "Ya existe un registro con ese nombre (puede estar inactivo).",
   "education_level_has_active_subjects": "Primero desactiva las materias activas de este nivel.",
   "education_level_inactive": "El nivel educativo está inactivo. Reactívalo primero.",
+  "education_level_unavailable": "Elige un nivel educativo activo.",
+  "emergency_contact_unknown": "Uno de los contactos ya no existe. Recarga e inténtalo de nuevo.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

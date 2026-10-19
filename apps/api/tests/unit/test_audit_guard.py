@@ -16,6 +16,7 @@ import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
 from app.modules.catalog.models import EducationLevel, Subject
+from app.modules.families.models import Student, StudentEmergencyContact
 from app.modules.identity.models import (
     RegistrationRequest,
     User,
@@ -53,6 +54,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert audited_classes(Base) == [
         EducationLevel,
         RegistrationRequest,
+        Student,
+        StudentEmergencyContact,
         Subject,
         User,
         UserDelegation,
@@ -61,9 +64,11 @@ def test_the_guard_scans_the_real_audited_models():
     assert AuditedThing in audited_classes(TestBase)
     assert User.__audit_exclude__ == {"password_hash"}
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
-    for catalog in (EducationLevel, Subject):
-        assert catalog.__audit_exclude__ == frozenset()
-        assert catalog.__audit_mask__ == frozenset()
+    # Student profiles (#33 A5): no sensitive column either; personal fields
+    # are audited unmasked (spec §9 prior and new values).
+    for unmasked in (EducationLevel, Subject, Student, StudentEmergencyContact):
+        assert unmasked.__audit_exclude__ == frozenset()
+        assert unmasked.__audit_mask__ == frozenset()
     assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(
         audited_table_names()
     )

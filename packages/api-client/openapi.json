@@ -2916,6 +2916,359 @@
           }
         }
       }
+    },
+    "/api/v1/students": {
+      "get": {
+        "tags": [
+          "students"
+        ],
+        "summary": "List Students",
+        "description": "The students the caller may see. With ``q``: by relevance, then by\nfamily names and given names; without: by family names, given names.",
+        "operationId": "list_students_api_v1_students_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words).",
+              "title": "Q"
+            },
+            "description": "Name search, ignoring case and accents, in any word order and tolerant of typos (1-100 characters, at most 5 words)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StudentStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "education_level_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this level's students (unknown: an empty page).",
+              "title": "Education Level Id"
+            },
+            "description": "Only this level's students (unknown: an empty page)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_StudentListItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "students"
+        ],
+        "summary": "Create Student",
+        "description": "Add an active student profile with 1 to 5 emergency contacts.",
+        "operationId": "create_student_api_v1_students_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}": {
+      "get": {
+        "tags": [
+          "students"
+        ],
+        "summary": "Get Student",
+        "description": "One student profile. ``personal`` is ``null`` for a viewer with\nlimited access.",
+        "operationId": "get_student_api_v1_students__student_id__get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "students"
+        ],
+        "summary": "Update Student",
+        "description": "Change a profile: the fields sent, ``is_active`` to deactivate or\nreactivate, and ``emergency_contacts`` as the complete new list (items\nwith an ``id`` keep that contact, without one add a contact, contacts\nleft out are removed). Fields not sent stay unchanged.",
+        "operationId": "update_student_api_v1_students__student_id__patch",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not visible (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The student changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3168,6 +3521,31 @@
         "title": "EducationLevelDetail",
         "description": "One education level. ``active_subject_count`` counts only its active\nsubjects."
       },
+      "EducationLevelReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active"
+        ],
+        "title": "EducationLevelReference",
+        "description": "A level as another module's record shows it (#33): its id, current\nname and whether it is still active (an inactive level stays assigned and\nis shown as such)."
+      },
       "EducationLevelUpdate": {
         "properties": {
           "version": {
@@ -3220,6 +3598,117 @@
         ],
         "title": "EducationLevelUpdate",
         "description": "A change to a level (``PATCH /api/v1/education-levels/{level_id}``)\nwith the ``version`` the caller loaded. Fields not sent stay unchanged."
+      },
+      "EmergencyContact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "relationship": {
+            "type": "string",
+            "title": "Relationship"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "relationship",
+          "phone",
+          "position"
+        ],
+        "title": "EmergencyContact",
+        "description": "One emergency contact; ``position`` 1 is called first."
+      },
+      "EmergencyContactCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "relationship": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Relationship",
+            "description": "Free text, for example Madre or Vecina."
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$",
+            "title": "Phone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "relationship",
+          "phone"
+        ],
+        "title": "EmergencyContactCreate",
+        "description": "A new emergency contact. Its place in the list is its ``position``."
+      },
+      "EmergencyContactUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "relationship": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Relationship",
+            "description": "Free text, for example Madre or Vecina."
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$",
+            "title": "Phone"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "relationship",
+          "phone"
+        ],
+        "title": "EmergencyContactUpdate",
+        "description": "An emergency contact in a ``PATCH``: with the ``id`` of one of this\nstudent's contacts to keep (and update) it, without one to add it."
       },
       "FieldError": {
         "additionalProperties": false,
@@ -3591,6 +4080,37 @@
           "offset"
         ],
         "title": "OffsetPage[RegistrationRequestItem]"
+      },
+      "OffsetPage_StudentListItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StudentListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[StudentListItem]"
       },
       "OffsetPage_SubjectDetail_": {
         "properties": {
@@ -4077,6 +4597,472 @@
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login`` and ``GET /auth/me``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
+      },
+      "StudentCreate": {
+        "properties": {
+          "given_names": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Family Names"
+          },
+          "birthdate": {
+            "type": "string",
+            "format": "date",
+            "title": "Birthdate",
+            "description": "YYYY-MM-DD, from 1900-01-01 up to today in the center's time zone.",
+            "ge": "1900-01-01"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "school_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Name"
+          },
+          "school_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Grade",
+            "description": "Free text, for example 2.º de secundaria."
+          },
+          "education_level_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level Id",
+            "description": "An active level of the catalog."
+          },
+          "emergency_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/EmergencyContactCreate"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Emergency Contacts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "given_names",
+          "family_names",
+          "birthdate",
+          "emergency_contacts"
+        ],
+        "title": "StudentCreate",
+        "description": "A new student profile (``POST /api/v1/students``). It starts active.\nThe list order of ``emergency_contacts`` (1 to 5) is their order."
+      },
+      "StudentDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor"
+          },
+          "school_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Name"
+          },
+          "school_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Grade"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationLevelReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shown even when the level is inactive."
+          },
+          "personal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudentPersonal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back with every change."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "given_names",
+          "family_names",
+          "is_active",
+          "is_minor",
+          "school_name",
+          "school_grade",
+          "education_level",
+          "personal",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StudentDetail",
+        "description": "One student profile. ``personal`` is ``null`` for a viewer with\nlimited access (Finance Staff, assigned tutors)."
+      },
+      "StudentListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "given_names": {
+            "type": "string",
+            "title": "Given Names"
+          },
+          "family_names": {
+            "type": "string",
+            "title": "Family Names"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor",
+            "description": "Under 18 today in the center's time zone (ADR-0007 D17)."
+          },
+          "school_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Grade"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationLevelReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "given_names",
+          "family_names",
+          "is_active",
+          "is_minor",
+          "school_grade",
+          "education_level"
+        ],
+        "title": "StudentListItem",
+        "description": "One student in the list. No birthdate or contact data (spec §16)."
+      },
+      "StudentPersonal": {
+        "properties": {
+          "birthdate": {
+            "type": "string",
+            "format": "date",
+            "title": "Birthdate"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "emergency_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/EmergencyContact"
+            },
+            "type": "array",
+            "title": "Emergency Contacts",
+            "description": "In position order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "birthdate",
+          "email",
+          "phone",
+          "emergency_contacts"
+        ],
+        "title": "StudentPersonal",
+        "description": "The personal part of a profile, only for full-access viewers."
+      },
+      "StudentStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive",
+          "all"
+        ]
+      },
+      "StudentUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "given_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Given Names"
+          },
+          "family_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Names"
+          },
+          "birthdate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "YYYY-MM-DD, from 1900-01-01 up to today in the center's time zone.",
+                "ge": "1900-01-01"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birthdate"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "school_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Name"
+          },
+          "school_grade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "School Grade"
+          },
+          "education_level_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level Id"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "emergency_contacts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EmergencyContactUpdate"
+                },
+                "type": "array",
+                "maxItems": 5,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emergency Contacts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "StudentUpdate",
+        "description": "A change to a profile (``PATCH /api/v1/students/{student_id}``) with\nthe ``version`` the caller loaded. ``emergency_contacts``, when sent, is\nthe complete new list (contacts left out are removed)."
       },
       "SubjectCreate": {
         "properties": {

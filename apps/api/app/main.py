@@ -35,6 +35,7 @@ from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as administration_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.families.router import router as families_router
 from app.modules.identity.invitations_router import router as invitations_router
 from app.modules.identity.recovery_router import router as recovery_router
 from app.modules.identity.registrations_router import (
@@ -100,6 +101,7 @@ def build_app(
     app.include_router(user_admin_router)
     app.include_router(administration_router)
     app.include_router(catalog_router)
+    app.include_router(families_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
     return app

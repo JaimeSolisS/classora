@@ -252,6 +252,16 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   Deactivate/Reactivate when editing. A `name_taken` error goes on the name
   field; other errors, `version_conflict` with "Reload", go in the dialog's
   alert; focus returns to the button that opened it. Later catalogs reuse it.
+- **`StudentStatusBadge` / `StudentAgeBadge`** (`features/students`, #33):
+  "Active"/"Inactive" and "Minor"/"Adult" as text badges (the border only
+  reinforces the word).
+- **`StudentForm`** (`features/students`, #33): the create/edit form of a
+  student. The emergency contacts are a fieldset of 1 to 5 numbered rows
+  (each its own fieldset; labels carry the number, for example "Contact 2
+  phone") with keyboard "Move up"/"Move down"/"Remove" buttons; "Add contact"
+  and the last "Remove" are disabled with a help text. Focus goes to the new
+  row after adding, to a neighbour after removing, and stays on the moved
+  row's button after a move. Server field errors land on their fields.
 - Render errors are caught by the route error page (inside the layout), the
   root error page and the app-level boundary. None of them shows the error
   message or stack.

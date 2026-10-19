@@ -1,5 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A); each test uses a fresh database."""
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A); each test uses a fresh
+database."""
 
 import asyncio
 import uuid
@@ -63,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0013"
+HEAD = "0014"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -80,6 +81,7 @@ RATE_LIMIT_TABLES = ["rate_limit_counters"]
 ACCOUNT_TOKEN_TABLES = ["account_tokens"]
 REGISTRATION_TABLES = ["registration_requests"]
 CATALOG_TABLES = ["education_levels", "subjects"]
+FAMILY_TABLES = ["student_emergency_contacts", "students"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -146,6 +148,9 @@ def test_history_is_linear_with_one_head():
     catalog = script.get_revision("0013")
     assert catalog.down_revision == "0012"
     assert Path(catalog.path).name == "0013_catalog_education_levels_subjects.py"
+    families = script.get_revision("0014")
+    assert families.down_revision == "0013"
+    assert Path(families.path).name == "0014_families_students.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -159,10 +164,12 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
     command.upgrade(alembic_config(fresh_database_url), "head")
 
     assert version_nums(fresh_database_url) == [HEAD]
-    # Neither the Procrastinate schema nor identity needs an extension beyond
-    # plpgsql (usernames are normalized and CHECKed, not citext).
-    extensions = run_sql(fresh_database_url, "SELECT extname FROM pg_extension")
-    assert [row.extname for row in extensions] == ["plpgsql"]
+    # Beyond plpgsql, only the ISSUE-D6 name-search extensions (#33):
+    # usernames are normalized and CHECKed, not citext.
+    extensions = run_sql(
+        fresh_database_url, "SELECT extname FROM pg_extension ORDER BY extname"
+    )
+    assert [row.extname for row in extensions] == ["pg_trgm", "plpgsql", "unaccent"]
     tables = run_sql(
         fresh_database_url,
         "SELECT table_name FROM information_schema.tables "
@@ -175,6 +182,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ACCOUNT_TOKEN_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
+            *FAMILY_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
@@ -926,7 +934,7 @@ def test_downgrade_to_0012_drops_exactly_the_catalog_tables(fresh_database_url):
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0012")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0013")
     assert public_tables(fresh_database_url) - before == set(CATALOG_TABLES)
 
     command.downgrade(config, "0012")
@@ -1044,3 +1052,138 @@ def test_subjects_columns_constraints_and_indexes(fresh_database_url):
         "(education_level_id, lower((name)::text))"
         in indexes["uq_subjects_level_name_ci"]
     )
+
+
+# --- 0014: families students and emergency contacts (#33 A) -------------------------
+
+EXTENSIONS = "SELECT extname FROM pg_extension ORDER BY extname"
+F_UNACCENT = (
+    "SELECT p.provolatile::text AS provolatile,"
+    " p.proparallel::text AS proparallel, p.proisstrict,"
+    " has_function_privilege('public', p.oid, 'EXECUTE') AS public_execute"
+    " FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
+    " WHERE n.nspname = 'public' AND p.proname = 'f_unaccent'"
+)
+
+
+def test_0014_adds_the_extensions_function_and_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0013")
+    before = public_tables(fresh_database_url)
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == ["plpgsql"]
+    command.upgrade(config, "0014")
+
+    assert public_tables(fresh_database_url) - before == set(FAMILY_TABLES)
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == [
+        "pg_trgm",
+        "plpgsql",
+        "unaccent",
+    ]
+    [function] = run_sql(fresh_database_url, F_UNACCENT)
+    # IMMUTABLE ('i'), PARALLEL SAFE ('s'), STRICT; EXECUTE stays granted to
+    # PUBLIC, so a least-privilege runtime role (#165) can call it.
+    assert (function.provolatile, function.proparallel, function.proisstrict) == (
+        "i",
+        "s",
+        True,
+    )
+    assert function.public_execute is True
+
+    command.downgrade(config, "0013")
+
+    assert version_nums(fresh_database_url) == ["0013"]
+    assert public_tables(fresh_database_url) == before
+    assert run_sql(fresh_database_url, F_UNACCENT) == []
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == ["plpgsql"]
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_students_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "students") == {
+        **STANDARD_COLUMNS,
+        "given_names": ("character varying", "NO", 100, None),
+        "family_names": ("character varying", "NO", 100, None),
+        "birthdate": ("date", "NO", None, None),
+        "email": ("character varying", "YES", 254, None),
+        "phone": ("character varying", "YES", 32, None),
+        "school_name": ("character varying", "YES", 200, None),
+        "school_grade": ("character varying", "YES", 50, None),
+        "education_level_id": ("uuid", "YES", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    constraints = _constraints(fresh_database_url, "students")
+    assert set(constraints) == {
+        "pk_students",
+        "fk_students_education_level_id_education_levels",
+        "ck_students_given_names_trimmed",
+        "ck_students_given_names_not_blank",
+        "ck_students_family_names_trimmed",
+        "ck_students_family_names_not_blank",
+        "ck_students_birthdate_min",
+        "ck_students_email_format",
+        "ck_students_phone_format",
+        "ck_students_school_name_trimmed",
+        "ck_students_school_grade_trimmed",
+    }
+    assert (
+        "ON DELETE RESTRICT"
+        in constraints["fk_students_education_level_id_education_levels"]
+    )
+    assert "1900-01-01" in constraints["ck_students_birthdate_min"]
+    indexes = _indexes(fresh_database_url, "students")
+    assert set(indexes) == {
+        "pk_students",
+        "ix_students_education_level_id",
+        "ix_students_search_name_trgm",
+    }
+    search = indexes["ix_students_search_name_trgm"]
+    assert "USING gin" in search
+    assert "f_unaccent(lower" in search
+    assert "gin_trgm_ops" in search
+
+
+def test_student_emergency_contacts_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = _columns(fresh_database_url, "student_emergency_contacts")
+    assert columns == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "student_id": ("uuid", "NO", None, None),
+        "name": ("character varying", "NO", 200, None),
+        "relationship": ("character varying", "NO", 50, None),
+        "phone": ("character varying", "NO", 32, None),
+        "position": ("smallint", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "student_emergency_contacts")
+    assert set(constraints) == {
+        "pk_student_emergency_contacts",
+        "fk_student_emergency_contacts_student_id_students",
+        "uq_student_emergency_contacts_student_id_position",
+        "ck_student_emergency_contacts_name_trimmed",
+        "ck_student_emergency_contacts_name_not_blank",
+        "ck_student_emergency_contacts_relationship_trimmed",
+        "ck_student_emergency_contacts_relationship_not_blank",
+        "ck_student_emergency_contacts_phone_format",
+        "ck_student_emergency_contacts_position_range",
+    }
+    assert (
+        "ON DELETE RESTRICT"
+        in constraints["fk_student_emergency_contacts_student_id_students"]
+    )
+    assert constraints["uq_student_emergency_contacts_student_id_position"] == (
+        'UNIQUE (student_id, "position") DEFERRABLE INITIALLY DEFERRED'
+    )
+    assert set(_indexes(fresh_database_url, "student_emergency_contacts")) == {
+        "pk_student_emergency_contacts",
+        "uq_student_emergency_contacts_student_id_position",
+        "ix_student_emergency_contacts_student_id",
+    }

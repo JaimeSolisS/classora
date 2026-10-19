@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { SIGNED_OUT_STATE } from '../support/auth';
+import { createStudentViaApi } from '../support/students';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
 // _docs/testing-guidelines.md). No rule is disabled; a per-test exclusion
@@ -12,9 +13,10 @@ const THEMES = ['light', 'dark'] as const;
 // Home, 404, /users, a user's detail (demo.owner's own record, opened from
 // the list: its id is not known in advance), /invitations,
 // /password-resets, /registration-requests, /account/password, the catalog
-// levels page and the seeded "Primaria" level's page (opened from the list)
-// are behind
-// the guard: scanned signed in (the shared state). /login, /invite and
+// levels page and the seeded "Primaria" level's page (opened from the list),
+// /students, /students/new and the detail of a student the scan creates
+// through the API first (#33 L2) are behind the guard: scanned signed in
+// (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
 // signed out.
 interface ScannedRoute {
@@ -25,6 +27,8 @@ interface ScannedRoute {
   openRow?: string;
   /** The URL of the page `openRow` opens. */
   openedPath?: RegExp;
+  /** First create a student through the API; `path` is then its detail. */
+  createsStudent?: boolean;
 }
 
 const ROUTES: ScannedRoute[] = [
@@ -53,6 +57,14 @@ const ROUTES: ScannedRoute[] = [
     signedIn: true,
     openRow: 'Primaria',
     openedPath: /\/catalog\/education-levels\/[0-9a-f-]{36}$/,
+  },
+  { name: 'students', path: '/students', signedIn: true },
+  { name: 'student-new', path: '/students/new', signedIn: true },
+  {
+    name: 'student-detail',
+    path: '/students/<created>',
+    signedIn: true,
+    createsStudent: true,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },
@@ -86,14 +98,28 @@ for (const theme of THEMES) {
       }
       test(`${route.name} has no axe violations in ${theme}`, async ({
         page,
-      }) => {
+      }, testInfo) => {
         // The stored theme choice, applied before the app's first render.
         await page.addInitScript((choice) => {
           window.localStorage.setItem('classora.theme', choice);
         }, theme);
 
-        await page.goto(route.path);
-        await expect(page).toHaveURL(route.path);
+        let path = route.path;
+        if (route.createsStudent) {
+          // The app origin first, so the API call carries the session.
+          await page.goto('/');
+          await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+            timeout: FIRST_RENDER_TIMEOUT_MS,
+          });
+          const sfx = `a11y${theme}${testInfo.workerIndex}${Date.now().toString(36)}`;
+          const id = await createStudentViaApi(page, {
+            givenNames: 'Ana',
+            familyNames: `Accesible ${sfx}`,
+          });
+          path = `/students/${id}`;
+        }
+        await page.goto(path);
+        await expect(page).toHaveURL(path);
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
           timeout: FIRST_RENDER_TIMEOUT_MS,
         });

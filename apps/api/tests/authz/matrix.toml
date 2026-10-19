@@ -259,6 +259,41 @@ allow = ["owner", "administrator"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/students"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# Every role may call it; the record policy filters the list (tutors,
+# guardians and students see an empty page until M4, #34 and #35).
+
+[[route]]
+method = "POST"
+path = "/api/v1/students"
+access = "permission"
+permission = "student.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# The placeholder id is no student: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/students/{student_id}"
+access = "permission"
+permission = "student.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/subjects"
 access = "authenticated"
 

@@ -6,6 +6,12 @@ import { LevelsPage } from '@/features/catalog/LevelsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
+import { StudentDetailPage } from '@/features/students/StudentDetailPage';
+import {
+  EditStudentPage,
+  NewStudentPage,
+} from '@/features/students/StudentFormPages';
+import { StudentsPage } from '@/features/students/StudentsPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
 import { RegistrationRequestsPage } from '@/features/users/registrations/RegistrationRequestsPage';
@@ -107,6 +113,26 @@ export const routes: RouteObject[] = [
             path: 'catalog/education-levels/:levelId',
             element: <LevelPage />,
             handle: { permission: 'catalog.manage' },
+          },
+          {
+            path: 'students',
+            element: <StudentsPage />,
+            handle: { permission: 'student.view' },
+          },
+          {
+            path: 'students/new',
+            element: <NewStudentPage />,
+            handle: { permission: 'student.manage' },
+          },
+          {
+            path: 'students/:studentId',
+            element: <StudentDetailPage />,
+            handle: { permission: 'student.view' },
+          },
+          {
+            path: 'students/:studentId/edit',
+            element: <EditStudentPage />,
+            handle: { permission: 'student.manage' },
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

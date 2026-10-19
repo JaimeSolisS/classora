@@ -32,6 +32,8 @@
   "name_taken": "That name is already in use (possibly by an inactive record).",
   "education_level_has_active_subjects": "Deactivate this level's active subjects first.",
   "education_level_inactive": "The education level is inactive. Reactivate it first.",
+  "education_level_unavailable": "Choose an active education level.",
+  "emergency_contact_unknown": "One of the contacts no longer exists. Reload and try again.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",
