@@ -5317,7 +5317,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description No such family, or not visible (not_found). */
+            /** @description No such family, or no such student or guardian (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5440,7 +5440,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description No such family, or not visible (not_found). */
+            /** @description No such family, or no such student or guardian (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;

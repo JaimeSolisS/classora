@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
   cspViolations,
@@ -71,9 +72,11 @@ test('linking a guardian to a student, and unlinking revokes access', async ({
   browser,
   playwright,
   baseURL,
-}, testInfo) => {
+}) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  const sfx = `e2e${testInfo.workerIndex}${Date.now().toString(36)}`;
+  // A random suffix with its own prefix: the fuzzy name search (pg_trgm)
+  // must never match another spec's students or guardians (#172 QA D1).
+  const sfx = `gdn${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const family = `Ñúñez ${sfx}`;
   const guardianName = `Laura ${family}`;
   const ownName = `Ana Ñúñez ${sfx}`;

@@ -42,6 +42,9 @@ NOT_FOUND = problem_response_doc("No such family, or not visible (not_found).")
 MEMBER_NOT_FOUND = problem_response_doc(
     "No such family or member, or the member isn't in this family (not_found)."
 )
+ADD_NOT_FOUND = problem_response_doc(
+    "No such family, or no such student or guardian (not_found)."
+)
 ADD_CONFLICT = problem_response_doc(
     "The family is inactive (family_inactive); or the member already belongs"
     " to another family (family_member_conflict)."
@@ -144,7 +147,7 @@ async def update_family(
 @router.put(
     "/{family_id}/students/{student_id}",
     status_code=204,
-    responses={**PERMISSION_RESPONSES, 404: NOT_FOUND, 409: ADD_CONFLICT},
+    responses={**PERMISSION_RESPONSES, 404: ADD_NOT_FOUND, 409: ADD_CONFLICT},
 )
 async def add_family_student(
     principal: Annotated[Principal, require(FAMILY_MANAGE)],
@@ -180,7 +183,7 @@ async def remove_family_student(
 @router.put(
     "/{family_id}/guardians/{guardian_id}",
     status_code=204,
-    responses={**PERMISSION_RESPONSES, 404: NOT_FOUND, 409: ADD_CONFLICT},
+    responses={**PERMISSION_RESPONSES, 404: ADD_NOT_FOUND, 409: ADD_CONFLICT},
 )
 async def add_family_guardian(
     principal: Annotated[Principal, require(FAMILY_MANAGE)],

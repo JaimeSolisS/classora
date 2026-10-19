@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
   cspViolations,
@@ -100,12 +101,15 @@ test('grouping a family, the one-family rule and what the guardian sees', async 
   browser,
   playwright,
   baseURL,
-}, testInfo) => {
+}) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  const sfx = `e2e${testInfo.workerIndex}${Date.now().toString(36)}`;
+  // A random suffix with its own prefix, and a member surname no other spec
+  // uses: the fuzzy name search (pg_trgm) must never match another spec's
+  // students or guardians (#172 QA D1). Only the family is "Ñúñez".
+  const sfx = `fam${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const familyName = `Familia Ñúñez ${sfx}`;
   const otherName = `Otra ${sfx}`;
-  const surname = `Ñúñez ${sfx}`;
+  const surname = `Quiroga ${sfx}`;
   const studentName = `Ana ${surname}`;
   const guardianName = `Laura ${surname}`;
   await recordCspViolations(page);
@@ -155,7 +159,7 @@ test('grouping a family, the one-family rule and what the guardian sees', async 
     page,
     f.students.title,
     studentAdd,
-    `nunez ${sfx}`,
+    `quiroga ${sfx}`,
     `${surname}, Ana`,
   );
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -168,7 +172,7 @@ test('grouping a family, the one-family rule and what the guardian sees', async 
       title: f.guardians.addTitle,
       label: f.guardians.guardian,
     },
-    `nunez ${sfx}`,
+    `quiroga ${sfx}`,
     `${surname}, Laura`,
   );
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -194,7 +198,7 @@ test('grouping a family, the one-family rule and what the guardian sees', async 
     page,
     f.students.title,
     studentAdd,
-    `nunez ${sfx}`,
+    `quiroga ${sfx}`,
     `${surname}, Ana`,
   );
   await expect(conflict.getByRole('alert')).toContainText(f.students.conflict);

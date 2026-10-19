@@ -4174,7 +4174,7 @@
             }
           },
           "404": {
-            "description": "No such family, or not visible (not_found).",
+            "description": "No such family, or no such student or guardian (not_found).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4336,7 +4336,7 @@
             }
           },
           "404": {
-            "description": "No such family, or not visible (not_found).",
+            "description": "No such family, or no such student or guardian (not_found).",
             "content": {
               "application/problem+json": {
                 "schema": {

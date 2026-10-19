@@ -122,19 +122,22 @@ test('managing a student profile, and a tutor who may not see it', async ({
   await expect(main.getByText('Secundaria', { exact: true })).toBeVisible();
   await expect(main.getByText('María Pérez')).toBeVisible();
 
-  // 2. Search without accents, in either order: exactly this student.
+  // 2. Search without accents, in either order: this student's row (other
+  // specs' students may also match the fuzzy search, so only this row is
+  // asserted, #172 QA D1).
   await openStudents(page);
   await search(page, `jose nunez ${sfx}`);
   const rows = main.locator('tbody tr');
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first().getByRole('link')).toHaveText(listName);
+  const ownRow = rows.filter({
+    has: page.getByRole('link', { name: listName, exact: true }),
+  });
+  await expect(ownRow).toHaveCount(1);
   await search(page, `NUNEZ JOSE ${sfx}`);
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first().getByRole('link')).toHaveText(listName);
+  await expect(ownRow).toHaveCount(1);
 
   // 3. Edit: add Luis, move him up, remove María → only Luis remains (his
   // Remove is disabled) → Save.
-  await rows.first().getByRole('link').click();
+  await ownRow.getByRole('link').click();
   await main.getByRole('link', { name: s.edit, exact: true }).click();
   await expect(page).toHaveURL(`${studentPath}/edit`);
   await main.getByRole('button', { name: s.contacts.add }).click();
@@ -179,13 +182,15 @@ test('managing a student profile, and a tutor who may not see it', async ({
   ).toBeVisible();
   await openStudents(page);
   await search(page, sfx);
-  await expect(main.getByText(s.list.noResults)).toBeVisible();
+  await expect(
+    main.getByRole('heading', { level: 1, name: s.title }),
+  ).toBeVisible();
+  await expect(ownRow).toHaveCount(0);
   await main
     .getByLabel(s.list.status, { exact: true })
     .selectOption({ label: s.list.statusAll });
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText(listName);
-  await expect(rows.first()).toContainText(s.status.inactive);
+  await expect(ownRow).toHaveCount(1);
+  await expect(ownRow).toContainText(s.status.inactive);
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);
 
