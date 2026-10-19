@@ -211,6 +211,15 @@ describes the route declarations and the 401/403/404 rule.
   `assert_same_not_found(hidden_response, missing_response)` from
   `tests/authz/assertions.py`: both are `404 not_found` with identical bodies
   apart from `request_id` and the same headers.
+- **Injected facts** (#33): a record policy whose facts come from another
+  module that doesn't exist yet reads them through one FastAPI dependency the
+  tests override. Tutor assignments (M4) come from
+  `get_tutor_assignment_source` (`app/modules/families/assignments.py`; the
+  app wires `NoTutorAssignments`, always empty). Integration tests inject a
+  fixed tutor → students map with `student_support.assigned(client,
+  {tutor_id: {student_id, ...}})`, which overrides that dependency on the
+  test client's app for the block and counts the calls (facts are loaded only
+  for callers holding the matching role).
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
   that does not exist. Record policies (`can_<action>_<resource>`) are
@@ -309,11 +318,19 @@ follows these rules.
     delegation from the demo Owner in `e2e/tests/users/roles.spec.ts`
     (#170). The same rules: created by that test in every run, no other test
     may use the names.
+  - `e2e.students.tutor`: the Tutor who opens a student's page and finds
+    "This student doesn't exist." in `e2e/tests/students/students.spec.ts`
+    (#33). The same rules: created by that test in every run, no other test
+    may use the name.
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,
   Preparatoria, Universidad): `e2e/tests/catalog/levels-subjects.spec.ts`
   expects them first, in that order.
+- **Student data** (#33): students a spec creates carry a unique per-test
+  suffix in their family names (for example `Ñúñez Pérez <suffix>`), and
+  specs search with that suffix, so parallel tests never see each other's
+  students. There are no demo students.
 - **Never change `demo.owner` in a spec** (its profile, state, roles or
   password): every test shares its signed-in session (`storageState`). A test
   that needs an Owner to act signs `demo.owner` in in its own fresh context

@@ -14,6 +14,7 @@ type Common = {
     passwordResets: string;
     registrations: string;
     catalog: string;
+    students: string;
   };
   roles: Record<string, string>;
   delegations: Record<string, { label: string; description: string }>;
@@ -102,6 +103,38 @@ type Common = {
     };
     saved: string;
   };
+  students: {
+    title: string;
+    add: string;
+    edit: string;
+    notFound: string;
+    save: string;
+    saved: string;
+    list: {
+      search: string;
+      status: string;
+      statusAll: string;
+      empty: string;
+      noResults: string;
+    };
+    fields: {
+      givenNames: string;
+      familyNames: string;
+      birthdate: string;
+      level: string;
+    };
+    contacts: {
+      nameLabel: string;
+      relationshipLabel: string;
+      phoneLabel: string;
+      add: string;
+      moveUpNamed: string;
+      removeNamed: string;
+    };
+    badge: { minor: string; adult: string };
+    status: { active: string; inactive: string };
+    deactivate: { action: string; title: string };
+  };
   registrations: {
     title: string;
     approve: string;
@@ -138,6 +171,16 @@ function read<T>(path: string): T {
 export const common = read<Common>('es/common.json');
 export const commonEn = read<Common>('en/common.json');
 export const errors = read<Errors>('es/errors.json');
+
+/** A catalog text with `{{key}}` placeholders filled in. */
+export function fill(
+  text: string,
+  values: Record<string, string | number>,
+): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) =>
+    String(values[key]),
+  );
+}
 
 /** `Signed in as {{name}}` with the name filled in. */
 export function signedInAs(catalog: Common, name: string): string {

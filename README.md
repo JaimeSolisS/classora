@@ -49,6 +49,13 @@ On the Catalog page, Owners and administrators maintain the education levels
 and the subjects taught at each level; records are deactivated instead of
 deleted, and four example levels (Primaria, Secundaria, Preparatoria,
 Universidad) are created by the reference seed.
+On the Students page, Owners, administrators and academic coordinators keep a
+profile for every student (with or without a login): personal and school
+details, an optional education level and one to five emergency contacts.
+Profiles are deactivated instead of deleted, and the list has an accent- and
+typo-tolerant name search. Finance staff see profiles without personal or
+contact details; tutors see only their assigned students (assignments arrive
+with scheduling, so for now they see none).
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
