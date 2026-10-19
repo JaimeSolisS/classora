@@ -33,6 +33,10 @@ const NEW_PASSWORD = 'e2e-coordinator-password';
 const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of (401|403|410)/;
 
+// Three browsers, two logins, a dialog and four page loads: more than the
+// default 30 s under machine load (the a11y spec has the same allowance).
+const TEST_TIMEOUT_MS = 90_000;
+
 async function freshPage(browser: Browser) {
   const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
   const page = await context.newPage();
@@ -63,6 +67,7 @@ async function signIn(page: Page, username: string, password: string) {
 test('an invited person sets a password with the one-time link and signs in', async ({
   browser,
 }) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
   // 1. The Owner signs in (login 1).
   const owner = await freshPage(browser);
   await owner.page.goto('/login');
