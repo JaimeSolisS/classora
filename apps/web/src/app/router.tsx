@@ -3,8 +3,10 @@ import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
+import { RegisterPage } from '@/features/auth/register/RegisterPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
+import { RegistrationRequestsPage } from '@/features/users/registrations/RegistrationRequestsPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
@@ -18,8 +20,8 @@ import { RouteGuard } from './RouteGuard';
 // the API.
 //
 // Access (#28 F1, UX only: the API checks every request): the public pages
-// (/login, /invite, /reset) and the error elements are the only things outside the
-// guard. Every other page goes
+// (/login, /invite, /reset, /register) and the error elements are the only
+// things outside the guard. Every other page goes
 // under the guard route and needs a session; a page that needs a permission
 // declares `handle: { permission: '…' }`. A unit test fails if a page is
 // added outside the guard.
@@ -55,6 +57,12 @@ export const routes: RouteObject[] = [
         errorElement: <RouteErrorPage />,
       },
       {
+        id: 'register',
+        path: 'register',
+        element: <RegisterPage />,
+        errorElement: <RouteErrorPage />,
+      },
+      {
         id: 'guard',
         element: <RouteGuard />,
         // Errors in a page: rendered inside the layout.
@@ -70,6 +78,11 @@ export const routes: RouteObject[] = [
             path: 'password-resets',
             element: <PasswordResetsPage />,
             handle: { permission: 'user.password_reset.issue' },
+          },
+          {
+            path: 'registration-requests',
+            element: <RegistrationRequestsPage />,
+            handle: { permission: 'registration.review' },
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

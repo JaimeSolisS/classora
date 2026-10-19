@@ -829,8 +829,11 @@ def test_the_real_matrix_declares_the_auth_rate_limits():
         "/api/v1/auth/password-reset/redeem",
     ):
         assert entries[("POST", path)].rate_limit == ["token_redemption.ip"]
-    # #29 applies token_redemption.ip; self-registration moved to #169.
-    assert dict(PENDING_POLICIES) == {"registration.ip": "#169"}
+    assert entries[("POST", "/api/v1/auth/registrations")].rate_limit == [
+        "registration.ip"
+    ]
+    # #169 applied the last pending policy.
+    assert dict(PENDING_POLICIES) == {}
 
 
 def test_removing_the_login_limit_is_reported():

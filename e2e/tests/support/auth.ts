@@ -22,9 +22,11 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * `make e2e` starts from an empty volume, so the budget is per run. Logins in
  * the whole run today: global setup 1, auth/session.spec.ts 8 (2 of them
  * wrong passwords), security/headers.spec.ts 1, auth/invitations.spec.ts 2,
- * auth/password-reset.spec.ts 8 (2 of them by createActiveUser) = 20
- * attempts, 2 failures. Keep the total well under both limits; never add a
- * setting that disables the limits.
+ * auth/password-reset.spec.ts 8 (2 of them by createActiveUser),
+ * auth/registration.spec.ts 2 (the first refused while the account is
+ * pending: 1 failure on `e2e.parent`'s own `login.username` budget) = 22
+ * attempts, 2 failures for `demo.owner`. Keep the total well under both
+ * limits; never add a setting that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20
  * lookups and redemptions per 15 minutes for the run's one IP, invitations
@@ -32,10 +34,16 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * redemption) and auth/password-reset.spec.ts 7 (4 of them by
  * createActiveUser) = 10.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 20;
+export const LOGIN_ATTEMPTS_PER_RUN = 22;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 10;
+
+/**
+ * Self-registration requests in one run (#169; `registration.ip` allows 10
+ * per hour for the run's one IP): auth/registration.spec.ts sends 1.
+ */
+export const REGISTRATIONS_PER_RUN = 1;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

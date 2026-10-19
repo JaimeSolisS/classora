@@ -7,7 +7,12 @@ import { readFileSync } from 'node:fs';
 type Common = {
   apiStatus: { live: string };
   notFound: { title: string };
-  nav: { home: string; invitations: string; passwordResets: string };
+  nav: {
+    home: string;
+    invitations: string;
+    passwordResets: string;
+    registrations: string;
+  };
   roles: Record<string, string>;
   auth: {
     login: {
@@ -17,6 +22,7 @@ type Common = {
       submit: string;
       invitationRedeemed: string;
       passwordReset: string;
+      requestAccount: string;
     };
     reauth: { password: string; confirm: string };
     userMenu: { signedInAs: string; signOut: string };
@@ -48,6 +54,23 @@ type Common = {
       submit: string;
       done: string;
     };
+  };
+  register: {
+    title: string;
+    role: { legend: string; guardian: string; student: string };
+    displayName: string;
+    username: string;
+    password: string;
+    confirmPassword: string;
+    submit: string;
+    sent: string;
+    backToLogin: string;
+  };
+  registrations: {
+    title: string;
+    approve: string;
+    approveFor: string;
+    approved: string;
   };
   invite: {
     title: string;

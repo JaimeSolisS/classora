@@ -23,6 +23,7 @@
   "password_equals_username": "La contraseña no puede ser igual al nombre de usuario.",
   "current_password_invalid": "La contraseña actual no es correcta.",
   "user_not_active": "Esta cuenta no está activa. Si es una invitación pendiente, crea un enlace nuevo en Invitaciones.",
+  "registration_already_decided": "Esta solicitud ya fue resuelta.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

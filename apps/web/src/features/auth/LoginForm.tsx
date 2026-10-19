@@ -1,5 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
@@ -50,6 +57,9 @@ interface LoginFormProps {
   notice?: string;
   /** Pre-fills the username and focuses the password field (#29 J5). */
   initialUsername?: string;
+  /** Shown below the form (the page's links, for example #169's
+   * "Request an account"). */
+  footer?: ReactNode;
 }
 
 export function LoginForm({
@@ -57,6 +67,7 @@ export function LoginForm({
   sessionExpired = false,
   notice,
   initialUsername,
+  footer,
 }: LoginFormProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
@@ -187,6 +198,7 @@ export function LoginForm({
           )}
         </Button>
       </form>
+      {footer}
     </div>
   );
 }

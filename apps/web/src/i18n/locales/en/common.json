@@ -30,7 +30,8 @@
     "toggle": "Menu",
     "home": "Home",
     "invitations": "Invitations",
-    "passwordResets": "Password resets"
+    "passwordResets": "Password resets",
+    "registrations": "Account requests"
   },
   "notFound": {
     "title": "Page not found",
@@ -64,7 +65,8 @@
       "passwordRequired": "Enter your password.",
       "tooLong": "This is too long.",
       "invitationRedeemed": "Your password is set. Sign in to continue.",
-      "passwordReset": "Your new password is set. Sign in to continue."
+      "passwordReset": "Your new password is set. Sign in to continue.",
+      "requestAccount": "Request an account"
     },
     "reauth": {
       "title": "Confirm your password",
@@ -205,5 +207,65 @@
       "submitting": "Changing…",
       "done": "Your password was changed. You were signed out on your other devices."
     }
+  },
+  "register": {
+    "title": "Request an account",
+    "intro": "The center will confirm your identity before the account works. Requesting an account doesn't enroll anyone in classes.",
+    "role": {
+      "legend": "Who are you?",
+      "guardian": "I'm a parent or guardian",
+      "student": "I'm a student"
+    },
+    "roleRequired": "Choose who you are.",
+    "displayName": "Your name",
+    "displayNameRequired": "Enter your name.",
+    "username": "Username",
+    "usernameRequired": "Enter a username.",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "tooLong": "This is too long.",
+    "submit": "Send request",
+    "submitting": "Sending…",
+    "sent": "Request sent. The center will confirm your identity. You can sign in with {{username}} once it is approved.",
+    "signedIn": "You're already signed in as {{name}}.",
+    "goHome": "Go to home",
+    "backToLogin": "Back to sign in"
+  },
+  "registrations": {
+    "title": "Account requests",
+    "intro": "Confirm each person's identity outside the app before you approve. Approving a request never enrolls anyone.",
+    "filter": {
+      "label": "Status",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "list": {
+      "title": "Requests",
+      "displayName": "Name",
+      "username": "Username",
+      "role": "Requested role",
+      "submittedAt": "Submitted",
+      "decidedAt": "Decided",
+      "actions": "Actions",
+      "empty": "There are no requests here.",
+      "pagination": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}"
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveFor": "Approve {{username}}",
+    "rejectFor": "Reject {{username}}",
+    "approveTitle": "Approve the request of {{name}} ({{role}})",
+    "rejectTitle": "Reject the request of {{name}} ({{role}})",
+    "approveConfirm": "Confirm that you have verified the identity of {{name}} ({{role}}).",
+    "rejectConfirm": "The username {{username}} can't be used again.",
+    "approving": "Approving…",
+    "rejecting": "Rejecting…",
+    "cancel": "Cancel",
+    "approved": "Request approved.",
+    "rejected": "Request rejected."
   }
 }

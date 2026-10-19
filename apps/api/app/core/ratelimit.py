@@ -167,7 +167,7 @@ _POLICIES: Final = (
         ONE_HOUR,
         "ip",
         "requests",
-        "Self-registration requests per client IP.",
+        "Self-registration requests per client IP (POST /api/v1/auth/registrations).",
         "#169",
     ),
 )
@@ -177,11 +177,7 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, RateLimitPolicy]] = MappingProxyType(
 )
 """Every ADR-0008 D15 rate-limit policy, by code."""
 
-PENDING_POLICIES: Final[Mapping[str, str]] = MappingProxyType(
-    {
-        "registration.ip": "#169",
-    }
-)
+PENDING_POLICIES: Final[Mapping[str, str]] = MappingProxyType({})
 """Policies no route declares yet, with the issue that applies them. That
 issue removes its entry when it declares the policy on its route."""
 

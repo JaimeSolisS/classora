@@ -235,3 +235,45 @@ class PasswordChange(BaseModel):
 
     current_password: str = Field(min_length=1, max_length=1024, repr=False)
     new_password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+# --- Self-registration requests (#169) -----------------------------------------------
+
+# A named string enum in OpenAPI (``RegistrationRole`` in the web client): the
+# only roles a person may request (ADR-0007 D13). Anything else is 422.
+type RegistrationRole = Literal["guardian", "student"]
+type RegistrationStatus = Literal["pending", "approved", "rejected"]
+
+
+class RegistrationCreate(BaseModel):
+    """A self-registration request (``POST /api/v1/auth/registrations``)."""
+
+    username: str = Field(
+        min_length=1,
+        max_length=256,
+        description=(
+            "Normalized like a login username: 3 to 64 characters from a-z,"
+            " 0-9, '.', '_' and '-' (letters are not case-sensitive)."
+        ),
+    )
+    display_name: DisplayName
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+    role: RegistrationRole
+
+
+class RegistrationSubmitted(BaseModel):
+    """The answer to a registration request (``202``). Holds no id."""
+
+    status: Literal["pending"]
+
+
+class RegistrationRequestItem(BaseModel):
+    """One registration request in the review list. Holds no password data."""
+
+    id: uuid.UUID
+    username: str
+    display_name: str
+    requested_role: RegistrationRole
+    status: RegistrationStatus
+    submitted_at: datetime
+    decided_at: datetime | None

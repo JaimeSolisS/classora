@@ -295,6 +295,12 @@ follows these rules.
     is reset and the Parent/Guardian who changes their own password in
     `e2e/tests/auth/password-reset.spec.ts` (#30). The same rules: created by
     that test in every run, no other test may use the names.
+  - `e2e.parent`: the Parent/Guardian who requests an account on
+    `/register` and is approved by the demo Owner in
+    `e2e/tests/auth/registration.spec.ts` (#169). The same rules: created by
+    that test in every run, no other test may use the name. The run's one IP
+    sends 1 of the 10 registration requests `registration.ip` allows per hour
+    (`REGISTRATIONS_PER_RUN` in `e2e/tests/support/auth.ts`).
 - **`createActiveUser(playwright.request, baseURL, { username, role,
   password })`** (`e2e/tests/support/users.ts`, #30) creates an active Tutor
   or Parent/Guardian through the API in its own fresh API context: the demo

@@ -22,7 +22,8 @@ shadcn/ui components catalogued in Storybook), a light/dark/system theme
 switch, and Spanish and English UI text with a language switch. The API has
 username and password login with server-side sessions (an HTTP-only session
 cookie) that expire after a period of inactivity or a maximum lifetime, with
-rate limits on login, password confirmation and one-time links. The web app
+rate limits on login, password confirmation, one-time links and account
+requests. The web app
 has a sign-in page and sign-out, keeps users signed in with that session, and
 shows only the pages and navigation a user's role allows. Owners and
 administrators can invite people from the Invitations page: the app shows a
@@ -30,6 +31,10 @@ one-time link (no email is sent) to hand over in person or by phone, and the
 invited person opens it to set their own password and then signs in. In the
 same way, they can create a one-time password reset link from the Password
 resets page, and every signed-in user can change their own password.
+Parents, guardians and students can request an account from the sign-in page;
+the account works only after an Owner or administrator confirms their
+identity and approves it on the Account requests page (or rejects it).
+Approving a request never enrolls anyone.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.

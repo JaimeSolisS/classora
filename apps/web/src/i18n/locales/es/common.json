@@ -30,7 +30,8 @@
     "toggle": "Menú",
     "home": "Inicio",
     "invitations": "Invitaciones",
-    "passwordResets": "Restablecer contraseñas"
+    "passwordResets": "Restablecer contraseñas",
+    "registrations": "Solicitudes de cuenta"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -64,7 +65,8 @@
       "passwordRequired": "Escribe tu contraseña.",
       "tooLong": "Es demasiado largo.",
       "invitationRedeemed": "Tu contraseña quedó guardada. Inicia sesión para continuar.",
-      "passwordReset": "Tu nueva contraseña quedó guardada. Inicia sesión para continuar."
+      "passwordReset": "Tu nueva contraseña quedó guardada. Inicia sesión para continuar.",
+      "requestAccount": "Solicitar una cuenta"
     },
     "reauth": {
       "title": "Confirma tu contraseña",
@@ -205,5 +207,65 @@
       "submitting": "Cambiando…",
       "done": "Cambiaste tu contraseña. Cerramos tu sesión en tus otros dispositivos."
     }
+  },
+  "register": {
+    "title": "Solicitar una cuenta",
+    "intro": "El centro confirmará tu identidad antes de activar la cuenta. Solicitar una cuenta no inscribe a nadie en clases.",
+    "role": {
+      "legend": "¿Quién eres?",
+      "guardian": "Soy padre, madre o tutor legal",
+      "student": "Soy estudiante"
+    },
+    "roleRequired": "Elige quién eres.",
+    "displayName": "Tu nombre",
+    "displayNameRequired": "Escribe tu nombre.",
+    "username": "Usuario",
+    "usernameRequired": "Escribe un nombre de usuario.",
+    "password": "Contraseña",
+    "confirmPassword": "Confirma la contraseña",
+    "tooLong": "Es demasiado largo.",
+    "submit": "Enviar solicitud",
+    "submitting": "Enviando…",
+    "sent": "Solicitud enviada. El centro confirmará tu identidad. Podrás iniciar sesión con {{username}} cuando la aprueben.",
+    "signedIn": "Ya iniciaste sesión como {{name}}.",
+    "goHome": "Ir al inicio",
+    "backToLogin": "Volver a iniciar sesión"
+  },
+  "registrations": {
+    "title": "Solicitudes de cuenta",
+    "intro": "Confirma la identidad de cada persona fuera de la aplicación antes de aprobar. Aprobar una solicitud nunca inscribe a nadie.",
+    "filter": {
+      "label": "Estado",
+      "pending": "Pendientes",
+      "approved": "Aprobadas",
+      "rejected": "Rechazadas"
+    },
+    "list": {
+      "title": "Solicitudes",
+      "displayName": "Nombre",
+      "username": "Usuario",
+      "role": "Rol solicitado",
+      "submittedAt": "Enviada",
+      "decidedAt": "Resuelta",
+      "actions": "Acciones",
+      "empty": "No hay solicitudes aquí.",
+      "pagination": "Páginas",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "range": "{{from}}–{{to}} de {{total}}"
+    },
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "approveFor": "Aprobar a {{username}}",
+    "rejectFor": "Rechazar a {{username}}",
+    "approveTitle": "Aprobar la solicitud de {{name}} ({{role}})",
+    "rejectTitle": "Rechazar la solicitud de {{name}} ({{role}})",
+    "approveConfirm": "Confirma que verificaste la identidad de {{name}} ({{role}}).",
+    "rejectConfirm": "El nombre de usuario {{username}} ya no podrá usarse.",
+    "approving": "Aprobando…",
+    "rejecting": "Rechazando…",
+    "cancel": "Cancelar",
+    "approved": "Solicitud aprobada.",
+    "rejected": "Solicitud rechazada."
   }
 }
