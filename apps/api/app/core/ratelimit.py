@@ -168,7 +168,7 @@ _POLICIES: Final = (
         "ip",
         "requests",
         "Self-registration requests per client IP.",
-        "#29",
+        "#169",
     ),
 )
 
@@ -179,8 +179,7 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, RateLimitPolicy]] = MappingProxyType(
 
 PENDING_POLICIES: Final[Mapping[str, str]] = MappingProxyType(
     {
-        "token_redemption.ip": "#29, #30",
-        "registration.ip": "#29",
+        "registration.ip": "#169",
     }
 )
 """Policies no route declares yet, with the issue that applies them. That

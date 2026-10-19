@@ -29,6 +29,12 @@ const API_CODES = [
   'reauth_required',
   'reauth_failed',
   'rate_limited',
+  'token_invalid',
+  'username_taken',
+  'username_invalid',
+  'password_too_short',
+  'password_too_long',
+  'password_equals_username',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

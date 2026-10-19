@@ -28,7 +28,8 @@
   "nav": {
     "label": "Main navigation",
     "toggle": "Menu",
-    "home": "Home"
+    "home": "Home",
+    "invitations": "Invitations"
   },
   "notFound": {
     "title": "Page not found",
@@ -60,7 +61,8 @@
       "submitting": "Signing in…",
       "usernameRequired": "Enter your username.",
       "passwordRequired": "Enter your password.",
-      "tooLong": "This is too long."
+      "tooLong": "This is too long.",
+      "invitationRedeemed": "Your password is set. Sign in to continue."
     },
     "reauth": {
       "title": "Confirm your password",
@@ -84,5 +86,81 @@
       "message": "Ask an administrator to check your permissions.",
       "backHome": "Back to home"
     }
+  },
+  "common": {
+    "usernameHint": "3 to 64 characters: letters, digits, dot, hyphen or underscore."
+  },
+  "roles": {
+    "owner": "Owner",
+    "administrator": "Administrator",
+    "academic_coordinator": "Academic coordinator",
+    "finance_staff": "Finance staff",
+    "tutor": "Tutor",
+    "student": "Student",
+    "guardian": "Parent or guardian"
+  },
+  "invitations": {
+    "title": "Invitations",
+    "intro": "Invite a person with a one-time link. No email is sent.",
+    "form": {
+      "title": "New invitation",
+      "username": "Username",
+      "displayName": "Display name",
+      "role": "Role",
+      "chooseRole": "Choose a role",
+      "usernameRequired": "Enter a username.",
+      "displayNameRequired": "Enter a display name.",
+      "roleRequired": "Choose a role.",
+      "tooLong": "This is too long.",
+      "submit": "Create invitation",
+      "submitting": "Creating…",
+      "staffNote": "For a staff role you'll be asked for your password."
+    },
+    "result": {
+      "title": "Invitation link ready",
+      "person": "Person",
+      "username": "Username",
+      "role": "Role",
+      "expires": "Expires",
+      "link": "Invitation link",
+      "onceWarning": "This link is shown only once. Give it to the person in person or over the phone. It expires in 24 hours.",
+      "copy": "Copy link",
+      "copied": "Link copied",
+      "copyFailed": "Couldn't copy. The link is selected: copy it by hand.",
+      "done": "Done"
+    },
+    "list": {
+      "title": "Open invitations",
+      "username": "Username",
+      "displayName": "Display name",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions",
+      "reissue": "New link",
+      "reissueFor": "New link for {{username}}",
+      "activeUntil": "Active until {{date}}",
+      "expired": "Expired",
+      "empty": "There are no open invitations.",
+      "pagination": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}"
+    }
+  },
+  "invite": {
+    "title": "Set your password",
+    "checking": "Checking your link…",
+    "welcome": "Hi {{name}}. Your username is:",
+    "username": "Username",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordHint": "Use at least 12 characters.",
+    "passwordRequired": "Enter a password.",
+    "tooLong": "Use at most 128 characters.",
+    "mismatch": "The passwords don't match.",
+    "submit": "Set password",
+    "submitting": "Saving…",
+    "incomplete": "This link is incomplete. Open the link you were given again.",
+    "signedIn": "You're signed in as {{name}}. This link is for the person who was invited. Sign out, then open the link again."
   }
 }

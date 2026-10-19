@@ -14,6 +14,10 @@ Owner: JaimeSolisS. Decision items D1 and D4–D14, D17 and D18 approved as reco
 
 Amended 2026-10-18: D9 token derivation instead of a stored hash (issue #24, owner decision E1).
 
+## Amendments
+
+- 2026-10-18, GitHub issue #29 (M2-11), owner decision: invitation and reset tokens are shown as a link only. No QR code is generated, so no QR library is added.
+
 ## Context
 
 Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) and **ISSUE-S1, S2, S4, S5, S6 and S7** (§10.7, identity, security and privacy) in [`../architecture.md`](../architecture.md). ISSUE-S3 (rate limiting) is resolved separately in [ADR-0008](0008-rate-limiting-without-redis.md). Records decision items **D1, D4–D14, D17 and D18** of issue #19.
@@ -106,7 +110,7 @@ Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) a
 ### Invitations and password resets without email (ISSUE-S1, D11 (a))
 
 - An authorized staff member generates a **single-use** token in the app: 32 random bytes, stored only as a SHA-256 hash.
-- The app shows it once, as a link and a QR code. The staff member hands it over **out of band** (in person, or through the center's existing phone contact).
+- The app shows it once, as a link (no QR code). The staff member hands it over **out of band** (in person, or through the center's existing phone contact).
 - Invitation and reset tokens both expire after **24 hours**.
 - Issuing a new token invalidates any unredeemed token of the same kind for that user.
 - A used or expired token returns `410`.
@@ -190,6 +194,7 @@ Other effects:
 - **7-day invitations** (D11 (b)). Rejected: the bearer link would live longer in chat apps.
 - **Transactional email for authentication messages** (for example Amazon SES; D11 (c)). Considered and rejected: a scope change to spec §1 and §14 that also needs AWS, DNS, SPF and DKIM, which arrive only in Phase 3.
 - **One-time recovery codes printed at activation** (D11 (d)). Rejected for now: more UI and more ways to get it wrong; could be a later follow-up.
+- **Also showing a QR code** (#29 E1 (a)/(b)). Rejected by the owner: it needs a new dependency, and the link alone is enough for in-person or phone hand-over.
 - **Any holder of the reset permission resets any non-Owner account** (D12 (b)). Rejected: one Administrator could take over another.
 - **No `reset-owner-password` command** (D12 (c)). Rejected: a sole Owner who forgets their password would have to edit the database by hand.
 - **Registration requests without a password, activated by an invitation token** (D13 (b)). Rejected: adds a step for every family.

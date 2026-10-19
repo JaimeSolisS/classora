@@ -1,5 +1,5 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2); each test uses a fresh database."""
+M2-08 A1, A2, M2-09 A, M2-11 B); each test uses a fresh database."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -62,7 +62,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0008"
+HEAD = "0009"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -76,6 +76,7 @@ IDENTITY_TABLES = [
 AUTH_TABLES = ["auth_sessions"]
 
 RATE_LIMIT_TABLES = ["rate_limit_counters"]
+ACCOUNT_TOKEN_TABLES = ["account_tokens"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -127,6 +128,9 @@ def test_history_is_linear_with_one_head():
     rate_limits = script.get_revision("0008")
     assert rate_limits.down_revision == "0007"
     assert Path(rate_limits.path).name == "0008_rate_limit_counters.py"
+    account_tokens = script.get_revision("0009")
+    assert account_tokens.down_revision == "0008"
+    assert Path(account_tokens.path).name == "0009_identity_account_tokens.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -153,6 +157,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
         [
             "alembic_version",
             "audit_events",
+            *ACCOUNT_TOKEN_TABLES,
             *AUTH_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
@@ -550,8 +555,9 @@ def test_downgrade_to_0007_drops_exactly_the_rate_limit_table(fresh_database_url
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0007")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0008")
     assert public_tables(fresh_database_url) - before == set(RATE_LIMIT_TABLES)
+    command.upgrade(config, "head")
 
     command.downgrade(config, "0007")
 
@@ -644,3 +650,76 @@ def test_rate_limit_counters_reject_a_duplicate_window(fresh_database_url):
 
     with pytest.raises(IntegrityError):
         run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row(count=7))
+
+
+# --- 0009: account_tokens (#29 B) --------------------------------------------------
+
+
+def test_downgrade_to_0008_drops_exactly_account_tokens(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0008")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(ACCOUNT_TOKEN_TABLES)
+
+    command.downgrade(config, "0008")
+
+    assert version_nums(fresh_database_url) == ["0008"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_account_tokens_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = run_sql(
+        fresh_database_url,
+        "SELECT column_name, data_type, is_nullable FROM information_schema.columns"
+        " WHERE table_name = 'account_tokens'",
+    )
+    assert {(r.column_name, r.data_type, r.is_nullable) for r in columns} == {
+        ("id", "uuid", "NO"),
+        ("created_at", "timestamp with time zone", "NO"),
+        ("updated_at", "timestamp with time zone", "NO"),
+        ("user_id", "uuid", "NO"),
+        ("kind", "text", "NO"),
+        ("token_hash", "bytea", "NO"),
+        ("expires_at", "timestamp with time zone", "NO"),
+        ("used_at", "timestamp with time zone", "YES"),
+        ("revoked_at", "timestamp with time zone", "YES"),
+        ("issued_by_user_id", "uuid", "YES"),
+    }
+    constraints = run_sql(
+        fresh_database_url,
+        "SELECT conname, contype::text, confdeltype::text"
+        " FROM pg_constraint WHERE conrelid = 'account_tokens'::regclass"
+        " AND contype <> 'n' ORDER BY conname",
+    )
+    assert [(r.conname, r.contype) for r in constraints] == [
+        ("ck_account_tokens_kind_valid", "c"),
+        ("ck_account_tokens_token_hash_length", "c"),
+        ("ck_account_tokens_used_or_revoked", "c"),
+        ("fk_account_tokens_issued_by_user_id_users", "f"),
+        ("fk_account_tokens_user_id_users", "f"),
+        ("pk_account_tokens", "p"),
+        ("uq_account_tokens_token_hash", "u"),
+    ]
+    # ON DELETE RESTRICT: archived users keep their history.
+    assert {r.confdeltype for r in constraints if r.contype == "f"} == {"r"}
+    indexes = run_sql(
+        fresh_database_url,
+        "SELECT indexname, indexdef FROM pg_indexes"
+        " WHERE tablename = 'account_tokens' ORDER BY indexname",
+    )
+    by_name = {r.indexname: r.indexdef for r in indexes}
+    assert set(by_name) == {
+        "ix_account_tokens_user_id",
+        "pk_account_tokens",
+        "uq_account_tokens_live_user_kind",
+        "uq_account_tokens_token_hash",
+    }
+    live = by_name["uq_account_tokens_live_user_kind"]
+    assert "UNIQUE INDEX" in live
+    assert "(user_id, kind)" in live
+    assert "WHERE ((used_at IS NULL) AND (revoked_at IS NULL))" in live

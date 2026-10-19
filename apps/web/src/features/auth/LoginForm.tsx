@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
@@ -43,11 +43,20 @@ interface LoginFormProps {
   onSubmit: (values: LoginValues) => Promise<void>;
   /** Shows the "session expired" notice until the next submit (B7). */
   sessionExpired?: boolean;
+  /**
+   * A notice from the page that sent the person here (already translated,
+   * for example "Your password is set", #29 J5), shown until the next submit.
+   */
+  notice?: string;
+  /** Pre-fills the username and focuses the password field (#29 J5). */
+  initialUsername?: string;
 }
 
 export function LoginForm({
   onSubmit,
   sessionExpired = false,
+  notice,
+  initialUsername,
 }: LoginFormProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
@@ -56,6 +65,7 @@ export function LoginForm({
   const passwordId = `${id}-password`;
   const [error, setError] = useState<unknown>(null);
   const [showNotice, setShowNotice] = useState(sessionExpired);
+  const [showPageNotice, setShowPageNotice] = useState(Boolean(notice));
   // One request per submit, even on a double click before the re-render.
   const inFlight = useRef(false);
   const {
@@ -66,10 +76,18 @@ export function LoginForm({
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: '', password: '' },
+    defaultValues: { username: initialUsername ?? '', password: '' },
     // Focus moves to the first invalid field on a failed submit (B2).
     shouldFocusError: true,
   });
+
+  // With a pre-filled username the next field to fill is the password.
+  const focusPassword = Boolean(initialUsername);
+  useEffect(() => {
+    if (focusPassword) {
+      setFocus('password');
+    }
+  }, [focusPassword, setFocus]);
 
   const submit = handleSubmit(async (values) => {
     setError(null);
@@ -89,6 +107,7 @@ export function LoginForm({
     // Never a native submission: credentials never reach the URL.
     event.preventDefault();
     setShowNotice(false);
+    setShowPageNotice(false);
     if (inFlight.current) {
       return;
     }
@@ -111,6 +130,9 @@ export function LoginForm({
           <p className="rounded-md border border-border p-3">
             {tErrors('session_expired')}
           </p>
+        ) : null}
+        {showPageNotice && notice ? (
+          <p className="rounded-md border border-border p-3">{notice}</p>
         ) : null}
       </div>
       {error ? <ErrorAlert error={error} /> : null}

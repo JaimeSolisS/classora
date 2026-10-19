@@ -88,7 +88,11 @@ Codes in use today:
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
-| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
+| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication, invitation lookup and redemption); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
+| `token_invalid` | 410 | A one-time link (invitation) that is unknown, malformed, used, replaced or expired, or that can no longer be redeemed. One body for every case (see Invitations). |
+| `username_taken` | 409 | `POST /api/v1/invitations` with a username another user already has, in any state. |
+| `username_invalid` | 422 | A username that does not normalize to 3 to 64 characters from `a-z 0-9 . _ -`. |
+| `password_too_short`, `password_too_long`, `password_equals_username` | 422 | A new password that breaks the policy (12 to 128 characters, not the username; ADR-0007 D6). |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
 | `internal_error` | 500 | Any unexpected exception. |
@@ -296,8 +300,8 @@ lockout: a window simply ends.
 | `login.ip` | `POST /api/v1/auth/login` | 50 per 15 min | client IP | every request |
 | `login.username` | `POST /api/v1/auth/login` | 10 per 15 min | normalized submitted username, existing or not | failed attempts |
 | `reauth.user` | `POST /api/v1/auth/reauthenticate`, and the current-password check of the password change (#30) | 5 per 15 min | user | failed attempts |
-| `token_redemption.ip` | invitation and reset-token redemption (#29, #30) | 20 per 15 min | client IP | every request |
-| `registration.ip` | self-registration request (#29) | 10 per hour | client IP | every request |
+| `token_redemption.ip` | `POST /api/v1/auth/invitation/lookup`, `POST /api/v1/auth/invitation/redeem`, and the reset-token routes (#30); one shared budget | 20 per 15 min | client IP | every request |
+| `registration.ip` | self-registration request (#169) | 10 per hour | client IP | every request |
 
 - **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
   `:45`; the full hour for registration). Up to twice a limit can pass across
@@ -340,6 +344,56 @@ lockout: a window simply ends.
   must be ended first (one connection per request at a time). Every unsafe
   `public()` route must declare a policy or carry `rate_limit_exempt =
   "<reason>"` in the matrix.
+
+### Invitations
+
+Implemented by M2-11 (#29; spec §9, ADR-0007 D4, D10, D11 as amended by #29)
+in `apps/api/app/modules/identity/` (`tokens.py`, `invitations.py`,
+`invitations_router.py`). No email is sent.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/invitations` | `require("user.invite")` | Body `{username, display_name, role}` (one role). `201` with the one-time `invitation_url`. Staff roles need a recent reauthentication. |
+| `GET /api/v1/invitations` | `require("user.invite")` | Open invitations (pending users without a password who have a link), latest link first; offset pagination. No token or hash. |
+| `POST /api/v1/invitations/{user_id}/reissue` | `require("user.invite")` | A new link replaces the old one (`200`). `404` unless the user is an open invitation. |
+| `POST /api/v1/auth/invitation/lookup` | `public()` | Body `{token}`: the `username`, `display_name`, `roles` and `expires_at` of a valid link. Changes nothing. |
+| `POST /api/v1/auth/invitation/redeem` | `public()` | Body `{token, password}`: sets the password and activates the user (`204`). Creates no session. |
+
+- **The token** is 32 random bytes, shown **once** as unpadded base64url in
+  `invitation_url` = `APP_ORIGIN + "/invite#token=<token>"`. It travels in the
+  URL fragment, so it never reaches a server log, a proxy log or a `Referer`;
+  the web page sends it to the API in request bodies only. Only its SHA-256
+  hash is stored (`account_tokens`); the token is never logged, audited or
+  returned again.
+- **Lifetime and replacement:** valid for 24 hours (`now < expires_at`).
+  Issuing a new link (reissue) replaces every earlier unused link of the user.
+  A link is used once: redemption marks it used in the same transaction that
+  sets the password and activates the user. A password-policy failure
+  (`422`) leaves the link usable.
+- **`410 token_invalid`** for every invalid link: unknown, malformed, used,
+  replaced, expired, or a user who is no longer pending without a password
+  (for example archived). The body is the same in every case.
+- **Who may invite which role:** an invitation that carries a role counts as
+  assigning it (ADR-0007 D4): `403 permission_denied` unless the caller may
+  assign the role (Owner: `user.owner_role.assign`; Administrator:
+  `user.admin_role.assign`; the others: `user.role.assign`). Reissue checks
+  every role the user holds. A staff role (Owner, Administrator, Academic
+  coordinator, Finance staff) then needs a password reauthentication in the
+  last 5 minutes (`recent_auth_guard("user.invitation.staff_role")`, `403
+  reauth_required`); Tutor, Student and Parent/Guardian never do.
+- **Order on create:** `401` → `403 csrf_failed` → `403 permission_denied`
+  (no `user.invite`) → `422` (body, then `username_invalid`) → `403
+  permission_denied` (role) → `403 reauth_required` → `409 username_taken`.
+- **Order on the public routes:** a foreign `Origin` (`403 csrf_failed`, never
+  counted) → `token_redemption.ip` (`429`, 20 per IP per 15 minutes, shared by
+  lookup and redeem) → body validation (`422`) → the token (`410`). A `429`
+  reveals nothing about the token.
+- **Audit:** `identity.invitation_issued` (actor: the admin; `details`:
+  `link_id`, `roles`, `expires_at`, `reissued`) and
+  `identity.invitation_redeemed` (no actor; `details`: `link_id`), plus the
+  automatic `users` and `user_roles` events. `link_id` is the id of the
+  `account_tokens` row, never the token or its hash. Failed requests write no
+  event.
 
 ### Response headers
 

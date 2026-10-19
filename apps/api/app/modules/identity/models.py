@@ -16,6 +16,10 @@
   hash of the session token is stored; the token itself exists only in the
   cookie. ``revoked_at`` ``NULL`` means the session was not revoked; it may
   still have expired (``expires_at``, ``idle_timeout_seconds``, #25).
+- ``account_tokens``: single-use account tokens (#29; ADR-0007 D11): an
+  invitation today, a password reset in #30 (``kind``). Only the SHA-256 hash
+  of the token is stored. A partial unique index allows at most one unused,
+  unreplaced token per user and kind.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
@@ -25,6 +29,8 @@ one. ``roles``, ``permissions`` and ``role_permissions`` are reference data
 fixed in code (ADR-0007) and are not audited. ``auth_sessions`` is not audited
 either: it holds token hashes and changes on every login; login and logout
 write explicit events instead (``app.modules.identity.sessions``).
+``account_tokens`` is not audited for the same reason; invitations write
+named events instead (``app.modules.identity.invitations``).
 """
 
 import uuid
@@ -36,6 +42,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -179,4 +186,58 @@ class AuthSession(Model):
     # The last password reauthentication in this session (#26).
     reauthenticated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+ACCOUNT_TOKEN_KINDS: tuple[str, ...] = ("invitation",)
+"""The kinds of :class:`AccountToken`. #30 adds ``password_reset`` (and widens
+the CHECK in its own migration)."""
+
+
+class AccountToken(Model):
+    """One single-use account token (#29; ADR-0007 D11). Not audited (see the
+    module doc).
+
+    ``token_hash`` is ``sha256(token)``: the raw token is never stored. A token
+    is valid while ``used_at`` and ``revoked_at`` are ``NULL`` and ``now <
+    expires_at`` (``app.modules.identity.tokens``). ``revoked_at`` is set when
+    a newer token of the same user and kind replaces it. ``issued_by_user_id``
+    is ``NULL`` only for tokens issued by a shell command (#30).
+    """
+
+    __tablename__ = "account_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ({})".format(", ".join(f"'{k}'" for k in ACCOUNT_TOKEN_KINDS)),
+            name="kind_valid",
+        ),
+        CheckConstraint("octet_length(token_hash) = 32", name="token_hash_length"),
+        CheckConstraint(
+            "used_at IS NULL OR revoked_at IS NULL", name="used_or_revoked"
+        ),
+        Index(
+            "uq_account_tokens_live_user_kind",
+            "user_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("used_at IS NULL AND revoked_at IS NULL"),
+        ),
+    )
+
+    # Indexed: the invitation list and reissue find a user's tokens.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    # sha256(token): the raw token is never stored.
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issued_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

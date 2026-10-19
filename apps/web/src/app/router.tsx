@@ -1,6 +1,8 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { InvitePage } from '@/features/auth/redeem/InvitePage';
+import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
@@ -13,8 +15,9 @@ import { RouteGuard } from './RouteGuard';
 // No SPA route starts with /api or /health: the dev server proxies those to
 // the API.
 //
-// Access (#28 F1, UX only: the API checks every request): /login and the
-// error elements are the only things outside the guard. Every other page goes
+// Access (#28 F1, UX only: the API checks every request): the public pages
+// (/login, /invite) and the error elements are the only things outside the
+// guard. Every other page goes
 // under the guard route and needs a session; a page that needs a permission
 // declares `handle: { permission: '…' }`. A unit test fails if a page is
 // added outside the guard.
@@ -30,11 +33,17 @@ export const routes: RouteObject[] = [
     // Errors in the layout itself: rendered without the layout.
     errorElement: <RootErrorPage />,
     children: [
-      // Public: the only page outside the guard.
+      // Public pages, outside the guard.
       {
         id: 'login',
         path: 'login',
         element: <LoginPage />,
+        errorElement: <RouteErrorPage />,
+      },
+      {
+        id: 'invite',
+        path: 'invite',
+        element: <InvitePage />,
         errorElement: <RouteErrorPage />,
       },
       {
@@ -44,6 +53,11 @@ export const routes: RouteObject[] = [
         errorElement: <RouteErrorPage />,
         children: [
           { index: true, element: <HomePage /> },
+          {
+            path: 'invitations',
+            element: <InvitationsPage />,
+            handle: { permission: 'user.invite' },
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

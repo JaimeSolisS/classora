@@ -20,3 +20,13 @@ condition = "AND"
 paths = ['''^apps/api/tests/unit/test_job_rules\.py$''']
 regexTarget = "match"
 regexes = ['''^(POOLED|DIRECT)_PASSWORD = "(Pooled|Direct)-S3cret-pw-4[12]"$''']
+
+# Fake invitation token in the /invite page unit test (M2-11, #29). It is a
+# placeholder fragment value; real tokens are random and never committed.
+[[allowlists]]
+description = "Fake invitation token in the invite page unit test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/web/src/features/auth/redeem/invite\.test\.tsx$''']
+regexTarget = "match"
+regexes = ['''AbCdEfGhIjKlMnOpXyStUvWxYz0123456789-_AbCdE''']

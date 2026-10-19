@@ -29,24 +29,29 @@ afterEach(() => {
 });
 
 describe('route tree', () => {
-  it('is layout → login and guard → home and 404, nothing else', () => {
+  it('is layout → login, invite and guard → home, invitations and 404, nothing else', () => {
     expect(routes).toHaveLength(1);
     const [root] = routes;
     expect(root!.path).toBe('/');
     expect(root!.errorElement).toBeTruthy();
-    const [login, guard] = root!.children!;
-    expect(root!.children).toHaveLength(2);
-    // /login is the only page outside the guard (#28 B1).
+    const [login, invite, guard] = root!.children!;
+    expect(root!.children).toHaveLength(3);
+    // /login and /invite are the only pages outside the guard (#28 B1, #29 J1).
     expect(login!.path).toBe('login');
     expect(login!.children).toBeUndefined();
+    expect(invite!.path).toBe('invite');
+    expect(invite!.children).toBeUndefined();
+    expect(invite!.errorElement).toBeTruthy();
     expect(guard!.id).toBe('guard');
     expect(guard!.path).toBeUndefined();
     expect(guard!.errorElement).toBeTruthy();
     const children = guard!.children!;
     expect(children.map((r) => (r.index ? 'index' : r.path))).toEqual([
       'index',
+      'invitations',
       '*',
     ]);
+    expect(children[1]!.handle).toEqual({ permission: 'user.invite' });
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
