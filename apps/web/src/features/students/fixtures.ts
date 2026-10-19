@@ -28,6 +28,12 @@ export const POSGRADO_REF: EducationLevelReference = {
 
 export const JOSE_ID = '00000000-0000-4000-8000-0000000e0001';
 
+/** The family José and Laura belong to (#172). */
+export const NUNEZ_FAMILY_REF = {
+  id: '00000000-0000-4000-8000-0000000fa001',
+  name: 'Familia Ñúñez Pérez',
+} as const;
+
 export const JOSE: StudentDetail = {
   id: JOSE_ID,
   given_names: 'José',
@@ -78,16 +84,18 @@ export const JOSE: StudentDetail = {
       has_account: false,
     },
   ],
+  family: { ...NUNEZ_FAMILY_REF },
   version: 3,
   created_at: AT,
   updated_at: AT,
 };
 
-/** José as an assigned tutor sees him (limited, no guardians). */
+/** José as an assigned tutor sees him (limited, no guardians or family). */
 export const JOSE_LIMITED: StudentDetail = {
   ...JOSE,
   personal: null,
   guardians: null,
+  family: null,
 };
 
 /** A student whose level was deactivated after it was assigned. */
@@ -98,6 +106,7 @@ export const ANA_INACTIVE_LEVEL: StudentDetail = {
   family_names: 'García',
   is_minor: false,
   education_level: POSGRADO_REF,
+  family: null,
   personal: {
     birthdate: '2001-03-03',
     email: null,

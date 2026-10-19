@@ -6,6 +6,12 @@ import { LevelsPage } from '@/features/catalog/LevelsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
+import { FamiliesPage } from '@/features/families/FamiliesPage';
+import { FamilyDetailPage } from '@/features/families/FamilyDetailPage';
+import {
+  EditFamilyPage,
+  NewFamilyPage,
+} from '@/features/families/FamilyFormPages';
 import { GuardianDetailPage } from '@/features/guardians/GuardianDetailPage';
 import {
   EditGuardianPage,
@@ -158,6 +164,26 @@ export const routes: RouteObject[] = [
           {
             path: 'guardians/:guardianId/edit',
             element: <EditGuardianPage />,
+            handle: { permission: 'family.manage' },
+          },
+          {
+            path: 'families',
+            element: <FamiliesPage />,
+            handle: { permission: 'guardian.view' },
+          },
+          {
+            path: 'families/new',
+            element: <NewFamilyPage />,
+            handle: { permission: 'family.manage' },
+          },
+          {
+            path: 'families/:familyId',
+            element: <FamilyDetailPage />,
+            handle: { permission: 'guardian.view' },
+          },
+          {
+            path: 'families/:familyId/edit',
+            element: <EditFamilyPage />,
             handle: { permission: 'family.manage' },
           },
           // Any signed-in user (#30 K1): no permission.

@@ -38,6 +38,8 @@
   "guardian_account_in_use": "Esa cuenta ya está vinculada a otro padre o tutor.",
   "guardian_unavailable": "Elige un padre o tutor activo.",
   "guardian_already_linked": "Ese padre o tutor ya está vinculado a este estudiante.",
+  "family_member_conflict": "Ya pertenece a otra familia. Quítalo de esa familia primero.",
+  "family_inactive": "Reactiva la familia para agregar integrantes.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

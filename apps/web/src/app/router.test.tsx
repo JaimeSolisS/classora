@@ -70,6 +70,10 @@ describe('route tree', () => {
       'guardians/new',
       'guardians/:guardianId',
       'guardians/:guardianId/edit',
+      'families',
+      'families/new',
+      'families/:familyId',
+      'families/:familyId/edit',
       'account/password',
       '*',
     ]);
@@ -93,7 +97,12 @@ describe('route tree', () => {
     expect(children[13]!.handle).toEqual({ permission: 'family.manage' });
     expect(children[14]!.handle).toEqual({ permission: 'guardian.view' });
     expect(children[15]!.handle).toEqual({ permission: 'family.manage' });
-    expect(children[16]!.handle).toBeUndefined();
+    // #172 H1-H3.
+    expect(children[16]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[17]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[18]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[19]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[20]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

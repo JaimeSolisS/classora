@@ -23,6 +23,7 @@ import {
   type GuardianListItem,
   type StudentGuardianCreate,
 } from '@/features/guardians/api';
+import { FamilyLine } from '@/features/families/FamilyLine';
 import { StudentGuardiansSection } from '@/features/guardians/StudentGuardiansSection';
 import { useFormatters } from '@/lib/formatters';
 import {
@@ -200,6 +201,7 @@ export function StudentDetailView({
           <StudentStatusBadge active={student.is_active} />
           <StudentAgeBadge minor={student.is_minor} />
         </p>
+        <FamilyLine family={student.family} />
         {canManage ? (
           <div className="flex flex-wrap items-center gap-3">
             <Link

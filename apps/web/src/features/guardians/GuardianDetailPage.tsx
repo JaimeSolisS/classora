@@ -8,6 +8,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/features/auth/useSession';
+import { FamilyLine } from '@/features/families/FamilyLine';
 import {
   StudentAgeBadge,
   StudentStatusBadge,
@@ -155,6 +156,7 @@ export function GuardianDetailView({
         <p className="flex flex-wrap gap-2">
           <StudentStatusBadge active={guardian.is_active} />
         </p>
+        <FamilyLine family={guardian.family} />
         {canManage ? (
           <div className="flex flex-wrap items-center gap-3">
             <Link

@@ -35,7 +35,8 @@
     "registrations": "Solicitudes de cuenta",
     "catalog": "Catálogo",
     "students": "Estudiantes",
-    "guardians": "Padres y tutores"
+    "guardians": "Padres y tutores",
+    "families": "Familias"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -635,6 +636,82 @@
       "none": "Sin resultados.",
       "failed": "La búsqueda no funcionó. Inténtalo de nuevo.",
       "results": "Resultados de «{{label}}»"
+    }
+  },
+  "families": {
+    "title": "Familias",
+    "add": "Agregar familia",
+    "edit": "Editar familia",
+    "editNamed": "Editar {{name}}",
+    "back": "Volver a familias",
+    "backToFamily": "Volver a la familia",
+    "notFound": "Esta familia no existe.",
+    "saved": "Cambios guardados.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "familyLine": "Familia",
+    "list": {
+      "search": "Buscar por nombre",
+      "status": "Estado",
+      "statusAll": "Todas",
+      "empty": "No hay familias con estos filtros.",
+      "noResults": "No hay resultados para esta búsqueda.",
+      "name": "Nombre",
+      "students": "Estudiantes"
+    },
+    "status": {
+      "active": "Activa",
+      "inactive": "Inactiva"
+    },
+    "fields": {
+      "name": "Nombre de la familia"
+    },
+    "students": {
+      "title": "Estudiantes",
+      "add": "Agregar estudiante",
+      "empty": "Sin estudiantes.",
+      "addTitle": "Agregar estudiante",
+      "addBody": "Busca un estudiante. Un estudiante solo puede pertenecer a una familia.",
+      "student": "Estudiante",
+      "choose": "Elige un estudiante de los resultados.",
+      "conflict": "Este estudiante ya pertenece a otra familia. Quítalo de esa familia primero.",
+      "added": "Estudiante agregado.",
+      "removed": "Estudiante quitado."
+    },
+    "guardians": {
+      "title": "Padres y tutores",
+      "add": "Agregar padre o tutor",
+      "empty": "Sin padres o tutores.",
+      "addTitle": "Agregar padre o tutor",
+      "addBody": "Busca un padre o tutor activo. Cada uno solo puede pertenecer a una familia.",
+      "guardian": "Padre o tutor",
+      "choose": "Elige un padre o tutor de los resultados.",
+      "conflict": "Este padre o tutor ya pertenece a otra familia. Quítalo de esa familia primero.",
+      "added": "Padre o tutor agregado.",
+      "removed": "Padre o tutor quitado."
+    },
+    "addAction": "Agregar",
+    "remove": "Quitar",
+    "removeNamed": "Quitar a {{name}}",
+    "removeTitle": "Quitar de la familia",
+    "removeBody": "{{name}} dejará de pertenecer a esta familia.",
+    "deactivate": {
+      "action": "Desactivar",
+      "title": "Desactivar familia",
+      "body": "La familia se conserva con sus integrantes y puedes reactivarla."
+    },
+    "reactivate": {
+      "action": "Reactivar",
+      "title": "Reactivar familia",
+      "body": "La familia puede recibir nuevos integrantes otra vez."
+    },
+    "conflict": {
+      "reload": "Recargar"
+    },
+    "validation": {
+      "nameRequired": "Escribe el nombre de la familia.",
+      "nameTooLong": "Puede tener hasta 200 caracteres."
     }
   },
   "relationships": {

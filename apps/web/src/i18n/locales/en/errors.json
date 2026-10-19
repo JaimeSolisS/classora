@@ -38,6 +38,8 @@
   "guardian_account_in_use": "That account is already linked to another guardian.",
   "guardian_unavailable": "Choose an active guardian.",
   "guardian_already_linked": "That guardian is already linked to this student.",
+  "family_member_conflict": "Already belongs to another family. Remove them from it first.",
+  "family_inactive": "Reactivate the family to add members.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",
