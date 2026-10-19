@@ -8,6 +8,11 @@ CSRF token (``app.core.csrf``, #24); every unsafe request needs the app's
 ``POST /reauthenticate`` (#26; ADR-0007 D10) confirms the signed-in user's
 password and opens a 5-minute window on the current session for the routes
 declared with ``app.core.reauth.require_recent_auth``.
+
+Rate limits (#27; ``app.core.ratelimit``): login takes one ``login.ip`` unit
+per request and reserves ``login.username`` before the password check;
+reauthentication reserves ``reauth.user``. Over a limit the answer is ``429
+rate_limited`` without any password verification.
 """
 
 from typing import Annotated
@@ -28,6 +33,7 @@ from app.core.authz import (
 from app.core.config import Settings, get_settings
 from app.core.db import get_sessionmaker
 from app.core.errors import problem_response_doc
+from app.core.ratelimit import RATE_LIMIT_RESPONSES, RateLimiter, rate_limit
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import auth, sessions
 from app.modules.identity.errors import InvalidCredentialsError, ReauthFailedError
@@ -55,9 +61,11 @@ LOGIN_PUBLIC_REASON = (
     responses={
         401: problem_response_doc("The username or password is incorrect."),
         **CSRF_RESPONSES,
+        **RATE_LIMIT_RESPONSES,
     },
 )
 async def login(
+    limiter: Annotated[RateLimiter, rate_limit("login.ip", "login.username")],
     body: LoginRequest,
     request: Request,
     response: Response,
@@ -70,7 +78,14 @@ async def login(
     Every login issues a new session; a live session on the request's cookie
     is revoked. Any failure is the same ``401 invalid_credentials``. The body
     carries the new session's ``csrf_token``. Needs the app's ``Origin``.
+    Too many attempts from one IP or for one username: ``429 rate_limited``
+    with ``Retry-After``, whether or not the account exists.
     """
+    # Before any lookup and before the password check, in its own committed
+    # transaction (the request's Unit of Work has not used a connection yet).
+    reservation = await limiter.reserve(
+        auth.LOGIN_USERNAME_RATE_LIMIT, auth.login_rate_limit_key(body.username)
+    )
     result = await auth.login(
         uow.session,
         request,
@@ -87,6 +102,8 @@ async def login(
         # Committed on its own: the 401 rolls the request's Unit of Work back.
         await auth.record_failed_login(sessionmaker, result)
         raise InvalidCredentialsError()
+    # A success gives its unit back, kept only if the login commits.
+    await reservation.release(uow.session)
     # Max-Age = the session's absolute timeout (#25), never longer.
     lifetime = result.limits.absolute
     sessions.set_session_cookie(response, settings, result.token, max_age=lifetime)
@@ -129,11 +146,13 @@ async def me(
             "The password is incorrect (reauth_failed), or a failed Origin or"
             " X-CSRF-Token check (csrf_failed)."
         ),
+        **RATE_LIMIT_RESPONSES,
     },
 )
 async def reauthenticate(
     principal: Annotated[Principal, authenticated()],
     resolved: Annotated[ResolvedSession, Depends(get_current_session)],
+    limiter: Annotated[RateLimiter, rate_limit(auth.REAUTH_RATE_LIMIT)],
     body: ReauthenticateRequest,
     uow: UnitOfWorkDep,
     sessionmaker: SessionmakerDep,
@@ -144,12 +163,19 @@ async def reauthenticate(
     minutes from now (activity does not extend it; a later reauthentication
     restarts it). A wrong password is ``403 reauth_failed``; the session stays
     signed in and its window is unchanged. Needs the app's ``Origin`` and the
-    session's ``X-CSRF-Token``.
+    session's ``X-CSRF-Token``. After 5 wrong passwords for the user in a
+    15-minute window, further attempts get ``429 rate_limited`` with
+    ``Retry-After``, without a password check; the session and its window are
+    unchanged.
     """
     if resolved.session_id is None:  # pragma: no cover - the resolver sets it
         raise AuthenticationRequiredError()
+    # End the transaction the session lookup opened, keeping its activity
+    # update (#25), so the rate-limit counter's own committed transaction
+    # never runs while this request holds a second connection.
+    await uow.session.commit()
     result = await auth.reauthenticate(
-        uow.session, principal, resolved.session_id, body.password
+        uow.session, principal, resolved.session_id, body.password, limiter
     )
     if isinstance(result, auth.ReauthFailure):
         # As for a failed login: end the request's transaction (it wrote

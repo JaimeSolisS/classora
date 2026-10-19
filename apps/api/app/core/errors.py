@@ -68,6 +68,8 @@ class AppError(Exception):
     status: ClassVar[int] = 500
     code: ClassVar[str] = "internal_error"
     detail: str | None = None
+    headers: Mapping[str, str] | None = None
+    """Extra response headers (for example ``Retry-After`` on a ``429``)."""
 
     def __init__(
         self,
@@ -154,7 +156,9 @@ def _validation_errors(exc: RequestValidationError) -> list[FieldError]:
 async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     # Type narrowing only: the handler is registered for this exception type.
     assert isinstance(exc, AppError)  # noqa: S101
-    return problem_response(exc.status, exc.code, exc.detail, errors=exc.errors)
+    return problem_response(
+        exc.status, exc.code, exc.detail, errors=exc.errors, headers=exc.headers
+    )
 
 
 async def _stale_version_handler(request: Request, exc: Exception) -> JSONResponse:

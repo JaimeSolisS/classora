@@ -28,6 +28,7 @@ services:
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
       WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     # Host port API_PORT (default 8000), on 127.0.0.1 only.
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
@@ -63,6 +64,7 @@ services:
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
       WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     # Healthy while the process runs and PostgreSQL answers on the direct URL,
     # whether or not the Procrastinate schema exists yet. Before `make migrate`
     # the worker waits (logging that it needs `make migrate`) instead of

@@ -28,6 +28,7 @@ const API_CODES = [
   'session_expired',
   'reauth_required',
   'reauth_failed',
+  'rate_limited',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

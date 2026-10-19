@@ -81,6 +81,7 @@ from tests.authz.harness import (
     run_reauth_cases,
 )
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
+from tests.integration.shared_databases import share_database, unshare_database
 from tests.integration.test_migrations import alembic_config
 from tests.unit.authz_app import SAMPLE_MATRIX, build_authz_app
 
@@ -110,8 +111,10 @@ def matrix_database_url(database_url: str) -> Iterator[str]:
                 await engine.dispose()
 
         asyncio.run(_seed())
+        share_database(url)
         yield url
     finally:
+        unshare_database(url)
         run_sql(database_url, f'DROP DATABASE "{name}" WITH (FORCE)', autocommit=True)
 
 

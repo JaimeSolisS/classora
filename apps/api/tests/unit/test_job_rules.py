@@ -215,8 +215,8 @@ async def test_ids_only_turns_json_strings_back_into_uuids():
 # --- D4/D5 environment gating ----------------------------------------------------
 
 DEMO_TASKS = {"demo:succeed", "demo:fail", "demo:periodic"}
-# Registered in every environment (#25).
-MODULE_TASKS = {"identity:purge_auth_sessions"}
+# Registered in every environment (#25, #27).
+MODULE_TASKS = {"identity:purge_auth_sessions", "ratelimit:purge_counters"}
 
 
 def app_tasks(app: App) -> set[str]:

@@ -15,6 +15,14 @@ from app.core.authz import (
     public,
     require,
 )
+from app.core.ratelimit import (
+    PENDING_POLICIES,
+    RATE_LIMIT_POLICIES,
+    RATE_LIMIT_RESPONSES,
+    RateLimiter,
+    RateLimitRule,
+    rate_limit,
+)
 from app.core.reauth import (
     REAUTH_RESPONSES,
     ReauthRule,
@@ -37,7 +45,11 @@ from tests.unit.authz_app import SAMPLE_MATRIX, build_authz_app
 
 
 def test_real_app_matches_the_matrix():
-    problems = check_matrix(build_app(include_dev_routes=True), load_matrix())
+    problems = check_matrix(
+        build_app(include_dev_routes=True),
+        load_matrix(),
+        pending_policies=PENDING_POLICIES,
+    )
 
     assert not problems, failure_message(problems)
 
@@ -465,7 +477,14 @@ def test_every_planted_reauth_problem_is_reported():
         ),
         entry("POST", "/bad/conditional", "authenticated", reauth=correction),
         entry("POST", "/bad/two-markers", "authenticated", reauth=correction),
-        entry("POST", "/bad/public", "public", reason="probe", reauth=correction),
+        entry(
+            "POST",
+            "/bad/public",
+            "public",
+            reason="probe",
+            reauth=correction,
+            rate_limit_exempt="probe",
+        ),
         entry("GET", "/bad/safe", "authenticated", reauth=correction),
         entry("POST", "/bad/undocumented", "authenticated", reauth=correction),
         entry("DELETE", "/bad/bound", "permission", permission=RESET, allow=[]),
@@ -565,3 +584,272 @@ def test_the_real_matrix_lists_reauthenticate_without_reauth():
     assert reauthenticate.access == "authenticated"
     assert reauthenticate.json == {}
     assert reauthenticate.reauth is None
+
+
+# --- Rate limits (#27 G1-G4) ------------------------------------------------------
+
+RL_DOCS = {**CSRF_RESPONSES, **RATE_LIMIT_RESPONSES}
+
+
+def _add_correct_rate_limit_routes(router: APIRouter) -> None:
+    @router.post(
+        "/rl/login",
+        responses=RL_DOCS,
+        dependencies=[public(reason="probe"), rate_limit("login.ip", "login.username")],
+    )
+    async def rl_login() -> None: ...
+
+    @router.post(
+        "/rl/exempt", responses=CSRF_RESPONSES, dependencies=[public(reason="probe")]
+    )
+    async def rl_exempt() -> None: ...
+
+    @router.post("/rl/reauth", responses={**AUTH_RESPONSES, **RL_DOCS})
+    async def rl_reauth(
+        who: Annotated[Principal, authenticated()],
+        limiter: Annotated[RateLimiter, rate_limit("reauth.user")],
+    ) -> None: ...
+
+
+def correct_rate_limit_app() -> FastAPI:
+    app = correct_app()
+    router = APIRouter()
+    _add_correct_rate_limit_routes(router)
+    app.include_router(router)
+    return app
+
+
+RL_CORRECT = [
+    *CORRECT,
+    entry(
+        "POST",
+        "/rl/login",
+        "public",
+        reason="probe",
+        rate_limit=["login.username", "login.ip"],
+    ),
+    entry("POST", "/rl/exempt", "public", reason="probe", rate_limit_exempt="why"),
+    entry("POST", "/rl/reauth", "authenticated", rate_limit=["reauth.user"]),
+]
+
+
+def planted_rate_limit_app() -> FastAPI:
+    """The correct routes plus one planted problem per G2 rule."""
+    app = correct_rate_limit_app()
+    router = APIRouter()
+    public_rule = public(reason="probe")
+
+    @router.post("/rl/no-marker", responses=RL_DOCS, dependencies=[public_rule])
+    async def no_marker() -> None: ...
+
+    @router.post(
+        "/rl/unlisted-codes",
+        responses=RL_DOCS,
+        dependencies=[public_rule, rate_limit("login.ip")],
+    )
+    async def unlisted_codes() -> None: ...
+
+    @router.post(
+        "/rl/other-codes",
+        responses=RL_DOCS,
+        dependencies=[public_rule, rate_limit("login.ip")],
+    )
+    async def other_codes() -> None: ...
+
+    @router.post(
+        "/rl/two-markers",
+        responses=RL_DOCS,
+        dependencies=[
+            public_rule,
+            rate_limit("login.ip"),
+            rate_limit("registration.ip"),
+        ],
+    )
+    async def two_markers() -> None: ...
+
+    @router.post(
+        "/rl/undocumented",
+        responses=CSRF_RESPONSES,
+        dependencies=[public_rule, rate_limit("registration.ip")],
+    )
+    async def undocumented() -> None: ...
+
+    @router.delete(
+        "/rl/unlimited", responses=CSRF_RESPONSES, dependencies=[public_rule]
+    )
+    async def unlimited() -> None: ...
+
+    @router.post(
+        "/rl/both",
+        responses=RL_DOCS,
+        dependencies=[public_rule, rate_limit("login.ip")],
+    )
+    async def both() -> None: ...
+
+    async def ghost() -> None: ...
+
+    setattr(ghost, ROUTE_MARKER_ATTR, RateLimitRule(("ghost.policy",)))
+
+    @router.post(
+        "/rl/ghost", responses=RL_DOCS, dependencies=[public_rule, Depends(ghost)]
+    )
+    async def ghost_route() -> None: ...
+
+    app.include_router(router)
+    return app
+
+
+def test_a_correct_rate_limit_app_and_matrix_report_nothing():
+    entries = parse_matrix({"route": RL_CORRECT})
+
+    assert check_matrix(correct_rate_limit_app(), entries) == []
+
+
+def test_every_planted_rate_limit_problem_is_reported():
+    matrix = [
+        *RL_CORRECT,
+        entry("POST", "/rl/no-marker", "public", reason="p", rate_limit=["login.ip"]),
+        entry("POST", "/rl/unlisted-codes", "public", reason="p"),
+        entry(
+            "POST",
+            "/rl/other-codes",
+            "public",
+            reason="p",
+            rate_limit=["registration.ip"],
+        ),
+        entry(
+            "POST",
+            "/rl/two-markers",
+            "public",
+            reason="p",
+            rate_limit=["login.ip", "registration.ip"],
+        ),
+        entry(
+            "POST",
+            "/rl/undocumented",
+            "public",
+            reason="p",
+            rate_limit=["registration.ip"],
+        ),
+        entry("DELETE", "/rl/unlimited", "public", reason="p"),
+        entry(
+            "POST",
+            "/rl/both",
+            "public",
+            reason="p",
+            rate_limit=["login.ip"],
+            rate_limit_exempt="also exempt",
+        ),
+        entry("POST", "/rl/ghost", "public", reason="p", rate_limit=["ghost.policy"]),
+        # Entry format problems (no such routes).
+        entry("POST", "/x/not-a-list", "public", reason="p", rate_limit="login.ip"),
+        entry("POST", "/x/blank-exempt", "public", reason="p", rate_limit_exempt=" "),
+    ]
+
+    problems = check_matrix(planted_rate_limit_app(), parse_matrix({"route": matrix}))
+
+    stale = " stale entry (no such route)"
+    assert problems == sorted(
+        [
+            "POST /rl/no-marker: the route's rate limits are [] but the matrix"
+            " says ['login.ip']",
+            "POST /rl/no-marker: an unsafe public route needs rate_limit(...) or"
+            " rate_limit_exempt (see app/core/ratelimit.py)",
+            "POST /rl/unlisted-codes: the route's rate limits are ['login.ip']"
+            " but the matrix says []",
+            "POST /rl/other-codes: the route's rate limits are ['login.ip']"
+            " but the matrix says ['registration.ip']",
+            "POST /rl/two-markers: more than one rate_limit marker (2)",
+            "POST /rl/undocumented: 429 rate_limited is not documented as"
+            " ProblemDetails (pass RATE_LIMIT_RESPONSES)",
+            "DELETE /rl/unlimited: an unsafe public route needs rate_limit(...) or"
+            " rate_limit_exempt (see app/core/ratelimit.py)",
+            "POST /rl/both: an entry has either rate_limit or rate_limit_exempt,"
+            " not both",
+            "POST /rl/ghost: rate-limit policy 'ghost.policy' is not in"
+            " RATE_LIMIT_POLICIES",
+            "POST /rl/ghost: unknown rate-limit policy 'ghost.policy'"
+            " (see app/core/ratelimit.py)",
+            "POST /x/not-a-list: rate_limit must be a list of policy codes",
+            "POST /x/not-a-list:" + stale,
+            "POST /x/blank-exempt: rate_limit_exempt needs a non-empty reason",
+            "POST /x/blank-exempt:" + stale,
+        ]
+    )
+
+
+def test_policy_coverage_reports_unused_and_stale_pending_policies():
+    app = correct_rate_limit_app()  # applies login.ip, login.username, reauth.user
+    entries = parse_matrix({"route": RL_CORRECT})
+    policies = {
+        code: RATE_LIMIT_POLICIES[code]
+        for code in ("login.ip", "login.username", "reauth.user", "registration.ip")
+    }
+
+    assert (
+        check_matrix(
+            app,
+            entries,
+            rate_limit_policies=policies,
+            pending_policies={"registration.ip": "#29"},
+        )
+        == []
+    )
+    assert check_matrix(
+        app,
+        entries,
+        rate_limit_policies=policies,
+        pending_policies={"reauth.user": "#26", "ghost.policy": "#0"},
+    ) == [
+        "rate-limit policy 'ghost.policy': in PENDING_POLICIES but not in"
+        " RATE_LIMIT_POLICIES",
+        "rate-limit policy 'reauth.user': a route applies it but it is still in"
+        " PENDING_POLICIES (#26): remove it",
+        "rate-limit policy 'registration.ip': no route applies it and it is not in"
+        " PENDING_POLICIES",
+    ]
+
+
+def test_the_real_matrix_declares_the_auth_rate_limits():
+    entries = {e.key: e for e in load_matrix()}
+
+    assert sorted(entries[("POST", "/api/v1/auth/login")].rate_limit) == [
+        "login.ip",
+        "login.username",
+    ]
+    assert entries[("POST", "/api/v1/auth/reauthenticate")].rate_limit == [
+        "reauth.user"
+    ]
+    assert entries[("POST", "/api/v1/dev/demo-jobs")].rate_limit_exempt
+    assert dict(PENDING_POLICIES) == {
+        "token_redemption.ip": "#29, #30",
+        "registration.ip": "#29",
+    }
+
+
+def test_removing_the_login_limit_is_reported():
+    """Mutation 8: a route without its marker but with its matrix entry."""
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.post("/api/v1/auth/login", dependencies=[public(reason="probe")])
+    async def login() -> None: ...
+
+    app.include_router(router)
+    matrix = [
+        *DOCS,
+        entry(
+            "POST",
+            "/api/v1/auth/login",
+            "public",
+            reason="probe",
+            rate_limit=["login.ip", "login.username"],
+        ),
+    ]
+
+    assert check_matrix(app, parse_matrix({"route": matrix})) == [
+        "POST /api/v1/auth/login: an unsafe public route needs rate_limit(...) or"
+        " rate_limit_exempt (see app/core/ratelimit.py)",
+        "POST /api/v1/auth/login: the route's rate limits are [] but the matrix"
+        " says ['login.ip', 'login.username']",
+    ]

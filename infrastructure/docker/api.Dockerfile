@@ -35,4 +35,6 @@ EXPOSE 8000
 
 # The worker service overrides this with `python -m app.worker`.
 # --no-access-log: app.access writes one JSON access line per request instead.
-CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+# --no-proxy-headers: uvicorn never rewrites the client address from
+# X-Forwarded-For; only the app reads it, from TRUSTED_PROXIES (#27, ADR-0008).
+CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"]

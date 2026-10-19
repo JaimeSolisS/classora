@@ -3,8 +3,10 @@
 import re
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core.conventions import install_conventions
 from app.core.errors import AppError, VersionConflictError
 from app.main import create_app
 from tests.authz.csrf import PROD_APP_ORIGIN
@@ -198,3 +200,39 @@ def test_production_app_renders_404_problem(app_env: None):
         response = client.get("/nope")
 
     assert_problem(response, 404, "not_found")
+
+
+# --- AppError headers (#27 B6) ------------------------------------------------------
+
+
+class SlowDownError(AppError):
+    status = 429
+    code = "slow_down"
+    detail = "Slow down."
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.headers = {"Retry-After": "7", "X-Extra": "1"}
+
+
+def test_app_error_headers_are_sent_and_default_to_none():
+    app = FastAPI()
+    install_conventions(app)
+
+    @app.get("/slow")
+    async def slow() -> None:
+        raise SlowDownError()
+
+    @app.get("/plain")
+    async def plain() -> None:
+        raise VersionConflictError()
+
+    with TestClient(app) as client:
+        slow_response = client.get("/slow")
+        plain_response = client.get("/plain")
+
+    assert_problem(slow_response, 429, "slow_down")
+    assert slow_response.headers["retry-after"] == "7"
+    assert slow_response.headers["x-extra"] == "1"
+    assert AppError.headers is None
+    assert "retry-after" not in plain_response.headers

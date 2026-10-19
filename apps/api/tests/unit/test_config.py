@@ -5,6 +5,7 @@ Settings variable from the environment first, so each test sets exactly what it
 needs regardless of the developer's shell.
 """
 
+import ipaddress
 import os
 import re
 import subprocess
@@ -101,6 +102,7 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
     assert settings.storage_endpoint_url is None
     assert settings.storage_access_key_id is None
     assert settings.storage_secret_access_key is None
+    assert settings.trusted_proxies == ()
 
 
 def test_full_environment_loads(monkeypatch):
@@ -522,6 +524,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "STORAGE_ACCESS_KEY_ID",
         "STORAGE_SECRET_ACCESS_KEY",
         "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
+        "TRUSTED_PROXIES",
     }
 
 
@@ -537,3 +540,56 @@ def test_settings_class_is_basesettings():
     from pydantic_settings import BaseSettings
 
     assert issubclass(Settings, BaseSettings)
+
+
+# --- TRUSTED_PROXIES (#27 C1) ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ()),
+        ("   ", ()),
+        ("10.0.0.5", ("10.0.0.5/32",)),
+        (" 10.0.0.5 , 172.16.0.0/12,::1 ", ("10.0.0.5/32", "172.16.0.0/12", "::1/128")),
+        ("2001:db8::/48,192.0.2.0/24", ("2001:db8::/48", "192.0.2.0/24")),
+        # Host bits are dropped: 10.1.2.3/8 is the network 10.0.0.0/8.
+        ("10.1.2.3/8", ("10.0.0.0/8",)),
+        ("10.0.0.5,,10.0.0.6", ("10.0.0.5/32", "10.0.0.6/32")),
+    ],
+)
+def test_trusted_proxies_accepts_ips_and_networks(monkeypatch, value, expected):
+    set_env(monkeypatch, {**MINIMAL_ENV, "TRUSTED_PROXIES": value})
+
+    settings = load_settings()
+
+    assert settings.trusted_proxies == tuple(ipaddress.ip_network(n) for n in expected)
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("proxy.internal", "entry 1 is not an IP address or CIDR network"),
+        ("10.0.0.5, caddy", "entry 2 is not an IP address or CIDR network"),
+        ("10.0.0.5:8080", "entry 1 is not an IP address or CIDR network"),
+        ("[::1]", "entry 1 is not an IP address or CIDR network"),
+        ("10.0.0.0/33", "entry 1 is not an IP address or CIDR network"),
+        ('["10.0.0.5"]', "entry 1 is not an IP address or CIDR network"),
+        ("0.0.0.0/0", "entry 1 trusts every address (0.0.0.0/0 or ::/0)"),
+        ("10.0.0.5,::/0", "entry 2 trusts every address (0.0.0.0/0 or ::/0)"),
+    ],
+)
+def test_trusted_proxies_rejects_invalid_entries(monkeypatch, value, reason):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "TRUSTED_PROXIES": value})
+
+    assert line_for(message, "TRUSTED_PROXIES").strip() == f"TRUSTED_PROXIES: {reason}"
+    if value not in reason:  # the submitted value is never echoed
+        assert value not in message
+
+
+def test_compose_passes_trusted_proxies_to_api_and_worker():
+    compose = (
+        API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
+    ).read_text()
+
+    assert compose.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 2

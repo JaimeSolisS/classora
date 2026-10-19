@@ -2,8 +2,9 @@
 M2-08 A1, A2); each test uses a fresh database."""
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
@@ -12,6 +13,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import async_direct_database_url
 from app.core.model_registry import include_name, target_metadata
@@ -60,7 +62,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0007"
+HEAD = "0008"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -72,6 +74,8 @@ IDENTITY_TABLES = [
 ]
 
 AUTH_TABLES = ["auth_sessions"]
+
+RATE_LIMIT_TABLES = ["rate_limit_counters"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -120,6 +124,9 @@ def test_history_is_linear_with_one_head():
     reauth = script.get_revision("0007")
     assert reauth.down_revision == "0006"
     assert Path(reauth.path).name == "0007_identity_session_reauth.py"
+    rate_limits = script.get_revision("0008")
+    assert rate_limits.down_revision == "0007"
+    assert Path(rate_limits.path).name == "0008_rate_limit_counters.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -149,6 +156,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *AUTH_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
+            *RATE_LIMIT_TABLES,
         ]
     )
 
@@ -204,8 +212,9 @@ def test_downgrade_to_0004_drops_exactly_auth_sessions(fresh_database_url):
     config = alembic_config(fresh_database_url)
     command.upgrade(config, "0004")
     before = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0005")
     assert public_tables(fresh_database_url) - before == set(AUTH_TABLES)
+    command.upgrade(config, "head")
 
     command.downgrade(config, "0004")
 
@@ -513,3 +522,125 @@ def test_env_reads_the_direct_url_from_settings(fresh_database_url, monkeypatch)
 def test_offline_mode_is_refused(fresh_database_url):
     with pytest.raises(SystemExit):
         command.upgrade(alembic_config(fresh_database_url), "head", sql=True)
+
+
+# --- 0008: rate_limit_counters (#27 A) ----------------------------------------------
+
+RATE_LIMIT_INSERT = (
+    "INSERT INTO rate_limit_counters"
+    " (policy, key_hash, window_start, window_end, count)"
+    " VALUES (:policy, :hash, :start, :end, :count)"
+)
+WINDOW_START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+WINDOW_END = datetime(2026, 10, 18, 12, 15, tzinfo=UTC)
+
+
+def counter_row(**overrides: Any) -> dict[str, Any]:
+    return {
+        "policy": "login.ip",
+        "hash": bytes(32),
+        "start": WINDOW_START,
+        "end": WINDOW_END,
+        "count": 1,
+        **overrides,
+    }
+
+
+def test_downgrade_to_0007_drops_exactly_the_rate_limit_table(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0007")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert public_tables(fresh_database_url) - before == set(RATE_LIMIT_TABLES)
+
+    command.downgrade(config, "0007")
+
+    assert version_nums(fresh_database_url) == ["0007"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_rate_limit_counters_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = run_sql(
+        fresh_database_url,
+        "SELECT column_name, data_type, is_nullable FROM information_schema.columns"
+        " WHERE table_name = 'rate_limit_counters'",
+    )
+    assert {(r.column_name, r.data_type, r.is_nullable) for r in columns} == {
+        ("id", "uuid", "NO"),
+        ("created_at", "timestamp with time zone", "NO"),
+        ("updated_at", "timestamp with time zone", "NO"),
+        ("policy", "text", "NO"),
+        ("key_hash", "bytea", "NO"),
+        ("window_start", "timestamp with time zone", "NO"),
+        ("window_end", "timestamp with time zone", "NO"),
+        ("count", "integer", "NO"),
+    }
+    constraints = run_sql(
+        fresh_database_url,
+        "SELECT conname, contype::text, pg_get_constraintdef(oid) AS definition"
+        " FROM pg_constraint WHERE conrelid = 'rate_limit_counters'::regclass"
+        " AND contype <> 'n' ORDER BY conname",
+    )
+    assert [(r.conname, r.contype) for r in constraints] == [
+        ("ck_rate_limit_counters_count_not_negative", "c"),
+        ("ck_rate_limit_counters_key_hash_length", "c"),
+        ("ck_rate_limit_counters_window_order", "c"),
+        ("pk_rate_limit_counters", "p"),
+        ("uq_rate_limit_counters_policy_key_window", "u"),
+    ]
+    by_name = {r.conname: r.definition for r in constraints}
+    assert by_name["uq_rate_limit_counters_policy_key_window"] == (
+        "UNIQUE (policy, key_hash, window_start)"
+    )
+    indexes = run_sql(
+        fresh_database_url,
+        "SELECT indexname, indexdef FROM pg_indexes"
+        " WHERE tablename = 'rate_limit_counters' ORDER BY indexname",
+    )
+    assert [r.indexname for r in indexes] == [
+        "ix_rate_limit_counters_window_end",
+        "pk_rate_limit_counters",
+        "uq_rate_limit_counters_policy_key_window",
+    ]
+    assert "(window_end)" in indexes[0].indexdef
+    foreign_keys = run_sql(
+        fresh_database_url,
+        "SELECT count(*) FROM pg_constraint"
+        " WHERE conrelid = 'rate_limit_counters'::regclass AND contype = 'f'",
+    )
+    assert foreign_keys[0][0] == 0
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"hash": bytes(31)}, id="31-byte-key-hash"),
+        pytest.param({"count": -1}, id="negative-count"),
+        pytest.param({"end": WINDOW_START}, id="empty-window"),
+    ],
+)
+def test_rate_limit_counters_reject_invalid_rows(fresh_database_url, overrides):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError):
+        run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row(**overrides))
+
+
+def test_rate_limit_counters_reject_a_duplicate_window(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row())
+    # Another policy, key or window is a different row.
+    run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row(policy="reauth.user"))
+    run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row(hash=b"\x01" * 32))
+    run_sql(
+        fresh_database_url,
+        RATE_LIMIT_INSERT,
+        counter_row(start=WINDOW_END, end=WINDOW_END + timedelta(minutes=15)),
+    )
+
+    with pytest.raises(IntegrityError):
+        run_sql(fresh_database_url, RATE_LIMIT_INSERT, counter_row(count=7))

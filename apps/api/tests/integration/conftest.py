@@ -21,6 +21,13 @@ per session next to the PostgreSQL container (reached as ``db``, like in
 Compose), in transaction mode with a small server pool
 (``PGBOUNCER_POOL_SIZE``). Other integration tests talk to PostgreSQL directly.
 
+Rate limits (#27): login and reauthentication count attempts in
+``rate_limit_counters``. A per-test database starts with an empty table; the
+autouse :func:`empty_rate_limit_counters` empties it before each test in every
+database shared by several tests (``module_seeded_url`` and any fixture that
+calls ``tests.integration.shared_databases.share_database``), and
+:func:`reset_rate_limits` empties it inside a test.
+
 Async tests run on the anyio pytest plugin (``pytest.mark.anyio``, asyncio
 backend). Setup and checks that run outside a test's event loop use
 ``run_sql`` / ``asyncio.run`` with a short-lived ``NullPool`` engine.
@@ -46,6 +53,11 @@ from app.core.config import Settings
 from app.core.db import async_database_url
 from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.integration.models import TestBase
+from tests.integration.shared_databases import (
+    SHARED_DATABASES,
+    share_database,
+    unshare_database,
+)
 
 # Socket the Ryuk reaper container mounts, as seen by the Docker daemon (not the
 # host). Testcontainers otherwise mounts the host-side client socket, which on
@@ -68,6 +80,18 @@ PGBOUNCER_POOL_SIZE = 5
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+def reset_rate_limits(url: str) -> None:
+    """Empty ``rate_limit_counters`` in ``url`` (every policy, key and window)."""
+    run_sql(url, "DELETE FROM rate_limit_counters")
+
+
+@pytest.fixture(autouse=True)
+def empty_rate_limit_counters() -> None:
+    """Every test starts with no rate-limit counts (#27 G5)."""
+    for url in sorted(SHARED_DATABASES):
+        reset_rate_limits(url)
 
 
 @pytest.fixture(scope="session")
@@ -265,6 +289,8 @@ def module_seeded_url(database_url: str) -> Iterator[str]:
                 await engine.dispose()
 
         asyncio.run(_seed())
+        share_database(url)
         yield url
     finally:
+        unshare_database(url)
         run_sql(database_url, f'DROP DATABASE "{name}" WITH (FORCE)', autocommit=True)

@@ -30,6 +30,7 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['session_expired', 'session_expired'],
   ['reauth_required', 'reauth_required'],
   ['reauth_failed', 'reauth_failed'],
+  ['rate_limited', 'rate_limited'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

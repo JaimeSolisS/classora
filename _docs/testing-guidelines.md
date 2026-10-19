@@ -120,6 +120,24 @@ does not run the Storybook story tests or E2E.
 - Never `sleep` to let time pass; test boundaries exactly (one second before
   and at the limit).
 
+### Rate limits (M2-09)
+
+- Login and reauthentication count attempts in `rate_limit_counters`
+  (`app/core/ratelimit.py`). A per-test database starts empty. The autouse
+  `empty_rate_limit_counters` fixture (`tests/integration/conftest.py`)
+  empties the table before each test in every database shared by several
+  tests (`module_seeded_url`, or a module fixture that calls
+  `tests.integration.shared_databases.share_database`), and
+  `reset_rate_limits(url)` empties it inside a test.
+- Windows follow `app.core.clock.now()`: cross a window with the `clock`
+  fixture (`clock.advance(timedelta(minutes=15))`), never by waiting.
+- `TestClient` requests come from the peer `testclient`, which is not an IP
+  address, so they all share one IP key (`unknown`): about 50 logins per test
+  and database before `login.ip` answers `429`. A test that needs distinct
+  client addresses builds its client with `TestClient(app, client=(ip, port))`.
+- Never add a setting that disables the limits. A test that must log in more
+  often resets the counters; E2E reuses signed-in sessions.
+
 ## Permission-matrix approach
 
 These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization
@@ -177,6 +195,12 @@ describes the route declarations and the 401/403/404 rule.
   so they still prove `permission_denied`), and `METHOD path reauth:none`
   expects `403 reauth_required`. The owning issue tests a conditional guard's
   two branches itself.
+- **Rate limits (M2-09):** a route with `rate_limit(...)` lists the same codes
+  in `rate_limit = [...]` (order ignored) and documents `429`; every unsafe
+  `public()` route declares a policy or has `rate_limit_exempt = "<reason>"`;
+  every policy is applied by a route or listed in `PENDING_POLICIES`
+  (`app/core/ratelimit.py`), never both. Static check only: the runtime matrix
+  sends no rate-limit cases (integration tests cover the behaviour).
 - Unit tests of a route declaration use a test-only app and override
   `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the

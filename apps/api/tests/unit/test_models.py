@@ -40,8 +40,8 @@ def test_base_metadata_uses_the_naming_convention():
 
 def test_app_metadata_holds_only_the_registered_domain_tables():
     # Domain tables arrive with their own migrations (C9); the first module is
-    # identity (M2-02, auth_sessions M2-05); audit_events is shared
-    # infrastructure (M2-04).
+    # identity (M2-02, auth_sessions M2-05); audit_events (M2-04) and
+    # rate_limit_counters (M2-09) are shared infrastructure.
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
@@ -52,6 +52,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "user_roles",
         "user_delegations",
         "auth_sessions",
+        "rate_limit_counters",
     }
 
 

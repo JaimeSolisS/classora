@@ -9,6 +9,7 @@ Application code gets configuration only through :func:`get_settings`, which
 tests can replace with ``app.dependency_overrides[get_settings]``.
 """
 
+import ipaddress
 import re
 from functools import lru_cache
 from typing import Annotated, Literal
@@ -24,12 +25,14 @@ from pydantic import (
 )
 from pydantic_settings import (
     BaseSettings,
+    NoDecode,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
 
 AppEnv = Literal["local", "dev", "prod"]
 NonEmptyStr = Annotated[str, Field(min_length=1)]
+TrustedProxy = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
 class ConfigurationError(Exception):
@@ -73,6 +76,10 @@ class Settings(BaseSettings):
     # aborting them. Capped at 30 so Compose's stop_grace_period (40 s) never
     # kills the worker before Procrastinate's own timeout ends.
     worker_shutdown_timeout_seconds: int = Field(default=20, ge=1, le=30)
+    # Proxies whose X-Forwarded-For the API believes (ADR-0008 D15; #27):
+    # comma-separated IP addresses or CIDR networks. Empty: no proxy is
+    # trusted and the client is always the TCP peer (app.core.client_ip).
+    trusted_proxies: Annotated[tuple[TrustedProxy, ...], NoDecode] = ()
 
     @classmethod
     def settings_customise_sources(
@@ -124,6 +131,35 @@ class Settings(BaseSettings):
                 f"may be false only when APP_ENV=local (APP_ENV is {app_env!r})"
             )
         return value
+
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def _parse_trusted_proxies(cls, value: object) -> tuple[TrustedProxy, ...]:
+        # Messages never include the value.
+        if isinstance(value, str):
+            items: list[object] = [part.strip() for part in value.split(",")]
+            items = [part for part in items if part]
+        elif isinstance(value, list | tuple):
+            items = list(value)
+        else:
+            raise ValueError("must be a comma-separated list of IPs or CIDR networks")
+        networks: list[TrustedProxy] = []
+        for position, item in enumerate(items, start=1):
+            if isinstance(item, TrustedProxy):
+                network = item
+            else:
+                try:
+                    network = ipaddress.ip_network(str(item), strict=False)
+                except ValueError:
+                    raise ValueError(
+                        f"entry {position} is not an IP address or CIDR network"
+                    ) from None
+            if network.prefixlen == 0:
+                raise ValueError(
+                    f"entry {position} trusts every address (0.0.0.0/0 or ::/0)"
+                )
+            networks.append(network)
+        return tuple(networks)
 
     @field_validator("storage_secret_access_key")
     @classmethod

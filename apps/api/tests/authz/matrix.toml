@@ -37,6 +37,16 @@
 #   route requiring a bound permission (for example
 #   user.password_reset.issue) must carry the marker.
 #
+# Rate limits (#27, ADR-0008 D15; policies in apps/api/app/core/ratelimit.py):
+#   rate_limit = ["<policy>", ...]  the codes of the route's rate_limit(...)
+#                                   marker (order ignored); must match it, and
+#                                   the route passes RATE_LIMIT_RESPONSES (429).
+#   rate_limit_exempt = "<reason>"  why an unsafe public route has no limit.
+#   Every POST/PUT/PATCH/DELETE public route needs one of the two (never
+#   both). A policy that no route applies must be listed in PENDING_POLICIES
+#   (app/core/ratelimit.py); the issue that applies it removes it there. The
+#   runtime check sends no rate-limit cases (integration tests cover them).
+#
 # The runtime check signs every role in for real (POST /api/v1/auth/login, a
 # fresh session per request); anonymous sends no cookie.
 #
@@ -63,6 +73,7 @@ access = "public"
 reason = "Signing in needs no session; CSRF for login is the Origin check plus SameSite (#24)"
 # An empty body gets 422: a well-formed wrong login would get 401 invalid_credentials.
 json = {}
+rate_limit = ["login.ip", "login.username"]
 
 [[route]]
 method = "POST"
@@ -80,6 +91,7 @@ path = "/api/v1/auth/reauthenticate"
 access = "authenticated"
 # An empty body gets 422: a wrong password would get 403 reauth_failed.
 json = {}
+rate_limit = ["reauth.user"]
 
 [[route]]
 method = "POST"
@@ -87,6 +99,7 @@ path = "/api/v1/dev/demo-jobs"
 access = "public"
 reason = "Local/DEV-only demo job route; never mounted outside local or dev"
 json = { outcome = "succeed" }
+rate_limit_exempt = "Local/DEV only; takes no credentials or tokens"
 
 [[route]]
 method = "GET"

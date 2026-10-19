@@ -63,6 +63,8 @@ export interface paths {
          *     Every login issues a new session; a live session on the request's cookie
          *     is revoked. Any failure is the same ``401 invalid_credentials``. The body
          *     carries the new session's ``csrf_token``. Needs the app's ``Origin``.
+         *     Too many attempts from one IP or for one username: ``429 rate_limited``
+         *     with ``Retry-After``, whether or not the account exists.
          */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
@@ -131,7 +133,10 @@ export interface paths {
          *     minutes from now (activity does not extend it; a later reauthentication
          *     restarts it). A wrong password is ``403 reauth_failed``; the session stays
          *     signed in and its window is unchanged. Needs the app's ``Origin`` and the
-         *     session's ``X-CSRF-Token``.
+         *     session's ``X-CSRF-Token``. After 5 wrong passwords for the user in a
+         *     15-minute window, further attempts get ``429 rate_limited`` with
+         *     ``Retry-After``, without a password check; the session and its window are
+         *     unchanged.
          */
         post: operations["reauthenticate_api_v1_auth_reauthenticate_post"];
         delete?: never;
@@ -434,6 +439,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
         };
     };
     logout_api_v1_auth_logout_post: {
@@ -544,6 +560,17 @@ export interface operations {
             /** @description Validation Error */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
