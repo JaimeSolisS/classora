@@ -1,4 +1,4 @@
-"""Helpers for the user administration tests (#31).
+"""Helpers for the user administration tests (#31, #170).
 
 Real logins through the real app (``auth_support.auth_client``); every
 request sends its cookie, CSRF token and ``Origin`` by hand, so the client's
@@ -63,6 +63,61 @@ def state_action(
         json={"version": version},
         headers=signed_headers(cookie),
     )
+
+
+def put_roles(
+    client: TestClient,
+    cookie: SetCookie,
+    user_id: Any,
+    roles: Any,
+    version: Any,
+) -> Response:
+    """``PUT /users/{id}/roles`` with ``{"roles": roles, "version": version}``."""
+    client.cookies.clear()
+    return client.put(
+        user_path(user_id, "roles"),
+        json={"roles": roles, "version": version},
+        headers=signed_headers(cookie),
+    )
+
+
+def put_delegations(
+    client: TestClient,
+    cookie: SetCookie,
+    user_id: Any,
+    permissions: Any,
+    version: Any,
+) -> Response:
+    """``PUT /users/{id}/delegations`` with ``{"permissions": …, "version": …}``."""
+    client.cookies.clear()
+    return client.put(
+        user_path(user_id, "delegations"),
+        json={"permissions": permissions, "version": version},
+        headers=signed_headers(cookie),
+    )
+
+
+def roles_of(url: str, user_id: Any) -> list[str]:
+    """The user's role codes, sorted."""
+    rows = run_sql(
+        url,
+        "SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id"
+        " WHERE ur.user_id = :id ORDER BY r.code",
+        {"id": user_id},
+    )
+    return [row.code for row in rows]
+
+
+def delegations_of(url: str, user_id: Any) -> list[str]:
+    """The user's delegated permission codes, sorted."""
+    rows = run_sql(
+        url,
+        "SELECT p.code FROM user_delegations d"
+        " JOIN permissions p ON p.id = d.permission_id"
+        " WHERE d.user_id = :id ORDER BY p.code",
+        {"id": user_id},
+    )
+    return [row.code for row in rows]
 
 
 def version_of(url: str, user_id: Any) -> int:

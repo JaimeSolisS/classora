@@ -430,9 +430,12 @@ async def remove_user_role(
 
     Removing a role the user does not have is a no-op that returns ``False``.
     The row is deleted as an ORM instance, so it is audited (``user_roles``
-    ``delete``). The same errors as :func:`add_user_role`, plus
-    :class:`LastActiveOwnerError` when ``role`` is ``owner``, the user is
-    ``active`` and no other active Owner exists (the guard).
+    ``delete``). Removing ``administrator`` also deletes every delegation of
+    the user, one ORM delete each (audited ``user_delegations`` ``delete``),
+    so none is left behind (#170 B1). The same errors as
+    :func:`add_user_role`, plus :class:`LastActiveOwnerError` when ``role`` is
+    ``owner``, the user is ``active`` and no other active Owner exists (the
+    guard).
     """
     role_id = await _role_id(session, role)
     user = await _get_user(session, user_id)
@@ -442,6 +445,13 @@ async def remove_user_role(
     if role == OWNER and user.state == ACTIVE:
         await _ensure_another_active_owner(session, user_id)
     await session.delete(user_role)
+    if role == ADMINISTRATOR:
+        for delegation in await session.scalars(
+            select(UserDelegation)
+            .where(UserDelegation.user_id == user_id)
+            .order_by(UserDelegation.id)
+        ):
+            await session.delete(delegation)
     await session.flush()
     await revoke_user_sessions(session, user_id=user_id, reason="role_removed")
     return True
@@ -470,17 +480,26 @@ async def _check_delegation(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
     permission: str,
+    grant: bool,
 ) -> uuid.UUID:
-    """Apply the delegation rules; return the permission's id."""
+    """Apply the delegation rules; return the permission's id.
+
+    Both directions: the actor holds ``user.delegation.manage``, the
+    permission is delegable and the target exists. A grant also needs a
+    non-archived Administrator; a revocation does not (#170 B2), so the
+    delegations of an archived or former Administrator can be cleaned up.
+    """
     if USER_DELEGATION_MANAGE not in await effective_permissions(session, actor_id):
         raise DelegationForbiddenError()
     if permission not in DELEGABLE_PERMISSIONS:
         raise PermissionNotDelegableError()
     state = await _user_state(session, user_id)
-    if (
-        state is None
-        or state == ARCHIVED
-        or ADMINISTRATOR not in await _user_roles(session, user_id)
+    if state is None or (
+        grant
+        and (
+            state == ARCHIVED
+            or ADMINISTRATOR not in await _user_roles(session, user_id)
+        )
     ):
         raise DelegationTargetInvalidError()
     permission_id = await session.scalar(
@@ -490,6 +509,10 @@ async def _check_delegation(
         # The catalog lists it, but the reference seeds have not run.
         raise RuntimeError("Permissions are not seeded: run `make seed` first.")
     return permission_id
+
+
+DELEGATION_UNIQUE_CONSTRAINT: Final = "uq_user_delegations_user_id"
+"""The unique constraint on ``(user_id, permission_id)`` (migration 0003)."""
 
 
 async def grant_delegation(
@@ -509,13 +532,14 @@ async def grant_delegation(
     reauthentication (#31).
     """
     permission_id = await _check_delegation(
-        session, actor_id=actor_id, user_id=user_id, permission=permission
+        session, actor_id=actor_id, user_id=user_id, permission=permission, grant=True
     )
     if await _delegation(session, user_id, permission_id) is not None:
         return
     try:
         # A savepoint, so a concurrent grant of the same delegation (unique
         # constraint) leaves the caller's transaction usable: still a no-op.
+        # Any other integrity error (for example a foreign key) propagates.
         async with session.begin_nested():
             session.add(
                 UserDelegation(
@@ -524,8 +548,9 @@ async def grant_delegation(
                     granted_by_user_id=actor_id,
                 )
             )
-    except IntegrityError:
-        return
+    except IntegrityError as exc:
+        if DELEGATION_UNIQUE_CONSTRAINT not in str(exc.orig):
+            raise
 
 
 async def _delegation(
@@ -547,13 +572,15 @@ async def revoke_delegation(
     user_id: uuid.UUID,
     permission: str,
 ) -> None:
-    """Remove a delegation (same rules as :func:`grant_delegation`).
+    """Remove a delegation: the actor and catalog rules of
+    :func:`grant_delegation`, but any existing user is a valid target (#170
+    B2: an archived or former Administrator's delegations can be removed).
 
     Revoking a delegation that does not exist is a no-op. The row is deleted
     through the ORM, so it is audited (``delete`` on ``user_delegations``).
     """
     permission_id = await _check_delegation(
-        session, actor_id=actor_id, user_id=user_id, permission=permission
+        session, actor_id=actor_id, user_id=user_id, permission=permission, grant=False
     )
     delegation = await _delegation(session, user_id, permission_id)
     if delegation is not None:

@@ -7,6 +7,10 @@
 - ``POST …/{user_id}/suspend`` and ``POST …/{user_id}/archive``:
   ``require("user.manage")`` plus
   ``require_recent_auth("user.suspend_or_archive")`` (ADR-0007 D10).
+- ``PUT …/{user_id}/roles`` (#170): ``require("user.role.assign")`` plus
+  ``require_recent_auth("user.roles.change")``.
+- ``PUT …/{user_id}/delegations`` (#170): ``require("user.delegation.manage")``
+  (Owners only) plus ``require_recent_auth("user.delegations.change")``.
 
 Check order of the state routes (#26 C6): ``401`` → ``csrf_failed`` →
 ``permission_denied`` → ``reauth_required`` (suspend, archive) → ``422`` →
@@ -26,11 +30,18 @@ from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import user_admin
-from app.modules.identity.permissions import USER_MANAGE, USER_VIEW
+from app.modules.identity.permissions import (
+    USER_DELEGATION_MANAGE,
+    USER_MANAGE,
+    USER_ROLE_ASSIGN,
+    USER_VIEW,
+)
 from app.modules.identity.schemas import (
     RoleCode,
+    UserDelegationsUpdate,
     UserDetail,
     UserListItem,
+    UserRolesUpdate,
     UserState,
     UserStateChange,
     UserUpdate,
@@ -39,6 +50,8 @@ from app.modules.identity.schemas import (
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 SUSPEND_OR_ARCHIVE = "user.suspend_or_archive"
+ROLES_CHANGE = "user.roles.change"
+DELEGATIONS_CHANGE = "user.delegations.change"
 
 NOT_FOUND = problem_response_doc("No such user (not_found).")
 VERSION_CONFLICT = (
@@ -201,5 +214,89 @@ async def reactivate_user(
         principal=principal,
         user_id=user_id,
         action="reactivate",
+        version=body.version,
+    )
+
+
+@router.put(
+    "/{user_id}/roles",
+    dependencies=[require_recent_auth(ROLES_CHANGE)],
+    responses={
+        **REAUTH_RESPONSES,
+        403: problem_response_doc(
+            f"{REAUTH_RESPONSES[403]['description']} Also: the caller may not"
+            " manage this user, or may not assign or remove one of the roles"
+            " added or removed (permission_denied)."
+        ),
+        404: NOT_FOUND,
+        409: problem_response_doc(
+            f"{VERSION_CONFLICT} Or the change removes owner from the only"
+            " active Owner (last_active_owner); nothing changes."
+        ),
+        422: problem_response_doc(
+            "The body is not valid: no role, more than 7, a repeated or"
+            " unknown role, or a missing version (validation_error)."
+        ),
+    },
+)
+async def update_user_roles(
+    principal: Annotated[Principal, require(USER_ROLE_ASSIGN)],
+    user_id: uuid.UUID,
+    body: UserRolesUpdate,
+    uow: UnitOfWorkDep,
+) -> UserDetail:
+    """Replace the user's roles with ``roles`` (at least one). Owners assign
+    every role; Administrators every role except Administrator (only with the
+    ``user.admin_role.assign`` delegation) and Owner. Removing a role needs
+    the same authority as adding it. Any change ends every session of the
+    user, also the caller's own when they change their own roles (the
+    response is still ``200``). Removing Administrator also removes the
+    user's delegated permissions. The same set changes nothing. Needs a
+    password reauthentication in the last 5 minutes."""
+    return await user_admin.update_roles(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        roles=body.roles,
+        version=body.version,
+    )
+
+
+@router.put(
+    "/{user_id}/delegations",
+    dependencies=[require_recent_auth(DELEGATIONS_CHANGE)],
+    responses={
+        **REAUTH_RESPONSES,
+        403: problem_response_doc(
+            f"{REAUTH_RESPONSES[403]['description']} Also: only an active Owner"
+            " delegates (delegation_forbidden)."
+        ),
+        404: NOT_FOUND,
+        409: problem_response_doc(VERSION_CONFLICT),
+        422: problem_response_doc(
+            "The body is not valid: more than 4 codes, a repeated code, a"
+            " permission that can't be delegated, or a missing version"
+            " (validation_error). Or a permission is added for a user who"
+            " isn't an Administrator, or is archived"
+            " (delegation_target_invalid)."
+        ),
+    },
+)
+async def update_user_delegations(
+    principal: Annotated[Principal, require(USER_DELEGATION_MANAGE)],
+    user_id: uuid.UUID,
+    body: UserDelegationsUpdate,
+    uow: UnitOfWorkDep,
+) -> UserDetail:
+    """Replace an Administrator's delegated permissions with ``permissions``
+    (Owners only). Granting needs an Administrator who isn't archived;
+    removing works for any user. The Administrator stays signed in and their
+    next request uses the new permissions. The same set changes nothing.
+    Needs a password reauthentication in the last 5 minutes."""
+    return await user_admin.update_delegations(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        permissions=body.permissions,
         version=body.version,
     )

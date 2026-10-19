@@ -542,6 +542,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update User Roles
+         * @description Replace the user's roles with ``roles`` (at least one). Owners assign
+         *     every role; Administrators every role except Administrator (only with the
+         *     ``user.admin_role.assign`` delegation) and Owner. Removing a role needs
+         *     the same authority as adding it. Any change ends every session of the
+         *     user, also the caller's own when they change their own roles (the
+         *     response is still ``200``). Removing Administrator also removes the
+         *     user's delegated permissions. The same set changes nothing. Needs a
+         *     password reauthentication in the last 5 minutes.
+         */
+        put: operations["update_user_roles_api_v1_users__user_id__roles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/delegations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update User Delegations
+         * @description Replace an Administrator's delegated permissions with ``permissions``
+         *     (Owners only). Granting needs an Administrator who isn't archived;
+         *     removing works for any user. The Administrator stays signed in and their
+         *     next request uses the new permissions. The same set changes nothing.
+         *     Needs a password reauthentication in the last 5 minutes.
+         */
+        put: operations["update_user_delegations_api_v1_users__user_id__delegations_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-events": {
         parameters: {
             query?: never;
@@ -1046,6 +1097,28 @@ export interface components {
             reactivate: boolean;
             /** Reset Password */
             reset_password: boolean;
+            /**
+             * Assignable Roles
+             * @description Roles the caller may add to and remove from this user, in the catalog order (empty: the roles are read-only).
+             */
+            assignable_roles: components["schemas"]["RoleCode"][];
+            /**
+             * Manage Delegations
+             * @description The caller may grant and revoke this user's delegated permissions (an Owner, and the user holds administrator).
+             */
+            manage_delegations: boolean;
+        };
+        /**
+         * UserDelegationsUpdate
+         * @description The Administrator's complete set of delegated permissions (``PUT
+         *     /api/v1/users/{user_id}/delegations``) and the version the caller
+         *     loaded.
+         */
+        UserDelegationsUpdate: {
+            /** Permissions */
+            permissions: components["schemas"]["DelegablePermissionCode"][];
+            /** Version */
+            version: number;
         };
         /**
          * UserDetail
@@ -1088,7 +1161,7 @@ export interface components {
             updated_at: string;
             /**
              * Delegations
-             * @description Delegated permission codes, sorted (read-only here).
+             * @description Delegated permission codes, sorted (changed with PUT /api/v1/users/{user_id}/delegations).
              */
             delegations: components["schemas"]["DelegablePermissionCode"][];
             /**
@@ -1124,6 +1197,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * UserRolesUpdate
+         * @description The user's complete set of roles (``PUT /api/v1/users/{user_id}/roles``)
+         *     and the version the caller loaded. At least one role: a roleless account
+         *     is only a registration request (#169).
+         */
+        UserRolesUpdate: {
+            /** Roles */
+            roles: components["schemas"]["RoleCode"][];
+            /** Version */
+            version: number;
         };
         /** @enum {string} */
         UserState: "pending" | "active" | "suspended" | "archived";
@@ -2564,6 +2649,148 @@ export interface operations {
                 };
             };
             /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the user cannot move to this state from their current one (user_state_transition_invalid), or this is the only active Owner (last_active_owner). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_user_roles_api_v1_users__user_id__roles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRolesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: the caller may not manage this user, or may not assign or remove one of the roles added or removed (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. Or the change removes owner from the only active Owner (last_active_owner); nothing changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_user_delegations_api_v1_users__user_id__delegations_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserDelegationsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); or the session needs a recent password reauthentication (reauth_required). Also: only an active Owner delegates (delegation_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The user changed since it was loaded (version_conflict); reload and retry. */
             409: {
                 headers: {
                     [name: string]: unknown;

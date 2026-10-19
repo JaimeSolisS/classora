@@ -167,8 +167,8 @@ def may_manage_user(
     target_roles: Iterable[str],
 ) -> bool:
     """Whether the actor may manage the target's account (#31; ADR-0007 D4 as
-    amended by #31): edit the profile, suspend, archive, reactivate (and, in
-    #170, change roles).
+    amended by #31): edit the profile, suspend, archive, reactivate and change
+    roles (#170).
 
     Only for a holder of ``user.manage``. Then true when the actor **is** the
     target (their own profile; the routes refuse self state changes), or when
@@ -216,6 +216,43 @@ class UserActions:
     archive: bool
     reactivate: bool
     reset_password: bool
+    assignable_roles: tuple[str, ...]
+    """Roles the caller may add **and** remove on this target, in
+    :data:`ROLE_CODES` order (#170 D1)."""
+    manage_delegations: bool
+    """The caller may grant or revoke this target's delegations (#170 D1)."""
+
+
+def assignable_roles(
+    actor_permissions: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> tuple[str, ...]:
+    """The roles the actor may add to or remove from the target (#170 A2, D1):
+    none unless :func:`may_manage_user`; otherwise every role for which
+    :func:`may_assign_role` holds, in :data:`ROLE_CODES` order."""
+    if not may_manage_user(
+        actor_permissions,
+        actor_id=actor_id,
+        target_id=target_id,
+        target_roles=target_roles,
+    ):
+        return ()
+    return tuple(r for r in ROLE_CODES if may_assign_role(actor_permissions, r))
+
+
+def may_manage_delegations(
+    actor_permissions: Collection[str], *, target_roles: Iterable[str]
+) -> bool:
+    """Whether the delegations section is editable (#170 D1): the actor holds
+    ``user.delegation.manage`` (Owners only) and the target holds
+    ``administrator``. The route also lets an Owner revoke from any target
+    (#170 B2) and refuses grants to an archived Administrator."""
+    return USER_DELEGATION_MANAGE in actor_permissions and ADMINISTRATOR in set(
+        target_roles
+    )
 
 
 def allowed_user_actions(
@@ -238,6 +275,8 @@ def allowed_user_actions(
       :func:`may_manage_user` and are false for the caller's own account.
     - ``reset_password``: ``user.password_reset.issue``, an ``active`` target
       and :func:`may_reset_password_of` (#30 C2).
+    - ``assignable_roles``: :func:`assignable_roles`; ``manage_delegations``:
+      :func:`may_manage_delegations` (#170 D1).
 
     The last-active-Owner guard is not considered: the server answers ``409
     last_active_owner``.
@@ -265,6 +304,15 @@ def allowed_user_actions(
             actor_id=actor_id,
             target_id=target_id,
             target_roles=target_roles,
+        ),
+        assignable_roles=assignable_roles(
+            actor_permissions,
+            actor_id=actor_id,
+            target_id=target_id,
+            target_roles=target_roles,
+        ),
+        manage_delegations=may_manage_delegations(
+            actor_permissions, target_roles=target_roles
         ),
     )
 

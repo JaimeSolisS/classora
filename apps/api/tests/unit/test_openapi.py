@@ -70,6 +70,8 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/users/{user_id}/suspend",
         "/api/v1/users/{user_id}/archive",
         "/api/v1/users/{user_id}/reactivate",
+        "/api/v1/users/{user_id}/roles",
+        "/api/v1/users/{user_id}/delegations",
     }
 
 
