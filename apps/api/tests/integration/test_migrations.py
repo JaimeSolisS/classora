@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0014"
+HEAD = "0015"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -82,6 +82,7 @@ ACCOUNT_TOKEN_TABLES = ["account_tokens"]
 REGISTRATION_TABLES = ["registration_requests"]
 CATALOG_TABLES = ["education_levels", "subjects"]
 FAMILY_TABLES = ["student_emergency_contacts", "students"]
+GUARDIAN_TABLES = ["guardians", "student_guardians"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -151,6 +152,9 @@ def test_history_is_linear_with_one_head():
     families = script.get_revision("0014")
     assert families.down_revision == "0013"
     assert Path(families.path).name == "0014_families_students.py"
+    guardians = script.get_revision("0015")
+    assert guardians.down_revision == "0014"
+    assert Path(guardians.path).name == "0015_families_guardians.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -183,6 +187,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *FAMILY_TABLES,
+            *GUARDIAN_TABLES,
             *IDENTITY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
@@ -1186,4 +1191,123 @@ def test_student_emergency_contacts_columns_constraints_and_indexes(
         "pk_student_emergency_contacts",
         "uq_student_emergency_contacts_student_id_position",
         "ix_student_emergency_contacts_student_id",
+    }
+
+
+# --- 0015: guardian profiles and student links (#34 A) ------------------------------
+
+
+def test_0015_adds_exactly_the_guardian_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0014")
+    before = public_tables(fresh_database_url)
+    extensions = [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)]
+    command.upgrade(config, "0015")
+
+    assert public_tables(fresh_database_url) - before == set(GUARDIAN_TABLES)
+    # The extensions and f_unaccent are 0014's; this revision doesn't touch them.
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+
+    command.downgrade(config, "0014")
+
+    assert version_nums(fresh_database_url) == ["0014"]
+    assert public_tables(fresh_database_url) == before
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+    assert len(run_sql(fresh_database_url, F_UNACCENT)) == 1
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_guardians_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "guardians") == {
+        **STANDARD_COLUMNS,
+        "given_names": ("character varying", "NO", 100, None),
+        "family_names": ("character varying", "NO", 100, None),
+        "email": ("character varying", "YES", 254, None),
+        "phone": ("character varying", "YES", 32, None),
+        "user_id": ("uuid", "YES", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    constraints = _constraints(fresh_database_url, "guardians")
+    assert set(constraints) == {
+        "pk_guardians",
+        "fk_guardians_user_id_users",
+        "uq_guardians_user_id",
+        "ck_guardians_given_names_trimmed",
+        "ck_guardians_given_names_not_blank",
+        "ck_guardians_family_names_trimmed",
+        "ck_guardians_family_names_not_blank",
+        "ck_guardians_email_format",
+        "ck_guardians_phone_format",
+    }
+    assert "ON DELETE RESTRICT" in constraints["fk_guardians_user_id_users"]
+    assert constraints["uq_guardians_user_id"] == "UNIQUE (user_id)"
+    # The #31 patterns, the same as the students' CHECKs.
+    students = _constraints(fresh_database_url, "students")
+    for check in ("email_format", "phone_format", "given_names_not_blank"):
+        assert constraints[f"ck_guardians_{check}"] == students[f"ck_students_{check}"]
+    indexes = _indexes(fresh_database_url, "guardians")
+    assert set(indexes) == {
+        "pk_guardians",
+        "uq_guardians_user_id",
+        "ix_guardians_search_name_trgm",
+    }
+    search = indexes["ix_guardians_search_name_trgm"]
+    assert "USING gin" in search
+    assert "gin_trgm_ops" in search
+    # The same expression as the students' index.
+    expression = search.split("USING gin")[1]
+    assert expression == indexes_students(fresh_database_url).split("USING gin")[1]
+
+
+def indexes_students(dsn: str) -> str:
+    return _indexes(dsn, "students")["ix_students_search_name_trgm"]
+
+
+def test_student_guardians_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "student_guardians") == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "student_id": ("uuid", "NO", None, None),
+        "guardian_id": ("uuid", "NO", None, None),
+        "relationship": ("text", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "student_guardians")
+    assert set(constraints) == {
+        "pk_student_guardians",
+        "fk_student_guardians_student_id_students",
+        "fk_student_guardians_guardian_id_guardians",
+        "uq_student_guardians_student_guardian",
+        "ck_student_guardians_relationship_valid",
+    }
+    for fk in (
+        "fk_student_guardians_student_id_students",
+        "fk_student_guardians_guardian_id_guardians",
+    ):
+        assert "ON DELETE RESTRICT" in constraints[fk]
+    assert constraints["uq_student_guardians_student_guardian"] == (
+        "UNIQUE (student_id, guardian_id)"
+    )
+    for code in (
+        "mother",
+        "father",
+        "grandparent",
+        "stepparent",
+        "sibling",
+        "other_relative",
+        "legal_guardian",
+        "other",
+    ):
+        assert f"'{code}'" in constraints["ck_student_guardians_relationship_valid"]
+    assert set(_indexes(fresh_database_url, "student_guardians")) == {
+        "pk_student_guardians",
+        "uq_student_guardians_student_guardian",
+        "ix_student_guardians_guardian_id",
     }

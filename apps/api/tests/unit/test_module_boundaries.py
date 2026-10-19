@@ -116,9 +116,10 @@ def test_the_real_tree_is_scanned():
     ]
 
 
-def test_families_imports_only_core_and_the_catalog_public_api():
-    # #33 H3: families uses app.core, its own files and catalog.service /
-    # catalog.schemas only; catalog imports nothing from families.
+def test_families_imports_only_core_and_the_catalog_and_identity_public_api():
+    # #33 H3, #34 H3: families uses app.core, its own files, catalog.service /
+    # catalog.schemas and identity.service / identity.schemas only; neither
+    # catalog nor identity imports anything from families.
     def targets(module: str) -> set[str]:
         found: set[str] = set()
         for path in (API_ROOT / "app" / "modules" / module).rglob("*.py"):
@@ -134,11 +135,15 @@ def test_families_imports_only_core_and_the_catalog_public_api():
         "app.modules.families.",
         "app.modules.catalog.service",
         "app.modules.catalog.schemas",
+        "app.modules.identity.service",
+        "app.modules.identity.schemas",
     )
     families = targets("families")
     assert "app.modules.catalog.service" in families  # the scan found imports
+    assert "app.modules.identity.service" in families
     assert not {t for t in families if not t.startswith(allowed)}
     assert not {t for t in targets("catalog") if "families" in t}
+    assert not {t for t in targets("identity") if "families" in t}
 
 
 # --- The checker on a synthetic tree (B5) ----------------------------------------

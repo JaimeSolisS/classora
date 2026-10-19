@@ -16,7 +16,12 @@ import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
 from app.modules.catalog.models import EducationLevel, Subject
-from app.modules.families.models import Student, StudentEmergencyContact
+from app.modules.families.models import (
+    Guardian,
+    Student,
+    StudentEmergencyContact,
+    StudentGuardian,
+)
 from app.modules.identity.models import (
     RegistrationRequest,
     User,
@@ -53,9 +58,11 @@ def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
         EducationLevel,
+        Guardian,
         RegistrationRequest,
         Student,
         StudentEmergencyContact,
+        StudentGuardian,
         Subject,
         User,
         UserDelegation,
@@ -65,8 +72,16 @@ def test_the_guard_scans_the_real_audited_models():
     assert User.__audit_exclude__ == {"password_hash"}
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
     # Student profiles (#33 A5): no sensitive column either; personal fields
-    # are audited unmasked (spec §9 prior and new values).
-    for unmasked in (EducationLevel, Subject, Student, StudentEmergencyContact):
+    # are audited unmasked (spec §9 prior and new values). Guardian profiles
+    # and links (#34 A5): the same.
+    for unmasked in (
+        EducationLevel,
+        Subject,
+        Student,
+        StudentEmergencyContact,
+        Guardian,
+        StudentGuardian,
+    ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()
     assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(

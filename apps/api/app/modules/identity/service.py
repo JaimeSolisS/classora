@@ -7,6 +7,9 @@
   :func:`resolve_permissions` (pure), :func:`may_assign_role`, the role codes
   and :data:`STAFF_ROLES` (D4; ``permissions.py``).
 - Delegation: :func:`grant_delegation` and :func:`revoke_delegation`.
+- Account references (#34 B1): :func:`get_account_reference` and
+  :func:`get_account_references` (``schemas.AccountReference``: id, username,
+  display name, state and roles; never a hash or contact data).
 - Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
   of an active user) and :func:`resolve_session_principal`, the
   :data:`~app.core.authz.PrincipalResolver` that ``build_app`` registers
@@ -34,10 +37,11 @@ here deletes a user: archived users keep their history (spec §2, §16).
 import re
 import uuid
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Final, Literal
 
 from fastapi import Request
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,6 +97,7 @@ from app.modules.identity.permissions import (
     may_assign_role,
     resolve_permissions,
 )
+from app.modules.identity.schemas import AccountReference
 
 __all__ = [
     "ACTIVE",
@@ -110,10 +115,13 @@ __all__ = [
     "PasswordTooShortError",
     "PermissionNotDelegableError",
     "UnknownRoleError",
+    "AccountReference",
     "UsernameInvalidError",
     "add_user_role",
     "change_user_state",
     "effective_permissions",
+    "get_account_reference",
+    "get_account_references",
     "grant_delegation",
     "hash_password",
     "load_principal",
@@ -214,6 +222,44 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         roles=frozenset(await _user_roles(session, user_id)),
         permissions=await effective_permissions(session, user_id),
     )
+
+
+async def get_account_references(
+    session: AsyncSession, user_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, AccountReference]:
+    """The :class:`AccountReference` of each existing user in ``user_ids``,
+    by id, in one statement (none when ``user_ids`` is empty). Unknown ids are
+    left out."""
+    ids = set(user_ids)
+    if not ids:
+        return {}
+    role_codes = func.array_remove(
+        func.array_agg(Role.code), literal_column("NULL")
+    ).label("role_codes")
+    rows = await session.execute(
+        select(User.id, User.username, User.display_name, User.state, role_codes)
+        .outerjoin(UserRole, UserRole.user_id == User.id)
+        .outerjoin(Role, Role.id == UserRole.role_id)
+        .where(User.id.in_(ids))
+        .group_by(User.id)
+    )
+    return {
+        row.id: AccountReference(
+            id=row.id,
+            username=row.username,
+            display_name=row.display_name,
+            state=row.state,
+            roles=frozenset(row.role_codes or ()),
+        )
+        for row in rows
+    }
+
+
+async def get_account_reference(
+    session: AsyncSession, user_id: uuid.UUID
+) -> AccountReference | None:
+    """The :class:`AccountReference` of one user, or ``None`` when unknown."""
+    return (await get_account_references(session, [user_id])).get(user_id)
 
 
 async def resolve_session_principal(

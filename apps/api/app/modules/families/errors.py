@@ -49,3 +49,46 @@ class BirthdateInFutureError(AppError):
                 }
             ]
         )
+
+
+# --- Guardian profiles and links (#34 H2) ----------------------------------------
+
+
+class GuardianAccountUnavailableError(AppError):
+    """The account to link is unknown, archived or doesn't hold the
+    ``guardian`` role (#34 B2). Field error on ``["body", "user_id"]``."""
+
+    status = 422
+    code = "guardian_account_unavailable"
+    detail = "Choose an active or pending account with the guardian role."
+
+    def __init__(self, *, errors: Sequence[FieldError]) -> None:
+        super().__init__(errors=errors)
+
+
+class GuardianAccountInUseError(AppError):
+    """The account is already linked to another guardian profile."""
+
+    status = 409
+    code = "guardian_account_in_use"
+    detail = "That account is already linked to another guardian."
+
+
+class GuardianUnavailableError(AppError):
+    """The guardian to link is unknown or inactive. Field error on
+    ``["body", "guardian_id"]``."""
+
+    status = 422
+    code = "guardian_unavailable"
+    detail = "Choose an active guardian."
+
+    def __init__(self, *, errors: Sequence[FieldError]) -> None:
+        super().__init__(errors=errors)
+
+
+class GuardianAlreadyLinkedError(AppError):
+    """The guardian is already linked to this student."""
+
+    status = 409
+    code = "guardian_already_linked"
+    detail = "That guardian is already linked to this student."

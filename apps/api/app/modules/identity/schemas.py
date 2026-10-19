@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (
     BaseModel,
     BeforeValidator,
+    ConfigDict,
     Field,
     StringConstraints,
     field_validator,
@@ -440,3 +441,17 @@ class UserDelegationsUpdate(BaseModel):
     @classmethod
     def _permissions_distinct(cls, value: list[str]) -> list[str]:
         return _distinct(value)
+
+
+class AccountReference(BaseModel):
+    """What another module may know about a user account (#34 B1; ADR-0002:
+    other modules read accounts only through ``identity.service``). Never a
+    password hash, a token or the account's contact fields."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+    roles: frozenset[RoleCode] = Field(description="The account's role codes.")
