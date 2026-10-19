@@ -53,13 +53,22 @@ def user_count(dsn: str) -> int:
     return int(run_sql(dsn, "SELECT count(*) FROM users")[0][0])
 
 
+# The reference seed's education-level create events (#32 B2) are left out.
 def audit_count(dsn: str) -> int:
-    return int(run_sql(dsn, "SELECT count(*) FROM audit_events")[0][0])
+    return int(
+        run_sql(
+            dsn,
+            "SELECT count(*) FROM audit_events"
+            " WHERE record_type IS DISTINCT FROM 'education_levels'",
+        )[0][0]
+    )
 
 
 AUDIT_ROWS = (
     "SELECT action, record_type, record_id, actor_user_id, request_id, details,"
-    " changes::text AS changes FROM audit_events ORDER BY action, record_type"
+    " changes::text AS changes FROM audit_events"
+    " WHERE record_type IS DISTINCT FROM 'education_levels'"
+    " ORDER BY action, record_type"
 )
 
 

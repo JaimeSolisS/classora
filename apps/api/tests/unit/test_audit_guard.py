@@ -15,6 +15,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
+from app.modules.catalog.models import EducationLevel, Subject
 from app.modules.identity.models import (
     RegistrationRequest,
     User,
@@ -50,13 +51,19 @@ def test_every_audited_model_lists_its_sensitive_columns():
 def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
+        EducationLevel,
         RegistrationRequest,
+        Subject,
         User,
         UserDelegation,
         UserRole,
     ]
     assert AuditedThing in audited_classes(TestBase)
     assert User.__audit_exclude__ == {"password_hash"}
+    # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
+    for catalog in (EducationLevel, Subject):
+        assert catalog.__audit_exclude__ == frozenset()
+        assert catalog.__audit_mask__ == frozenset()
     assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(
         audited_table_names()
     )

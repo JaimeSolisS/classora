@@ -125,7 +125,8 @@ def test_an_administrator_reads_the_whole_history(client, seeded_url, admin):
     assert set(body) == {"items", "next_cursor"}
     # The administrator's own user and role assignment (created by the harness).
     assert [item["id"] for item in body["items"]] == stored_order(seeded_url)
-    item = body["items"][-1]
+    # The oldest events are the reference seed's education levels (#32 B2).
+    [item] = [i for i in body["items"] if i["record_type"] == "users"]
     assert set(item) == {
         "id",
         "occurred_at",

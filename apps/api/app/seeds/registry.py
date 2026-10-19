@@ -13,6 +13,15 @@ Rules for every seed:
   from those constants, never from copied literals.
 - It writes only through :func:`app.seeds.upsert.upsert_rows` (usually as an
   :class:`UpsertSeed`), never with hand-written SQL, and never commits.
+  **Second exception** (the first is the ``role_permissions`` deletes below):
+  admin-editable, audited reference data is inserted
+  once through the ORM and never updated
+  (:class:`app.seeds.education_levels.InsertOnlySeed`, first used by
+  ``catalog.education_levels``, M2-14). ``upsert_rows`` would undo an
+  administrator's rename or deactivation on the next run, and its Core insert
+  would skip the audit trail (#22); the ORM insert writes a ``create`` event
+  per row (actor ``NULL``), and a row whose key or name already exists is
+  left alone.
 - It never deletes rows. **One exception:** ``identity.role_permissions``
   (:mod:`app.seeds.role_permissions`) also deletes the pairs of the seeded
   roles that ``ROLE_PERMISSIONS`` no longer lists, so the database's role
@@ -30,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.models import Permission, Role
 from app.modules.identity.permissions import PERMISSIONS, ROLE_CODES, ROLE_PERMISSIONS
+from app.seeds.education_levels import EDUCATION_LEVELS_SEED
 from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult, upsert_rows
 
@@ -72,5 +82,7 @@ REFERENCE_SEEDS: tuple[ReferenceSeed, ...] = (
         rows=tuple({"code": code} for code in ROLE_CODES),
     ),
     RolePermissionsSeed(name="identity.role_permissions", mapping=ROLE_PERMISSIONS),
+    # Example education levels (M2-14): inserted once, never updated.
+    EDUCATION_LEVELS_SEED,
 )
 """Every reference seed, in the order they are applied."""
