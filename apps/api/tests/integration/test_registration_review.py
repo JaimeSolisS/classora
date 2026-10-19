@@ -375,8 +375,8 @@ def test_no_password_reaches_a_log(
     module_seeded_url, client, clock, owner, caplog, capsys
 ):
     caplog.set_level(logging.DEBUG)
-    approved_password = "approved-pass-3317"
-    rejected_password = "rejected-pass-5529"
+    approved_password = "approved-request-password"
+    rejected_password = "rejected-request-password"
     short_password = "short-pw-1"
     taken = unique_username()
     cookie = signed_in(client, owner.username)

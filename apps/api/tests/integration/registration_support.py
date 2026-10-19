@@ -17,7 +17,7 @@ from tests.integration.conftest import run_sql
 REGISTRATIONS = "/api/v1/auth/registrations"
 REQUESTS = "/api/v1/registration-requests"
 
-REQUEST_PASSWORD = "requester-pass-4821"
+REQUEST_PASSWORD = "requester-password-one"
 """A password that passes the policy (test-only, low entropy)."""
 
 

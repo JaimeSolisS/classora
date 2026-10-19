@@ -423,7 +423,7 @@ def test_failed_requests_write_no_event(module_seeded_url, client, clock):
 
 
 def test_the_password_is_stored_in_no_table(module_seeded_url, client, clock):
-    password = "plain-request-pass-77"
+    password = "plain-request-password"
     username = unique_username()
     assert code_of(register(client, username=username, password=password)) == ACCEPTED
 

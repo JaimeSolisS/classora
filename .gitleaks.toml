@@ -42,3 +42,15 @@ condition = "AND"
 paths = ['''^apps/api/app/modules/identity/router\.py$''']
 regexTarget = "match"
 regexes = ['''token, max_age=result\.limits\.absolute''']
+
+# A fake test password in the registration review test (M2-11b, #169, commit
+# 4be1664): `rejected_password = "rejected-pass-5529"` reads as a key. The next
+# commit uses lower-entropy values; this entry keeps the branch history
+# scannable. No secret is involved.
+[[allowlists]]
+description = "Fake test password in the registration review test (history only)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/api/tests/integration/test_registration_review\.py$''']
+regexTarget = "match"
+regexes = ['''^rejected_password = "rejected-pass-5529"$''']
