@@ -4,13 +4,30 @@ import { demoOwner } from './credentials';
 
 // Test users created through the real API (#30 M1). Budget: one login
 // (`login.ip`) and two redemption calls (`token_redemption.ip`) per user; see
-// LOGIN_ATTEMPTS_PER_RUN and TOKEN_REDEMPTIONS_PER_RUN in support/auth.ts.
+// LOGIN_ATTEMPTS_PER_RUN and TOKEN_REDEMPTIONS_PER_RUN in support/auth.ts. A
+// staff role also costs one reauthentication of the demo Owner (#170 I2; it
+// counts against `reauth.user` only when the password is wrong, never here).
 
-export type ActiveUserRole = 'tutor' | 'guardian';
+export type ActiveUserRole =
+  | 'tutor'
+  | 'guardian'
+  | 'administrator'
+  | 'academic_coordinator'
+  | 'finance_staff';
+
+/** Inviting for these roles needs a recent reauthentication (#29). */
+const STAFF_ROLES: ReadonlySet<ActiveUserRole> = new Set([
+  'administrator',
+  'academic_coordinator',
+  'finance_staff',
+]);
 
 export interface ActiveUserInput {
   username: string;
-  /** Tutor or guardian: invitations for them need no reauthentication. */
+  /**
+   * Tutor or guardian, or a staff role: the helper then reauthenticates the
+   * demo Owner in its own API context before inviting (#170 I2).
+   */
   role: ActiveUserRole;
   password: string;
   displayName?: string;
@@ -43,6 +60,14 @@ export async function createActiveUser(
     });
     expect(login.status()).toBe(200);
     const { csrf_token: csrf } = (await login.json()) as { csrf_token: string };
+
+    if (STAFF_ROLES.has(role)) {
+      const reauth = await context.post('/api/v1/auth/reauthenticate', {
+        data: { password: demoOwner.password },
+        headers: { 'X-CSRF-Token': csrf },
+      });
+      expect(reauth.status()).toBe(200);
+    }
 
     const invited = await context.post('/api/v1/invitations', {
       data: { username, display_name: displayName, role },

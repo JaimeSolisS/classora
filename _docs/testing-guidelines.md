@@ -304,16 +304,24 @@ follows these rules.
   - `e2e.suspend.tutor`: the Tutor whom the demo Owner suspends and
     reactivates in `e2e/tests/users/suspend.spec.ts` (#31). The same rules:
     created by that test in every run, no other test may use the name.
+  - `e2e.roles.tutor` and `e2e.roles.admin`: the Tutor who gets the
+    Finance staff role and the Administrator who gets the "Approve refunds"
+    delegation from the demo Owner in `e2e/tests/users/roles.spec.ts`
+    (#170). The same rules: created by that test in every run, no other test
+    may use the names.
 - **Never change `demo.owner` in a spec** (its profile, state, roles or
   password): every test shares its signed-in session (`storageState`). A test
   that needs an Owner to act signs `demo.owner` in in its own fresh context
   and changes only the users it created.
 - **`createActiveUser(playwright.request, baseURL, { username, role,
-  password })`** (`e2e/tests/support/users.ts`, #30) creates an active Tutor
-  or Parent/Guardian through the API in its own fresh API context: the demo
-  Owner signs in and invites the user (no reauthentication for these roles),
-  then the invitation is looked up and redeemed. It costs one login and two
-  redemption calls; count them in the budgets below.
+  password })`** (`e2e/tests/support/users.ts`, #30) creates an active user
+  through the API in its own fresh API context: the demo Owner signs in and
+  invites the user, then the invitation is looked up and redeemed. For a
+  staff role (`administrator`, `academic_coordinator`, `finance_staff`;
+  #170) the helper first reauthenticates the demo Owner in that same API
+  context (`POST /api/v1/auth/reauthenticate`); Tutor and Parent/Guardian
+  need no reauthentication. It costs one login and two redemption calls;
+  count them in the budgets below.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 

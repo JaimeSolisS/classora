@@ -15,6 +15,7 @@ type Common = {
     registrations: string;
   };
   roles: Record<string, string>;
+  delegations: Record<string, { label: string; description: string }>;
   auth: {
     login: {
       title: string;
@@ -77,6 +78,8 @@ type Common = {
       suspendTitle: string;
       reactivateTitle: string;
     };
+    roles: { title: string; save: string; saved: string };
+    delegations: { title: string; save: string; saved: string };
   };
   userStates: Record<'pending' | 'active' | 'suspended' | 'archived', string>;
   registrations: {
