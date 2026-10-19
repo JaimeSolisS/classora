@@ -145,10 +145,10 @@ def test_current_principal_docstring_names_the_seam():
     assert "dependency_overrides" in doc
 
 
-# --- A4: core imports no module (#22 D3 adds audit.py and uow.py) --------------------
+# --- A4: core imports no module (#22 D3 adds audit.py and uow.py; #25 clock.py) ------
 
 
-@pytest.mark.parametrize("name", ["authz.py", "audit.py", "uow.py"])
+@pytest.mark.parametrize("name", ["authz.py", "audit.py", "uow.py", "clock.py"])
 def test_core_access_and_audit_import_no_domain_module(name):
     path = API_ROOT / "app" / "core" / name
     tree = ast.parse(path.read_text(encoding="utf-8"))

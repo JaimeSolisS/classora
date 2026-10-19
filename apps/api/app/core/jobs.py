@@ -3,7 +3,9 @@
 This module is the one place that builds the Procrastinate :class:`App` and its
 connectors. Task modules expose ``register(app)``; :func:`create_job_app`
 calls them, so the API process and the ``worker`` container see the same
-tasks.
+tasks. Like ``app.core.model_registry``, it is the registry that imports the
+modules' task files (lazily, inside :func:`create_job_app`); module code never
+imports another module's ``tasks`` (ADR-0002).
 
 Rules for every job (ADR-0003, ISSUE-J1 to J4):
 
@@ -136,7 +138,8 @@ def worker_healthcheck_connector(settings: Settings) -> PsycopgConnector:
 def create_worker_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
     """SQLAlchemy engine for job code in the worker: direct URL (ADR-0003 (b)).
 
-    Built with :func:`app.core.db.create_direct_engine`. No job uses it yet.
+    Built with :func:`app.core.db.create_direct_engine`. The job disposes it
+    when it ends (first user: ``identity:purge_auth_sessions``, #25).
     """
     return create_direct_engine(async_direct_database_url(settings), **kwargs)
 
@@ -190,13 +193,16 @@ def task_parameter_types(app: App) -> dict[str, dict[str, object]]:
 def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     """A Procrastinate ``App`` on ``connector`` with every task registered.
 
-    The demo tasks (and the periodic demo) are registered only in
-    :data:`DEMO_ENVIRONMENTS`. Does not open the connector.
+    Module tasks (the hourly session purge, #25) are registered in every
+    environment. The demo tasks (and the periodic demo) are registered only
+    in :data:`DEMO_ENVIRONMENTS`. Does not open the connector.
     """
     # Imported here: task modules import this module for ids_only.
     from app.core import demo_jobs
+    from app.modules.identity import tasks as identity_tasks
 
     app = App(connector=connector)
+    identity_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

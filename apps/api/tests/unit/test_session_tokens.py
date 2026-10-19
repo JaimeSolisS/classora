@@ -107,21 +107,34 @@ def set_cookie_headers(response: Response) -> list[str]:
 
 
 @pytest.mark.parametrize(
+    ("limits", "max_age"),
+    [(sessions.STAFF_LIMITS, 43200), (sessions.EXTENDED_LIMITS, 2592000)],
+    ids=["staff", "extended"],
+)
+@pytest.mark.parametrize(
     ("secure", "expected"),
     [
-        (True, "__Host-classora_session={}; HttpOnly; Path=/; SameSite=lax; Secure"),
-        (False, "classora_session={}; HttpOnly; Path=/; SameSite=lax"),
+        (
+            True,
+            "__Host-classora_session={}; HttpOnly; Max-Age={}; Path=/; SameSite=lax;"
+            " Secure",
+        ),
+        (False, "classora_session={}; HttpOnly; Max-Age={}; Path=/; SameSite=lax"),
     ],
     ids=["secure", "local"],
 )
-def test_the_session_cookie(secure, expected):
+def test_the_session_cookie(secure, expected, limits, max_age):
     token = sessions.new_token()
     response = Response()
 
-    sessions.set_session_cookie(response, settings(secure=secure), token)
+    lifetime = limits.absolute
+    sessions.set_session_cookie(
+        response, settings(secure=secure), token, max_age=lifetime
+    )
 
+    # Max-Age is the absolute timeout (#25); no Expires, no Domain.
     assert set_cookie_headers(response) == [
-        expected.format(sessions.encode_token(token))
+        expected.format(sessions.encode_token(token), max_age)
     ]
 
 

@@ -11,6 +11,7 @@
   "permission_denied": "You don't have permission to do this.",
   "invalid_credentials": "The username or password is incorrect.",
   "csrf_failed": "We couldn't verify the request. Reload the page and try again.",
+  "session_expired": "Your session has expired. Sign in again.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

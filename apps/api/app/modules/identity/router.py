@@ -76,7 +76,9 @@ async def login(
         # Committed on its own: the 401 rolls the request's Unit of Work back.
         await auth.record_failed_login(sessionmaker, result)
         raise InvalidCredentialsError()
-    sessions.set_session_cookie(response, settings, result.token)
+    # Max-Age = the session's absolute timeout (#25), never longer.
+    lifetime = result.limits.absolute
+    sessions.set_session_cookie(response, settings, result.token, max_age=lifetime)
     return auth.session_user(result.user, result.principal, result.token)
 
 

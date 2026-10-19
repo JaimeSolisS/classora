@@ -215,6 +215,8 @@ async def test_ids_only_turns_json_strings_back_into_uuids():
 # --- D4/D5 environment gating ----------------------------------------------------
 
 DEMO_TASKS = {"demo:succeed", "demo:fail", "demo:periodic"}
+# Registered in every environment (#25).
+MODULE_TASKS = {"identity:purge_auth_sessions"}
 
 
 def app_tasks(app: App) -> set[str]:
@@ -230,19 +232,23 @@ def periodic_tasks(app: App) -> set[str]:
 def test_demo_tasks_and_periodic_demo_exist_in_local_and_dev(app_env):
     app = jobs.create_worker_job_app(settings(app_env))
 
-    assert app_tasks(app) == DEMO_TASKS
-    assert periodic_tasks(app) == {"demo:periodic"}
-    (periodic,) = app.periodic_registry.periodic_tasks.values()
+    assert app_tasks(app) == DEMO_TASKS | MODULE_TASKS
+    assert periodic_tasks(app) == {"demo:periodic"} | MODULE_TASKS
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "demo:periodic"
+    ]
     assert periodic.cron == "* * * * *"
     assert periodic.periodic_id == "demo"
     assert periodic.configure_kwargs["queueing_lock"] == "demo-periodic"
 
 
-def test_prod_registers_no_demo_task_and_schedules_nothing():
+def test_prod_registers_no_demo_task_and_schedules_only_module_tasks():
     app = jobs.create_worker_job_app(settings("prod"))
 
-    assert app_tasks(app) == set()
-    assert periodic_tasks(app) == set()
+    assert app_tasks(app) == MODULE_TASKS
+    assert periodic_tasks(app) == MODULE_TASKS
 
 
 def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():

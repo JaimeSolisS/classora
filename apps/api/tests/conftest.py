@@ -7,6 +7,8 @@ else is a collection error, so it cannot escape both ``-m`` selections.
 Every test also starts with Factory Boy and Faker reseeded to
 ``FACTORY_SEED``, so generated data never depends on test order.
 
+The ``clock`` fixture freezes ``app.core.clock.now`` for time travel (#25).
+
 Also isolates every test from the developer's shell: the variables that
 ``Settings`` reads are removed and the cached settings are cleared, so tests
 set exactly the configuration they need.
@@ -14,10 +16,13 @@ set exactly the configuration they need.
 
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from app.core import clock as app_clock
 from app.core.config import env_var_names, get_settings
 from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.factories.base import reseed
@@ -65,6 +70,56 @@ def isolated_settings_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def reseeded_factories() -> None:
     reseed(FACTORY_SEED)
+
+
+class FrozenClock:
+    """A stopped :mod:`app.core.clock` that tests move by hand (#25 A2)."""
+
+    def __init__(self, start: datetime) -> None:
+        self._now = start
+
+    def __call__(self) -> datetime:
+        return self._now
+
+    def now(self) -> datetime:
+        return self._now
+
+    def set(self, value: datetime) -> None:
+        if value.tzinfo is None:
+            raise ValueError("the clock needs a timezone-aware datetime")
+        self._now = value.astimezone(UTC)
+
+    def advance(self, delta: timedelta) -> datetime:
+        self._now += delta
+        return self._now
+
+
+CLOCK_START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+
+
+@contextmanager
+def frozen_clock(start: datetime = CLOCK_START) -> Iterator[FrozenClock]:
+    """Replace ``app.core.clock._source`` until the block ends."""
+    frozen = FrozenClock(start)
+    previous = app_clock._source
+    app_clock._source = frozen
+    try:
+        yield frozen
+    finally:
+        app_clock._source = previous
+
+
+@pytest.fixture
+def clock() -> Iterator[FrozenClock]:
+    """Freeze ``app.core.clock.now`` at :data:`CLOCK_START`.
+
+    Replaces the module attribute ``app.core.clock._source``, so code running
+    in another thread (an app inside ``TestClient``) sees the same time.
+    ``set(dt)`` and ``advance(timedelta)`` move it; the real clock is restored
+    after the test. Never ``sleep`` to make time pass.
+    """
+    with frozen_clock() as frozen:
+        yield frozen
 
 
 @pytest.fixture

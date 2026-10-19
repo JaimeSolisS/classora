@@ -10,31 +10,50 @@
 - Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
   of an active user) and :func:`resolve_session_principal`, the
   :data:`~app.core.authz.PrincipalResolver` that ``build_app`` registers
-  (session cookie -> live ``auth_sessions`` row -> :func:`load_principal`; #23).
+  (session cookie -> unrevoked ``auth_sessions`` row -> expiry check ->
+  :func:`load_principal`; #23, #25).
+- Lifecycle (#25; ADR-0007 D8): the only sanctioned ways to change a user's
+  state, roles and password: :func:`change_user_state`,
+  :func:`add_user_role`, :func:`remove_user_role` and :func:`set_password`.
+  Each revokes all of the user's sessions (:func:`revoke_user_sessions`) in
+  the caller's transaction when it changes something that must end them.
+  Callers (#29, #30, #31, #35) add authority checks, reauthentication and the
+  last-active-Owner guard.
 
-Every function runs in the caller's Unit of Work and never commits.
+Every function runs in the caller's Unit of Work and never commits. Nothing
+here deletes a user: archived users keep their history (spec §2, §16).
 """
 
 import re
 import uuid
 from collections import defaultdict
+from typing import Final, Literal
 
 from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import Principal, ResolvedSession
+from app.core import clock
+from app.core.audit import record_audit_event
+from app.core.authz import (
+    Principal,
+    RecordNotFoundError,
+    ResolvedSession,
+    SessionExpiredError,
+)
 from app.core.config import Settings
 from app.modules.identity import sessions
 from app.modules.identity.errors import (
     DelegationForbiddenError,
     DelegationTargetInvalidError,
+    InvalidUserStateTransitionError,
     PasswordEqualsUsernameError,
     PasswordPolicyError,
     PasswordTooLongError,
     PasswordTooShortError,
     PermissionNotDelegableError,
+    UnknownRoleError,
     UsernameInvalidError,
 )
 from app.modules.identity.models import (
@@ -57,9 +76,12 @@ from app.modules.identity.permissions import (
     ARCHIVED,
     DELEGABLE_PERMISSIONS,
     OWNER,
+    PENDING,
     ROLE_CODES,
     STAFF_ROLES,
+    SUSPENDED,
     USER_DELEGATION_MANAGE,
+    USER_STATES,
     may_assign_role,
     resolve_permissions,
 )
@@ -72,12 +94,16 @@ __all__ = [
     "STAFF_ROLES",
     "DelegationForbiddenError",
     "DelegationTargetInvalidError",
+    "InvalidUserStateTransitionError",
     "PasswordEqualsUsernameError",
     "PasswordPolicyError",
     "PasswordTooLongError",
     "PasswordTooShortError",
     "PermissionNotDelegableError",
+    "UnknownRoleError",
     "UsernameInvalidError",
+    "add_user_role",
+    "change_user_state",
     "effective_permissions",
     "grant_delegation",
     "hash_password",
@@ -85,9 +111,12 @@ __all__ = [
     "may_assign_role",
     "needs_rehash",
     "normalize_username",
+    "remove_user_role",
     "resolve_permissions",
     "resolve_session_principal",
     "revoke_delegation",
+    "revoke_user_sessions",
+    "set_password",
     "validate_password",
     "verify_password",
 ]
@@ -183,9 +212,18 @@ async def resolve_session_principal(
     """The principal of the request's session cookie with its raw token, or
     ``None`` (#23; the token lets core check the CSRF token, #24).
 
-    ``None`` for a missing cookie, a value that is not a valid token, an
-    unknown or revoked session, or a user who is not ``active``. Reads only
-    the current mode's cookie name. Writes nothing.
+    In this order (#25 C3):
+
+    1. ``None`` for a missing cookie, a value that is not a valid token, or an
+       unknown or revoked session;
+    2. :class:`~app.core.authz.SessionExpiredError` for an unrevoked session
+       past its idle or absolute limit (it writes nothing, so further requests
+       cannot revive it);
+    3. ``None`` for a user who is not ``active``;
+    4. otherwise the principal, after the throttled ``last_seen_at`` update
+       (:func:`sessions.touch_session`, at most once a minute).
+
+    Reads only the current mode's cookie name.
     """
     token = sessions.request_token(request, settings)
     if token is None:
@@ -193,10 +231,176 @@ async def resolve_session_principal(
     auth_session = await sessions.find_live_session(session, token)
     if auth_session is None:
         return None
+    now = clock.now()
+    if sessions.is_expired(auth_session, now):
+        raise SessionExpiredError()
     principal = await load_principal(session, auth_session.user_id)
     if principal is None:
         return None
+    await sessions.touch_session(session, auth_session, now)
     return ResolvedSession(principal=principal, session_token=token)
+
+
+# --- Lifecycle: sessions, state, roles, password (#25) -------------------------------
+
+SESSIONS_REVOKED_EVENT: Final = "identity.sessions_revoked"
+
+RevocationReason = Literal[
+    "suspended", "archived", "role_added", "role_removed", "password_changed"
+]
+
+ALLOWED_STATE_TRANSITIONS: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        (PENDING, ACTIVE),  # approval (#29)
+        (PENDING, ARCHIVED),  # rejection (#29)
+        (ACTIVE, SUSPENDED),
+        (ACTIVE, ARCHIVED),
+        (SUSPENDED, ACTIVE),  # reactivation
+        (SUSPENDED, ARCHIVED),
+        (ARCHIVED, ACTIVE),  # reactivation (#31)
+    }
+)
+"""Every allowed ``(from, to)`` state change. Nothing goes back to
+``pending``; ``pending`` and ``archived`` users cannot be suspended."""
+
+_REVOKING_STATES: Final[dict[str, RevocationReason]] = {
+    SUSPENDED: "suspended",
+    ARCHIVED: "archived",
+}
+
+
+async def revoke_user_sessions(
+    session: AsyncSession, *, user_id: uuid.UUID, reason: RevocationReason
+) -> int:
+    """Revoke every unrevoked session of ``user_id``, expired or not.
+
+    Returns the count. When it is at least 1, writes
+    ``identity.sessions_revoked`` (``record_type="users"``, ``details`` with
+    ``reason`` and ``count``); when it is 0, writes nothing. Other users'
+    sessions are untouched.
+    """
+    count = await sessions.revoke_user_sessions(session, user_id)
+    if count:
+        record_audit_event(
+            session,
+            action=SESSIONS_REVOKED_EVENT,
+            record_type=User.__tablename__,
+            record_id=user_id,
+            details={"reason": reason, "count": count},
+        )
+    return count
+
+
+async def _get_user(session: AsyncSession, user_id: uuid.UUID) -> User:
+    user = await session.get(User, user_id)
+    if user is None:
+        raise RecordNotFoundError()
+    return user
+
+
+async def change_user_state(
+    session: AsyncSession, *, user_id: uuid.UUID, new_state: str
+) -> bool:
+    """Move a user to ``new_state`` (:data:`ALLOWED_STATE_TRANSITIONS`).
+
+    The same state is a no-op that returns ``False`` and writes nothing. A
+    forbidden transition (or an unknown state) raises
+    :class:`InvalidUserStateTransitionError` and changes nothing; an unknown
+    user raises :class:`~app.core.authz.RecordNotFoundError`. Moving to
+    ``suspended`` or ``archived`` revokes every session of the user. The
+    state change is audited automatically (``users`` ``update``).
+    """
+    user = await _get_user(session, user_id)
+    if new_state not in USER_STATES:
+        raise InvalidUserStateTransitionError()
+    if user.state == new_state:
+        return False
+    if (user.state, new_state) not in ALLOWED_STATE_TRANSITIONS:
+        raise InvalidUserStateTransitionError()
+    user.state = new_state
+    await session.flush()
+    reason = _REVOKING_STATES.get(new_state)
+    if reason is not None:
+        await revoke_user_sessions(session, user_id=user_id, reason=reason)
+    return True
+
+
+async def _role_id(session: AsyncSession, role: str) -> uuid.UUID:
+    if role not in ROLE_CODES:
+        raise UnknownRoleError()
+    role_id: uuid.UUID | None = await session.scalar(
+        select(Role.id).where(Role.code == role)
+    )
+    if role_id is None:
+        # The catalog lists it, but the reference seeds have not run.
+        raise RuntimeError("Roles are not seeded: run `make seed` first.")
+    return role_id
+
+
+async def _user_role(
+    session: AsyncSession, user_id: uuid.UUID, role_id: uuid.UUID
+) -> UserRole | None:
+    user_role: UserRole | None = await session.scalar(
+        select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
+    )
+    return user_role
+
+
+async def add_user_role(
+    session: AsyncSession, *, user_id: uuid.UUID, role: str
+) -> bool:
+    """Give the user ``role`` and revoke their sessions (``role_added``).
+
+    Adding a role the user already has is a no-op that returns ``False``. An
+    unknown role code raises :class:`UnknownRoleError`; an unknown user
+    :class:`~app.core.authz.RecordNotFoundError`. No authority checks here
+    (#31). Audited automatically (``user_roles`` ``create``).
+    """
+    role_id = await _role_id(session, role)
+    await _get_user(session, user_id)
+    if await _user_role(session, user_id, role_id) is not None:
+        return False
+    session.add(UserRole(user_id=user_id, role_id=role_id))
+    await session.flush()
+    await revoke_user_sessions(session, user_id=user_id, reason="role_added")
+    return True
+
+
+async def remove_user_role(
+    session: AsyncSession, *, user_id: uuid.UUID, role: str
+) -> bool:
+    """Take ``role`` from the user and revoke their sessions (``role_removed``).
+
+    Removing a role the user does not have is a no-op that returns ``False``.
+    The row is deleted as an ORM instance, so it is audited (``user_roles``
+    ``delete``). The same errors as :func:`add_user_role`.
+    """
+    role_id = await _role_id(session, role)
+    await _get_user(session, user_id)
+    user_role = await _user_role(session, user_id, role_id)
+    if user_role is None:
+        return False
+    await session.delete(user_role)
+    await session.flush()
+    await revoke_user_sessions(session, user_id=user_id, reason="role_removed")
+    return True
+
+
+async def set_password(
+    session: AsyncSession, *, user_id: uuid.UUID, new_password: str
+) -> None:
+    """Apply the password policy, store the new hash and revoke every session
+    of the user (``password_changed``).
+
+    A policy failure raises a ``PasswordPolicyError`` subclass and changes
+    nothing. Writes no password event of its own (#30 does) and never logs or
+    audits the password (``password_hash`` is excluded from ``users`` events).
+    """
+    user = await _get_user(session, user_id)
+    validate_password(new_password, username=user.username)
+    user.password_hash = hash_password(new_password)
+    await session.flush()
+    await revoke_user_sessions(session, user_id=user_id, reason="password_changed")
 
 
 async def _check_delegation(

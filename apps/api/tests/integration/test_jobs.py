@@ -78,8 +78,14 @@ async def wait_until(
 
 
 def make_app(settings: Settings, **tasks: Any) -> App:
-    """A worker-side app with no demo tasks plus ``tasks`` (name -> task kwargs)."""
+    """A worker-side app with no demo tasks plus ``tasks`` (name -> task kwargs).
+
+    The module schedules registered in every environment (the hourly session
+    purge, #25) are dropped, so a worker started near their tick never defers
+    them into these tests.
+    """
     app = jobs.create_job_app(jobs.worker_connector(settings), app_env="prod")
+    app.periodic_registry.periodic_tasks.clear()
     for name, (func, options) in tasks.items():
         app.task(name=name, **options)(func)
     return app
