@@ -31,7 +31,7 @@ from app.core.authz import (
 from app.core.errors import PROBLEM_JSON
 from app.main import build_app
 from app.modules.identity.permissions import (
-    PAYROLL_FINALIZE,
+    SCHEDULE_OVERRIDE,
     STUDENT_VIEW,
     TUTOR,
     USER_VIEW,
@@ -41,7 +41,7 @@ from tests.unit.authz_app import build_authz_app
 
 API_ROOT = Path(__file__).resolve().parents[2]
 PERIOD = "0199a000-0000-7000-8000-0000000000aa"
-FINALIZE = f"/sample/payroll/{PERIOD}/finalize"
+OVERRIDE = f"/sample/schedule/{PERIOD}/override"
 VALID_BODY = {"note": "closing", "amount": 3}
 
 
@@ -100,14 +100,14 @@ def test_principal_holds_only_id_roles_and_permissions():
 
 
 def test_principal_repr_shows_only_the_id_and_roles():
-    p = principal(USER_VIEW, PAYROLL_FINALIZE, roles=(TUTOR,))
+    p = principal(USER_VIEW, SCHEDULE_OVERRIDE, roles=(TUTOR,))
 
     text = repr(p)
 
     assert str(p.user_id) in text
     assert "tutor" in text
     assert USER_VIEW not in text
-    assert PAYROLL_FINALIZE not in text
+    assert SCHEDULE_OVERRIDE not in text
     assert "permissions" not in text
 
 
@@ -145,10 +145,12 @@ def test_current_principal_docstring_names_the_seam():
     assert "dependency_overrides" in doc
 
 
-# --- A4: core imports no module (#22 D3 adds audit.py and uow.py; #25 clock.py) ------
+# --- A4: core imports no module (#22 audit.py, uow.py; #25 clock.py; #26 reauth.py) --
 
 
-@pytest.mark.parametrize("name", ["authz.py", "audit.py", "uow.py", "clock.py"])
+@pytest.mark.parametrize(
+    "name", ["authz.py", "audit.py", "uow.py", "clock.py", "reauth.py"]
+)
 def test_core_access_and_audit_import_no_domain_module(name):
     path = API_ROOT / "app" / "core" / name
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -194,10 +196,10 @@ def test_authenticated_treats_a_missing_principal_as_anonymous(app, client):
 
 
 def test_require_allows_holders(app, client):
-    who = principal(PAYROLL_FINALIZE)
+    who = principal(SCHEDULE_OVERRIDE)
     sign_in(app, who)
 
-    response = client.post(FINALIZE, json=VALID_BODY)
+    response = client.post(OVERRIDE, json=VALID_BODY)
 
     assert response.status_code == 200
     assert response.json() == {"period_id": PERIOD, "by": str(who.user_id)}
@@ -218,17 +220,17 @@ def test_require_in_dependencies_list(app, client):
 def test_require_denies_others_without_leaking(app, client):
     sign_in(app, principal(USER_VIEW, STUDENT_VIEW))
 
-    response = client.post(FINALIZE, json=VALID_BODY)
+    response = client.post(OVERRIDE, json=VALID_BODY)
 
     assert_problem(
         response, 403, "permission_denied", "You do not have permission to do this."
     )
-    assert PAYROLL_FINALIZE not in response.text
+    assert SCHEDULE_OVERRIDE not in response.text
     assert PERIOD not in response.text
 
 
 def test_require_answers_401_before_403(client):
-    response = client.post(FINALIZE, json=VALID_BODY)
+    response = client.post(OVERRIDE, json=VALID_BODY)
 
     assert response.status_code == 401
 
@@ -364,7 +366,7 @@ def test_ensure_permission():
 def test_response_docs_are_problem_details(app):
     assert set(AUTH_RESPONSES) == {401}
     assert set(PERMISSION_RESPONSES) == {401, 403}
-    operation = app.openapi()["paths"]["/sample/payroll/{period_id}/finalize"]["post"]
+    operation = app.openapi()["paths"]["/sample/schedule/{period_id}/override"]["post"]
     for status in ("401", "403"):
         schema = operation["responses"][status]["content"][PROBLEM_JSON]["schema"]
         assert schema == {"$ref": "#/components/schemas/ProblemDetails"}
@@ -373,12 +375,12 @@ def test_response_docs_are_problem_details(app):
 # --- B6: check order -----------------------------------------------------------------
 
 INVALID_REQUESTS = [
-    pytest.param(FINALIZE, VALID_BODY, id="valid"),
-    pytest.param(FINALIZE, {"note": 1}, id="body-fails-schema"),
-    pytest.param(FINALIZE, None, id="body-missing"),
-    pytest.param("/sample/payroll/not-a-uuid/finalize", VALID_BODY, id="bad-path"),
+    pytest.param(OVERRIDE, VALID_BODY, id="valid"),
+    pytest.param(OVERRIDE, {"note": 1}, id="body-fails-schema"),
+    pytest.param(OVERRIDE, None, id="body-missing"),
+    pytest.param("/sample/schedule/not-a-uuid/override", VALID_BODY, id="bad-path"),
     pytest.param(
-        "/sample/payroll/not-a-uuid/finalize?x=1", {"extra": True}, id="all-invalid"
+        "/sample/schedule/not-a-uuid/override?x=1", {"extra": True}, id="all-invalid"
     ),
 ]
 
@@ -403,9 +405,9 @@ def test_unpermitted_gets_403_before_validation(app, client, path, body):
 
 
 def test_permitted_caller_gets_validation_errors(app, client):
-    sign_in(app, principal(PAYROLL_FINALIZE))
+    sign_in(app, principal(SCHEDULE_OVERRIDE))
 
-    response = client.post("/sample/payroll/not-a-uuid/finalize", json={"note": 1})
+    response = client.post("/sample/schedule/not-a-uuid/override", json={"note": 1})
 
     assert response.status_code == 422
     paths = {tuple(e["path"]) for e in response.json()["errors"]}
@@ -417,7 +419,7 @@ def test_unparseable_json_is_rejected_before_authorization(client):
     # Documented exception (FastAPI 0.143.3): FastAPI parses the JSON body
     # before any dependency runs. The 422 reveals nothing about the route.
     response = client.post(
-        FINALIZE, content=b"{not json", headers={"content-type": "application/json"}
+        OVERRIDE, content=b"{not json", headers={"content-type": "application/json"}
     )
 
     assert response.status_code == 422

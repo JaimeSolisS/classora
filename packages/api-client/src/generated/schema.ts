@@ -114,6 +114,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/reauthenticate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reauthenticate
+         * @description Confirm the signed-in user's password for sensitive actions.
+         *
+         *     On success the **current** session counts as reauthenticated for 5
+         *     minutes from now (activity does not extend it; a later reauthentication
+         *     restarts it). A wrong password is ``403 reauth_failed``; the session stays
+         *     signed in and its window is unchanged. Needs the app's ``Origin`` and the
+         *     session's ``X-CSRF-Token``.
+         */
+        post: operations["reauthenticate_api_v1_auth_reauthenticate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-events": {
         parameters: {
             query?: never;
@@ -244,6 +270,28 @@ export interface components {
             detail?: string;
             /** Errors */
             errors?: components["schemas"]["FieldError"][];
+        };
+        /**
+         * ReauthenticateRequest
+         * @description The current user's password (#26). The same bounds as login.
+         */
+        ReauthenticateRequest: {
+            /** Password */
+            password: string;
+        };
+        /**
+         * ReauthenticateResponse
+         * @description The end of the session's reauthentication window (#26).
+         *
+         *     Holds no token, hash or session id.
+         */
+        ReauthenticateResponse: {
+            /**
+             * Reauthenticated Until
+             * Format: date-time
+             * @description When the 5-minute reauthentication window of this session ends (ISO 8601, UTC). Activity does not extend it.
+             */
+            reauthenticated_until: string;
         };
         /**
          * SessionUser
@@ -444,6 +492,57 @@ export interface operations {
             };
             /** @description Authentication required. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reauthenticate_api_v1_auth_reauthenticate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthenticateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReauthenticateResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The password is incorrect (reauth_failed), or a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

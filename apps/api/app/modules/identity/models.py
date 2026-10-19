@@ -145,7 +145,12 @@ class AuthSession(Model):
     ``idle_timeout_seconds`` the idle limit, both fixed at login from the
     user's role class (``sessions.session_limits``). A session is expired when
     ``now >= expires_at`` or ``now >= last_seen_at + idle_timeout_seconds``;
-    that is computed, never stored. Reauthentication (#26) adds its own column.
+    that is computed, never stored.
+
+    Reauthentication (#26; ADR-0007 D10): ``reauthenticated_at`` is the time of
+    the session's last password reauthentication, ``NULL`` until the first.
+    The 5-minute window is computed from it (``app.core.reauth``), never
+    stored. A new session (including a rotated one) starts with ``NULL``.
     """
 
     __tablename__ = "auth_sessions"
@@ -171,3 +176,7 @@ class AuthSession(Model):
     # The absolute expiry (#25).
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     idle_timeout_seconds: Mapped[int] = mapped_column(Integer)
+    # The last password reauthentication in this session (#26).
+    reauthenticated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

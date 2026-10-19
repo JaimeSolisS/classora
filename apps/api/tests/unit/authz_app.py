@@ -3,9 +3,12 @@
 Never mounted in the real app. It has:
 
 - sample routes, one per access kind, including the delegable permission
-  ``payroll.finalize`` on a route with a path parameter and a required body
+  ``schedule.override`` on a route with a path parameter and a required body
   (the check-order tests and the runtime matrix self-test use them), and
   ``PATCH``/``DELETE`` routes for the CSRF cases (#24);
+- a sensitive route (#26): the delegable, reauth-bound ``payroll.finalize``
+  with ``require_recent_auth("payroll.finalize")`` (the runtime matrix
+  self-test reauthenticates its allowed actors and sends ``reauth:none``);
 - the ``Origin`` check of the real app (an app-level dependency) and fixed
   settings whose ``app_origin`` is ``TEST_APP_ORIGIN``;
 - a fake in-memory note store with a sample record policy (the record-level
@@ -33,12 +36,14 @@ from app.core.authz import (
 from app.core.config import Settings, get_settings
 from app.core.conventions import install_conventions
 from app.core.csrf import require_trusted_origin
+from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
     GUARDIAN,
     OWNER,
     PAYROLL_FINALIZE,
     ROLE_CODES,
+    SCHEDULE_OVERRIDE,
     STUDENT_VIEW,
     TUTOR,
     USER_VIEW,
@@ -82,14 +87,14 @@ class NoteOut(BaseModel):
     id: uuid.UUID
 
 
-class FinalizeIn(BaseModel):
+class OverrideIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     note: str
     amount: int
 
 
-class FinalizeOut(BaseModel):
+class OverrideOut(BaseModel):
     period_id: uuid.UUID
     by: uuid.UUID
 
@@ -143,15 +148,26 @@ def build_authz_app() -> FastAPI:
         return []
 
     @sample.post(
-        "/payroll/{period_id}/finalize",
+        "/schedule/{period_id}/override",
         responses=PERMISSION_RESPONSES,
+    )
+    async def sample_override(
+        principal: Annotated[Principal, require(SCHEDULE_OVERRIDE)],
+        period_id: uuid.UUID,
+        body: OverrideIn,
+    ) -> OverrideOut:
+        return OverrideOut(period_id=period_id, by=principal.user_id)
+
+    @sample.post(
+        "/payroll/{period_id}/finalize",
+        responses=REAUTH_RESPONSES,
+        dependencies=[require_recent_auth(PAYROLL_FINALIZE)],
     )
     async def sample_finalize(
         principal: Annotated[Principal, require(PAYROLL_FINALIZE)],
         period_id: uuid.UUID,
-        body: FinalizeIn,
-    ) -> FinalizeOut:
-        return FinalizeOut(period_id=period_id, by=principal.user_id)
+    ) -> OverrideOut:
+        return OverrideOut(period_id=period_id, by=principal.user_id)
 
     app.include_router(sample)
     app.include_router(_notes_router())
@@ -233,13 +249,21 @@ SAMPLE_MATRIX: dict[str, Any] = {
             "access": "permission",
             "permission": PAYROLL_FINALIZE,
             "allow": [OWNER],
-            "json": {"note": "closing", "amount": 3},
+            "reauth": PAYROLL_FINALIZE,
         },
         {
             "method": "GET",
             "path": "/sample/public",
             "access": "public",
             "reason": "Sample public route",
+        },
+        {
+            "method": "POST",
+            "path": "/sample/schedule/{period_id}/override",
+            "access": "permission",
+            "permission": SCHEDULE_OVERRIDE,
+            "allow": [OWNER],
+            "json": {"note": "closing", "amount": 3},
         },
         {
             "method": "GET",

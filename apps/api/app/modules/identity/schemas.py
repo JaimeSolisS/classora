@@ -1,6 +1,7 @@
 """Identity request and response bodies (the public schemas of the module)."""
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -33,4 +34,24 @@ class SessionUser(BaseModel):
         ),
         min_length=43,
         max_length=43,
+    )
+
+
+class ReauthenticateRequest(BaseModel):
+    """The current user's password (#26). The same bounds as login."""
+
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class ReauthenticateResponse(BaseModel):
+    """The end of the session's reauthentication window (#26).
+
+    Holds no token, hash or session id.
+    """
+
+    reauthenticated_until: datetime = Field(
+        description=(
+            "When the 5-minute reauthentication window of this session ends"
+            " (ISO 8601, UTC). Activity does not extend it."
+        )
     )

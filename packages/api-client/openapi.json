@@ -188,6 +188,68 @@
         }
       }
     },
+    "/api/v1/auth/reauthenticate": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Reauthenticate",
+        "description": "Confirm the signed-in user's password for sensitive actions.\n\nOn success the **current** session counts as reauthenticated for 5\nminutes from now (activity does not extend it; a later reauthentication\nrestarts it). A wrong password is ``403 reauth_failed``; the session stays\nsigned in and its window is unchanged. Needs the app's ``Origin`` and the\nsession's ``X-CSRF-Token``.",
+        "operationId": "reauthenticate_api_v1_auth_reauthenticate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The password is incorrect (reauth_failed), or a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-events": {
       "get": {
         "tags": [
@@ -646,6 +708,38 @@
         ],
         "title": "ProblemDetails",
         "type": "object"
+      },
+      "ReauthenticateRequest": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "ReauthenticateRequest",
+        "description": "The current user's password (#26). The same bounds as login."
+      },
+      "ReauthenticateResponse": {
+        "properties": {
+          "reauthenticated_until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Reauthenticated Until",
+            "description": "When the 5-minute reauthentication window of this session ends (ISO 8601, UTC). Activity does not extend it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reauthenticated_until"
+        ],
+        "title": "ReauthenticateResponse",
+        "description": "The end of the session's reauthentication window (#26).\n\nHolds no token, hash or session id."
       },
       "SessionUser": {
         "properties": {

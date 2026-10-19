@@ -1,5 +1,5 @@
-"""Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3); each
-test uses a fresh database."""
+"""Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
+M2-08 A1, A2); each test uses a fresh database."""
 
 import asyncio
 from datetime import timedelta
@@ -60,7 +60,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0006"
+HEAD = "0007"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -117,6 +117,9 @@ def test_history_is_linear_with_one_head():
     lifecycle = script.get_revision("0006")
     assert lifecycle.down_revision == "0005"
     assert Path(lifecycle.path).name == "0006_identity_session_lifecycle.py"
+    reauth = script.get_revision("0007")
+    assert reauth.down_revision == "0006"
+    assert Path(reauth.path).name == "0007_identity_session_reauth.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -240,7 +243,7 @@ def test_downgrade_to_0005_drops_exactly_the_expiry_columns(fresh_database_url):
     columns = auth_session_columns(fresh_database_url)
     constraints = auth_session_constraints(fresh_database_url)
     tables = public_tables(fresh_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0006")
     assert auth_session_columns(fresh_database_url) - columns == {
         "expires_at",
         "idle_timeout_seconds",
@@ -288,6 +291,58 @@ def test_upgrade_to_0006_backfills_existing_sessions_with_the_staff_limits(
     assert row.last_seen_at.isoformat() == "2026-10-01T09:00:00+00:00"
 
 
+def test_downgrade_to_0006_drops_exactly_the_reauth_column(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0006")
+    columns = auth_session_columns(fresh_database_url)
+    constraints = auth_session_constraints(fresh_database_url)
+    indexes = auth_session_indexes(fresh_database_url)
+    tables = public_tables(fresh_database_url)
+    command.upgrade(config, "head")
+    assert auth_session_columns(fresh_database_url) - columns == {"reauthenticated_at"}
+    assert auth_session_constraints(fresh_database_url) == constraints
+    assert auth_session_indexes(fresh_database_url) == indexes
+
+    command.downgrade(config, "0006")
+
+    assert version_nums(fresh_database_url) == ["0006"]
+    assert auth_session_columns(fresh_database_url) == columns
+    assert auth_session_constraints(fresh_database_url) == constraints
+    assert public_tables(fresh_database_url) == tables
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_upgrade_to_0007_leaves_existing_sessions_unmarked(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0006")
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES ('old.session', 'Old Session', 'active')",
+    )
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO auth_sessions (user_id, token_hash, expires_at,"
+        " idle_timeout_seconds) SELECT id, sha256('t'::bytea), now(), 1800"
+        " FROM users",
+    )
+
+    command.upgrade(config, "0007")
+
+    [row] = run_sql(fresh_database_url, "SELECT reauthenticated_at FROM auth_sessions")
+    assert row.reauthenticated_at is None
+
+
+def auth_session_indexes(dsn: str) -> set[str]:
+    return {
+        row.indexname
+        for row in run_sql(
+            dsn, "SELECT indexname FROM pg_indexes WHERE tablename = 'auth_sessions'"
+        )
+    }
+
+
 def test_auth_sessions_columns_constraints_and_index(fresh_database_url):
     command.upgrade(alembic_config(fresh_database_url), "head")
 
@@ -307,6 +362,7 @@ def test_auth_sessions_columns_constraints_and_index(fresh_database_url):
         "revoked_at",
         "expires_at",
         "idle_timeout_seconds",
+        "reauthenticated_at",
     }
     assert (by_name["token_hash"].data_type, by_name["token_hash"].is_nullable) == (
         "bytea",
@@ -329,6 +385,12 @@ def test_auth_sessions_columns_constraints_and_index(fresh_database_url):
         by_name["idle_timeout_seconds"].is_nullable,
         by_name["idle_timeout_seconds"].column_default,
     ) == ("integer", "NO", None)
+    # #26: nullable, no default (NULL = never reauthenticated in this session).
+    assert (
+        by_name["reauthenticated_at"].data_type,
+        by_name["reauthenticated_at"].is_nullable,
+        by_name["reauthenticated_at"].column_default,
+    ) == ("timestamp with time zone", "YES", None)
     constraints = run_sql(
         fresh_database_url,
         "SELECT conname, contype::text, pg_get_constraintdef(oid) AS def,"

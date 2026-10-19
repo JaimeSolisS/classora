@@ -12,6 +12,14 @@
   ``Origin``: ``403 csrf_failed``) and ``csrf:no-token`` (no
   ``X-CSRF-Token``: ``403 csrf_failed`` on a protected route, anything but
   ``403`` on a public one), sent by an allowed role (anonymous for public).
+- Reauthentication (#26): an entry's ``reauth`` must match the route's
+  :class:`~app.core.reauth.ReauthRule` marker (static check, with the
+  bound-permission rule). At runtime the allowed actors of an unconditional
+  ``reauth`` entry reauthenticate before the request (denied actors do not, so
+  ``permission_denied`` still comes first), and :func:`reauth_cases` adds one
+  ``METHOD path reauth:none`` case per such entry: an allowed actor with a
+  valid ``Origin`` and CSRF token but no reauthentication expects ``403
+  reauth_required``.
 - :func:`matrix_user_for` creates an actor's real, active database user (the
   #20 factory helper, password :data:`TEST_USER_PASSWORD`) and loads its
   :class:`Principal`.
@@ -52,6 +60,7 @@ from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import Route
 
+from app.core import clock
 from app.core.authz import (
     Principal,
     ResolvedSession,
@@ -60,6 +69,11 @@ from app.core.authz import (
 )
 from app.core.csrf import UNSAFE_METHODS, csrf_token_for
 from app.core.errors import PROBLEM_DETAILS_REF, PROBLEM_JSON
+from app.core.reauth import (
+    SENSITIVE_ACTIONS,
+    SensitiveAction,
+    route_reauth_rules,
+)
 from app.modules.identity import service as identity
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
@@ -72,10 +86,22 @@ from tests.factories.identity import TEST_USER_PASSWORD, persist_user
 
 MATRIX_PATH = Path(__file__).with_name("matrix.toml")
 LOGIN_PATH = "/api/v1/auth/login"
+REAUTH_PATH = "/api/v1/auth/reauthenticate"
 
 ACCESS_KINDS = ("public", "authenticated", "permission")
 ENTRY_FIELDS = frozenset(
-    {"method", "path", "access", "permission", "allow", "reason", "path_params", "json"}
+    {
+        "method",
+        "path",
+        "access",
+        "permission",
+        "allow",
+        "reason",
+        "path_params",
+        "json",
+        "reauth",
+        "reauth_conditional",
+    }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 
@@ -104,6 +130,8 @@ class MatrixEntry:
     reason: Any = None
     path_params: Any = None
     json: Any = None
+    reauth: Any = None
+    reauth_conditional: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -117,6 +145,11 @@ class MatrixEntry:
     @property
     def allowed_roles(self) -> frozenset[str]:
         return frozenset(self.allow or ())
+
+    @property
+    def needs_reauth(self) -> bool:
+        """An unconditional ``reauth`` entry (checked at runtime)."""
+        return self.reauth is not None and self.reauth_conditional is not True
 
 
 def parse_matrix(document: Mapping[str, Any]) -> list[MatrixEntry]:
@@ -154,6 +187,7 @@ def entry_problems(
     *,
     permission_codes: Collection[str] = PERMISSION_CODES,
     role_codes: Collection[str] = ROLE_CODES,
+    sensitive_actions: Collection[str] = SENSITIVE_ACTIONS,
 ) -> list[str]:
     """Format problems of one entry."""
     problems: list[str] = []
@@ -186,6 +220,15 @@ def entry_problems(
             problems.append("a public entry needs a non-empty reason")
     if entry.path_params is not None and not isinstance(entry.path_params, dict):
         problems.append("path_params must be a table")
+    if entry.reauth is not None and entry.reauth not in sensitive_actions:
+        problems.append(
+            f"unknown reauth action {entry.reauth!r} (see app/core/reauth.py)"
+        )
+    if entry.reauth_conditional is not None:
+        if not isinstance(entry.reauth_conditional, bool):
+            problems.append("reauth_conditional must be true or false")
+        if entry.reauth is None:
+            problems.append("reauth_conditional is only for an entry with reauth")
     return problems
 
 
@@ -248,12 +291,94 @@ def _documents_problem(
     return bool(schema.get("$ref") == PROBLEM_DETAILS_REF)
 
 
+def _reauth_problems(
+    method: str,
+    path: str,
+    route: RouteContext,
+    rule_kind: str,
+    permission: str | None,
+    document: Mapping[str, Any],
+    sensitive_actions: Mapping[str, SensitiveAction],
+) -> list[str]:
+    """The route-side reauthentication problems (#26 E2)."""
+    label = f"{method} {path}"
+    problems: list[str] = []
+    markers = route_reauth_rules(route)
+    if len(markers) > 1:
+        problems.append(f"{label}: more than one reauth marker ({len(markers)})")
+    for marker in markers:
+        if marker.action not in sensitive_actions:
+            problems.append(
+                f"{label}: reauth action {marker.action!r} is not in SENSITIVE_ACTIONS"
+            )
+    if markers:
+        if rule_kind == "public":
+            problems.append(f"{label}: a public route cannot require reauthentication")
+        if method not in UNSAFE_METHODS:
+            problems.append(
+                f"{label}: reauthentication is only for POST, PUT, PATCH and DELETE"
+            )
+        if not _documents_problem(document, method, path, "403"):
+            problems.append(
+                f"{label}: 403 reauth_required is not documented as ProblemDetails"
+                " (pass REAUTH_RESPONSES)"
+            )
+    if method in UNSAFE_METHODS and rule_kind == "permission" and permission:
+        binding = {
+            a.code
+            for a in sensitive_actions.values()
+            if permission in a.bound_permissions
+        }
+        if binding and not any(m.action in binding for m in markers):
+            problems.append(
+                f"{label}: {permission!r} is bound to reauthentication"
+                f" ({', '.join(sorted(binding))}): add require_recent_auth"
+            )
+    return problems
+
+
+def _reauth_entry_problems(
+    label: str, route: RouteContext, entry: MatrixEntry
+) -> list[str]:
+    """Marker and matrix entry must agree (#26 E2)."""
+    markers = route_reauth_rules(route)
+    if len(markers) > 1:
+        return []
+    if not markers:
+        if entry.reauth is not None:
+            return [
+                f"{label}: the matrix says reauth {entry.reauth!r}"
+                " but the route has no reauth marker"
+            ]
+        return []
+    [marker] = markers
+    if entry.reauth is None:
+        return [
+            f"{label}: the route requires reauthentication ({marker.action!r})"
+            " but the matrix has no reauth"
+        ]
+    problems: list[str] = []
+    if marker.action != entry.reauth:
+        problems.append(
+            f"{label}: the route's reauth action is {marker.action!r}"
+            f" but the matrix says {entry.reauth!r}"
+        )
+    if marker.conditional != (entry.reauth_conditional is True):
+        problems.append(
+            f"{label}: the route's reauth_conditional is"
+            f" {str(marker.conditional).lower()} but the matrix says"
+            f" {str(entry.reauth_conditional is True).lower()}"
+        )
+    return problems
+
+
 def check_matrix(
     app: FastAPI,
     entries: list[MatrixEntry],
     *,
     permission_codes: Collection[str] = PERMISSION_CODES,
     role_codes: Collection[str] = ROLE_CODES,
+    sensitive_actions: Mapping[str, SensitiveAction] = SENSITIVE_ACTIONS,
 ) -> list[str]:
     """Every problem between ``app``'s routes and ``entries`` (sorted)."""
     routes = _collect_routes(app)
@@ -271,7 +396,10 @@ def check_matrix(
         problems.extend(
             f"{entry.label}: {problem}"
             for problem in entry_problems(
-                entry, permission_codes=permission_codes, role_codes=role_codes
+                entry,
+                permission_codes=permission_codes,
+                role_codes=role_codes,
+                sensitive_actions=sensitive_actions,
             )
         )
         if entry.key not in routes.keys:
@@ -311,9 +439,21 @@ def check_matrix(
                 f"{label}: 403 csrf_failed is not documented as ProblemDetails"
                 " (add CSRF_RESPONSES)"
             )
+        problems.extend(
+            _reauth_problems(
+                method,
+                path,
+                route,
+                rule.kind,
+                rule.permission,
+                document,
+                sensitive_actions,
+            )
+        )
         entry = by_key.get((method, path))
         if entry is None:
             continue
+        problems.extend(_reauth_entry_problems(label, route, entry))
         if rule.kind != entry.access:
             problems.append(
                 f"{label}: the route is {rule.kind} but the matrix says {entry.access}"
@@ -381,6 +521,12 @@ class Case:
         ):
             return "allowed"
         return "denied"
+
+    @property
+    def reauthenticates(self) -> bool:
+        """Only allowed actors reauthenticate (#26 E3): a denied one must
+        still get ``permission_denied`` first."""
+        return self.entry.needs_reauth and self.expected == "allowed"
 
 
 def actors_for(
@@ -519,6 +665,23 @@ def login_cookie(client: TestClient, username: str) -> str:
     return login_session(client, username).cookie
 
 
+def reauthenticate_session(client: TestClient, signed_in: SignedIn) -> None:
+    """Reauthenticate the session through the API (#26)."""
+    client.cookies.clear()
+    response = client.post(
+        REAUTH_PATH,
+        json={"password": TEST_USER_PASSWORD},
+        headers={
+            **ORIGIN_HEADER,
+            "Cookie": signed_in.cookie,
+            CSRF_HEADER: signed_in.csrf_token,
+        },
+    )
+    client.cookies.clear()
+    if response.status_code != 200:
+        raise LoginFailedError(f"reauthenticate: got {response.status_code}")
+
+
 CsrfCheck = Literal["no-origin", "no-token"]
 
 
@@ -530,12 +693,15 @@ def _send(
     *,
     sign_in: SignIn,
     omit: CsrfCheck | None = None,
+    reauthenticate: bool = False,
 ) -> Response:
     """Send ``entry``'s request as ``actor``.
 
     With ``Origin`` (unless ``omit="no-origin"``) and, for a signed-in actor
     on an unsafe method, the session's ``X-CSRF-Token`` (unless
-    ``omit="no-token"``).
+    ``omit="no-token"``). ``reauthenticate`` first reauthenticates the
+    actor's session (``login``: through the API; ``override``: the
+    overriding session is reauthenticated now).
     """
     app = client.app
     assert isinstance(app, FastAPI)
@@ -547,10 +713,16 @@ def _send(
     if actor != ANONYMOUS:
         if sign_in == "login":
             signed_in = login_session(client, users[actor].username)
+            if reauthenticate:
+                reauthenticate_session(client, signed_in)
             headers["Cookie"] = signed_in.cookie
             csrf_token = signed_in.csrf_token
         else:
-            resolved = ResolvedSession(users[actor].principal, OVERRIDE_SESSION_TOKEN)
+            resolved = ResolvedSession(
+                users[actor].principal,
+                OVERRIDE_SESSION_TOKEN,
+                reauthenticated_at=clock.now() if reauthenticate else None,
+            )
             overrides[get_current_session] = lambda: resolved
             csrf_token = csrf_token_for(OVERRIDE_SESSION_TOKEN)
     if omit != "no-origin":
@@ -585,7 +757,14 @@ def run_case(
     ``sign_in="override"``: the actor's principal replaces
     :func:`~app.core.authz.get_current_session` for this request.
     """
-    response = _send(client, case.entry, case.actor, users, sign_in=sign_in)
+    response = _send(
+        client,
+        case.entry,
+        case.actor,
+        users,
+        sign_in=sign_in,
+        reauthenticate=case.reauthenticates,
+    )
     return check_response(case, response)
 
 
@@ -694,6 +873,72 @@ def run_csrf_cases(
         problem
         for case in cases
         for problem in run_csrf_case(client, case, users, sign_in=sign_in)
+    ]
+
+
+# --- Reauthentication cases (#26 E3) ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ReauthCase:
+    """An unconditional ``reauth`` entry sent by an allowed actor who has not
+    reauthenticated (valid ``Origin`` and CSRF token)."""
+
+    entry: MatrixEntry
+    actor: Actor
+
+    @property
+    def id(self) -> str:
+        return f"{self.entry.label} reauth:none"
+
+
+def reauth_cases(
+    entries: Iterable[MatrixEntry],
+    *,
+    role_codes: Iterable[str] = ROLE_CODES,
+    delegable: Collection[str] = DELEGABLE_PERMISSIONS,
+) -> list[ReauthCase]:
+    """One ``reauth:none`` case per unconditional ``reauth`` entry."""
+    role_codes = tuple(role_codes)
+    return [
+        ReauthCase(entry, _allowed_actor(entry, role_codes, delegable))
+        for entry in entries
+        if entry.needs_reauth
+    ]
+
+
+def check_reauth_response(case: ReauthCase, response: Response) -> list[str]:
+    status, code = response.status_code, _problem_code(response)
+    got = f"got {status} {code}" if code else f"got {status}"
+    if (status, code) != (403, "reauth_required"):
+        return [f"{case.id}: expected 403 reauth_required, {got}"]
+    if response.headers.get("content-type") != PROBLEM_JSON:
+        return [f"{case.id}: 403 is not {PROBLEM_JSON}"]
+    return []
+
+
+def run_reauth_case(
+    client: TestClient,
+    case: ReauthCase,
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    response = _send(client, case.entry, case.actor, users, sign_in=sign_in)
+    return check_reauth_response(case, response)
+
+
+def run_reauth_cases(
+    client: TestClient,
+    cases: Iterable[ReauthCase],
+    users: Mapping[Actor, MatrixUser],
+    *,
+    sign_in: SignIn = "login",
+) -> list[str]:
+    return [
+        problem
+        for case in cases
+        for problem in run_reauth_case(client, case, users, sign_in=sign_in)
     ]
 
 

@@ -1,17 +1,26 @@
-"""The permission matrix: static coverage check and its self-test (M2-03 E1-E3, E6)."""
+"""The permission matrix: static coverage check and its self-test (M2-03 E1-E3, E6;
+reauthentication #26 E2, E4)."""
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, WebSocket
+from fastapi import APIRouter, Depends, FastAPI, WebSocket
 
 from app.core.authz import (
     AUTH_RESPONSES,
     CSRF_RESPONSES,
     PERMISSION_RESPONSES,
+    ROUTE_MARKER_ATTR,
     Principal,
     authenticated,
     public,
     require,
+)
+from app.core.reauth import (
+    REAUTH_RESPONSES,
+    ReauthRule,
+    RecentAuthGuard,
+    recent_auth_guard,
+    require_recent_auth,
 )
 from app.main import build_app
 from tests.authz.harness import (
@@ -316,3 +325,243 @@ def test_failure_message_lists_each_problem():
 
     assert "tests/authz/matrix.toml" in message
     assert message.endswith("GET /a: no matrix entry\nGET /b: no access rule")
+
+
+# --- Reauthentication (#26 E2, E4) -------------------------------------------------
+
+RESET = "user.password_reset.issue"
+
+
+def _add_correct_reauth_routes(router: APIRouter) -> None:
+    # A bound permission with its marker, and a conditional guard.
+    @router.post(
+        "/ok/reset",
+        responses=REAUTH_RESPONSES,
+        dependencies=[require_recent_auth(RESET)],
+    )
+    async def ok_reset(who: Annotated[Principal, require(RESET)]) -> None: ...
+
+    @router.patch("/ok/state", responses=REAUTH_RESPONSES)
+    async def ok_state(
+        who: Annotated[Principal, require("user.manage")],
+        guard: Annotated[RecentAuthGuard, recent_auth_guard("user.suspend_or_archive")],
+    ) -> None: ...
+
+    # A safe method with a bound permission is not affected (B2).
+    @router.get("/ok/reset", responses=PERMISSION_RESPONSES)
+    async def ok_get_reset(who: Annotated[Principal, require(RESET)]) -> None: ...
+
+
+def correct_reauth_app() -> FastAPI:
+    app = correct_app()
+    router = APIRouter()
+    _add_correct_reauth_routes(router)
+    app.include_router(router)
+    return app
+
+
+def planted_reauth_app() -> FastAPI:
+    """The correct routes plus one planted problem per E2 rule."""
+    app = correct_reauth_app()
+    router = APIRouter()
+    correction = "finance.correction"
+
+    @router.post("/bad/no-entry", responses=REAUTH_RESPONSES)
+    async def no_entry(
+        who: Annotated[Principal, authenticated()],
+        _: Annotated[Principal, require_recent_auth(correction)],
+    ) -> None: ...
+
+    @router.post("/bad/no-marker", responses=REAUTH_RESPONSES)
+    async def no_marker(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.post("/bad/other-code", responses=REAUTH_RESPONSES)
+    async def other_code(
+        who: Annotated[Principal, authenticated()],
+        _: Annotated[Principal, require_recent_auth(correction)],
+    ) -> None: ...
+
+    @router.post("/bad/conditional", responses=REAUTH_RESPONSES)
+    async def conditional(
+        who: Annotated[Principal, authenticated()],
+        guard: Annotated[RecentAuthGuard, recent_auth_guard(correction)],
+    ) -> None: ...
+
+    @router.post(
+        "/bad/two-markers",
+        responses=REAUTH_RESPONSES,
+        dependencies=[
+            require_recent_auth(correction),
+            require_recent_auth("data.personal_export"),
+        ],
+    )
+    async def two_markers(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.post(
+        "/bad/public",
+        responses=CSRF_RESPONSES,
+        dependencies=[public(reason="probe"), require_recent_auth(correction)],
+    )
+    async def on_public() -> None: ...
+
+    @router.get(
+        "/bad/safe",
+        responses=REAUTH_RESPONSES,
+        dependencies=[require_recent_auth(correction)],
+    )
+    async def on_get(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.post(
+        "/bad/undocumented",
+        responses=AUTH_RESPONSES,
+        dependencies=[require_recent_auth(correction)],
+    )
+    async def undocumented(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    @router.delete("/bad/bound", responses=PERMISSION_RESPONSES)
+    async def bound(who: Annotated[Principal, require(RESET)]) -> None: ...
+
+    @router.put(
+        "/bad/bound-other-action",
+        responses=REAUTH_RESPONSES,
+        dependencies=[require_recent_auth(correction)],
+    )
+    async def bound_other(who: Annotated[Principal, require(RESET)]) -> None: ...
+
+    app.include_router(router)
+    return app
+
+
+REAUTH_CORRECT = [
+    *CORRECT,
+    entry("GET", "/ok/reset", "permission", permission=RESET, allow=[]),
+    entry("POST", "/ok/reset", "permission", permission=RESET, allow=[], reauth=RESET),
+    entry(
+        "PATCH",
+        "/ok/state",
+        "permission",
+        permission="user.manage",
+        allow=[],
+        reauth="user.suspend_or_archive",
+        reauth_conditional=True,
+    ),
+]
+
+
+def test_a_correct_reauth_app_and_matrix_report_nothing():
+    entries = parse_matrix({"route": REAUTH_CORRECT})
+
+    assert check_matrix(correct_reauth_app(), entries) == []
+
+
+def test_every_planted_reauth_problem_is_reported():
+    correction = "finance.correction"
+    matrix = [
+        *REAUTH_CORRECT,
+        entry("POST", "/bad/no-entry", "authenticated"),
+        entry("POST", "/bad/no-marker", "authenticated", reauth=correction),
+        entry(
+            "POST", "/bad/other-code", "authenticated", reauth="data.personal_export"
+        ),
+        entry("POST", "/bad/conditional", "authenticated", reauth=correction),
+        entry("POST", "/bad/two-markers", "authenticated", reauth=correction),
+        entry("POST", "/bad/public", "public", reason="probe", reauth=correction),
+        entry("GET", "/bad/safe", "authenticated", reauth=correction),
+        entry("POST", "/bad/undocumented", "authenticated", reauth=correction),
+        entry("DELETE", "/bad/bound", "permission", permission=RESET, allow=[]),
+        entry(
+            "PUT",
+            "/bad/bound-other-action",
+            "permission",
+            permission=RESET,
+            allow=[],
+            reauth=correction,
+        ),
+        # Entry format problems (no such routes).
+        entry("POST", "/x/unknown-action", "authenticated", reauth="nope.action"),
+        entry("POST", "/x/flag-alone", "authenticated", reauth_conditional=True),
+        entry(
+            "POST",
+            "/x/flag-not-bool",
+            "authenticated",
+            reauth=correction,
+            reauth_conditional="yes",
+        ),
+    ]
+
+    problems = check_matrix(planted_reauth_app(), parse_matrix({"route": matrix}))
+
+    stale = " stale entry (no such route)"
+    assert problems == sorted(
+        [
+            "POST /bad/no-entry: the route requires reauthentication"
+            " ('finance.correction') but the matrix has no reauth",
+            "POST /bad/no-marker: the matrix says reauth 'finance.correction'"
+            " but the route has no reauth marker",
+            "POST /bad/other-code: the route's reauth action is"
+            " 'finance.correction' but the matrix says 'data.personal_export'",
+            "POST /bad/conditional: the route's reauth_conditional is true"
+            " but the matrix says false",
+            "POST /bad/two-markers: more than one reauth marker (2)",
+            "POST /bad/public: a public route cannot require reauthentication",
+            "GET /bad/safe: reauthentication is only for POST, PUT, PATCH and DELETE",
+            "POST /bad/undocumented: 403 reauth_required is not documented as"
+            " ProblemDetails (pass REAUTH_RESPONSES)",
+            "POST /bad/undocumented: 403 csrf_failed is not documented as"
+            " ProblemDetails (add CSRF_RESPONSES)",
+            "DELETE /bad/bound: 'user.password_reset.issue' is bound to"
+            " reauthentication (user.password_reset.issue): add require_recent_auth",
+            "PUT /bad/bound-other-action: 'user.password_reset.issue' is bound to"
+            " reauthentication (user.password_reset.issue): add require_recent_auth",
+            "POST /x/unknown-action: unknown reauth action 'nope.action'"
+            " (see app/core/reauth.py)",
+            "POST /x/unknown-action:" + stale,
+            "POST /x/flag-alone: reauth_conditional is only for an entry with reauth",
+            "POST /x/flag-alone:" + stale,
+            "POST /x/flag-not-bool: reauth_conditional must be true or false",
+            "POST /x/flag-not-bool:" + stale,
+        ]
+    )
+
+
+def test_a_route_marker_with_an_unregistered_action_is_reported():
+    """The registry check also covers a marker built behind the API's back."""
+    app = correct_app()
+    router = APIRouter()
+
+    async def marker() -> None: ...
+
+    setattr(marker, ROUTE_MARKER_ATTR, ReauthRule("ghost.action"))
+
+    @router.post("/ghost", responses=REAUTH_RESPONSES, dependencies=[Depends(marker)])
+    async def ghost(who: Annotated[Principal, authenticated()]) -> None: ...
+
+    app.include_router(router)
+    matrix = [
+        *CORRECT,
+        entry("POST", "/ghost", "authenticated", reauth="ghost.action"),
+    ]
+
+    assert check_matrix(app, parse_matrix({"route": matrix})) == [
+        "POST /ghost: reauth action 'ghost.action' is not in SENSITIVE_ACTIONS",
+        "POST /ghost: unknown reauth action 'ghost.action' (see app/core/reauth.py)",
+    ]
+
+
+def test_the_sample_app_has_a_reauth_route():
+    rules = {
+        e.key: e.reauth for e in parse_matrix(SAMPLE_MATRIX) if e.reauth is not None
+    }
+
+    assert rules == {
+        ("POST", "/sample/payroll/{period_id}/finalize"): "payroll.finalize"
+    }
+
+
+def test_the_real_matrix_lists_reauthenticate_without_reauth():
+    entries = {e.key: e for e in load_matrix()}
+    reauthenticate = entries[("POST", "/api/v1/auth/reauthenticate")]
+
+    assert reauthenticate.access == "authenticated"
+    assert reauthenticate.json == {}
+    assert reauthenticate.reauth is None

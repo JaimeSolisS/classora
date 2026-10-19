@@ -221,7 +221,8 @@ async def resolve_session_principal(
        cannot revive it);
     3. ``None`` for a user who is not ``active``;
     4. otherwise the principal, after the throttled ``last_seen_at`` update
-       (:func:`sessions.touch_session`, at most once a minute).
+       (:func:`sessions.touch_session`, at most once a minute), with the
+       session's id and ``reauthenticated_at`` (#26) from the same row.
 
     Reads only the current mode's cookie name.
     """
@@ -238,7 +239,12 @@ async def resolve_session_principal(
     if principal is None:
         return None
     await sessions.touch_session(session, auth_session, now)
-    return ResolvedSession(principal=principal, session_token=token)
+    return ResolvedSession(
+        principal=principal,
+        session_token=token,
+        session_id=auth_session.id,
+        reauthenticated_at=auth_session.reauthenticated_at,
+    )
 
 
 # --- Lifecycle: sessions, state, roles, password (#25) -------------------------------

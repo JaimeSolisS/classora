@@ -1,8 +1,10 @@
-"""Concurrent failed logins through PgBouncer (#23 QA Defect 1).
+"""Concurrent failed logins and reauthentications through PgBouncer (#23 QA
+Defect 1; #26 D4).
 
-A failed login must never hold two connections at once: the request's
-transaction ends before the committed ``identity.login_failed`` event takes
-its own connection. Otherwise more concurrent failures than PgBouncer's server
+A failed login, and a failed reauthentication, must never hold two
+connections at once: the request's transaction ends before the committed
+``identity.login_failed`` / ``identity.reauth_failed`` event takes its own
+connection. Otherwise more concurrent failures than PgBouncer's server
 pool wait on each other until a pool timeout (about 30 s) and answer 500.
 The test PgBouncer has ``PGBOUNCER_POOL_SIZE`` (5) server connections.
 """
@@ -17,7 +19,12 @@ from sqlalchemy import make_url
 
 from app.core.config import get_settings
 from app.main import build_app, lifespan
-from tests.integration.auth_support import create_user, login
+from tests.integration.auth_support import (
+    create_user,
+    login,
+    only_set_cookie,
+    signed_headers,
+)
 from tests.integration.conftest import PGBOUNCER_POOL_SIZE, run_sql, settings_for
 
 CONCURRENT = PGBOUNCER_POOL_SIZE * 3
@@ -72,3 +79,45 @@ def test_concurrent_failed_logins_never_exhaust_the_pool(seeded_url, pooled_clie
         "unknown_username": CONCURRENT - CONCURRENT // 2,
     }
     assert run_sql(seeded_url, "SELECT count(*) FROM auth_sessions")[0][0] == 0
+
+
+def test_concurrent_failed_reauthentications_never_exhaust_the_pool(
+    seeded_url, pooled_client
+):
+    user = create_user(seeded_url, roles=("owner",))
+    cookies = []
+    for _ in range(CONCURRENT):
+        response = login(pooled_client, user.username)
+        assert response.status_code == 200
+        cookies.append(only_set_cookie(response))
+    pooled_client.cookies.clear()
+
+    def attempt(index: int) -> tuple[int, str | None]:
+        response = pooled_client.post(
+            "/api/v1/auth/reauthenticate",
+            json={"password": f"wrong-password-{index}"},
+            headers=signed_headers(cookies[index]),
+        )
+        code = response.json().get("code") if response.content else None
+        return response.status_code, code
+
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=CONCURRENT) as pool:
+        results = list(pool.map(attempt, range(CONCURRENT)))
+    elapsed = time.monotonic() - started
+
+    assert results == [(403, "reauth_failed")] * CONCURRENT
+    assert elapsed < BOUND_SECONDS, (
+        f"{CONCURRENT} failed reauthentications took {elapsed:.1f}s"
+    )
+    [row] = run_sql(
+        seeded_url,
+        "SELECT count(*) AS n, count(DISTINCT details->>'auth_session_id') AS s"
+        " FROM audit_events WHERE action = 'identity.reauth_failed'",
+    )
+    assert (row.n, row.s) == (CONCURRENT, CONCURRENT)
+    marked = run_sql(
+        seeded_url,
+        "SELECT count(*) FROM auth_sessions WHERE reauthenticated_at IS NOT NULL",
+    )
+    assert marked[0][0] == 0

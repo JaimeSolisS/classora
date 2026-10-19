@@ -86,6 +86,8 @@ Codes in use today:
 | `invalid_credentials` | 401 | `POST /api/v1/auth/login` did not succeed, for any reason (the same body whether or not the account exists). |
 | `permission_denied` | 403 | The user lacks the route's permission, or may see the record but not take the action. |
 | `csrf_failed` | 403 | A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` is not the app origin, or (on a signed-in route) whose `X-CSRF-Token` is missing or wrong. One code for both checks (see CSRF and `Origin`). |
+| `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
+| `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
 | `method_not_allowed` | 405 | Known path, wrong method. |
 | other status-derived codes | 4xx/5xx | Any other framework HTTP error: the `snake_case` reason phrase (for example `unsupported_media_type`). |
 | `internal_error` | 500 | Any unexpected exception. |
@@ -121,7 +123,9 @@ implemented by M2-03 in `apps/api/app/core/authz.py`.
   `ensure_permission(principal, permission)`.
 - **Check order.** Without a signed-in user the answer is `401
   authentication_required`; on an unsafe method a failed CSRF check is then
-  `403 csrf_failed`; without the permission it is `403 permission_denied`. All
+  `403 csrf_failed`; without the permission it is `403 permission_denied`; on
+  a sensitive action without a recent reauthentication it is then `403
+  reauth_required` (see Reauthentication). All
   come before path, query and body validation, so an unauthorized caller never
   sees a `422`. (A foreign `Origin` is refused even before the session, see
   below.) Exception: a body that is not
@@ -186,7 +190,9 @@ Implemented by M2-05 and M2-07 (ADR-0007 D7, D8) in
   cookie of a session that timed out gets `session_expired` (show "your
   session expired" and sign in again). No cookie, an unknown or revoked
   session, or a user who is not active gets `authentication_required`. On
-  unsafe methods both come before the CSRF check (`csrf_failed`).
+  unsafe methods both come before the CSRF token check (`csrf_failed`); a
+  foreign or missing `Origin` is still refused with `csrf_failed` before the
+  session is looked at (see CSRF and `Origin`).
 - **Revocation:** suspending or archiving a user, adding or removing a role,
   and setting a new password revoke all of that user's sessions in the same
   transaction (they then get `authentication_required`; reactivating the user
@@ -234,6 +240,46 @@ browser-side headers (Content Security Policy) are in
   audited.
 - **Swagger UI** (`/docs` on the API port) cannot send unsafe requests: its
   origin is not the app origin.
+
+### Reauthentication
+
+Implemented by M2-08 (ADR-0007 D10) in `apps/api/app/core/reauth.py` and the
+identity module.
+
+- **Endpoint:** `POST /api/v1/auth/reauthenticate` (`authenticated()`, needs
+  `Origin` and `X-CSRF-Token`), body `{"password"}` (1 to 1024 characters).
+  `200` returns `{"reauthenticated_until": "<ISO 8601 UTC>"}`; a wrong password
+  (or a user without one) is `403 reauth_failed`, the session stays signed in
+  and its window is unchanged. Each attempt runs one Argon2id verification and
+  is audited (`identity.reauthenticated`, or `identity.reauth_failed`
+  committed even though the response is an error). Limiting failed attempts
+  is #27.
+- **Window:** 5 minutes from the reauthentication, for the **current session
+  only**; activity does not extend it, a later reauthentication restarts it,
+  and logging in does not count (the first sensitive action after a login asks
+  for the password). Logout, revocation and expiry end it with the session.
+  At exactly `+5m` it is over.
+- **Declaring a sensitive route:** add
+  `require_recent_auth("<action>")` next to the route's access declaration
+  (`dependencies=[...]` or an annotated parameter; it yields the `Principal`)
+  and pass `responses=REAUTH_RESPONSES`. When only some bodies are sensitive
+  (a staff-role invitation, a settings change to payment methods or the time
+  zone, a state change to suspended or archived), declare
+  `guard: Annotated[RecentAuthGuard, recent_auth_guard("<action>")]` and call
+  `guard.ensure()` when the condition holds. The answer is `403
+  reauth_required`; the body never names the action.
+- **Order:** `401` (`authentication_required` / `session_expired`) → `403
+  csrf_failed` → `403 permission_denied` → `403 reauth_required` → `422`,
+  wherever the declarations sit: a user without the permission is never asked
+  for a password.
+- **Actions:** `SENSITIVE_ACTIONS` in `app/core/reauth.py` lists every ADR-0007
+  D10 action with the issue that applies it. A later issue applies an action
+  with the marker, a `reauth` (and, for the guard, `reauth_conditional = true`)
+  field in `apps/api/tests/authz/matrix.toml`, and adds to the action's
+  **bound permissions** any new permission that only that action uses: an
+  unsafe route requiring a bound permission (for example
+  `user.password_reset.issue`) without the marker fails the matrix test.
+  Markers are only for `POST`, `PUT`, `PATCH` and `DELETE`.
 
 ### Response headers
 
