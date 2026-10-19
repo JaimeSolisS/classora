@@ -117,6 +117,7 @@ __all__ = [
     "grant_delegation",
     "hash_password",
     "load_principal",
+    "lock_owner_guard",
     "may_assign_role",
     "needs_rehash",
     "normalize_username",
@@ -322,6 +323,16 @@ in any transaction waits for the others; the lock ends with the transaction
 (it works through PgBouncer in transaction mode)."""
 
 
+async def lock_owner_guard(session: AsyncSession) -> None:
+    """Take the guard's transaction-scoped advisory lock (re-entrant within a
+    transaction). A caller that locks the user's row before reaching the guard
+    takes this first, so every path locks in the order advisory lock → row and
+    two concurrent changes of one Owner never deadlock (#170 QA D1)."""
+    await session.execute(
+        select(func.pg_advisory_xact_lock(LAST_ACTIVE_OWNER_LOCK_KEY))
+    )
+
+
 async def _ensure_another_active_owner(
     session: AsyncSession, user_id: uuid.UUID
 ) -> None:
@@ -332,9 +343,7 @@ async def _ensure_another_active_owner(
     every guarded change committed before: of two concurrent suspensions of
     the last two active Owners, the second one is refused.
     """
-    await session.execute(
-        select(func.pg_advisory_xact_lock(LAST_ACTIVE_OWNER_LOCK_KEY))
-    )
+    await lock_owner_guard(session)
     others = await session.scalar(
         select(func.count())
         .select_from(UserRole)

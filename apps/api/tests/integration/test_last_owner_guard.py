@@ -13,11 +13,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import create_sessionmaker
+from app.core.models import StaleVersionError
 from app.core.uow import UnitOfWork
 from app.modules.identity import service as identity
+from app.modules.identity import user_admin
 from app.modules.identity.errors import LastActiveOwnerError
 from app.modules.identity.permissions import (
     ACTIVE,
@@ -321,3 +324,81 @@ def test_two_concurrent_suspensions_of_the_last_two_owners(seeded_url):
     assert active_owner_count(seeded_url) == 1
     states = {state_of(seeded_url, first.id), state_of(seeded_url, second.id)}
     assert states == {ACTIVE, SUSPENDED}
+
+
+# --- #170 QA D1: one lock order for role changes and state changes ------------------
+
+
+def test_removing_owner_racing_a_suspend_of_the_same_owner_never_deadlocks(
+    seeded_url, monkeypatch
+):
+    """``update_roles`` removing ``owner`` holds the version bump's row lock
+    while it waits before ``remove_user_role``; a suspend of the same Owner
+    from the same version starts meanwhile. With one lock order (advisory
+    lock, then row) the suspend waits and gets ``version_conflict``; with
+    opposite orders PostgreSQL aborts one with ``deadlock detected``."""
+    target = create_user(seeded_url, roles=(OWNER, TUTOR))
+    first, second = owner(seeded_url), owner(seeded_url)
+    original = identity.remove_user_role
+
+    async def _race() -> list[str]:
+        bumped = asyncio.Event()
+
+        async def paused_remove(*args: Any, **kwargs: Any) -> bool:
+            bumped.set()
+            # Longer than PostgreSQL's deadlock_timeout (1 s by default).
+            await asyncio.sleep(1.5)
+            return await original(*args, **kwargs)
+
+        monkeypatch.setattr(identity, "remove_user_role", paused_remove)
+
+        async def outcome(call: Callable[[], Awaitable[Any]]) -> str:
+            try:
+                await call()
+            except StaleVersionError:
+                return "version_conflict"
+            except DBAPIError as exc:
+                return f"database_error: {exc.orig}"
+            return "ok"
+
+        async def change_roles() -> None:
+            engine = short_lived_engine(seeded_url)
+            try:
+                async with UnitOfWork(create_sessionmaker(engine), first.id) as uow:
+                    principal = await identity.load_principal(uow.session, first.id)
+                    assert principal is not None
+                    await user_admin.update_roles(
+                        uow.session,
+                        principal=principal,
+                        user_id=target.id,
+                        roles=[TUTOR],
+                        version=1,
+                    )
+            finally:
+                await engine.dispose()
+
+        async def suspend_same_owner() -> None:
+            await bumped.wait()
+            engine = short_lived_engine(seeded_url)
+            try:
+                async with UnitOfWork(create_sessionmaker(engine), second.id) as uow:
+                    principal = await identity.load_principal(uow.session, second.id)
+                    assert principal is not None
+                    await user_admin.change_state(
+                        uow.session,
+                        principal=principal,
+                        user_id=target.id,
+                        action="suspend",
+                        version=1,
+                    )
+            finally:
+                await engine.dispose()
+
+        return list(
+            await asyncio.gather(outcome(change_roles), outcome(suspend_same_owner))
+        )
+
+    outcomes = asyncio.run(_race())
+
+    assert outcomes == ["ok", "version_conflict"]
+    assert snapshot(seeded_url, target.id)[:3] == (ACTIVE, 2, [TUTOR])

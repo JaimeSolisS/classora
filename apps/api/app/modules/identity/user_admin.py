@@ -65,6 +65,7 @@ from app.modules.identity.permissions import (
     ACTIVE,
     ADMINISTRATOR,
     ARCHIVED,
+    OWNER,
     PENDING,
     ROLE_CODES,
     SUSPENDED,
@@ -385,6 +386,11 @@ async def update_roles(
         raise PermissionDeniedError()
     ensure_version(user, version)
     if added or removed:
+        if OWNER in removed and user.state == ACTIVE:
+            # The guard's lock before the row lock of the version bump: the
+            # order change_user_state uses, so a concurrent suspend or archive
+            # of this Owner waits instead of deadlocking (#170 QA D1).
+            await service.lock_owner_guard(session)
         await _bump_version(session, user)
         for role in _sorted_roles(added):
             await service.add_user_role(session, user_id=user.id, role=role)
