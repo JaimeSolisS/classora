@@ -57,6 +57,9 @@ EXPECTED = {
     "payroll.finalize": {OWNER},
     "schedule.override": {OWNER},
     "finance.refund.approve": {OWNER},
+    # Owner decision #43 E1 (a): no Finance Staff, Student or Guardian.
+    "tutor.view": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR, TUTOR},
+    "tutor.manage": {OWNER, ADMINISTRATOR},
 }
 
 
@@ -70,8 +73,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 20
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 45
+    assert len(PERMISSIONS) == 22
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 51
 
 
 def test_every_code_has_the_dotted_form():
@@ -192,6 +195,7 @@ def test_tutor_and_guardian_union_is_explicit():
         "student.view",
         "guardian.view",
         "consent.record",
+        "tutor.view",
     }
 
 

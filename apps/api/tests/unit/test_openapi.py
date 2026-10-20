@@ -67,6 +67,8 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/closures",
         "/api/v1/closures/check",
         "/api/v1/closures/{closure_id}",
+        "/api/v1/tutors",
+        "/api/v1/tutors/{user_id}",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",

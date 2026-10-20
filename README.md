@@ -91,6 +91,10 @@ into families (each student and each guardian belongs to at most one
 family), the grouping that family billing will build on. A signed-in
 guardian sees only their own family; belonging to a family doesn't show a
 child's records, which still follow the guardian's links.
+On the Tutors page, Owners, administrators and academic coordinators see
+every tutor's profile: the account's contact details and their professional
+experience. Owners and administrators edit it; a signed-in tutor sees and
+edits only their own contact details and experience.
 Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.

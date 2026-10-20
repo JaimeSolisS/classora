@@ -38,12 +38,11 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections import defaultdict
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from typing import Final, Literal
 
-from sqlalchemy import ColumnElement, exists, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
@@ -54,12 +53,16 @@ from app.modules.identity.errors import (
     DelegationTargetInvalidError,
     InvalidUserStateTransitionError,
 )
+from app.modules.identity.members import (
+    USER_ORDER,
+    escape_like,
+    roles_by_user,
+    user_conditions,
+)
 from app.modules.identity.models import (
     Permission,
-    Role,
     User,
     UserDelegation,
-    UserRole,
 )
 from app.modules.identity.permissions import (
     ACTIVE,
@@ -112,17 +115,9 @@ def _sorted_roles(roles: Collection[str]) -> list[str]:
     return sorted(roles, key=_ROLE_ORDER.__getitem__)
 
 
-_LIKE_ESCAPE: Final = "/"
-
-
-def _escape_like(text: str) -> str:
-    """``text`` for a ``LIKE … ESCAPE '/'`` pattern: ``%``, ``_`` and ``/``
-    match literally (``\\`` is not special with this escape character)."""
-    return (
-        text.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
-        .replace("%", _LIKE_ESCAPE + "%")
-        .replace("_", _LIKE_ESCAPE + "_")
-    )
+# The #31 filters and order are shared with the role-member list (#43).
+_escape_like = escape_like
+_roles_by_user = roles_by_user
 
 
 async def list_users(
@@ -140,27 +135,12 @@ async def list_users(
     (``%``, ``_`` and ``\\`` match literally; accents are not folded). At most
     three statements: the page, the total and the roles of the page.
     """
-    conditions: list[ColumnElement[bool]] = []
-    if q:
-        pattern = f"%{_escape_like(q.lower())}%"
-        conditions.append(
-            func.lower(User.username).like(pattern, escape=_LIKE_ESCAPE)
-            | func.lower(User.display_name).like(pattern, escape=_LIKE_ESCAPE)
-        )
-    if state is not None:
-        conditions.append(User.state == state)
-    if role is not None:
-        conditions.append(
-            exists()
-            .where(UserRole.user_id == User.id)
-            .where(UserRole.role_id == Role.id)
-            .where(Role.code == role)
-        )
+    conditions = user_conditions(q=q, role=role, state=state)
     users = list(
         await session.scalars(
             select(User)
             .where(*conditions)
-            .order_by(func.lower(User.display_name), User.username, User.id)
+            .order_by(*USER_ORDER)
             .limit(page.limit)
             .offset(page.offset)
         )
@@ -173,22 +153,6 @@ async def list_users(
         limit=page.limit,
         offset=page.offset,
     )
-
-
-async def _roles_by_user(
-    session: AsyncSession, user_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, set[str]]:
-    """The role codes of each user, in one statement (none when empty)."""
-    roles: defaultdict[uuid.UUID, set[str]] = defaultdict(set)
-    if user_ids:
-        rows = await session.execute(
-            select(UserRole.user_id, Role.code)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(UserRole.user_id.in_(user_ids))
-        )
-        for user_id, code in rows:
-            roles[user_id].add(code)
-    return roles
 
 
 def _list_item(user: User, roles: Collection[str]) -> UserListItem:

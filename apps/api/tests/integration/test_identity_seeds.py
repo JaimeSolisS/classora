@@ -71,9 +71,9 @@ async def test_first_run_seeds_the_catalog(engine, head_url):
     results = await runner.run_reference_seeds(engine)
 
     assert results[:3] == [
-        ("identity.permissions", UpsertResult(inserted=20, updated=0)),
+        ("identity.permissions", UpsertResult(inserted=22, updated=0)),
         ("identity.roles", UpsertResult(inserted=7, updated=0)),
-        ("identity.role_permissions", UpsertResult(inserted=45, updated=0)),
+        ("identity.role_permissions", UpsertResult(inserted=51, updated=0)),
     ]
     assert await mapping(head_url) == dict(ROLE_PERMISSIONS)
     delegable = await run_sql_async(
@@ -128,18 +128,18 @@ async def test_shrunk_mapping_removes_exactly_that_pair(engine, head_url):
     await runner.run_reference_seeds(engine)
     before = await snapshot(head_url)
     shrunk = dict(ROLE_PERMISSIONS)
-    shrunk[TUTOR] = frozenset()  # the tutor loses student.view
+    shrunk[TUTOR] = frozenset()  # the tutor loses student.view and tutor.view
     seed = RolePermissionsSeed(name="identity.role_permissions", mapping=shrunk)
 
     result = await runner.run_reference_seeds(engine, [seed])
 
     assert result == [
-        ("identity.role_permissions", UpsertResult(inserted=0, updated=0, deleted=1))
+        ("identity.role_permissions", UpsertResult(inserted=0, updated=0, deleted=2))
     ]
     expected = {role: codes for role, codes in shrunk.items() if codes}
     assert await mapping(head_url) == expected
     after = await snapshot(head_url)
-    assert len(after["role_permissions"]) == len(before["role_permissions"]) - 1
+    assert len(after["role_permissions"]) == len(before["role_permissions"]) - 2
     assert set(after["role_permissions"]) < set(before["role_permissions"])
     # Roles and permissions are never deleted.
     assert after["roles"] == before["roles"]
@@ -147,7 +147,7 @@ async def test_shrunk_mapping_removes_exactly_that_pair(engine, head_url):
 
     # Restoring the code mapping re-inserts the pair.
     restored = await runner.run_reference_seeds(engine, [ROLE_PERMISSIONS_SEED])
-    assert restored[0][1] == UpsertResult(inserted=1, updated=0, deleted=0)
+    assert restored[0][1] == UpsertResult(inserted=2, updated=0, deleted=0)
     assert await mapping(head_url) == dict(ROLE_PERMISSIONS)
 
 
@@ -157,7 +157,7 @@ async def test_pairs_of_unmapped_roles_are_left_alone(engine, head_url):
 
     result = await runner.run_reference_seeds(engine, [only_tutor])
 
-    assert result[0][1].deleted == 1
+    assert result[0][1].deleted == 2
     assert await mapping(head_url) == {
         role: codes for role, codes in ROLE_PERMISSIONS.items() if role != TUTOR
     }
@@ -173,7 +173,7 @@ async def test_codes_removed_from_the_catalog_stay_in_their_tables(engine, head_
     results = await runner.run_reference_seeds(engine)
 
     assert [result for _, result in results[:3]] == [UpsertResult(0, 0, 0)] * 3
-    assert await counts(head_url) == (21, 7, 45)
+    assert await counts(head_url) == (23, 7, 51)
 
 
 class FailingRolePermissions(RolePermissionsSeed):
@@ -227,9 +227,9 @@ def test_make_seed_prints_counts_only(head_url, monkeypatch, capsys):
     out = capsys.readouterr().out
     lines = [line for line in out.splitlines() if line.startswith("identity.")]
     assert lines == [
-        "identity.permissions: 20 inserted, 0 updated",
+        "identity.permissions: 22 inserted, 0 updated",
         "identity.roles: 7 inserted, 0 updated",
-        "identity.role_permissions: 45 inserted, 0 updated",
+        "identity.role_permissions: 51 inserted, 0 updated",
         "identity.permissions: 0 inserted, 0 updated",
         "identity.roles: 0 inserted, 0 updated",
         "identity.role_permissions: 0 inserted, 0 updated",

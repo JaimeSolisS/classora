@@ -47,6 +47,8 @@ type PermissionCode = Literal[
     "settings.manage",
     "student.manage",
     "student.view",
+    "tutor.manage",
+    "tutor.view",
     "user.admin_role.assign",
     "user.delegation.manage",
     "user.invite",
@@ -469,6 +471,23 @@ class AccountReference(BaseModel):
     username: str
     display_name: str
     state: UserState
+    roles: frozenset[RoleCode] = Field(description="The account's role codes.")
+
+
+class RoleMember(BaseModel):
+    """A user holding a given role, **with** the account's contact fields
+    (#43 C1: ``identity.service.list_role_members`` / ``get_role_member``).
+    Only for modules whose record policy already allows the contact data (the
+    tutor profiles of ``staff``). Never a password hash or a token."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+    email: str | None
+    phone: str | None
     roles: frozenset[RoleCode] = Field(description="The account's role codes.")
 
 

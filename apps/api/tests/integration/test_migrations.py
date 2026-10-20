@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0024"
+HEAD = "0025"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -92,6 +92,7 @@ PERIOD_TABLES = ["academic_periods", "closures"]
 CLASSROOM_TABLES = ["classroom_availability_windows", "classrooms"]
 APPROVAL_TABLES = ["approval_requests"]
 NOTIFICATION_TABLES = ["notifications"]
+STAFF_TABLES = ["tutor_profiles"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -191,6 +192,9 @@ def test_history_is_linear_with_one_head():
     notifications = script.get_revision("0024")
     assert notifications.down_revision == "0023"
     assert Path(notifications.path).name == "0024_administration_notifications.py"
+    tutor_profiles = script.get_revision("0025")
+    assert tutor_profiles.down_revision == "0024"
+    assert Path(tutor_profiles.path).name == "0025_staff_tutor_profiles.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -227,6 +231,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ACCOUNT_TOKEN_TABLES,
             *APPROVAL_TABLES,
             *NOTIFICATION_TABLES,
+            *STAFF_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3060,3 +3065,94 @@ def test_a_valid_notification_gets_the_defaults_and_its_user_cannot_be_deleted(
             "DELETE FROM users WHERE id = :id",
             {"id": recipient},
         )
+
+
+# --- 0025: tutor profiles (#43 A) --------------------------------------------------
+
+
+def test_0025_adds_exactly_tutor_profiles_and_downgrade_drops_it(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0024")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0025")
+
+    assert public_tables(fresh_database_url) - before == set(STAFF_TABLES)
+    # Lazy rows (A3): nothing is inserted or backfilled.
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM tutor_profiles")
+    assert count.n == 0
+
+    command.downgrade(config, "0024")
+
+    assert version_nums(fresh_database_url) == ["0024"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_tutor_profiles_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_profiles"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "user_id": ("uuid", "NO", None, None),
+        "professional_experience": ("text", "YES", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_user_id_users",
+        f"uq_{table}_user_id",
+        f"ck_{table}_professional_experience_length",
+        f"ck_{table}_professional_experience_trimmed",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_user_id_users"]
+    assert constraints[f"uq_{table}_user_id"] == "UNIQUE (user_id)"
+
+
+def _tutor_profile(dsn: str, user_id: Any, experience: str | None = None) -> Any:
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO tutor_profiles (user_id, professional_experience)"
+        " VALUES (:user_id, :experience) RETURNING version",
+        {"user_id": user_id, "experience": experience},
+    )
+    return row
+
+
+def test_one_tutor_profile_per_user(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user_id = _recipient(fresh_database_url)
+
+    assert _tutor_profile(fresh_database_url, user_id, "Algebra.").version == 1
+    with pytest.raises(IntegrityError, match="uq_tutor_profiles_user_id"):
+        _tutor_profile(fresh_database_url, user_id)
+    with pytest.raises(IntegrityError, match="fk_tutor_profiles_user_id_users"):
+        run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": user_id})
+
+
+@pytest.mark.parametrize(
+    ("experience", "constraint"),
+    [
+        ("x" * 4001, "professional_experience_length"),
+        (" Algebra.", "professional_experience_trimmed"),
+        ("Algebra. ", "professional_experience_trimmed"),
+    ],
+)
+def test_invalid_tutor_profiles_are_rejected(
+    fresh_database_url, experience, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=f"ck_tutor_profiles_{constraint}"):
+        _tutor_profile(fresh_database_url, _recipient(fresh_database_url), experience)
+
+
+def test_4000_characters_and_no_experience_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    _tutor_profile(fresh_database_url, _recipient(fresh_database_url), "x" * 4000)
+    _tutor_profile(fresh_database_url, _recipient(fresh_database_url), None)
+
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM tutor_profiles")
+    assert count.n == 2
