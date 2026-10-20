@@ -114,8 +114,7 @@ def upgrade() -> None:
             name=op.f(f"ck_{TABLE}_resolved_iff_final"),
         ),
         sa.CheckConstraint(
-            "status NOT IN ('approved', 'rejected')"
-            " OR resolved_by_user_id IS NOT NULL",
+            "status NOT IN ('approved', 'rejected') OR resolved_by_user_id IS NOT NULL",
             name=op.f(f"ck_{TABLE}_resolver_unless_cancelled"),
         ),
         sa.CheckConstraint(
