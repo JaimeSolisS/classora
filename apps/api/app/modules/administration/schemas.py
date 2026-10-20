@@ -1,5 +1,6 @@
 """Administration request and response bodies: the audit log (#22), the
-business settings (#37) and the approval requests (#40)."""
+business settings (#37), the approval requests (#40) and the notifications
+(#41)."""
 
 import uuid
 import zoneinfo
@@ -264,3 +265,36 @@ class ApprovalRequestChangesBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str | None = None
+
+
+# --- Notifications (#41) -------------------------------------------------------------
+
+NotificationParamValue = str | int | bool | None
+
+
+class NotificationItem(BaseModel):
+    """One of the caller's notifications. The client renders the message from
+    ``notification_type`` and ``params``; ``read_at`` is null while unread."""
+
+    id: uuid.UUID
+    notification_type: str
+    params: dict[str, NotificationParamValue]
+    created_at: datetime
+    read_at: datetime | None
+
+
+class NotificationUnreadCount(BaseModel):
+    count: int
+
+
+class NotificationReadAllBody(BaseModel):
+    """``up_to``: the newest notification the caller has seen; only that one
+    and older ones are marked read. ``null`` marks every unread one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    up_to: uuid.UUID | None = None
+
+
+class NotificationReadAllResult(BaseModel):
+    updated: int

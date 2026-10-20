@@ -9,7 +9,8 @@ used to defer background jobs (neither connects yet, so the API starts while
 the database is down); both are closed at shutdown. The API never runs
 migrations (``make migrate``).
 
-The demo job route (``/api/v1/dev/demo-jobs``) exists only when ``APP_ENV`` is
+The demo job route (``/api/v1/dev/demo-jobs``) and the demo notification
+route (``/api/v1/dev/notifications``, #41) exist only when ``APP_ENV`` is
 ``local`` or ``dev``.
 
 :func:`build_app` assembles the app (metadata, conventions, routers) without
@@ -34,6 +35,15 @@ from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.approvals_router import router as approvals_router
+from app.modules.administration.notifications_dev import (
+    register_dev_notification_type,
+)
+from app.modules.administration.notifications_dev import (
+    router as dev_notifications_router,
+)
+from app.modules.administration.notifications_router import (
+    router as notifications_router,
+)
 from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
@@ -99,8 +109,9 @@ def build_app(
     the approval inbox (#40 D3, E4), and installs
     the ``Origin`` check on every unsafe request as an app-level dependency, so
     it runs before authentication (#24).
-    ``include_dev_routes`` mounts the local/DEV demo job route; the exported
-    contract (``app.core.openapi``) never includes it.
+    ``include_dev_routes`` mounts the local/DEV demo job and demo notification
+    routes (and registers the ``dev.demo`` notification type); the exported
+    contract (``app.core.openapi``) never includes them.
     """
     app = FastAPI(
         title=API_TITLE,
@@ -123,6 +134,7 @@ def build_app(
     app.include_router(user_admin_router)
     app.include_router(administration_router)
     app.include_router(approvals_router)
+    app.include_router(notifications_router)
     app.include_router(business_settings_router)
     app.include_router(catalog_router)
     app.include_router(periods_router)
@@ -133,6 +145,9 @@ def build_app(
     app.include_router(consent_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
+        # The dev.demo notification type exists only with its route (#41 D1).
+        register_dev_notification_type()
+        app.include_router(dev_notifications_router)
     return app
 
 

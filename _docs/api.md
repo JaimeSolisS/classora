@@ -675,6 +675,65 @@ account-reference resolver that the composition roots register
 (`register_account_reference_resolver(identity.service.get_account_references)`);
 without one, building an item fails closed (`500`).
 
+### Notifications
+
+Implemented by M3-05 (#41; spec §1, §9: in-app only; ISSUE-X1) in
+`apps/api/app/modules/administration/` (`models.py`, `notifications.py`,
+`notifications_router.py`, `notifications_dev.py`), exported through
+`administration.service`. Live delivery (SSE) is M3-06 (#42); preferences
+are M8-02 (#119); retention is M8-12 (#129).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/notifications` | `authenticated()` | The caller's own notifications, newest first by `(created_at, id)`. Cursor pagination (`limit`, `cursor`; see Pagination); `unread_only` (default `false`). An invalid cursor is `400 invalid_cursor`; `403 privacy_notice_required` before the notice is accepted. |
+| `GET /api/v1/notifications/unread-count` | `authenticated()` | `{"count": n}` (one statement on a partial index). `403 privacy_notice_required` before the notice is accepted. |
+| `POST /api/v1/notifications/{notification_id}/read` | `authenticated()` | No body. `200` with the item. Idempotent: `read_at` keeps its first value. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` for another user's or an unknown id. |
+| `POST /api/v1/notifications/read-all` | `authenticated()` | Body `{"up_to": <id> \| null}` (`extra="forbid"`; the body may be left out). `200` with `{"updated": n}`. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` when `up_to` isn't the caller's. |
+| `POST /api/v1/dev/notifications` | `authenticated()` | **Local/DEV only** (mounted with `/api/v1/dev/demo-jobs`, never in the exported contract). Body `{"label"}` (1–100 characters). Creates one `dev.demo` notification for the caller; `201` with the item. |
+
+- **Model** (`notifications`; neither audited nor versioned: per-user
+  messages, and the action behind each one is audited where it happens):
+  `recipient_user_id` (`users`, `ON DELETE RESTRICT`), `notification_type`
+  (a dotted code, CHECKed format, at most 64 characters), `params` (a JSONB
+  object, default `{}`), `read_at` (`NULL` while unread).
+- **`{type, params}`:** the client renders the message from the i18n key
+  `notifications.types.<type with "." replaced by "_">` in `common.json`,
+  interpolating `params`, so a language switch applies to old
+  notifications too. An unknown type shows a generic message, never its
+  code.
+- **Params rules** (checked by `create_notification` after the type's
+  model): a flat object of strings (at most 200 characters), integers,
+  booleans or `null`; at most 2 KB as JSON; no key matching the sensitive
+  pattern (`password|token|secret|hash`). Values are data (names, dates as
+  `YYYY-MM-DD`, codes), never translated text; the client translates codes.
+- **Own rows only:** a user lists, counts and marks only their own
+  notifications. Another user's id, or an unknown one, answers `404
+  not_found` with the same body (`read`, and `read-all`'s `up_to`).
+- **`read-all` and `up_to`:** marks the caller's unread notifications at or
+  before `up_to`'s `(created_at, id)` position (all of them when `null`), so
+  one that arrives while the panel is open stays unread. The web app sends
+  the newest id it shows.
+- **Recipients** may be in any account state; the notification waits until
+  they can sign in.
+
+**Adding a type** (later issues: #44 qualification decisions, M4 offers and
+reminders):
+
+1. Define a Pydantic model of the params and register it with
+   `administration.service.register_notification_type("module.event",
+   Model)` in `app/wiring.py` (called by `build_app`, `app.cli` and
+   `app.worker`). Registering the same model again changes nothing; another
+   model for a registered code raises.
+2. Create notifications with `create_notification(session,
+   recipient_user_id=…, notification_type=…, params=Model(...))` **inside
+   the transaction of the action that causes them**. It validates the
+   params, adds the row and flushes; it never commits, so a rollback leaves
+   no notification. An unknown type or bad params raise `ValueError` (a
+   programming error).
+3. Web: add `notifications.types.<module_event>` to both `common.json`
+   catalogs and, when the notification opens a page, an entry in
+   `NOTIFICATION_LINKS` (`features/notifications/messages.ts`).
+
 ### Password reset and change
 
 Implemented by M2-12 (#30; spec §1, §14, ADR-0007 D8, D10, D11, D12, D14) in

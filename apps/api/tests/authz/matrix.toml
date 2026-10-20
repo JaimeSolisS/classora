@@ -325,6 +325,13 @@ json = { outcome = "succeed" }
 rate_limit_exempt = "Local/DEV only; takes no credentials or tokens"
 
 [[route]]
+method = "POST"
+path = "/api/v1/dev/notifications"
+access = "authenticated"
+# Local/DEV only (#41 D1): creates a dev.demo notification for the caller.
+json = { label = "Matrix" }
+
+[[route]]
 method = "GET"
 path = "/api/v1/education-levels"
 access = "authenticated"
@@ -493,6 +500,32 @@ allow = ["owner", "administrator"]
 json = {}
 reauth = "user.invitation.staff_role"
 reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications"
+access = "authenticated"
+# Every signed-in role lists its own notifications (#41 C1).
+
+[[route]]
+method = "POST"
+path = "/api/v1/notifications/read-all"
+access = "authenticated"
+json = { up_to = "00000000-0000-4000-8000-000000000000" }
+# The placeholder up_to is no notification of the caller: 404 for every
+# signed-in role (the 200 cases are in tests/integration/test_notifications.py).
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications/unread-count"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/notifications/{notification_id}/read"
+access = "authenticated"
+# The placeholder id is no notification of the caller: 404 for every
+# signed-in role.
 
 [[route]]
 method = "POST"

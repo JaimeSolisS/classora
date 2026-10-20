@@ -1005,5 +1005,22 @@
       "timeRequired": "Enter a time.",
       "closesAfterOpens": "Closing time must be after opening time."
     }
+  },
+  "notifications": {
+    "bell": "Notifications",
+    "bellUnread": "Notifications ({{unread}} unread)",
+    "title": "Notifications",
+    "markAll": "Mark all as read",
+    "markingAll": "Marking as read…",
+    "empty": "No notifications yet.",
+    "loading": "Loading notifications…",
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
+    "unread": "Unread",
+    "read": "Read",
+    "unknown": "You have a new notification.",
+    "types": {
+      "dev_demo": "Demo notification: {{label}}"
+    }
   }
 }

@@ -356,6 +356,12 @@ follows these rules.
   test that restores what it changed. The shared demo Owner session is
   never reauthenticated, so a zone change there always asks for the
   password.
+- Notifications (#41): specs create them through the local/DEV route
+  `POST /api/v1/dev/notifications` (`createDemoNotificationViaApi` in
+  `e2e/tests/support/notifications.ts`), always for the shared `demo.owner`
+  with a label unique to the test. Several specs notify `demo.owner`, so
+  assertions use that unique label and never exact counts (unread count,
+  number of items).
 - Academic periods (#38) can't overlap within a type, so specs that add
   periods or closures use dates in a year unique to the run (for example
   `2100 + (Date.now() % 500)`), never the current years.

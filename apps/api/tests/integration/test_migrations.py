@@ -1,6 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
 M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
-M3-03 A, M3-04 A); each test uses a fresh database."""
+M3-03 A, M3-04 A, M3-05 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0023"
+HEAD = "0024"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -91,6 +91,7 @@ SETTINGS_TABLES = ["business_settings", "operating_hours"]
 PERIOD_TABLES = ["academic_periods", "closures"]
 CLASSROOM_TABLES = ["classroom_availability_windows", "classrooms"]
 APPROVAL_TABLES = ["approval_requests"]
+NOTIFICATION_TABLES = ["notifications"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -187,6 +188,9 @@ def test_history_is_linear_with_one_head():
     approvals = script.get_revision("0023")
     assert approvals.down_revision == "0022"
     assert Path(approvals.path).name == "0023_administration_approval_requests.py"
+    notifications = script.get_revision("0024")
+    assert notifications.down_revision == "0023"
+    assert Path(notifications.path).name == "0024_administration_notifications.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -222,6 +226,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             "audit_events",
             *ACCOUNT_TOKEN_TABLES,
             *APPROVAL_TABLES,
+            *NOTIFICATION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -2937,3 +2942,121 @@ def test_valid_approval_rows_are_accepted(fresh_database_url):
 
     [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM approval_requests")
     assert count.n == 2
+
+
+# --- 0024: notifications (#41 A) ---------------------------------------------------
+
+
+def test_0024_adds_exactly_notifications_and_downgrade_drops_it(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0023")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0024")
+
+    assert public_tables(fresh_database_url) - before == set(NOTIFICATION_TABLES)
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM notifications")
+    assert count.n == 0
+
+    command.downgrade(config, "0023")
+
+    assert version_nums(fresh_database_url) == ["0023"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_notifications_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "notifications"
+
+    # Not versioned (A1): no version column.
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(fresh_database_url, table) == {
+        **standard,
+        "recipient_user_id": ("uuid", "NO", None, None),
+        "notification_type": ("character varying", "NO", 64, None),
+        "params": ("jsonb", "NO", None, "'{}'::jsonb"),
+        "read_at": ("timestamp with time zone", "YES", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_recipient_user_id_users",
+        f"ck_{table}_notification_type_format",
+        f"ck_{table}_params_object",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_recipient_user_id_users"]
+    indexes = _indexes(fresh_database_url, table)
+    assert set(indexes) == {
+        f"pk_{table}",
+        "ix_notifications_recipient_created",
+        "ix_notifications_recipient_unread",
+    }
+    assert (
+        "(recipient_user_id, created_at DESC, id DESC)"
+        in indexes["ix_notifications_recipient_created"]
+    )
+    assert indexes["ix_notifications_recipient_unread"].endswith(
+        "(recipient_user_id) WHERE (read_at IS NULL)"
+    )
+
+
+def _recipient(dsn: str) -> Any:
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES (:username, 'Recipient', 'active') RETURNING id",
+        {"username": f"recipient.{uuid.uuid4().hex[:8]}"},
+    )
+    return user.id
+
+
+@pytest.mark.parametrize(
+    ("notification_type", "params", "constraint"),
+    [
+        ("dev", "{}", "notification_type_format"),
+        ("Dev.Demo", "{}", "notification_type_format"),
+        ("dev.demo.", "{}", "notification_type_format"),
+        ("dev demo.x", "{}", "notification_type_format"),
+        ("dev.demo", "[]", "params_object"),
+        ("dev.demo", '"label"', "params_object"),
+        ("dev.demo", "null", "params_object"),
+        ("dev.demo", "1", "params_object"),
+    ],
+)
+def test_invalid_notifications_are_rejected(
+    fresh_database_url, notification_type, params, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    recipient = _recipient(fresh_database_url)
+
+    with pytest.raises(IntegrityError, match=f"ck_notifications_{constraint}"):
+        run_sql(
+            fresh_database_url,
+            "INSERT INTO notifications (recipient_user_id, notification_type, params)"
+            " VALUES (:recipient, :type, CAST(:params AS jsonb))",
+            {"recipient": recipient, "type": notification_type, "params": params},
+        )
+
+
+def test_a_valid_notification_gets_the_defaults_and_its_user_cannot_be_deleted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    recipient = _recipient(fresh_database_url)
+
+    [row] = run_sql(
+        fresh_database_url,
+        "INSERT INTO notifications (recipient_user_id, notification_type)"
+        " VALUES (:recipient, 'staff.qualification_approved')"
+        " RETURNING params, read_at",
+        {"recipient": recipient},
+    )
+
+    assert (row.params, row.read_at) == ({}, None)
+    with pytest.raises(IntegrityError, match="fk_notifications_recipient_user_id"):
+        run_sql(
+            fresh_database_url,
+            "DELETE FROM users WHERE id = :id",
+            {"id": recipient},
+        )
