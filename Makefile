@@ -220,3 +220,50 @@ scan-image:
 	  -v classora-trivy-cache:/root/.cache -v "$(CURDIR)/.trivyignore:/trivyignore:ro" \
 	  $(TRIVY_IMAGE) image --quiet --scanners vuln --ignorefile /trivyignore --skip-db-update \
 	  --table-mode detailed --severity CRITICAL --ignore-unfixed --exit-code 1 "$(IMAGE)"
+
+# --- Native local stack (agents and developers; _docs/process.md) ------------
+# One shared PostgreSQL container (Compose project classora-shared, 127.0.0.1:55432)
+# with one database per worktree or clone; the API, worker and web app run on the
+# host (no image builds, no PgBouncer). The Docker stack (make dev, make e2e) and
+# CI stay the reference. Settings: this checkout's .env (ENV_FILE=<path> picks
+# another), and variables set in the shell or on the make command line win over it.
+.PHONY: db-shared db-shared-down db-create db-drop api-native worker-native web-native
+
+SHARED_DB_COMPOSE := docker compose -f infrastructure/docker/compose.shared-db.yaml
+WITH_ENV := infrastructure/scripts/with-env.sh
+
+## Start the shared PostgreSQL server for native stacks (idempotent; 127.0.0.1:55432).
+db-shared:
+	$(SHARED_DB_COMPOSE) up -d --wait
+
+## Stop the shared PostgreSQL server; its volume (every database) is kept unless V=1.
+db-shared-down:
+	$(SHARED_DB_COMPOSE) down $(if $(filter 1,$(V)),-v)
+
+## Create a database and its role on the shared server: make db-create NAME=<name>
+## (name: [a-z0-9_]+; idempotent). Prints the DATABASE_URL and DATABASE_DIRECT_URL to set.
+db-create:
+	@infrastructure/scripts/shared-db.sh create "$(NAME)"
+
+## Drop a database and its role from the shared server: make db-drop NAME=<name>.
+db-drop:
+	@infrastructure/scripts/shared-db.sh drop "$(NAME)"
+
+## Apply the migrations, then run the API on the host with reload on 127.0.0.1:API_PORT
+## (default 8000) against DATABASE_URL / DATABASE_DIRECT_URL.
+api-native:
+	$(WITH_ENV) sh -c 'cd apps/api && uv run alembic upgrade head && \
+	  exec uv run uvicorn --factory app.main:create_app --host 127.0.0.1 --port "$${API_PORT:-8000}" \
+	  --reload --reload-dir app --no-access-log --no-proxy-headers --timeout-graceful-shutdown 5'
+
+## Run the background worker on the host against DATABASE_DIRECT_URL.
+worker-native:
+	$(WITH_ENV) sh -c 'cd apps/api && exec uv run python -m app.worker'
+
+## Install from the lockfile, then run the Vite dev server (hot reload) on 127.0.0.1:WEB_PORT
+## (default 5173), proxying to API_PROXY_TARGET (default http://127.0.0.1:API_PORT).
+web-native:
+	$(PNPM) install --frozen-lockfile
+	COREPACK_ENABLE_DOWNLOAD_PROMPT=0 $(WITH_ENV) sh -c \
+	  'export API_PROXY_TARGET="$${API_PROXY_TARGET:-http://127.0.0.1:$${API_PORT:-8000}}"; \
+	  exec corepack pnpm --filter @classora/web exec vite --port "$${WEB_PORT:-5173}"'

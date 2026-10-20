@@ -34,4 +34,17 @@ authorization layer. The report says which ran and why. Otherwise CI covers
 them on the pull request.
 
 Run heavy commands one at a time. `make sast` and `make scan-secrets` need
-Docker.
+Docker. On a low-memory machine (8 GB) with several agents, heavy commands
+are serialized across all of them.
+
+## Local stack
+
+Work in the issue's own git worktree (or clone) and use the native local stack
+by default (README "Native local stack"): the shared PostgreSQL server
+(`make db-shared`), an own database (`make db-create NAME=<issue>`), own ports
+and `APP_ORIGIN` in the worktree's `.env`, then `make api-native`,
+`make worker-native` and `make web-native`. Use a Docker stack only for
+`make e2e`, for `make test-migrations` when it applies, or when the change is
+Docker-specific (Dockerfiles, Compose files, PgBouncer). Never use the owner's
+`classora` Compose stack. CI's Docker-based jobs are the parity check on the
+pull request. Teardown: stop the processes, then `make db-drop NAME=<issue>`.
