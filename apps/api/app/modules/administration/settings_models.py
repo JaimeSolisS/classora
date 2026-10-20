@@ -68,7 +68,7 @@ class BusinessSettings(Audited, VersionedMixin, Model):
     )
     time_zone: Mapped[str] = mapped_column(
         String(TIME_ZONE_MAX_LENGTH),
-        server_default=text(f"'{DEFAULT_CENTER_TIME_ZONE}'"),
+        server_default=DEFAULT_CENTER_TIME_ZONE,
     )
 
 

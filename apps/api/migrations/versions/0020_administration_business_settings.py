@@ -83,7 +83,7 @@ def upgrade() -> None:
         sa.Column(
             "time_zone",
             sa.String(length=64),
-            server_default=sa.text(f"'{DEFAULT_TIME_ZONE}'"),
+            server_default=DEFAULT_TIME_ZONE,
             nullable=False,
         ),
         sa.Column("version", sa.Integer(), server_default=sa.text("1"), nullable=False),
