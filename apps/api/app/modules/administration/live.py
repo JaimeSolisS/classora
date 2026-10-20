@@ -239,8 +239,10 @@ def install_notification_hub(app: FastAPI) -> NotificationHub:
 
 
 def notification_hub_of(app: FastAPI) -> NotificationHub:
-    hub: NotificationHub = getattr(app.state, HUB_STATE)
-    return hub
+    """``app``'s hub; installed now if ``app`` has none (an app assembled
+    without ``build_app`` that still runs the lifespan)."""
+    hub: NotificationHub | None = getattr(app.state, HUB_STATE, None)
+    return hub if hub is not None else install_notification_hub(app)
 
 
 def notification_hub(request: Request) -> NotificationHub:
