@@ -21,8 +21,8 @@ import type { PreferencesUpdate, UserPreferences } from './api';
 //   differs from the one last applied, no save of that field is pending and
 //   none started since the response was requested.
 // - `migrate`: values the account never stored (`null`) are filled with what
-//   the browser shows, in one PATCH, at most once per user per page load.
-//   A failure is silent; the next sign-in or reload tries again.
+//   the browser shows, in one PATCH, at most once per user per page load (and
+//   sign-in). A failure is silent; the next sign-in or reload tries again.
 // - `change` (a switcher while signed in): applied and stored locally at once,
 //   then saved with only that field. Saves run one after another; a response
 //   updates the cached session user and is never applied again.
@@ -86,7 +86,7 @@ export function createPreferencesController(deps: PreferencesDeps) {
   let theme: ThemeAccess | null = null;
   /** What the app last applied, and for which user; null when signed out. */
   let applied: Applied | null = null;
-  /** Users whose null values were already sent once in this page load. */
+  /** Users whose null values were already sent once since sign-in. */
   const migrated = new Set<string>();
   const changes: Record<PreferenceField, number> = { language: 0, theme: 0 };
   const pending: Record<PreferenceField, number> = { language: 0, theme: 0 };
@@ -279,9 +279,13 @@ export function createPreferencesController(deps: PreferencesDeps) {
       return enqueue(applied.userId, body, { silent: false });
     },
 
-    /** Signed out: the next sign-in applies the account's values again. */
+    /**
+     * Signed out: the next sign-in applies the account's values again and,
+     * for a value still never stored, tries the migration again.
+     */
     signedOut(): void {
       applied = null;
+      migrated.clear();
       if (failure !== null) {
         setFailure(null);
       }

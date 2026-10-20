@@ -210,6 +210,29 @@ describe('filling values the account never stored (F3)', () => {
     expect(cachedPreferences()).toEqual({ language: null, theme: null });
   });
 
+  it('after a failed migration, the next sign-in tries again', async () => {
+    setLocal('en', 'dark');
+    const api = stubSignedIn({
+      [PATCH]: [() => problem(500, 'internal_error'), echo],
+      'POST /api/v1/auth/logout': () => new Response(null, { status: 204 }),
+      'POST /api/v1/auth/login': () => jsonResponse(200, TEST_USER),
+    });
+    app = await renderApp('/probe', ROUTES);
+    expect(api.calls(PATCH)).toHaveLength(1);
+
+    await click(buttonNamed(header(), 'Sign out'));
+    const main = app.container.querySelector('main')!;
+    typeInto(fieldByLabel(main, 'Username'), 'demo.owner');
+    typeInto(fieldByLabel(main, 'Password'), PASSWORD);
+    await click(buttonNamed(main, 'Sign in'));
+
+    expect(api.calls(PATCH).map((c) => c.body)).toEqual([
+      { language: 'en', theme: 'dark' },
+      { language: 'en', theme: 'dark' },
+    ]);
+    expect(cachedPreferences()).toEqual({ language: 'en', theme: 'dark' });
+  });
+
   it('signed out, nothing is sent', async () => {
     setLocal('en', 'dark');
     const api = stubSignedOut({ [PATCH]: echo });
