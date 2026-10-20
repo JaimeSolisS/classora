@@ -337,7 +337,7 @@ make test              # all tests: API (unit + integration) then web (Vitest)
 make test-api          # all API tests with a coverage report
 make test-web          # web and API client tests (Vitest, no Docker needed; includes the es/en translation-key check)
 make test-unit         # API unit tests only (no Docker needed)
-make test-integration  # API integration tests only
+make test-integration  # API integration tests except the migration checks (SHARD=K/N runs one CI shard)
 make test-migrations   # API migration checks only (upgrade, round trip, no model drift)
 ```
 
@@ -433,7 +433,9 @@ command:
 | CI job | Local command |
 | --- | --- |
 | `api-lint` | `make lint-api` |
-| `api-test` | `make test-unit`, `make test-migrations`, `make test-integration` |
+| `api-unit` | `make test-unit` |
+| `api-migrations` | `make test-migrations` |
+| `api-integration (K/4)` | `make test-integration SHARD=K/4` (four parallel shards; the test files are dealt round-robin by path) |
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |

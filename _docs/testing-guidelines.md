@@ -9,15 +9,23 @@ it does not decide anything that task or its ADR owns.
 
 | Layer | What belongs here | Where the files live | Marker or project | Local command | CI job |
 |---|---|---|---|---|---|
-| API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-test` |
-| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` | `api-test` |
-| Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-test` |
+| API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-unit` |
+| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks); `make test-integration SHARD=K/4` runs one CI shard | `api-integration (K/4)`, four parallel shards |
+| Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-migrations` |
 | Web unit and component | Hooks, stores, formatters, the API call wrapper, routing, rendered components in jsdom, translation catalogs. | `apps/web/src/**/*.test.{ts,tsx}`, `packages/api-client/src/**/*.test.ts` | Vitest project `unit` (web); the api-client package's own Vitest run | `make test-web` | `web` |
 | Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
 | E2E | Cross-application flows in a real browser against the full Compose stack (web → API → PgBouncer → PostgreSQL, worker running), plus the axe scan of each route. | `e2e/tests/` | Playwright project `chromium` | `make e2e` | `e2e` |
 
 `make test` runs the API (unit and integration) and the web unit tests. It
 does not run the Storybook story tests or E2E.
+
+In CI the API layers run as parallel jobs, and each API test runs in exactly
+one of them: `api-unit`, `api-migrations`, and `api-integration` in four
+shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
+files by path and deals them round-robin, so a file always stays in one shard
+and a red shard is reproduced locally with `make test-integration SHARD=K/4`.
+Coverage is reported per job (`--cov-report=term-missing`); no coverage
+threshold is enforced.
 
 ### Choosing a layer
 
