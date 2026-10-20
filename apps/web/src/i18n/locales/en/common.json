@@ -286,10 +286,12 @@
       "high": "High"
     },
     "types": {
-      "identity_registration": "Account request"
+      "identity_registration": "Account request",
+      "staff_qualification": "Tutor qualification"
     },
     "summary": {
-      "registration": "{{name}} ({{username}}) · {{role}}"
+      "registration": "{{name}} ({{username}}) · {{role}}",
+      "qualification": "{{tutor}} — {{subject}} ({{level}})"
     },
     "list": {
       "title": "Requests",
@@ -480,6 +482,49 @@
       "emailInvalid": "Enter an email like name@example.com, or leave it empty.",
       "phoneInvalid": "Enter a phone number of 7 to 32 characters using digits, spaces or ( ) . -, or leave it empty.",
       "experienceTooLong": "Use at most 4000 characters."
+    },
+    "qualifications": {
+      "title": "Qualifications",
+      "intro": "Subjects this tutor has asked to teach. Only approved qualifications count.",
+      "teachingTitle": "Teaching subjects",
+      "teachingEmpty": "No approved qualifications yet.",
+      "subjectInactive": "(inactive)",
+      "subject": "Subject",
+      "level": "Level",
+      "status": "Status",
+      "requestedAt": "Requested",
+      "decidedAt": "Decided",
+      "reason": "Reason",
+      "actions": "Actions",
+      "empty": "No qualification requests yet.",
+      "statuses": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
+      },
+      "request": "Request qualification",
+      "requestTitle": "Request a qualification",
+      "requestDescription": "Choose the education level and the subject you want to teach. An administrator reviews the request.",
+      "levelLabel": "Education level",
+      "levelPlaceholder": "Choose a level",
+      "subjectLabel": "Subject",
+      "subjectPlaceholder": "Choose a subject",
+      "subjectNone": "This level has no active subjects.",
+      "subjectRequired": "Choose a subject.",
+      "send": "Send request",
+      "sending": "Sending…",
+      "close": "Cancel",
+      "requested": "Request sent.",
+      "cancel": "Cancel request",
+      "cancelFor": "Cancel request for {{subject}}",
+      "cancelTitle": "Cancel this request?",
+      "cancelDescription": "The request for {{subject}} ({{level}}) will be withdrawn. You can request it again later.",
+      "cancelConfirm": "Cancel request",
+      "cancelKeep": "Keep request",
+      "cancelling": "Cancelling…",
+      "cancelled": "Request cancelled.",
+      "loadError": "The qualifications couldn't be loaded."
     }
   },
   "userStates": {
@@ -1070,7 +1115,9 @@
     "read": "Read",
     "unknown": "You have a new notification.",
     "types": {
-      "dev_demo": "Demo notification: {{label}}"
+      "dev_demo": "Demo notification: {{label}}",
+      "staff_qualification_approved": "Your qualification for {{subject_name}} ({{education_level_name}}) was approved.",
+      "staff_qualification_rejected": "Your qualification for {{subject_name}} ({{education_level_name}}) was not approved; see the reason in your qualifications."
     }
   }
 }

@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0025"
+HEAD = "0026"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -93,6 +93,7 @@ CLASSROOM_TABLES = ["classroom_availability_windows", "classrooms"]
 APPROVAL_TABLES = ["approval_requests"]
 NOTIFICATION_TABLES = ["notifications"]
 STAFF_TABLES = ["tutor_profiles"]
+QUALIFICATION_TABLES = ["tutor_qualifications"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -232,6 +233,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *APPROVAL_TABLES,
             *NOTIFICATION_TABLES,
             *STAFF_TABLES,
+            *QUALIFICATION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3156,3 +3158,174 @@ def test_4000_characters_and_no_experience_are_accepted(fresh_database_url):
 
     [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM tutor_profiles")
     assert count.n == 2
+
+
+# --- 0026: tutor qualifications (#44 A) ----------------------------------------------
+
+
+def test_0026_adds_exactly_tutor_qualifications_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0025")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0026")
+
+    assert public_tables(fresh_database_url) - before == set(QUALIFICATION_TABLES)
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM tutor_qualifications"
+    )
+    assert count.n == 0
+
+    command.downgrade(config, "0025")
+
+    assert version_nums(fresh_database_url) == ["0025"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_tutor_qualifications_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_qualifications"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "status": ("character varying", "NO", 20, "'pending'::character varying"),
+        "decided_at": ("timestamp with time zone", "YES", None, None),
+        "decided_by_user_id": ("uuid", "YES", None, None),
+        "rejection_reason": ("character varying", "YES", 1000, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_subject_id_subjects",
+        f"fk_{table}_decided_by_user_id_users",
+        f"ck_{table}_status_valid",
+        f"ck_{table}_decided_iff_final",
+        f"ck_{table}_reason_iff_rejected",
+    }
+    for fk in ("tutor_user_id_users", "subject_id_subjects"):
+        assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_{fk}"]
+    indexes = _indexes(fresh_database_url, table)
+    assert set(indexes) == {
+        f"pk_{table}",
+        f"ix_{table}_tutor_user_id",
+        f"ix_{table}_subject_id",
+        "uq_tutor_qualifications_active",
+    }
+    active = indexes["uq_tutor_qualifications_active"]
+    assert active.startswith("CREATE UNIQUE INDEX")
+    assert "(tutor_user_id, subject_id)" in active
+    assert "'pending'" in active and "'approved'" in active
+    assert "'rejected'" not in active and "'cancelled'" not in active
+
+
+def _qualification_subject(dsn: str) -> Any:
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order)"
+        " VALUES (:name, 10) RETURNING id",
+        {"name": f"Nivel {uuid.uuid4().hex[:8]}"},
+    )
+    [subject] = run_sql(
+        dsn,
+        "INSERT INTO subjects (education_level_id, name)"
+        " VALUES (:level, 'Física') RETURNING id",
+        {"level": level.id},
+    )
+    return subject.id
+
+
+def _qualification(
+    dsn: str,
+    tutor_id: Any,
+    subject_id: Any,
+    status: str = "pending",
+    *,
+    decided: bool | None = None,
+    reason: str | None = None,
+) -> None:
+    if decided is None:
+        decided = status != "pending"
+    run_sql(
+        dsn,
+        "INSERT INTO tutor_qualifications"
+        " (tutor_user_id, subject_id, status, decided_at, rejection_reason)"
+        " VALUES (:tutor, :subject, :status,"
+        " CASE WHEN :decided THEN now() END, :reason)",
+        {
+            "tutor": tutor_id,
+            "subject": subject_id,
+            "status": status,
+            "decided": decided,
+            "reason": reason,
+        },
+    )
+
+
+@pytest.mark.parametrize("second", ["pending", "approved"])
+@pytest.mark.parametrize("first", ["pending", "approved"])
+def test_two_active_qualifications_for_one_tutor_and_subject_are_rejected(
+    fresh_database_url, first, second
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    subject = _qualification_subject(fresh_database_url)
+
+    _qualification(fresh_database_url, tutor, subject, first)
+    with pytest.raises(IntegrityError, match="uq_tutor_qualifications_active"):
+        _qualification(fresh_database_url, tutor, subject, second)
+
+
+def test_rejected_and_cancelled_rows_do_not_block_a_new_request(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    other_tutor = _recipient(fresh_database_url)
+    subject = _qualification_subject(fresh_database_url)
+
+    _qualification(fresh_database_url, tutor, subject, "rejected", reason="No.")
+    _qualification(fresh_database_url, tutor, subject, "cancelled")
+    _qualification(fresh_database_url, tutor, subject, "rejected", reason="Again.")
+    _qualification(fresh_database_url, tutor, subject, "pending")
+    _qualification(fresh_database_url, other_tutor, subject, "approved")
+
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM tutor_qualifications"
+    )
+    assert count.n == 5
+    with pytest.raises(IntegrityError, match="fk_tutor_qualifications_subject_id"):
+        run_sql(
+            fresh_database_url, "DELETE FROM subjects WHERE id = :id", {"id": subject}
+        )
+
+
+@pytest.mark.parametrize(
+    ("status", "decided", "reason", "constraint"),
+    [
+        ("rejected", True, None, "reason_iff_rejected"),
+        ("approved", False, None, "decided_iff_final"),
+        ("rejected", False, "No.", "decided_iff_final"),
+        ("cancelled", False, None, "decided_iff_final"),
+        ("pending", True, None, "decided_iff_final"),
+        ("approved", True, "No.", "reason_iff_rejected"),
+        ("revoked", False, None, "status_valid"),
+    ],
+)
+def test_invalid_tutor_qualifications_are_rejected(
+    fresh_database_url, status, decided, reason, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=f"ck_tutor_qualifications_{constraint}"):
+        _qualification(
+            fresh_database_url,
+            _recipient(fresh_database_url),
+            _qualification_subject(fresh_database_url),
+            status,
+            decided=decided,
+            reason=reason,
+        )

@@ -1526,6 +1526,52 @@ export interface paths {
         patch: operations["update_tutor_api_v1_tutors__user_id__patch"];
         trace?: never;
     };
+    "/api/v1/tutors/{user_id}/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Qualifications
+         * @description The tutor's qualifications, by the level's order, the subject name,
+         *     then the request time.
+         */
+        get: operations["list_qualifications_api_v1_tutors__user_id__qualifications_get"];
+        put?: never;
+        /**
+         * Request Qualification
+         * @description The tutor requests to teach a subject: a pending qualification and a
+         *     staff.qualification approval request. Only the tutor themselves.
+         */
+        post: operations["request_qualification_api_v1_tutors__user_id__qualifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Qualification
+         * @description The tutor withdraws a pending request. Only the tutor themselves.
+         */
+        post: operations["cancel_qualification_api_v1_tutors__user_id__qualifications__qualification_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2986,7 +3032,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -3066,6 +3112,63 @@ export interface components {
             /** Errors */
             errors?: components["schemas"]["FieldError"][];
         };
+        /**
+         * QualificationCreate
+         * @description A tutor's request to teach one subject (the level follows from it).
+         */
+        QualificationCreate: {
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+        };
+        /**
+         * QualificationItem
+         * @description One qualification of a tutor, with its subject and level names.
+         */
+        QualificationItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Subject Name */
+            subject_name: string;
+            /**
+             * Education Level Id
+             * Format: uuid
+             */
+            education_level_id: string;
+            /** Education Level Name */
+            education_level_name: string;
+            /** Subject Is Active */
+            subject_is_active: boolean;
+            status: components["schemas"]["QualificationStatus"];
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Rejection Reason
+             * @description The reviewer's reason; set only for rejected.
+             */
+            rejection_reason: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        QualificationStatus: "pending" | "approved" | "rejected" | "cancelled";
+        /** @enum {string} */
+        QualificationStatusFilter: "all" | "pending" | "approved" | "rejected" | "cancelled";
         /**
          * ReauthenticateRequest
          * @description The current user's password (#26). The same bounds as login.
@@ -3458,6 +3561,29 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /**
+         * TeachingSubject
+         * @description A subject the tutor holds an **approved** qualification for (#44 D1).
+         *     A subject deactivated later stays, with ``subject_is_active`` false.
+         */
+        TeachingSubject: {
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Subject Name */
+            subject_name: string;
+            /**
+             * Education Level Id
+             * Format: uuid
+             */
+            education_level_id: string;
+            /** Education Level Name */
+            education_level_name: string;
+            /** Subject Is Active */
+            subject_is_active: boolean;
+        };
         /** @enum {string} */
         Theme: "light" | "dark" | "system";
         /**
@@ -3491,6 +3617,11 @@ export interface components {
              * @description The fields the caller may change, sorted; empty: read only. Sending another field is 403 permission_denied.
              */
             editable_fields: components["schemas"]["TutorField"][];
+            /**
+             * Teaching Subjects
+             * @description The subjects of the tutor's approved qualifications, by the level's order, then the subject name.
+             */
+            teaching_subjects: components["schemas"]["TeachingSubject"][];
         };
         /** @enum {string} */
         TutorField: "display_name" | "email" | "phone" | "professional_experience";
@@ -8703,6 +8834,206 @@ export interface operations {
                 };
             };
             /** @description The profile changed since it was loaded, or another first edit created it (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_qualifications_api_v1_tutors__user_id__qualifications_get: {
+        parameters: {
+            query?: {
+                /** @description One status, or all (the default). */
+                status?: components["schemas"]["QualificationStatusFilter"];
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    request_qualification_api_v1_tutors__user_id__qualifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualificationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but isn't the tutor themselves (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The subject or its education level is inactive (subject_inactive), or the tutor already has a pending or approved qualification for it (qualification_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    cancel_qualification_api_v1_tutors__user_id__qualifications__qualification_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                qualification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but isn't the tutor themselves (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor or qualification of this tutor, or the caller may not see the tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The qualification is no longer pending (approval_transition_invalid). */
             409: {
                 headers: {
                     [name: string]: unknown;

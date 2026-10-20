@@ -93,7 +93,7 @@ describe('route tree', () => {
     });
     // #40 F1, F2: any review permission; the old path only redirects.
     expect(children[5]!.handle).toEqual({
-      anyPermission: ['registration.review'],
+      anyPermission: ['registration.review', 'qualification.review'],
     });
     expect(children[6]!.handle).toBeUndefined();
     // #32 H1, I1.

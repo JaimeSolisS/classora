@@ -20,10 +20,11 @@ export type ApprovalAssigneeFilter =
 /**
  * The permissions that review at least one approval type: the Approvals page
  * and its navigation item need one of them. Each new type adds its own
- * review permission here (#44: `qualification.review`).
+ * review permission here.
  */
 export const APPROVAL_REVIEW_PERMISSIONS: readonly PermissionCode[] = [
   'registration.review',
+  'qualification.review',
 ];
 
 /** The approval types the page knows, with their label key. */
@@ -31,6 +32,7 @@ export const APPROVAL_TYPE_LABELS: Readonly<
   Record<string, ParseKeys<'common'>>
 > = {
   'identity.registration': 'approvals.types.identity_registration',
+  'staff.qualification': 'approvals.types.staff_qualification',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
@@ -130,9 +132,11 @@ export function decideApproval(
 
 /**
  * The types whose rejection needs a reason (the handler's
- * `reason_required_on_reject`; none yet, #44 adds `staff.qualification`).
+ * `reason_required_on_reject`).
  */
-export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>();
+export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
+  'staff.qualification',
+]);
 
 /** Whether `action` on an item of `type` needs a reason (UX only; the API
  * decides): request changes always, reject for some types. */
