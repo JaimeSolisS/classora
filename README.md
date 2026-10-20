@@ -100,6 +100,11 @@ follows from it) on their profile; Owners and administrators approve or
 reject them, with a reason, on the Approvals page, and the tutor is notified
 of the decision. Only approved qualifications count as the tutor's teaching
 subjects.
+Tutors publish their weekly availability and exceptions (time off and extra
+availability on given dates) in the center's local time on their profile;
+Owners and administrators can edit it too, and academic coordinators view
+it. The API answers whether a tutor is available at a given time, taking
+center closures into account.
 Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.
