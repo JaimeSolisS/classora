@@ -29,6 +29,7 @@ const RESERVED_OPTIONS = new Set([
   'keySeparator',
   'nsSeparator',
   'ordinal',
+  'skipInterpolation',
 ]);
 
 function values(params: NotificationItem['params']): Record<string, unknown> {

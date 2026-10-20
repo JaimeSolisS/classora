@@ -269,6 +269,22 @@ describe('the panel (E3, E4)', () => {
     expect(texts()[0]).toContain('Demo notification: Safe');
   });
 
+  it('never lets a param skip the interpolation', async () => {
+    stub({
+      [LIST]: () =>
+        page([
+          item(NEWEST.id, {
+            params: { label: 'Interpolated', skipInterpolation: true },
+          }),
+        ]),
+    });
+    app = await renderApp('/');
+    await click(bell()!);
+
+    expect(texts()[0]).toContain('Demo notification: Interpolated');
+    expect(texts()[0]).not.toContain('{{label}}');
+  });
+
   it('activating an unread item marks it read and lowers the count', async () => {
     const api = stub({
       [`POST /api/v1/notifications/${NEWEST.id}/read`]: () =>

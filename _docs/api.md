@@ -685,10 +685,10 @@ are M8-02 (#119); retention is M8-12 (#129).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/notifications` | `authenticated()` | The caller's own notifications, newest first by `(created_at, id)`. Cursor pagination (`limit`, `cursor`; see Pagination); `unread_only` (default `false`). An invalid cursor is `400 invalid_cursor`. |
-| `GET /api/v1/notifications/unread-count` | `authenticated()` | `{"count": n}` (one statement on a partial index). |
-| `POST /api/v1/notifications/{notification_id}/read` | `authenticated()` | No body. `200` with the item. Idempotent: `read_at` keeps its first value. |
-| `POST /api/v1/notifications/read-all` | `authenticated()` | Body `{"up_to": <id> \| null}` (`extra="forbid"`; the body may be left out). `200` with `{"updated": n}`. |
+| `GET /api/v1/notifications` | `authenticated()` | The caller's own notifications, newest first by `(created_at, id)`. Cursor pagination (`limit`, `cursor`; see Pagination); `unread_only` (default `false`). An invalid cursor is `400 invalid_cursor`; `403 privacy_notice_required` before the notice is accepted. |
+| `GET /api/v1/notifications/unread-count` | `authenticated()` | `{"count": n}` (one statement on a partial index). `403 privacy_notice_required` before the notice is accepted. |
+| `POST /api/v1/notifications/{notification_id}/read` | `authenticated()` | No body. `200` with the item. Idempotent: `read_at` keeps its first value. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` for another user's or an unknown id. |
+| `POST /api/v1/notifications/read-all` | `authenticated()` | Body `{"up_to": <id> \| null}` (`extra="forbid"`; the body may be left out). `200` with `{"updated": n}`. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` when `up_to` isn't the caller's. |
 | `POST /api/v1/dev/notifications` | `authenticated()` | **Local/DEV only** (mounted with `/api/v1/dev/demo-jobs`, never in the exported contract). Body `{"label"}` (1–100 characters). Creates one `dev.demo` notification for the caller; `201` with the item. |
 
 - **Model** (`notifications`; neither audited nor versioned: per-user
