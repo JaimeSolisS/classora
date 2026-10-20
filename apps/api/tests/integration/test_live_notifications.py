@@ -336,21 +336,33 @@ def test_a_foreign_unknown_or_invalid_last_event_id_gives_resync_only(
         assert stream.next_frame(2.0).is_comment
 
 
-def test_more_than_100_later_notifications_give_one_resync(
-    client: TestClient, hub: NotificationHub, module_seeded_url: str, user: CreatedUser
+@pytest.mark.parametrize("later", [100, 101])
+def test_up_to_100_later_notifications_replay_and_more_give_one_resync(
+    client: TestClient,
+    hub: NotificationHub,
+    module_seeded_url: str,
+    user: CreatedUser,
+    later: int,
 ) -> None:
-    hub.heartbeat_seconds = 0.1
+    """The boundary exactly: 100 later ones are all replayed, 101 are not."""
+    hub.heartbeat_seconds = 0.2
     first = notify(module_seeded_url, user)
+    created: list[uuid.UUID] = []
 
     async def many(session: AsyncSession) -> None:
-        for n in range(101):
-            await create_for(user, f"M{n}")(session)
+        for n in range(later):
+            created.append(uuid.UUID(str(await create_for(user, f"M{n}")(session))))
 
     in_uow(module_seeded_url, many)
     cookie = signed_in(client, user.username)
     with open_stream(client, cookie, **{"Last-Event-ID": str(first)}) as stream:
         opened(stream)
-        assert is_resync(stream.next_frame())
+        if later <= 100:
+            replayed = [notification_id_of(stream.next_event()) for _ in range(later)]
+            assert replayed == [str(n) for n in created]
+        else:
+            assert is_resync(stream.next_frame())
+        # Nothing else: the next frame is a heartbeat.
         assert stream.next_frame(2.0).is_comment
 
 
@@ -416,7 +428,9 @@ def test_the_stream_never_refreshes_last_seen_at(
     assert last_seen(module_seeded_url, user) > before
 
 
-@pytest.mark.parametrize("ending", ["revoked", "expired", "logged out"])
+@pytest.mark.parametrize(
+    "ending", ["revoked", "expired", "logged out", "suspended, not revoked"]
+)
 def test_an_ended_session_closes_the_stream(
     client: TestClient,
     hub: NotificationHub,
@@ -439,6 +453,14 @@ def test_an_ended_session_closes_the_stream(
         elif ending == "expired":
             # Past the staff idle limit (30 minutes).
             clock.advance(timedelta(minutes=31))
+        elif ending == "suspended, not revoked":
+            # Only the state changes (the lifecycle service would also
+            # revoke): the session check still ends the stream (D-c).
+            run_sql(
+                module_seeded_url,
+                "UPDATE users SET state = 'suspended' WHERE id = :id",
+                {"id": user.id},
+            )
         else:
             client.cookies.clear()
             response = client.post(

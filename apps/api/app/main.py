@@ -8,8 +8,9 @@ The lifespan creates the process's one database engine and opens the job app
 used to defer background jobs (neither connects yet, so the API starts while
 the database is down), and starts the live-notification listener (#42: one
 direct ``LISTEN`` connection, retried in the background while the database is
-down); all are closed at shutdown, and the open notification streams end. The
-API never runs migrations (``make migrate``).
+down); all are closed at shutdown. The open notification streams end as soon
+as a shutdown signal arrives (``app.core.shutdown``), before uvicorn waits for
+open responses. The API never runs migrations (``make migrate``).
 
 The demo job route (``/api/v1/dev/demo-jobs``) and the demo notification
 route (``/api/v1/dev/notifications``, #41) exist only when ``APP_ENV`` is
@@ -41,6 +42,7 @@ from app.core.demo_jobs import router as demo_jobs_router
 from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
+from app.core.shutdown import on_shutdown_signal
 from app.modules.administration.approvals_router import router as approvals_router
 from app.modules.administration.live import (
     NotificationListener,
@@ -107,7 +109,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     listener.start()
     app.state.notification_listener = listener
     try:
-        yield
+        # At SIGTERM/SIGINT, before uvicorn waits for open responses: end the
+        # streams cleanly, so proxies see a normal end and the browser
+        # reconnects (#42, QA D1).
+        with on_shutdown_signal(hub.close):
+            yield
     finally:
         hub.close()
         await listener.stop()
