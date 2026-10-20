@@ -1005,5 +1005,22 @@
       "timeRequired": "Escribe una hora.",
       "closesAfterOpens": "La hora de cierre debe ser posterior a la de apertura."
     }
+  },
+  "notifications": {
+    "bell": "Notificaciones",
+    "bellUnread": "Notificaciones ({{unread}} sin leer)",
+    "title": "Notificaciones",
+    "markAll": "Marcar todas como leídas",
+    "markingAll": "Marcando como leídas…",
+    "empty": "Aún no tienes notificaciones.",
+    "loading": "Cargando notificaciones…",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando más…",
+    "unread": "No leída",
+    "read": "Leída",
+    "unknown": "Tienes una notificación nueva.",
+    "types": {
+      "dev_demo": "Notificación de prueba: {{label}}"
+    }
   }
 }

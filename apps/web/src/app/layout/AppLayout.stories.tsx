@@ -7,8 +7,10 @@ import {
   PreferencesContext,
   type PreferencesContextValue,
 } from '@/features/preferences/usePreferences';
+import { UNREAD_COUNT_KEY } from '@/features/notifications/api';
 import { resetUiStore } from '@/stores/ui';
 import { StoryAuth } from '@/test/StoryAuth';
+import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
 import type { NavItem } from '../navigation';
 import { AppLayout } from './AppLayout';
@@ -31,20 +33,23 @@ const signedIn: Session = {
   },
 };
 
-// The header with a session (no request: a fixed auth context).
+// The header with a session (no request: a fixed auth context, and the
+// notification bell's unread count seeded: 2).
 function renderLayout(session: Session, navItems?: readonly NavItem[]) {
   return (
-    <StoryAuth session={session}>
-      <StoryRouter
-        routes={[
-          {
-            path: '/',
-            element: <AppLayout navItems={navItems} />,
-            children: [{ index: true, element: <SamplePage /> }],
-          },
-        ]}
-      />
-    </StoryAuth>
+    <StoryQueryClient data={[[UNREAD_COUNT_KEY, 2]]}>
+      <StoryAuth session={session}>
+        <StoryRouter
+          routes={[
+            {
+              path: '/',
+              element: <AppLayout navItems={navItems} />,
+              children: [{ index: true, element: <SamplePage /> }],
+            },
+          ]}
+        />
+      </StoryAuth>
+    </StoryQueryClient>
   );
 }
 
@@ -120,6 +125,11 @@ export const Desktop: Story = {
     await expect(
       canvas.getByRole('button', { name: i18n.t('auth.userMenu.signOut') }),
     ).toBeVisible();
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('notifications.bellUnread', { unread: '2' }),
+      }),
+    ).toBeVisible();
   },
 };
 
@@ -150,6 +160,9 @@ export const SignedOut: Story = {
       canvas.queryByRole('button', { name: i18n.t('auth.userMenu.signOut') }),
     ).toBeNull();
     await expect(
+      canvas.queryByRole('button', { name: /^Notifica/ }),
+    ).toBeNull();
+    await expect(
       canvas.getByRole('group', { name: i18n.t('theme.label') }),
     ).toBeVisible();
   },
@@ -178,6 +191,11 @@ export const Narrow: Story = {
     ).toBeVisible();
     await expect(
       canvas.getByRole('button', { name: i18n.t('auth.userMenu.signOut') }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('notifications.bellUnread', { unread: '2' }),
+      }),
     ).toBeVisible();
     // Nothing overflows horizontally at 320 px.
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);

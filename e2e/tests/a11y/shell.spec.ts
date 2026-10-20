@@ -8,6 +8,7 @@ import {
 import { common } from '../support/catalog';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { recordConsentViaApi } from '../support/consent';
+import { createDemoNotificationViaApi } from '../support/notifications';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 import { createActiveUser } from '../support/users';
@@ -31,7 +32,8 @@ const THEMES = ['light', 'dark'] as const;
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
 // of a guardian the scan creates and links to a new student first (#34 K2),
 // /families, /families/new and the detail of a family the scan creates with
-// that student and guardian (#172 J2)
+// that student and guardian (#172 J2), and the open notification panel
+// (#41 F2, its own test below)
 // are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
 // /reset (the "incomplete link" state: no token) and /register are scanned
@@ -246,6 +248,51 @@ for (const theme of THEMES) {
       });
     });
   }
+}
+
+// #41 F2: the notification panel, open over the home page with at least the
+// notification this test creates (the shared demo Owner state), in both
+// themes.
+for (const theme of THEMES) {
+  test.describe(() => {
+    test.describe.configure({ timeout: TEST_TIMEOUT_MS });
+    test.use({ colorScheme: theme });
+    test(`notification panel has no axe violations in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await recordCspViolations(page);
+      const label = `A11y ${theme} ${testInfo.workerIndex}${Date.now().toString(36)}`;
+      await page.goto('/');
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      await createDemoNotificationViaApi(page, label);
+      await page.reload();
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      await page
+        .getByRole('banner')
+        .getByRole('button', {
+          name: new RegExp(`^${common.notifications.bell}`),
+        })
+        .click();
+      const panel = page.getByRole('dialog', {
+        name: common.notifications.title,
+      });
+      await expect(panel.getByText(label, { exact: false })).toBeVisible();
+      const html = page.locator('html');
+      if (theme === 'dark') {
+        await expect(html).toHaveClass(/\bdark\b/);
+      } else {
+        await expect(html).not.toHaveClass(/\bdark\b/);
+      }
+
+      const violations = await scan(page);
+      expect(violations, violations.join('\n')).toEqual([]);
+      expect(await cspViolations(page)).toEqual([]);
+    });
+  });
 }
 
 // #174 I3: the privacy notice as a new user sees it (to accept), in both

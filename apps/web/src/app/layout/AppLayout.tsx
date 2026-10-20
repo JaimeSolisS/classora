@@ -7,6 +7,7 @@ import { canAccess } from '@/features/auth/access';
 import { UserMenu } from '@/features/auth/UserMenu';
 import { PRIVACY_NOTICE_PATH } from '@/features/auth/session';
 import { useSession } from '@/features/auth/useSession';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { PreferenceSaveAlert } from '@/features/preferences/PreferenceSaveAlert';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/ui';
@@ -42,6 +43,8 @@ interface AppLayoutProps {
 // shown are the ones the user may open (UX only, #28 F4). The privacy-notice
 // page, and every page while the notice is still to accept, show no
 // navigation items (#174 G1): only the brand, the switchers and the user menu.
+// The notification bell (#41 E1) sits next to the user menu, inside the
+// collapsible menu below `lg`, once the privacy notice is accepted.
 // A switcher choice that couldn't be saved to the account shows an alert
 // below the switchers, inside the collapsible menu (#36 F5).
 export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
@@ -115,6 +118,7 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
             <div className="flex flex-wrap items-center gap-4 lg:ml-auto">
               <HeaderThemeSwitcher />
               <HeaderLanguageSwitcher />
+              <NotificationBell />
               <UserMenu />
             </div>
             {/* #36 F5: a preference that couldn't be saved to the account. */}

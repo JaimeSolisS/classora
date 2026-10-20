@@ -288,6 +288,17 @@ type Common = {
     changed: string;
     menu: string;
   };
+  notifications: {
+    bell: string;
+    bellUnread: string;
+    title: string;
+    markAll: string;
+    empty: string;
+    unread: string;
+    read: string;
+    unknown: string;
+    types: { dev_demo: string };
+  };
 };
 
 type Errors = {

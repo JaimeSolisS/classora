@@ -314,6 +314,21 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   while the day is closed; every control's accessible name includes the day
   (for example "Monday opening time"). A closing time not after the opening
   time is an error on the closing field. "Saved." is a polite status.
+- **`popover`** (`components/ui/popover.tsx`, #41): the shadcn wrapper over
+  the Popover of the pinned `radix-ui` package. Non-modal (`role="dialog"`);
+  give the content an accessible name (`aria-labelledby` its heading).
+  Escape or an outside click closes it and returns focus to the trigger.
+- **`NotificationBell`** (`features/notifications`, #41): the header bell,
+  next to the user menu (inside the collapsed menu below `lg`), for a
+  signed-in user who accepted the privacy notice. The button's accessible
+  name is "Notifications", plus "(3 unread)" when there are unread ones; the
+  visual badge ("99+" above 99) is `aria-hidden` and sits outside the button
+  so the name matches the visible text rule. The unread count is polled
+  every 30 s (`NOTIFICATION_POLL_MS`) while the tab is visible and refetched
+  on focus. The panel (a `popover`) has the heading "Notifications", the
+  newest 10 with "Load more", "Mark all as read", and per item the message
+  (from i18n keys), the time in the center zone and the word "Unread" or
+  "Read" (never colour alone). Activating an item marks it read.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.
