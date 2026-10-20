@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { ClassroomsPage } from '@/features/catalog/ClassroomsPage';
 import { ClosuresPage } from '@/features/catalog/ClosuresPage';
 import { LevelPage } from '@/features/catalog/LevelPage';
 import { LevelsPage } from '@/features/catalog/LevelsPage';
@@ -139,6 +140,11 @@ export const routes: RouteObject[] = [
           {
             path: 'catalog/closures',
             element: <ClosuresPage />,
+            handle: { permission: 'catalog.manage' },
+          },
+          {
+            path: 'catalog/classrooms',
+            element: <ClassroomsPage />,
             handle: { permission: 'catalog.manage' },
           },
           {

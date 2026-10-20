@@ -449,7 +449,8 @@
       "label": "Secciones del catálogo",
       "levels": "Niveles y materias",
       "periods": "Periodos académicos",
-      "closures": "Cierres"
+      "closures": "Cierres",
+      "classrooms": "Aulas"
     },
     "range": {
       "name": "Nombre",
@@ -477,6 +478,20 @@
       "year": "Año",
       "deactivateHelp": "Un cierre inactivo ya no cierra el centro."
     },
+    "classrooms": {
+      "title": "Aulas",
+      "add": "Agregar aula",
+      "edit": "Editar aula",
+      "empty": "Todavía no hay aulas.",
+      "name": "Nombre",
+      "capacity": "Capacidad",
+      "availability": "Disponibilidad",
+      "capacityHelp": "Número de estudiantes, de 1 a 500.",
+      "deactivateHelp": "Un aula inactiva ya no se ofrece para nuevas clases.",
+      "validation": {
+        "capacityRange": "La capacidad es un número entero de 1 a 500."
+      }
+    },
     "periodTypes": {
       "school_year": "Ciclo escolar",
       "semester": "Semestre",
@@ -486,6 +501,48 @@
       "holiday": "Día festivo",
       "closure": "Cierre",
       "vacation": "Vacaciones"
+    }
+  },
+  "weeklyWindows": {
+    "legend": "Disponibilidad semanal",
+    "help": "Sin ventanas no hay restricción de horario. Las ventanas de un mismo día pueden tocarse, pero no traslaparse.",
+    "empty": "Sin ventanas: disponible a cualquier hora.",
+    "add": "Agregar ventana",
+    "remove": "Quitar",
+    "removeNamed": "Quitar ventana {{number}}",
+    "window": "Ventana {{number}}",
+    "weekday": "Día",
+    "startsAt": "Inicio",
+    "endsAt": "Fin",
+    "weekdayLabel": "Ventana {{number}}: día",
+    "startsAtLabel": "Ventana {{number}}: hora de inicio",
+    "endsAtLabel": "Ventana {{number}}: hora de fin",
+    "limit": "Puedes agregar hasta {{max}} ventanas.",
+    "unrestricted": "Sin restricción",
+    "range": "{{start}}–{{end}}",
+    "weekdays": {
+      "1": "Lunes",
+      "2": "Martes",
+      "3": "Miércoles",
+      "4": "Jueves",
+      "5": "Viernes",
+      "6": "Sábado",
+      "7": "Domingo"
+    },
+    "weekdaysShort": {
+      "1": "Lun",
+      "2": "Mar",
+      "3": "Mié",
+      "4": "Jue",
+      "5": "Vie",
+      "6": "Sáb",
+      "7": "Dom"
+    },
+    "validation": {
+      "timeRequired": "Escribe una hora (HH:MM).",
+      "endsAfterStart": "La hora de fin debe ser posterior a la de inicio.",
+      "overlap": "Esta ventana se traslapa con otra del mismo día.",
+      "invalid": "Revisa esta ventana."
     }
   },
   "students": {

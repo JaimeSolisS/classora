@@ -449,7 +449,8 @@
       "label": "Catalog sections",
       "levels": "Levels and subjects",
       "periods": "Academic periods",
-      "closures": "Closures"
+      "closures": "Closures",
+      "classrooms": "Classrooms"
     },
     "range": {
       "name": "Name",
@@ -477,6 +478,20 @@
       "year": "Year",
       "deactivateHelp": "An inactive closure no longer closes the center."
     },
+    "classrooms": {
+      "title": "Classrooms",
+      "add": "Add classroom",
+      "edit": "Edit classroom",
+      "empty": "There are no classrooms yet.",
+      "name": "Name",
+      "capacity": "Capacity",
+      "availability": "Availability",
+      "capacityHelp": "Number of students, from 1 to 500.",
+      "deactivateHelp": "An inactive classroom is no longer offered for new classes.",
+      "validation": {
+        "capacityRange": "The capacity is a whole number from 1 to 500."
+      }
+    },
     "periodTypes": {
       "school_year": "School year",
       "semester": "Semester",
@@ -486,6 +501,48 @@
       "holiday": "Holiday",
       "closure": "Closure",
       "vacation": "Vacation"
+    }
+  },
+  "weeklyWindows": {
+    "legend": "Weekly availability",
+    "help": "Without windows there is no time restriction. Windows of the same day may touch but not overlap.",
+    "empty": "No windows: available at any time.",
+    "add": "Add window",
+    "remove": "Remove",
+    "removeNamed": "Remove window {{number}}",
+    "window": "Window {{number}}",
+    "weekday": "Day",
+    "startsAt": "Start",
+    "endsAt": "End",
+    "weekdayLabel": "Window {{number}} day",
+    "startsAtLabel": "Window {{number}} start time",
+    "endsAtLabel": "Window {{number}} end time",
+    "limit": "You can add up to {{max}} windows.",
+    "unrestricted": "No restriction",
+    "range": "{{start}}–{{end}}",
+    "weekdays": {
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+      "7": "Sunday"
+    },
+    "weekdaysShort": {
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat",
+      "7": "Sun"
+    },
+    "validation": {
+      "timeRequired": "Enter a time (HH:MM).",
+      "endsAfterStart": "The end time must be after the start time.",
+      "overlap": "This window overlaps another window on the same day.",
+      "invalid": "Check this window."
     }
   },
   "students": {

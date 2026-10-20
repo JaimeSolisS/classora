@@ -906,6 +906,62 @@ Academic periods (school years, semesters, terms) and center-wide closures
   `update` with the changed fields, dates as `YYYY-MM-DD`); `403`, `404`,
   `409`, `422` and a body that changes nothing write no event.
 
+### Classrooms
+
+Implemented by M3-03 (#39; spec §3; ADR-0004) in
+`apps/api/app/modules/catalog/` (`classrooms.py`, `classrooms_router.py`).
+A basic room catalog: a name, a capacity, active or not, and weekly
+availability windows. No equipment inventory, nothing is deleted. Every
+signed-in user can read it (tutors pick preferred rooms, schedules show
+rooms); Owners and Administrators maintain it.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/classrooms` | `authenticated()` | Query `status` (`active` (default), `inactive`, `all`), offset pagination. Sorted by name (not case-sensitive), then `id`. At most three statements per page. |
+| `POST /api/v1/classrooms` | `require("catalog.manage")` | Body `{name, capacity, availability?}` (`availability` defaults to `[]`). `201` with the detail. |
+| `GET /api/v1/classrooms/{classroom_id}` | `authenticated()` | Active or inactive. Fields: `id`, `name`, `capacity`, `is_active`, `availability` (`[{weekday, starts_at, ends_at}]` by weekday, then start; times `HH:MM`), `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/classrooms/{classroom_id}` | `require("catalog.manage")` | Body `{version, name?, capacity?, is_active?, availability?}`. |
+
+- **Capacity:** a whole number from 1 to 500 (`422`; the database has the
+  same CHECK). The upper bound catches typos.
+- **Windows:** ISO `weekday` (1 = Monday … 7 = Sunday), `starts_at` and
+  `ends_at` as local wall-clock times `HH:MM` (ADR-0004), `starts_at <
+  ends_at`, never across midnight. A room has at most 28 windows. Windows
+  of one weekday may **touch** (09:00–12:00 and 12:00–14:00) but never
+  overlap: `422 validation_error` with a field error on the later
+  overlapping item, `["body","availability",<index>,"starts_at"]`, code
+  `window_overlap`. The database backs the rule with the exclusion
+  constraint `ex_classroom_windows_no_overlap` (`btree_gist`); a violation
+  at flush is also `422 validation_error` (on `["body","availability"]`).
+- **Semantics:** a room with **no windows has no time restriction**; a room
+  with windows is available only inside them (their union: touching windows
+  join).
+- **Full replacement:** `availability` in a `PATCH` replaces all the room's
+  windows (`[]` clears them; `null` is `422`). Only the windows that changed
+  are deleted and inserted (a changed window is a delete plus an insert), and
+  the order of the list doesn't matter. Any change bumps the room's
+  `version` once; the version covers its windows.
+- **Names:** trimmed, 1 to 100 characters, unique ignoring case, inactive
+  rooms included (`409 name_taken`).
+- **Updates:** fields not sent stay unchanged; `null` and unknown fields are
+  `422`. Check order: `422` → `404` → `409 version_conflict` → `409
+  name_taken`. A body that changes nothing returns `200` with no new version.
+- **Service helpers** for other modules (`catalog.service`, ADR-0002):
+  `get_classroom(session, classroom_id)` (the detail; `404` when unknown),
+  `active_classroom_ids(session, ids)` (which of the ids exist and are
+  active; one statement) and `is_classroom_available(session, classroom_id,
+  weekday, start, end)`: false for an unknown or inactive room, true for a
+  room without windows, otherwise true only if `[start, end)` is covered by
+  the union of that weekday's windows (`start >= end` or a weekday outside
+  1–7 raises `ValueError`). Preferred rooms (#45) and scheduling (M4) use
+  them. Bookings and capacity against sessions are M4's.
+- **No reference or demo rooms.**
+- **Audit:** automatic only: `classrooms` `create`/`update` with the changed
+  fields, and one `classroom_availability_windows` `create` or `delete` per
+  window (times as `HH:MM:SS`). A windows-only change writes no `classrooms`
+  event. `403`, `404`, `409`, `422` and a body that changes nothing write no
+  event.
+
 ### Students
 
 Implemented by M2-15 (#33; spec §2, §4, §16) in

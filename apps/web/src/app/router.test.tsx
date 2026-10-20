@@ -64,6 +64,7 @@ describe('route tree', () => {
       'catalog/education-levels/:levelId',
       'catalog/periods',
       'catalog/closures',
+      'catalog/classrooms',
       'students',
       'students/new',
       'students/:studentId',
@@ -94,27 +95,29 @@ describe('route tree', () => {
     // #38 E1.
     expect(children[8]!.handle).toEqual({ permission: 'catalog.manage' });
     expect(children[9]!.handle).toEqual({ permission: 'catalog.manage' });
+    // #39 D1.
+    expect(children[10]!.handle).toEqual({ permission: 'catalog.manage' });
     // #33 I1, J1, J3.
-    expect(children[10]!.handle).toEqual({ permission: 'student.view' });
-    expect(children[11]!.handle).toEqual({ permission: 'student.manage' });
-    expect(children[12]!.handle).toEqual({ permission: 'student.view' });
-    expect(children[13]!.handle).toEqual({ permission: 'student.manage' });
+    expect(children[11]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[12]!.handle).toEqual({ permission: 'student.manage' });
+    expect(children[13]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[14]!.handle).toEqual({ permission: 'student.manage' });
     // #34 I1-I3.
-    expect(children[14]!.handle).toEqual({ permission: 'guardian.view' });
-    expect(children[15]!.handle).toEqual({ permission: 'family.manage' });
-    expect(children[16]!.handle).toEqual({ permission: 'guardian.view' });
-    expect(children[17]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[15]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[16]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[17]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[18]!.handle).toEqual({ permission: 'family.manage' });
     // #172 H1-H3.
-    expect(children[18]!.handle).toEqual({ permission: 'guardian.view' });
-    expect(children[19]!.handle).toEqual({ permission: 'family.manage' });
-    expect(children[20]!.handle).toEqual({ permission: 'guardian.view' });
-    expect(children[21]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[19]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[20]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[21]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[22]!.handle).toEqual({ permission: 'family.manage' });
     // #37 H3.
-    expect(children[22]!.handle).toEqual({ permission: 'settings.manage' });
-    expect(children[23]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[24]!.id).toBe('privacy-notice');
+    expect(children[23]!.handle).toEqual({ permission: 'settings.manage' });
     expect(children[24]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[25]!.id).toBe('privacy-notice');
+    expect(children[25]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
