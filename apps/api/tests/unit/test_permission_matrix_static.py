@@ -360,11 +360,13 @@ def test_every_planted_notice_exempt_problem_is_reported():
 
 
 def test_the_real_matrix_lists_exactly_the_notice_exempt_routes():
-    """#174 C3: exactly these four routes skip the privacy-notice gate."""
+    """#174 C3 and #36 D3: exactly these five routes skip the privacy-notice
+    gate."""
     exempt = {e.key for e in load_matrix() if e.is_notice_exempt}
 
     assert exempt == {
         ("GET", "/api/v1/auth/me"),
+        ("PATCH", "/api/v1/auth/me/preferences"),
         ("POST", "/api/v1/auth/logout"),
         ("GET", "/api/v1/privacy-notice"),
         ("POST", "/api/v1/privacy-notice/acceptance"),

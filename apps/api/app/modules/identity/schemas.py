@@ -15,6 +15,12 @@ from pydantic import (
 
 from app.modules.identity.models import EMAIL_MAX_LENGTH, PHONE_MAX_LENGTH
 
+# Re-exported: the preferences bodies (#36) live next to their constants.
+from app.modules.identity.preferences import UserPreferences as UserPreferences
+from app.modules.identity.preferences import (
+    UserPreferencesUpdate as UserPreferencesUpdate,
+)
+
 # Named string enums in OpenAPI, so the generated web client gets
 # ``RoleCode`` and ``PermissionCode`` unions (#28 F3). They list exactly the
 # catalog in ``app.modules.identity.permissions`` (sorted); a unit test keeps
@@ -69,7 +75,8 @@ class LoginRequest(BaseModel):
 
 
 class SessionUser(BaseModel):
-    """The signed-in user (``POST /auth/login`` and ``GET /auth/me``).
+    """The signed-in user (``POST /auth/login``, ``GET /auth/me`` and
+    ``POST /auth/password``).
 
     Holds no password hash, session token or session id. ``csrf_token`` is
     the session's CSRF token: the SPA keeps it in memory and sends it as
@@ -94,8 +101,15 @@ class SessionUser(BaseModel):
     privacy_notice_required: bool = Field(
         description=(
             "True until the user accepts the current privacy-notice version"
-            " (#174). Meanwhile every route except /auth/me, /auth/logout and"
-            " the privacy-notice routes answers 403 privacy_notice_required."
+            " (#174). Meanwhile every route except /auth/me, /auth/logout,"
+            " /auth/me/preferences and the privacy-notice routes answers 403"
+            " privacy_notice_required."
+        )
+    )
+    preferences: UserPreferences = Field(
+        description=(
+            "The user's stored UI language and theme (#36); null when never"
+            " stored. The web app applies them at sign-in."
         )
     )
 

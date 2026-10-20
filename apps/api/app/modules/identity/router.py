@@ -9,6 +9,10 @@ CSRF token (``app.core.csrf``, #24); every unsafe request needs the app's
 password and opens a 5-minute window on the current session for the routes
 declared with ``app.core.reauth.require_recent_auth``.
 
+``PATCH /me/preferences`` (#36) stores the signed-in user's UI language and
+theme; login, ``/me`` and the password change return them in
+``SessionUser.preferences``.
+
 ``POST /password`` (#30; ADR-0007 D8, D14) is the self-service password
 change: the current password is the proof (no reauthentication window). It
 rotates the session and returns the new CSRF token.
@@ -40,7 +44,7 @@ from app.core.db import get_sessionmaker
 from app.core.errors import problem_response_doc
 from app.core.ratelimit import RATE_LIMIT_RESPONSES, RateLimiter, rate_limit
 from app.core.uow import UnitOfWorkDep
-from app.modules.identity import auth, recovery, sessions
+from app.modules.identity import auth, preferences, recovery, sessions
 from app.modules.identity.errors import (
     CurrentPasswordInvalidError,
     InvalidCredentialsError,
@@ -52,6 +56,8 @@ from app.modules.identity.schemas import (
     ReauthenticateRequest,
     ReauthenticateResponse,
     SessionUser,
+    UserPreferences,
+    UserPreferencesUpdate,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -117,7 +123,9 @@ async def login(
     # Max-Age = the session's absolute timeout (#25), never longer.
     lifetime = result.limits.absolute
     sessions.set_session_cookie(response, settings, result.token, max_age=lifetime)
-    return auth.session_user(result.user, result.principal, result.token)
+    return await auth.session_user(
+        uow.session, result.user, result.principal, result.token
+    )
 
 
 @router.post("/logout", status_code=204, responses={**AUTH_RESPONSES, **CSRF_RESPONSES})
@@ -149,6 +157,40 @@ async def me(
     (the same value for the whole session). Works before the privacy notice
     is accepted (#174)."""
     return await auth.current_session_user(uow.session, request, settings, principal)
+
+
+@router.patch(
+    "/me/preferences",
+    responses={
+        **AUTH_RESPONSES,
+        **CSRF_RESPONSES,
+        422: problem_response_doc(
+            "The body is not valid (validation_error): empty, an unknown value,"
+            " null, or another field."
+        ),
+    },
+)
+async def update_preferences(
+    principal: Annotated[Principal, authenticated(notice_exempt=True)],
+    body: UserPreferencesUpdate,
+    uow: UnitOfWorkDep,
+) -> UserPreferences:
+    """Store the signed-in user's UI language, theme or both (#36).
+
+    Only the fields sent change; the last write wins (no ``version``). A
+    stored value can't be cleared: ``null``, an empty body, an unknown value
+    or another field is ``422``. Changes only the caller's own preferences.
+    Works before the privacy notice is accepted (#174): the notice page has
+    the language switcher. Needs the app's ``Origin`` and the session's
+    ``X-CSRF-Token``. Returns both values after the save.
+    """
+    sent = body.model_fields_set
+    return await preferences.update_user_preferences(
+        uow.session,
+        principal.user_id,
+        language=body.language if "language" in sent else preferences.UNSET,
+        theme=body.theme if "theme" in sent else preferences.UNSET,
+    )
 
 
 @router.post(
@@ -266,4 +308,6 @@ async def change_password(
     # Max-Age = the new session's absolute timeout (#25), as on login.
     lifetime = result.limits.absolute
     sessions.set_session_cookie(response, settings, result.token, max_age=lifetime)
-    return auth.session_user(result.user, result.principal, result.token)
+    return await auth.session_user(
+        uow.session, result.user, result.principal, result.token
+    )

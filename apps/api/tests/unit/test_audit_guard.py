@@ -101,6 +101,8 @@ def test_the_guard_scans_the_real_audited_models():
         audited_table_names()
     )
     assert not {"roles", "permissions", "role_permissions"} & audited_table_names()
+    # #36 A4: a UI preference is not an important record.
+    assert "user_preferences" not in audited_table_names()
 
 
 # --- Self-test on synthetic classes -------------------------------------------

@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0018"
+HEAD = "0019"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -86,6 +86,7 @@ GUARDIAN_TABLES = ["guardians", "student_guardians"]
 GROUPING_TABLES = ["families", "family_guardians", "family_students"]
 PRIVACY_TABLES = ["privacy_notice_acceptances", "privacy_notice_versions"]
 CONSENT_TABLES = ["consent_records"]
+PREFERENCE_TABLES = ["user_preferences"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -167,6 +168,9 @@ def test_history_is_linear_with_one_head():
     consent = script.get_revision("0018")
     assert consent.down_revision == "0017"
     assert Path(consent.path).name == "0018_families_consent.py"
+    preferences = script.get_revision("0019")
+    assert preferences.down_revision == "0018"
+    assert Path(preferences.path).name == "0019_identity_user_preferences.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -203,6 +207,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *GUARDIAN_TABLES,
             *GROUPING_TABLES,
             *IDENTITY_TABLES,
+            *PREFERENCE_TABLES,
             *PRIVACY_TABLES,
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
@@ -1815,3 +1820,131 @@ def test_invalid_consent_records_are_rejected(
 
     with pytest.raises(IntegrityError, match=constraint):
         run_sql(fresh_database_url, INSERT_CONSENT, _consent_values(ids, **overrides))
+
+
+# --- 0019: user preferences (#36 A) --------------------------------------------------
+
+
+def test_0019_adds_exactly_user_preferences_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0018")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0019")
+
+    assert public_tables(fresh_database_url) - before == set(PREFERENCE_TABLES)
+
+    command.downgrade(config, "0018")
+
+    assert version_nums(fresh_database_url) == ["0018"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_user_preferences_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "user_preferences") == {
+        "id": ("uuid", "NO", None, "uuidv7()"),
+        "created_at": ("timestamp with time zone", "NO", None, "now()"),
+        "updated_at": ("timestamp with time zone", "NO", None, "now()"),
+        "user_id": ("uuid", "NO", None, None),
+        "language": ("text", "YES", None, None),
+        "theme": ("text", "YES", None, None),
+    }
+    constraints = _constraints(fresh_database_url, "user_preferences")
+    assert set(constraints) == {
+        "pk_user_preferences",
+        "uq_user_preferences_user_id",
+        "fk_user_preferences_user_id_users",
+        "ck_user_preferences_language_valid",
+        "ck_user_preferences_theme_valid",
+    }
+    assert "ON DELETE RESTRICT" in constraints["fk_user_preferences_user_id_users"]
+    assert "'es'" in constraints["ck_user_preferences_language_valid"]
+    assert "'en'" in constraints["ck_user_preferences_language_valid"]
+    for theme in ("'light'", "'dark'", "'system'"):
+        assert theme in constraints["ck_user_preferences_theme_valid"]
+    assert set(_indexes(fresh_database_url, "user_preferences")) == {
+        "pk_user_preferences",
+        "uq_user_preferences_user_id",
+    }
+
+
+INSERT_PREFERENCES = (
+    "INSERT INTO user_preferences (user_id, language, theme)"
+    " VALUES (:user, :language, :theme)"
+)
+
+
+def _preferences_user(dsn: str) -> uuid.UUID:
+    user_id = uuid.uuid7()
+    run_sql(
+        dsn,
+        "INSERT INTO users (id, username, display_name, state)"
+        " VALUES (:id, :username, 'Preferences Tester', 'active')",
+        {"id": user_id, "username": f"prefs.{user_id.hex[-8:]}"},
+    )
+    return user_id
+
+
+def test_user_preferences_accept_both_values_null(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user = _preferences_user(fresh_database_url)
+
+    run_sql(
+        fresh_database_url,
+        INSERT_PREFERENCES,
+        {"user": user, "language": None, "theme": None},
+    )
+
+    [row] = run_sql(fresh_database_url, "SELECT language, theme FROM user_preferences")
+    assert (row.language, row.theme) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("language", "theme", "constraint"),
+    [
+        ("fr", None, "ck_user_preferences_language_valid"),
+        ("", None, "ck_user_preferences_language_valid"),
+        ("EN", None, "ck_user_preferences_language_valid"),
+        (None, "blue", "ck_user_preferences_theme_valid"),
+    ],
+)
+def test_invalid_user_preferences_are_rejected(
+    fresh_database_url, language, theme, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user = _preferences_user(fresh_database_url)
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(
+            fresh_database_url,
+            INSERT_PREFERENCES,
+            {"user": user, "language": language, "theme": theme},
+        )
+
+
+def test_a_second_preferences_row_for_a_user_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user = _preferences_user(fresh_database_url)
+    values = {"user": user, "language": "es", "theme": None}
+    run_sql(fresh_database_url, INSERT_PREFERENCES, values)
+
+    with pytest.raises(IntegrityError, match="uq_user_preferences_user_id"):
+        run_sql(fresh_database_url, INSERT_PREFERENCES, {**values, "theme": "dark"})
+
+
+def test_deleting_a_user_with_preferences_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user = _preferences_user(fresh_database_url)
+    run_sql(
+        fresh_database_url,
+        INSERT_PREFERENCES,
+        {"user": user, "language": "en", "theme": "dark"},
+    )
+
+    with pytest.raises(IntegrityError, match="fk_user_preferences_user_id_users"):
+        run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": user})

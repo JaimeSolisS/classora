@@ -83,6 +83,20 @@ def test_local_creates_the_active_demo_owner(migrated_url, env_for, capsys):
     )
     assert verify_password(row.password_hash, DEMO_OWNER_PASSWORD)
     assert not needs_rehash(row.password_hash)
+    # #36 E3: stored preferences, so E2E specs never migrate theirs onto it.
+    assert demo_owner_preferences(migrated_url) == [("es", "system")]
+
+
+def demo_owner_preferences(url: str) -> list[tuple[str, str]]:
+    return [
+        (row.language, row.theme)
+        for row in run_sql(
+            url,
+            "SELECT p.language, p.theme FROM user_preferences p"
+            " JOIN users u ON u.id = p.user_id WHERE u.username = :username",
+            {"username": DEMO_OWNER_USERNAME},
+        )
+    ]
 
 
 def test_dev_creates_nothing_and_says_why(migrated_url, env_for, capsys):
@@ -109,6 +123,7 @@ def test_a_second_run_creates_nothing(migrated_url, env_for, capsys):
         "identity.demo_owner: 0 rows",
     ]
     assert len(demo_owner_rows(migrated_url)) == 1
+    assert demo_owner_preferences(migrated_url) == [("es", "system")]
 
 
 class UntouchedSession:
@@ -139,6 +154,7 @@ def test_the_demo_owner_can_log_in(migrated_url, env_for):
     assert body["username"] == DEMO_OWNER_USERNAME
     assert body["roles"] == ["owner"]
     assert len(body["permissions"]) == 19
+    assert body["preferences"] == {"language": "es", "theme": "system"}
 
 
 def test_bootstrap_owner_is_refused_after_the_demo_owner(migrated_url, env_for, capsys):

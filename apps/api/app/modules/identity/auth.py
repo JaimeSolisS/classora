@@ -65,7 +65,11 @@ from app.modules.identity.errors import UsernameInvalidError
 from app.modules.identity.models import AuthSession, User
 from app.modules.identity.permissions import ACTIVE
 from app.modules.identity.schemas import SessionUser
-from app.modules.identity.service import load_principal, normalize_username
+from app.modules.identity.service import (
+    get_user_preferences,
+    load_principal,
+    normalize_username,
+)
 
 LOGIN_SUCCEEDED_EVENT: Final = "identity.login_succeeded"
 LOGIN_FAILED_EVENT: Final = "identity.login_failed"
@@ -306,9 +310,17 @@ async def record_failed_reauth(
         )
 
 
-def session_user(user: User, principal: Principal, session_token: bytes) -> SessionUser:
+async def session_user(
+    session: AsyncSession, user: User, principal: Principal, session_token: bytes
+) -> SessionUser:
     """The :class:`SessionUser` of ``user``, with the CSRF token of the
-    session whose raw token is ``session_token`` (#24)."""
+    session whose raw token is ``session_token`` (#24) and the user's stored
+    preferences (#36: one statement).
+
+    The one builder of :class:`SessionUser`: login, ``/auth/me`` and the
+    password change (#30) all return what it builds.
+    """
+    preferences = await get_user_preferences(session, user.id)
     # model_validate: the role and permission codes are checked against the
     # RoleCode and PermissionCode enums of the schema (#28 F3).
     return SessionUser.model_validate(
@@ -320,6 +332,7 @@ def session_user(user: User, principal: Principal, session_token: bytes) -> Sess
             "permissions": sorted(principal.permissions),
             "csrf_token": csrf_token_for(session_token),
             "privacy_notice_required": not principal.privacy_notice_accepted,
+            "preferences": preferences,
         }
     )
 
@@ -333,4 +346,4 @@ async def current_session_user(
     token = sessions.request_token(request, settings)
     if user is None or token is None:  # pragma: no cover - the session was resolved
         raise AuthenticationRequiredError()
-    return session_user(user, principal, token)
+    return await session_user(session, user, principal, token)

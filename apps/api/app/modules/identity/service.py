@@ -14,6 +14,10 @@
   :func:`accept_privacy_notice` and :func:`has_accepted_current_privacy_notice`
   (schema ``schemas.PrivacyNotice``; errors
   :class:`PrivacyNoticeOutdatedError`, :class:`PrivacyNoticeUnavailableError`).
+- Preferences (#36; ``preferences.py``): :func:`get_user_preferences` and
+  :func:`update_user_preferences` (schema ``schemas.UserPreferences``; codes
+  :data:`LANGUAGES` and :data:`THEMES`). A value is ``None`` until the user
+  stores it.
 - Authorization: :func:`load_principal` (the :class:`~app.core.authz.Principal`
   of an active user, with ``privacy_notice_accepted``) and
   :func:`resolve_session_principal`, the
@@ -115,6 +119,14 @@ from app.modules.identity.permissions import (
     may_assign_role,
     resolve_permissions,
 )
+from app.modules.identity.preferences import (
+    LANGUAGES,
+    THEMES,
+    UNSET,
+    UserPreferences,
+    get_user_preferences,
+    update_user_preferences,
+)
 from app.modules.identity.privacy import (
     accept_privacy_notice,
     accepted_current_notice,
@@ -127,9 +139,12 @@ from app.modules.identity.schemas import AccountReference, PrivacyNotice
 __all__ = [
     "ACTIVE",
     "ADMINISTRATOR",
+    "LANGUAGES",
     "OWNER",
     "ROLE_CODES",
     "STAFF_ROLES",
+    "THEMES",
+    "UNSET",
     "DelegationForbiddenError",
     "DelegationTargetInvalidError",
     "InvalidUserStateTransitionError",
@@ -145,6 +160,7 @@ __all__ = [
     "StudentLoginGate",
     "StudentLoginGateMissingError",
     "UnknownRoleError",
+    "UserPreferences",
     "AccountReference",
     "UsernameInvalidError",
     "accept_privacy_notice",
@@ -154,6 +170,7 @@ __all__ = [
     "effective_permissions",
     "get_account_reference",
     "get_account_references",
+    "get_user_preferences",
     "grant_delegation",
     "has_accepted_current_privacy_notice",
     "hash_password",
@@ -171,6 +188,7 @@ __all__ = [
     "revoke_delegation",
     "revoke_user_sessions",
     "set_password",
+    "update_user_preferences",
     "validate_password",
     "verify_password",
 ]

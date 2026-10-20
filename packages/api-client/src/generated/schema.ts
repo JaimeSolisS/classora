@@ -119,6 +119,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Preferences
+         * @description Store the signed-in user's UI language, theme or both (#36).
+         *
+         *     Only the fields sent change; the last write wins (no ``version``). A
+         *     stored value can't be cleared: ``null``, an empty body, an unknown value
+         *     or another field is ``422``. Changes only the caller's own preferences.
+         *     Works before the privacy notice is accepted (#174): the notice page has
+         *     the language switcher. Needs the app's ``Origin`` and the session's
+         *     ``X-CSRF-Token``. Returns both values after the save.
+         */
+        patch: operations["update_preferences_api_v1_auth_me_preferences_patch"];
+        trace?: never;
+    };
     "/api/v1/auth/reauthenticate": {
         parameters: {
             query?: never;
@@ -1858,6 +1885,8 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** @enum {string} */
+        Language: "es" | "en";
         /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
@@ -2202,7 +2231,8 @@ export interface components {
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
         /**
          * SessionUser
-         * @description The signed-in user (``POST /auth/login`` and ``GET /auth/me``).
+         * @description The signed-in user (``POST /auth/login``, ``GET /auth/me`` and
+         *     ``POST /auth/password``).
          *
          *     Holds no password hash, session token or session id. ``csrf_token`` is
          *     the session's CSRF token: the SPA keeps it in memory and sends it as
@@ -2235,9 +2265,11 @@ export interface components {
             csrf_token: string;
             /**
              * Privacy Notice Required
-             * @description True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout and the privacy-notice routes answers 403 privacy_notice_required.
+             * @description True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout, /auth/me/preferences and the privacy-notice routes answers 403 privacy_notice_required.
              */
             privacy_notice_required: boolean;
+            /** @description The user's stored UI language and theme (#36); null when never stored. The web app applies them at sign-in. */
+            preferences: components["schemas"]["UserPreferences"];
         };
         /**
          * StudentAccountUpdate
@@ -2529,6 +2561,8 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** @enum {string} */
+        Theme: "light" | "dark" | "system";
         /**
          * UserAllowedActions
          * @description What the caller may do to this user, computed by the server with the
@@ -2646,6 +2680,31 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * UserPreferences
+         * @description The signed-in user's stored preferences (``SessionUser.preferences``).
+         *
+         *     ``null`` means the user has never stored the value.
+         */
+        UserPreferences: {
+            /** @description The UI language, or null when never stored. */
+            language: components["schemas"]["Language"] | null;
+            /** @description The theme choice, or null when never stored. */
+            theme: components["schemas"]["Theme"] | null;
+        };
+        /**
+         * UserPreferencesUpdate
+         * @description ``PATCH /api/v1/auth/me/preferences``: one or both values.
+         *
+         *     A field that is not sent stays as it is. ``null`` is refused (a stored
+         *     value can't be cleared), so is an empty body and any other field.
+         */
+        UserPreferencesUpdate: {
+            /** @description The new UI language. */
+            language?: components["schemas"]["Language"];
+            /** @description The new theme choice. */
+            theme?: components["schemas"]["Theme"];
         };
         /**
          * UserRolesUpdate
@@ -2861,6 +2920,57 @@ export interface operations {
             };
             /** @description Authentication required. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_preferences_api_v1_auth_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPreferences"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
