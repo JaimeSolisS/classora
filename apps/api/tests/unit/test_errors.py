@@ -183,6 +183,7 @@ def test_production_app_has_no_demo_route(
         "/health/live",
         "/health/ready",
         "/api/v1/audit-events",
+        "/api/v1/business-settings",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",

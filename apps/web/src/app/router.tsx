@@ -6,6 +6,7 @@ import { LevelsPage } from '@/features/catalog/LevelsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
+import { SettingsPage } from '@/features/settings/SettingsPage';
 import { FamiliesPage } from '@/features/families/FamiliesPage';
 import { FamilyDetailPage } from '@/features/families/FamilyDetailPage';
 import {
@@ -187,6 +188,11 @@ export const routes: RouteObject[] = [
             path: 'families/:familyId/edit',
             element: <EditFamilyPage />,
             handle: { permission: 'family.manage' },
+          },
+          {
+            path: 'settings',
+            element: <SettingsPage />,
+            handle: { permission: 'settings.manage' },
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

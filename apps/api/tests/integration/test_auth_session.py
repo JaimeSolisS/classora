@@ -222,6 +222,7 @@ def test_login_me_logout_me(seeded_url, client):
         "csrf_token",
         "privacy_notice_required",
         "preferences",
+        "center_time_zone",
     }
 
     client.cookies.clear()

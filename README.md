@@ -51,6 +51,11 @@ On the Catalog page, Owners and administrators maintain the education levels
 and the subjects taught at each level; records are deactivated instead of
 deleted, and four example levels (Primaria, Secundaria, Preparatoria,
 Universidad) are created by the reference seed.
+On the Settings page, Owners and administrators maintain the business
+settings: the center name and contact details, the weekly operating hours and
+the center time zone (Mexico City by default), which the app uses for every
+date and time it shows. Changing the time zone asks for the password again,
+and it will be refused once classes are scheduled.
 On the Students page, Owners, administrators and academic coordinators keep a
 profile for every student (with or without a login): personal and school
 details, an optional education level and one to five emergency contacts.

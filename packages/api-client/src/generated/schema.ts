@@ -687,6 +687,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/business-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Business Settings
+         * @description The center's name, contact details, time zone and weekly operating
+         *     hours. A weekday that is not listed is closed.
+         */
+        get: operations["get_business_settings_api_v1_business_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Business Settings
+         * @description Change the sent fields; fields not sent stay unchanged.
+         *     ``operating_hours`` replaces the whole week. Changing ``time_zone``
+         *     needs a password reauthentication in the last 5 minutes (``403
+         *     reauth_required``) and is refused once classes are scheduled (``409
+         *     tz_change_requires_migration``); sending the current zone needs none.
+         */
+        patch: operations["update_business_settings_api_v1_business_settings_patch"];
+        trace?: never;
+    };
     "/api/v1/education-levels": {
         parameters: {
             query?: never;
@@ -1173,6 +1202,62 @@ export interface components {
             } | null;
             /** Request Id */
             request_id: string | null;
+        };
+        /**
+         * BusinessSettingsDetail
+         * @description The center's business settings (``GET /api/v1/business-settings``).
+         *
+         *     ``operating_hours`` lists the open weekdays, by weekday; a weekday that
+         *     is not listed is closed.
+         */
+        BusinessSettingsDetail: {
+            /** Center Name */
+            center_name: string;
+            /** Contact Phone */
+            contact_phone: string | null;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Address */
+            address: string | null;
+            /**
+             * Time Zone
+             * @description The center's IANA time zone.
+             */
+            time_zone: string;
+            /** Operating Hours */
+            operating_hours: components["schemas"]["OperatingHoursItem"][];
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BusinessSettingsUpdate
+         * @description A change to the settings (``PATCH /api/v1/business-settings``) with the
+         *     ``version`` the caller loaded. Fields not sent stay unchanged; ``null``
+         *     (or an empty string) clears a contact field; ``null`` is ``422`` for
+         *     ``center_name``, ``time_zone`` and ``operating_hours``.
+         *     ``operating_hours``, when sent, replaces the whole week (0 to 7 entries,
+         *     one per weekday).
+         */
+        BusinessSettingsUpdate: {
+            /** Version */
+            version: number;
+            /** Center Name */
+            center_name?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Time Zone */
+            time_zone?: string | null;
+            /** Operating Hours */
+            operating_hours?: components["schemas"]["OperatingHoursItem"][] | null;
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
@@ -1986,6 +2071,27 @@ export interface components {
             offset: number;
         };
         /**
+         * OperatingHoursItem
+         * @description The opening interval of one weekday, in the center's local time.
+         */
+        OperatingHoursItem: {
+            /**
+             * Weekday
+             * @description ISO weekday: 1 = Monday … 7 = Sunday.
+             */
+            weekday: number;
+            /**
+             * Opens At
+             * @description A local wall-clock time, HH:MM (24-hour).
+             */
+            opens_at: string;
+            /**
+             * Closes At
+             * @description A local wall-clock time, HH:MM (24-hour).
+             */
+            closes_at: string;
+        };
+        /**
          * PasswordChange
          * @description The signed-in user's current and new password (``POST /auth/password``).
          */
@@ -2068,7 +2174,7 @@ export interface components {
             token: string;
         };
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -2270,6 +2376,11 @@ export interface components {
             privacy_notice_required: boolean;
             /** @description The user's stored UI language and theme (#36); null when never stored. The web app applies them at sign-in. */
             preferences: components["schemas"]["UserPreferences"];
+            /**
+             * Center Time Zone
+             * @description The center's IANA time zone (business settings, #37). The web app shows instants and computes today's date in it.
+             */
+            center_time_zone: string;
         };
         /**
          * StudentAccountUpdate
@@ -4518,6 +4629,95 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_business_settings_api_v1_business_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_business_settings_api_v1_business_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The settings changed since they were loaded (version_conflict); reload and retry. Or the time zone can't change because scheduled classes exist (tz_change_requires_migration). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -44,6 +44,7 @@ type PermissionCode = Literal[
     "payroll.finalize",
     "registration.review",
     "schedule.override",
+    "settings.manage",
     "student.manage",
     "student.view",
     "user.admin_role.assign",
@@ -110,6 +111,12 @@ class SessionUser(BaseModel):
         description=(
             "The user's stored UI language and theme (#36); null when never"
             " stored. The web app applies them at sign-in."
+        )
+    )
+    center_time_zone: str = Field(
+        description=(
+            "The center's IANA time zone (business settings, #37). The web app"
+            " shows instants and computes today's date in it."
         )
     )
 

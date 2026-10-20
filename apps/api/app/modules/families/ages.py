@@ -1,5 +1,6 @@
 """Age rules (ADR-0007 D17, D18; #33 B2). Pure functions: the caller passes
-today's date in the center's time zone (``app.core.clock.center_today``)."""
+today's date in the center's time zone
+(``administration.service.center_today(session)``, #37)."""
 
 from datetime import date
 from typing import Final

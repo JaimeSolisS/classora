@@ -69,6 +69,7 @@ export function acceptSessionUser(body: SessionUserBody): SessionUser {
     permissions: body.permissions,
     privacy_notice_required: body.privacy_notice_required,
     preferences: body.preferences,
+    center_time_zone: body.center_time_zone,
   };
 }
 

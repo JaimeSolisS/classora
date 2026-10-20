@@ -23,6 +23,7 @@ const THEMES = ['light', 'dark'] as const;
 // the list: its id is not known in advance), /invitations,
 // /password-resets, /registration-requests, /account/password, the catalog
 // levels page and the seeded "Primaria" level's page (opened from the list),
+// /settings (once its form loaded, #37 I2),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -54,6 +55,8 @@ interface ScannedRoute {
    * `path` is then the family's detail.
    */
   createsFamily?: boolean;
+  /** Wait for this labelled field (the page's data loaded) before scanning. */
+  waitForField?: string;
   /**
    * Also link a guardian to the created student and record a paper consent,
    * then wait for the Consents section (#35 K4) before scanning.
@@ -81,6 +84,12 @@ const ROUTES: ScannedRoute[] = [
   },
   { name: 'account-password', path: '/account/password', signedIn: true },
   { name: 'catalog', path: '/catalog/education-levels', signedIn: true },
+  {
+    name: 'settings',
+    path: '/settings',
+    signedIn: true,
+    waitForField: common.settings.brand.centerName,
+  },
   {
     name: 'catalog-level',
     path: '/catalog/education-levels',
@@ -207,6 +216,11 @@ for (const theme of THEMES) {
           await expect(
             page.getByRole('main').getByText(common.consent.active),
           ).toBeVisible();
+        }
+        if (route.waitForField) {
+          await expect(
+            page.getByLabel(route.waitForField, { exact: true }),
+          ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
         }
         if (route.openRow) {
           const name = route.openRow;

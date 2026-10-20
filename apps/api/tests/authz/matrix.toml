@@ -173,6 +173,24 @@ json = {}
 rate_limit = ["registration.ip"]
 
 [[route]]
+method = "GET"
+path = "/api/v1/business-settings"
+access = "authenticated"
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/business-settings"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# Only the version: a no-op 200 (or 409 version_conflict once a test of this
+# database changed the settings); nothing changes. The time-zone condition is
+# tested in tests/integration/test_business_settings.py.
+json = { version = 1 }
+reauth = "settings.payment_methods_or_time_zone"
+reauth_conditional = true
+
+[[route]]
 method = "POST"
 path = "/api/v1/dev/demo-jobs"
 access = "public"

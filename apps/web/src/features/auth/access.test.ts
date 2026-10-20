@@ -13,6 +13,7 @@ const user: SessionUser = {
   permissions: ['user.view', 'payroll.finalize'],
   privacy_notice_required: false,
   preferences: { language: 'es', theme: 'system' },
+  center_time_zone: 'America/Mexico_City',
 };
 
 describe('canAccess', () => {

@@ -37,6 +37,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.catalog',
     permission: 'catalog.manage',
   },
+  { to: '/settings', labelKey: 'nav.settings', permission: 'settings.manage' },
   // Every role holds student.view; the API filters the list (#33 I1).
   { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
   // Guardians see their own profile only (#34 I1).

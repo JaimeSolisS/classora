@@ -60,6 +60,7 @@ from app.core.csrf import csrf_token_for
 from app.core.ratelimit import RateLimiter
 from app.core.reauth import REAUTH_WINDOW
 from app.core.uow import UnitOfWork
+from app.modules.administration import service as administration
 from app.modules.identity import passwords, sessions
 from app.modules.identity.errors import UsernameInvalidError
 from app.modules.identity.models import AuthSession, User
@@ -314,8 +315,9 @@ async def session_user(
     session: AsyncSession, user: User, principal: Principal, session_token: bytes
 ) -> SessionUser:
     """The :class:`SessionUser` of ``user``, with the CSRF token of the
-    session whose raw token is ``session_token`` (#24) and the user's stored
-    preferences (#36: one statement).
+    session whose raw token is ``session_token`` (#24), the user's stored
+    preferences (#36: one statement) and the center time zone (#37: at most
+    one statement, cached for the Unit of Work).
 
     The one builder of :class:`SessionUser`: login, ``/auth/me`` and the
     password change (#30) all return what it builds.
@@ -333,6 +335,7 @@ async def session_user(
             "csrf_token": csrf_token_for(session_token),
             "privacy_notice_required": not principal.privacy_notice_accepted,
             "preferences": preferences,
+            "center_time_zone": await administration.get_center_time_zone(session),
         }
     )
 

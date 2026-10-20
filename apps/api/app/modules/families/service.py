@@ -48,7 +48,8 @@ ID. No named event and no ``details`` key. A contacts-only change writes only
 contact events (the version bump changes no audited column).
 
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
-``app.core.clock.center_today()``; #35 uses both.
+``administration.service.center_today(session)`` (the center's time zone
+setting, #37); #35 uses both.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -67,10 +68,10 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal, authorize_record
-from app.core.clock import center_today
 from app.core.errors import FieldError
 from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
+from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import EducationLevelReference
 from app.modules.families import consent as _consent
@@ -252,6 +253,7 @@ def _detail(
     guardians: list[StudentGuardianItem] | None,
     family: FamilyReference | None = None,
     login: StudentLogin | None = None,
+    today: date,
 ) -> StudentDetail:
     personal = None
     if access == "full":
@@ -268,7 +270,7 @@ def _detail(
         given_names=student.given_names,
         family_names=student.family_names,
         is_active=student.is_active,
-        is_minor=is_minor(student.birthdate, center_today()),
+        is_minor=is_minor(student.birthdate, today),
         school_name=student.school_name,
         school_grade=student.school_grade,
         education_level=level,
@@ -308,6 +310,7 @@ async def _detail_for(
         guardians=guardians,
         family=family,
         login=await _login_of(session, principal, student),
+        today=await administration.center_today(session),
     )
 
 
@@ -329,13 +332,13 @@ async def _login_of(
 
 
 def _access(
-    principal: Principal, student: Student, facts: StudentAccessFacts
+    principal: Principal, student: Student, facts: StudentAccessFacts, today: date
 ) -> AccessLevel | None:
     return student_access_level(
         principal,
         student.id,
         facts,
-        is_minor=is_minor(student.birthdate, center_today()),
+        is_minor=is_minor(student.birthdate, today),
     )
 
 
@@ -354,9 +357,10 @@ async def list_students(
 ) -> OffsetPage[StudentListItem]:
     """The students the caller may see that match every filter.
 
-    At most three statements for a caller who sees every student (the page,
-    the total and the page's level names through ``catalog.service``;
-    ADR-0002 forbids a cross-module join). Any other caller sees only
+    At most four statements for a caller who sees every student (the page,
+    the total, the page's level names through ``catalog.service``, ADR-0002
+    forbids a cross-module join, and the center time zone for the ages, #37,
+    once per Unit of Work). Any other caller sees only
     ``assigned ∪ linked ∪ own``; when that is empty, the page is empty and no
     statement is sent.
     """
@@ -389,7 +393,7 @@ async def list_students(
         session,
         {s.education_level_id for s in students if s.education_level_id is not None},
     )
-    today = center_today()
+    today = await administration.center_today(session)
     return OffsetPage[StudentListItem](
         items=[_list_item(student, levels, today) for student in students],
         total=total or 0,
@@ -412,7 +416,9 @@ async def get_student(
         await session.get(Student, student_id),
         can_view=lambda record: can_view_student(principal, record.id, facts),
     )
-    access = _access(principal, student, facts)
+    access = _access(
+        principal, student, facts, await administration.center_today(session)
+    )
     if access is None:  # pragma: no cover - authorize_record already checked
         raise AssertionError("visible student without an access level")
     return await _detail_for(session, student, principal=principal, access=access)
@@ -442,8 +448,8 @@ async def _available_level(
     return level
 
 
-def _ensure_not_in_future(birthdate: date) -> None:
-    if birthdate > center_today():
+def _ensure_not_in_future(birthdate: date, today: date) -> None:
+    if birthdate > today:
         raise BirthdateInFutureError()
 
 
@@ -456,7 +462,8 @@ async def create_student(
     → an unknown or inactive level (``422 education_level_unavailable``) →
     the inserts.
     """
-    _ensure_not_in_future(body.birthdate)
+    today = await administration.center_today(session)
+    _ensure_not_in_future(body.birthdate, today)
     level = None
     if body.education_level_id is not None:
         level = await _available_level(session, body.education_level_id)
@@ -485,13 +492,14 @@ async def create_student(
     ]
     session.add_all(contacts)
     await session.flush()
-    access = _access(principal, student, StudentAccessFacts())
+    access = _access(principal, student, StudentAccessFacts(), today)
     return _detail(
         student,
         level=level,
         access=access or "limited",
         contacts=contacts,
         guardians=[] if sees_student_guardians(principal) else None,
+        today=today,
     )
 
 
@@ -608,6 +616,7 @@ async def update_student(
         can_view=lambda record: can_view_student(principal, record.id, facts),
     )
     ensure_version(student, body.version)
+    today = await administration.center_today(session)
     sent = body.model_fields_set
     changes: dict[str, Any] = {
         name: getattr(body, name)
@@ -615,7 +624,7 @@ async def update_student(
         if name in sent and getattr(body, name) != getattr(student, name)
     }
     if "birthdate" in changes:
-        _ensure_not_in_future(changes["birthdate"])
+        _ensure_not_in_future(changes["birthdate"], today)
         # #35 E5: never turn an active student login into a minor's login
         # without a guardian's consent.
         await logins.ensure_birthdate_allowed(session, student, changes["birthdate"])
@@ -631,7 +640,7 @@ async def update_student(
         if body.education_level_id is not None:
             level = await _available_level(session, body.education_level_id)
         changes["education_level_id"] = body.education_level_id
-    access = _access(principal, student, facts) or "limited"
+    access = _access(principal, student, facts, today) or "limited"
     if not changes and not plan.changes_anything:
         return await _detail_for(
             session, student, principal=principal, access=access, contacts=current
@@ -692,5 +701,8 @@ async def set_student_account(
     await logins.link_account(
         session, student, user_id=body.user_id, version=body.version
     )
-    access = _access(principal, student, facts) or "limited"
+    access = (
+        _access(principal, student, facts, await administration.center_today(session))
+        or "limited"
+    )
     return await _detail_for(session, student, principal=principal, access=access)

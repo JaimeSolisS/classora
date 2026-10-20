@@ -74,6 +74,7 @@ describe('route tree', () => {
       'families/new',
       'families/:familyId',
       'families/:familyId/edit',
+      'settings',
       'account/password',
       'privacy-notice',
       '*',
@@ -103,10 +104,12 @@ describe('route tree', () => {
     expect(children[17]!.handle).toEqual({ permission: 'family.manage' });
     expect(children[18]!.handle).toEqual({ permission: 'guardian.view' });
     expect(children[19]!.handle).toEqual({ permission: 'family.manage' });
-    expect(children[20]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[21]!.id).toBe('privacy-notice');
+    // #37 H3.
+    expect(children[20]!.handle).toEqual({ permission: 'settings.manage' });
     expect(children[21]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[22]!.id).toBe('privacy-notice');
+    expect(children[22]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

@@ -18,6 +18,7 @@ export const TEST_USER: SessionUserBody = {
   // Never stored (#36): the app sends the local values once (F3); the PATCH
   // stays pending unless a test answers it.
   preferences: { language: null, theme: null },
+  center_time_zone: 'America/Mexico_City',
 };
 
 export const OTHER_USER: SessionUserBody = {
@@ -29,6 +30,7 @@ export const OTHER_USER: SessionUserBody = {
   csrf_token: 'csrf-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   privacy_notice_required: false,
   preferences: { language: null, theme: null },
+  center_time_zone: 'America/Mexico_City',
 };
 
 export function problem(

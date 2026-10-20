@@ -42,6 +42,7 @@ EXPECTED = {
     "registration.review": {OWNER, ADMINISTRATOR},
     "audit.view": {OWNER, ADMINISTRATOR},
     "catalog.manage": {OWNER, ADMINISTRATOR},
+    "settings.manage": {OWNER, ADMINISTRATOR},
     "student.view": set(ROLE_CODES),
     "student.manage": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
     "guardian.view": {
@@ -69,8 +70,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 19
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 43
+    assert len(PERMISSIONS) == 20
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 45
 
 
 def test_every_code_has_the_dotted_form():

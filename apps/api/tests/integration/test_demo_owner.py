@@ -22,9 +22,9 @@ from tests.integration.conftest import run_sql
 from tests.integration.test_migrations import alembic_config
 
 REFERENCE_LINES = [
-    "identity.permissions: 19 inserted, 0 updated",
+    "identity.permissions: 20 inserted, 0 updated",
     "identity.roles: 7 inserted, 0 updated",
-    "identity.role_permissions: 43 inserted, 0 updated",
+    "identity.role_permissions: 45 inserted, 0 updated",
     "catalog.education_levels: 4 inserted, 0 updated",
 ]
 RERUN_REFERENCE_LINES = [
@@ -153,7 +153,7 @@ def test_the_demo_owner_can_log_in(migrated_url, env_for):
     body = response.json()
     assert body["username"] == DEMO_OWNER_USERNAME
     assert body["roles"] == ["owner"]
-    assert len(body["permissions"]) == 19
+    assert len(body["permissions"]) == 20
     assert body["preferences"] == {"language": "es", "theme": "system"}
 
 

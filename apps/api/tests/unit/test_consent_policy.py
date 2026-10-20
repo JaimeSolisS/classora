@@ -8,7 +8,7 @@ from typing import get_args
 import pytest
 
 from app.core.authz import Principal
-from app.core.clock import center_today
+from app.core.clock import DEFAULT_CENTER_TIME_ZONE, today_in
 from app.modules.families import permissions as policy
 from app.modules.families import schemas
 from app.modules.families.ages import is_minor
@@ -259,9 +259,9 @@ def test_the_18th_birthday_at_mexico_city_midnight_ends_default_access():
     birthdate = date(2008, 10, 19)
     # 2026-10-19 00:00 in Mexico City is 06:00 UTC (no DST).
     with frozen_clock(datetime(2026, 10, 19, 5, 59, tzinfo=UTC)) as clock:
-        assert is_minor(birthdate, center_today())
+        assert is_minor(birthdate, today_in(DEFAULT_CENTER_TIME_ZONE))
         assert student_access_level(GUARDIAN, S, LINKED, is_minor=True) == "full"
         clock.advance(timedelta(minutes=1))
-        minor = is_minor(birthdate, center_today())
+        minor = is_minor(birthdate, today_in(DEFAULT_CENTER_TIME_ZONE))
         assert not minor
         assert student_access_level(GUARDIAN, S, LINKED, is_minor=minor) == "limited"

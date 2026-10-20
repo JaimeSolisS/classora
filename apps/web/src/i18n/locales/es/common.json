@@ -34,6 +34,7 @@
     "passwordResets": "Restablecer contraseñas",
     "registrations": "Solicitudes de cuenta",
     "catalog": "Catálogo",
+    "settings": "Configuración",
     "students": "Estudiantes",
     "guardians": "Padres y tutores",
     "families": "Familias"
@@ -808,5 +809,52 @@
   },
   "preferences": {
     "saveFailed": "No se pudo guardar tu preferencia en tu cuenta. Por ahora solo se aplica en este dispositivo."
+  },
+  "settings": {
+    "title": "Configuración",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Guardado.",
+    "reload": "Recargar",
+    "brand": {
+      "title": "Centro",
+      "centerName": "Nombre del centro",
+      "phone": "Teléfono",
+      "email": "Correo electrónico",
+      "address": "Dirección"
+    },
+    "hours": {
+      "title": "Horario de atención",
+      "help": "Los días que no están abiertos se consideran cerrados. Las horas están en la zona horaria del centro.",
+      "open": "Abierto",
+      "openOn": "Abierto ({{day}})",
+      "opensAt": "Hora de apertura",
+      "closesAt": "Hora de cierre",
+      "dayOpensAt": "Hora de apertura ({{day}})",
+      "dayClosesAt": "Hora de cierre ({{day}})"
+    },
+    "timeZone": {
+      "title": "Zona horaria",
+      "label": "Zona horaria del centro",
+      "help": "Las fechas y horas de la aplicación usan esta zona. Cambiarla pide tu contraseña, y no se puede cambiar cuando ya hay clases programadas."
+    },
+    "weekdays": {
+      "monday": "Lunes",
+      "tuesday": "Martes",
+      "wednesday": "Miércoles",
+      "thursday": "Jueves",
+      "friday": "Viernes",
+      "saturday": "Sábado",
+      "sunday": "Domingo"
+    },
+    "validation": {
+      "nameRequired": "Escribe el nombre del centro.",
+      "nameTooLong": "Usa como máximo 100 caracteres.",
+      "emailInvalid": "Escribe un correo electrónico válido, como nombre@ejemplo.com.",
+      "phoneInvalid": "Escribe un teléfono válido, por ejemplo +52 55 1234 5678.",
+      "addressTooLong": "Usa como máximo 300 caracteres.",
+      "timeRequired": "Escribe una hora.",
+      "closesAfterOpens": "La hora de cierre debe ser posterior a la de apertura."
+    }
   }
 }
