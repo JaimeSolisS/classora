@@ -1,7 +1,10 @@
 // UI language choice and storage. Kept free of React and i18next so main.tsx
 // can resolve the language before the first render.
-// M2-18 moves the preference to the user's profile in the database; the
-// value under LANGUAGE_STORAGE_KEY is what it migrates.
+// The value under LANGUAGE_STORAGE_KEY is this device's choice: signed out
+// it is the only one. At sign-in the account's stored language wins and
+// replaces it; an account that never stored one is filled from the language
+// the app shows (#36, src/features/preferences). Signed in, a switcher choice
+// is stored here and saved to the account.
 
 export const LANGUAGES = ['es', 'en'] as const;
 export type Language = (typeof LANGUAGES)[number];

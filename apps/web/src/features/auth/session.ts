@@ -68,6 +68,7 @@ export function acceptSessionUser(body: SessionUserBody): SessionUser {
     roles: body.roles,
     permissions: body.permissions,
     privacy_notice_required: body.privacy_notice_required,
+    preferences: body.preferences,
   };
 }
 

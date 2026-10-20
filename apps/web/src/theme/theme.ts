@@ -1,7 +1,10 @@
 // Theme choice, storage and application to <html>. Kept free of React so
 // main.tsx can apply the stored theme before the first render.
-// M2-18 moves the preference to the user's profile in the database; the
-// value under STORAGE_KEY is what it migrates.
+// The value under STORAGE_KEY is this device's choice: signed out it is the
+// only one. At sign-in the account's stored theme wins and replaces it; an
+// account that never stored one is filled from it (#36,
+// src/features/preferences). Signed in, a switcher choice is stored here and
+// saved to the account.
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';

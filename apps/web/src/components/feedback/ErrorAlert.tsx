@@ -14,6 +14,11 @@ interface ErrorAlertProps {
   retryLabel?: string;
   /** A page-specific message (already translated) instead of the code's. */
   message?: string;
+  /**
+   * A first line (already translated) above the message, for an error whose
+   * context the code's message doesn't give (#36: a preference not saved).
+   */
+  title?: string;
   className?: string;
 }
 
@@ -25,6 +30,7 @@ export function ErrorAlert({
   onRetry,
   retryLabel,
   message,
+  title,
   className,
 }: ErrorAlertProps) {
   const { t } = useTranslation();
@@ -44,7 +50,8 @@ export function ErrorAlert({
         className="mt-0.5 size-5 shrink-0 text-destructive"
       />
       <div className="flex min-w-0 flex-col items-start gap-2">
-        <p className="font-medium text-destructive">
+        {title ? <p className="font-medium text-destructive">{title}</p> : null}
+        <p className={title ? undefined : 'font-medium text-destructive'}>
           {message ?? errorMessage(error, tErrors)}
         </p>
         {requestId ? <RequestReference requestId={requestId} /> : null}
