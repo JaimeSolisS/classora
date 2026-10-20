@@ -71,3 +71,25 @@ class DateRangeInvalidError(AppError):
                 }
             ]
         )
+
+
+class WindowOverlapError(AppError):
+    """Two windows of one room on one weekday overlap: the backstop when the
+    exclusion constraint ``ex_classroom_windows_no_overlap`` rejects a flush
+    the body check let through (#39 B5). The generic ``validation_error``
+    code with a field error on ``["body", "availability"]``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "availability"],
+                    "code": "window_overlap",
+                    "message": "Two windows of the same day overlap.",
+                }
+            ]
+        )

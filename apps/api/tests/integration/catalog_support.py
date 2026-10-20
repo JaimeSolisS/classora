@@ -1,4 +1,5 @@
-"""Helpers for the academic catalog tests (#32; periods and closures #38).
+"""Helpers for the academic catalog tests (#32; periods and closures #38;
+classrooms #39).
 
 Real logins through the real app (``auth_support.auth_client``); every
 request sends its cookie (and, when unsafe, its CSRF token and ``Origin``) by
@@ -26,6 +27,7 @@ SUBJECTS = "/api/v1/subjects"
 PERIODS = "/api/v1/academic-periods"
 CLOSURES = "/api/v1/closures"
 CLOSURE_CHECK = "/api/v1/closures/check"
+CLASSROOMS = "/api/v1/classrooms"
 
 # Years no other test of the process uses (#38): the period and closure
 # tables of a module database are shared, so each test takes its own decade.
@@ -245,3 +247,54 @@ def range_event_count(url: str) -> int:
         " WHERE record_type IN ('academic_periods', 'closures')",
     )
     return int(row.n)
+
+
+def classroom_path(classroom_id: Any) -> str:
+    return f"{CLASSROOMS}/{classroom_id}"
+
+
+def window(weekday: int, starts_at: str, ends_at: str) -> dict[str, Any]:
+    """One availability window as the API takes and returns it."""
+    return {"weekday": weekday, "starts_at": starts_at, "ends_at": ends_at}
+
+
+def create_classroom(
+    client: TestClient,
+    cookie: SetCookie,
+    name: str | None = None,
+    capacity: int = 12,
+    availability: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """``POST /classrooms`` that must succeed; returns the detail."""
+    body: dict[str, Any] = {"name": name or unique_name("Aula"), "capacity": capacity}
+    if availability is not None:
+        body["availability"] = availability
+    response = post(client, cookie, CLASSROOMS, body)
+    assert response.status_code == 201, response.text
+    detail: dict[str, Any] = response.json()
+    return detail
+
+
+def classroom_event_count(url: str) -> int:
+    """Audit events of the classroom and window tables."""
+    [row] = run_sql(
+        url,
+        "SELECT count(*) AS n FROM audit_events WHERE record_type IN"
+        " ('classrooms', 'classroom_availability_windows')",
+    )
+    return int(row.n)
+
+
+def window_events(url: str, classroom_id: Any) -> list[tuple[str, dict[str, Any]]]:
+    """``(action, changes)`` of the audit events of one room's windows, in
+    order."""
+    rows = run_sql(
+        url,
+        "SELECT action, changes FROM audit_events"
+        " WHERE record_type = 'classroom_availability_windows'"
+        " AND coalesce(changes->'classroom_id'->>'new',"
+        " changes->'classroom_id'->>'old') = :id"
+        " ORDER BY occurred_at, id",
+        {"id": str(classroom_id)},
+    )
+    return [(row.action, row.changes) for row in rows]

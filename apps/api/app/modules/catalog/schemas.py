@@ -17,12 +17,19 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationError,
     ValidationInfo,
     field_validator,
 )
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from app.modules.catalog.models import (
+    CLASSROOM_CAPACITY_MAX,
+    CLASSROOM_CAPACITY_MIN,
+    CLASSROOM_WINDOWS_MAX,
     CLOSURE_MAX_SPAN_DAYS,
+    FIRST_WEEKDAY,
+    LAST_WEEKDAY,
     NAME_MAX_LENGTH,
     PERIOD_MAX_SPAN_DAYS,
     SORT_ORDER_MAX,
@@ -283,3 +290,142 @@ class ClosureCheck(BaseModel):
     date: date
     closed: bool
     closures: list[ClosureDetail]
+
+
+# --- Classrooms (#39) ----------------------------------------------------------------
+
+LOCAL_TIME_REGEX = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
+
+LocalTime = Annotated[
+    str,
+    StringConstraints(pattern=LOCAL_TIME_REGEX),
+    Field(description="A local wall-clock time, HH:MM (24-hour)."),
+]
+"""A local wall-clock time (ADR-0004): only ``HH:MM``. ``HH:MM`` strings
+compare like the times they hold."""
+
+Weekday = Annotated[
+    int,
+    Field(
+        ge=FIRST_WEEKDAY,
+        le=LAST_WEEKDAY,
+        description="ISO weekday: 1 = Monday … 7 = Sunday.",
+    ),
+]
+
+Capacity = Annotated[int, Field(ge=CLASSROOM_CAPACITY_MIN, le=CLASSROOM_CAPACITY_MAX)]
+
+
+class AvailabilityWindow(BaseModel):
+    """One weekly window, ``[starts_at, ends_at)`` in local time on an ISO
+    weekday. Never crosses midnight."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    weekday: Weekday
+    starts_at: LocalTime
+    ends_at: LocalTime = Field(description="After starts_at (same day).")
+
+    @field_validator("ends_at")
+    @classmethod
+    def _ends_after_start(cls, value: str, info: ValidationInfo) -> str:
+        starts_at = info.data.get("starts_at")
+        if isinstance(starts_at, str) and value <= starts_at:
+            raise ValueError("The end time must be after the start time.")
+        return value
+
+
+WINDOW_OVERLAP_MESSAGE = "This window overlaps another window on the same day."
+
+
+def window_overlaps(windows: list[AvailabilityWindow]) -> list[int]:
+    """The indexes of the windows that overlap an earlier window of the list
+    on the same weekday (so the row added last is the one reported).
+    Touching windows (one ends when the other starts) don't overlap."""
+    return [
+        index
+        for index, window in enumerate(windows)
+        if any(
+            other.weekday == window.weekday
+            and window.starts_at < other.ends_at
+            and other.starts_at < window.ends_at
+            for other in windows[:index]
+        )
+    ]
+
+
+def _no_overlaps(
+    value: list[AvailabilityWindow] | None,
+) -> list[AvailabilityWindow] | None:
+    # 422 on each overlapping item (["body", "availability", <index>,
+    # "starts_at"]), so a client can show the error on its row.
+    if value is None:
+        return value
+    overlaps = window_overlaps(value)
+    if overlaps:
+        raise ValidationError.from_exception_data(
+            "AvailabilityWindows",
+            [
+                InitErrorDetails(
+                    type=PydanticCustomError("window_overlap", WINDOW_OVERLAP_MESSAGE),
+                    loc=(index, "starts_at"),
+                    input=value[index].starts_at,
+                )
+                for index in overlaps
+            ],
+        )
+    return value
+
+
+Availability = Annotated[
+    list[AvailabilityWindow],
+    Field(
+        max_length=CLASSROOM_WINDOWS_MAX,
+        description=(
+            "The room's weekly windows (at most 28; windows of one weekday may"
+            " touch but not overlap). Empty: no time restriction."
+        ),
+    ),
+]
+
+
+class ClassroomCreate(_Body):
+    """A new classroom (``POST /api/v1/classrooms``). It starts active;
+    without ``availability`` it has no time restriction."""
+
+    name: CatalogName
+    capacity: Capacity
+    availability: Availability = Field(default_factory=list)
+
+    _windows = field_validator("availability")(_no_overlaps)
+
+
+class ClassroomUpdate(_Body):
+    """A change to a classroom with the ``version`` the caller loaded. Fields
+    not sent stay unchanged; ``availability``, when sent, replaces all the
+    room's windows (``[]`` clears them)."""
+
+    version: int = Field(ge=1)
+    name: CatalogName | None = None
+    capacity: Capacity | None = None
+    is_active: bool | None = None
+    availability: Availability | None = None
+
+    _fields_not_null = field_validator("name", "capacity", "is_active", "availability")(
+        _not_null
+    )
+    _windows = field_validator("availability")(_no_overlaps)
+
+
+class ClassroomDetail(BaseModel):
+    """One classroom. ``availability`` is ordered by weekday, then start;
+    empty means no time restriction."""
+
+    id: uuid.UUID
+    name: str
+    capacity: int
+    is_active: bool
+    availability: list[AvailabilityWindow]
+    version: int
+    created_at: datetime
+    updated_at: datetime

@@ -221,6 +221,35 @@ reauth_conditional = true
 
 [[route]]
 method = "GET"
+path = "/api/v1/classrooms"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/classrooms"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/classrooms/{classroom_id}"
+access = "authenticated"
+# The placeholder id is no classroom: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/classrooms/{classroom_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/closures"
 access = "authenticated"
 

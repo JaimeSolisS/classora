@@ -4,7 +4,7 @@ uses a fresh database."""
 
 import asyncio
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0021"
+HEAD = "0022"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -89,6 +89,7 @@ CONSENT_TABLES = ["consent_records"]
 PREFERENCE_TABLES = ["user_preferences"]
 SETTINGS_TABLES = ["business_settings", "operating_hours"]
 PERIOD_TABLES = ["academic_periods", "closures"]
+CLASSROOM_TABLES = ["classroom_availability_windows", "classrooms"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -179,6 +180,9 @@ def test_history_is_linear_with_one_head():
     periods = script.get_revision("0021")
     assert periods.down_revision == "0020"
     assert Path(periods.path).name == "0021_catalog_academic_periods_closures.py"
+    classrooms = script.get_revision("0022")
+    assert classrooms.down_revision == "0021"
+    assert Path(classrooms.path).name == "0022_catalog_classrooms.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -2460,3 +2464,230 @@ def test_overlapping_closures_with_one_name_and_the_longest_spans_are_accepted(
     )
     [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM closures")
     assert count.n == 4
+
+
+# --- 0022: classrooms and their weekly windows (#39 A) -------------------------------
+
+
+def test_0022_adds_exactly_the_classroom_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0021")
+    before = public_tables(fresh_database_url)
+    extensions = [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)]
+    command.upgrade(config, "0022")
+
+    assert public_tables(fresh_database_url) - before == set(CLASSROOM_TABLES)
+    # btree_gist comes from 0021; 0022 creates no extension (A1).
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+    # No seed or demo rooms (A4).
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM classrooms")
+    assert count.n == 0
+
+    command.downgrade(config, "0021")
+
+    assert version_nums(fresh_database_url) == ["0021"]
+    assert public_tables(fresh_database_url) == before
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_classrooms_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "classrooms") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 100, None),
+        "capacity": ("smallint", "NO", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    constraints = _constraints(fresh_database_url, "classrooms")
+    assert set(constraints) == {
+        "pk_classrooms",
+        "ck_classrooms_name_trimmed",
+        "ck_classrooms_name_not_blank",
+        "ck_classrooms_capacity_range",
+    }
+    assert "1" in constraints["ck_classrooms_capacity_range"]
+    assert "500" in constraints["ck_classrooms_capacity_range"]
+    indexes = _indexes(fresh_database_url, "classrooms")
+    assert set(indexes) == {"pk_classrooms", "uq_classrooms_name_ci"}
+    assert "UNIQUE INDEX" in indexes["uq_classrooms_name_ci"]
+    assert "lower((name)::text)" in indexes["uq_classrooms_name_ci"]
+
+
+def test_classroom_windows_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "classroom_availability_windows"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "classroom_id": ("uuid", "NO", None, None),
+        "weekday": ("smallint", "NO", None, None),
+        "starts_at": ("time without time zone", "NO", None, None),
+        "ends_at": ("time without time zone", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_classroom_id_classrooms",
+        f"ck_{table}_weekday_range",
+        f"ck_{table}_starts_before_ends",
+        f"ck_{table}_zero_seconds",
+        "ex_classroom_windows_no_overlap",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_classroom_id_classrooms"]
+    exclusion = constraints["ex_classroom_windows_no_overlap"]
+    assert exclusion.startswith(
+        "EXCLUDE USING gist (classroom_id WITH =, weekday WITH =, tsrange("
+    )
+    assert "'[)'::text) WITH &&)" in exclusion
+    indexes = _indexes(fresh_database_url, table)
+    assert set(indexes) == {
+        f"pk_{table}",
+        f"ix_{table}_classroom_id",
+        "ex_classroom_windows_no_overlap",
+    }
+
+
+def _classroom(name: str = "Aula 1", capacity: int = 10) -> Statement:
+    return (
+        "INSERT INTO classrooms (name, capacity) VALUES (:name, :capacity)"
+        " RETURNING id",
+        {"name": name, "capacity": capacity},
+    )
+
+
+def _window(classroom_id: Any, weekday: int, starts: str, ends: str) -> Statement:
+    return (
+        "INSERT INTO classroom_availability_windows"
+        " (classroom_id, weekday, starts_at, ends_at)"
+        " VALUES (:room, :weekday, :starts, :ends)",
+        {
+            "room": classroom_id,
+            "weekday": weekday,
+            "starts": time.fromisoformat(starts),
+            "ends": time.fromisoformat(ends),
+        },
+    )
+
+
+@pytest.mark.parametrize("capacity", [0, -1, 501])
+def test_a_classroom_capacity_outside_1_to_500_is_rejected(
+    fresh_database_url, capacity
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match="ck_classrooms_capacity_range"):
+        run_sql(fresh_database_url, *_classroom(capacity=capacity))
+
+
+def test_capacities_1_and_500_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    run_sql(fresh_database_url, *_classroom("Cubículo", 1))
+    run_sql(fresh_database_url, *_classroom("Auditorio", 500))
+
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM classrooms")
+    assert count.n == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "constraint"),
+    [(" Aula", "ck_classrooms_name_trimmed"), ("   ", "ck_classrooms_name")],
+)
+def test_untrimmed_or_blank_classroom_names_are_rejected(
+    fresh_database_url, name, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(fresh_database_url, *_classroom(name))
+
+
+def test_classroom_names_are_unique_ignoring_case_and_inactive_rows_count(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO classrooms (name, capacity, is_active)"
+        " VALUES ('Aula Magna', 30, false)",
+    )
+
+    with pytest.raises(IntegrityError, match="uq_classrooms_name_ci"):
+        run_sql(fresh_database_url, *_classroom("AULA MAGNA"))
+
+
+def test_overlapping_windows_of_one_room_and_weekday_are_rejected(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    [room] = run_sql(fresh_database_url, *_classroom())
+    run_sql(fresh_database_url, *_window(room.id, 1, "09:00", "12:00"))
+
+    with pytest.raises(IntegrityError, match="ex_classroom_windows_no_overlap") as exc:
+        run_sql(fresh_database_url, *_window(room.id, 1, "11:00", "13:00"))
+    assert _sqlstate(exc.value) == "23P01"
+
+
+def test_touching_windows_other_weekdays_and_other_rooms_are_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    [room] = run_sql(fresh_database_url, *_classroom("Aula 1"))
+    [other] = run_sql(fresh_database_url, *_classroom("Aula 2"))
+
+    run_sql(fresh_database_url, *_window(room.id, 1, "09:00", "12:00"))
+    # Touching: one ends when the other starts.
+    run_sql(fresh_database_url, *_window(room.id, 1, "12:00", "14:00"))
+    # The same window on another weekday and on another room.
+    run_sql(fresh_database_url, *_window(room.id, 2, "09:00", "12:00"))
+    run_sql(fresh_database_url, *_window(other.id, 1, "09:00", "12:00"))
+
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM classroom_availability_windows"
+    )
+    assert count.n == 4
+
+
+@pytest.mark.parametrize(
+    ("weekday", "starts", "ends", "constraint"),
+    [
+        (1, "12:00", "12:00", "starts_before_ends"),
+        (1, "13:00", "12:00", "starts_before_ends"),
+        (0, "09:00", "12:00", "weekday_range"),
+        (8, "09:00", "12:00", "weekday_range"),
+        (1, "09:00:30", "12:00", "zero_seconds"),
+        (1, "09:00", "12:00:00.5", "zero_seconds"),
+    ],
+)
+def test_invalid_window_rows_are_rejected(
+    fresh_database_url, weekday, starts, ends, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    [room] = run_sql(fresh_database_url, *_classroom())
+
+    with pytest.raises(
+        IntegrityError, match=f"ck_classroom_availability_windows_{constraint}"
+    ):
+        run_sql(fresh_database_url, *_window(room.id, weekday, starts, ends))
+
+
+def test_a_classroom_with_windows_cannot_be_deleted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    [room] = run_sql(fresh_database_url, *_classroom())
+    run_sql(fresh_database_url, *_window(room.id, 1, "09:00", "12:00"))
+
+    with pytest.raises(
+        IntegrityError, match="fk_classroom_availability_windows_classroom_id"
+    ):
+        run_sql(
+            fresh_database_url,
+            "DELETE FROM classrooms WHERE id = :id",
+            {"id": room.id},
+        )
