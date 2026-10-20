@@ -35,7 +35,8 @@ const THEMES = ['light', 'dark'] as const;
 // /families, /families/new and the detail of a family the scan creates with
 // that student and guardian (#172 J2), /tutors and the profile of a tutor
 // the scan invites through the API first (#43 F2; an invitation only, no
-// redemption), and the open notification panel
+// redemption; scanned once its Qualifications section loaded, #44 G2), and
+// the open notification panel
 // (#41 F2, its own test below)
 // are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
@@ -192,6 +193,15 @@ for (const theme of THEMES) {
             familyNames: `Accesible ${sfx}`,
           });
           path = `/students/${id}`;
+          if (route.createsTutor) {
+            // The Qualifications section (#44 G2) loads after the heading.
+            await expect(
+              page
+                .getByRole('main')
+                .locator('#qualifications')
+                .getByText(common.tutors.qualifications.empty),
+            ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+          }
           if (route.withConsent) {
             const guardianId = await createGuardianViaApi(page, {
               givenNames: 'Elena',

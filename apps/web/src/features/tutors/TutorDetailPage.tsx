@@ -1,21 +1,27 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { useSession } from '@/features/auth/useSession';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 import {
+  cancelQualification,
+  fetchQualifications,
   fetchTutor,
+  qualificationsKey,
+  requestQualification,
   tutorDetailKey,
   TUTORS_LIST_QUERY_KEY,
   updateTutor,
   type TutorDetail,
   type TutorUpdate,
 } from './api';
+import { QualificationsSection } from './QualificationsSection';
 import { TutorForm } from './TutorForm';
 
 // /tutors/:userId (#43 E3): one tutor profile. The h1 is the tutor's name;
@@ -24,6 +30,11 @@ import { TutorForm } from './TutorForm';
 // those fields. A successful save replaces the cached detail with the
 // response and refreshes the list. A tutor the caller may not see is a 404
 // like a missing one: "This tutor doesn't exist."
+//
+// Below the profile, the Qualifications section (#44 F1): the list query of
+// the tutor's qualifications and, for the tutor themselves, request and
+// cancel. A `#qualifications` hash (the decision notifications' link)
+// scrolls to it once the page has loaded.
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -82,6 +93,67 @@ export function TutorDetailPage() {
       tutor={detail.data}
       onSave={save}
       onReload={reload}
+    >
+      <TutorQualifications tutor={detail.data} />
+    </TutorDetailView>
+  );
+}
+
+/** The Qualifications section with its query and actions. */
+function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const key = qualificationsKey(tutor.user_id);
+  const list = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => fetchQualifications(tutor.user_id, signal),
+  });
+  const isSelf =
+    session.status === 'signedIn' && session.user.id === tutor.user_id;
+  const scrolled = useRef(false);
+
+  useEffect(() => {
+    if (
+      !scrolled.current &&
+      location.hash === '#qualifications' &&
+      list.data !== undefined
+    ) {
+      scrolled.current = true;
+      document.getElementById('qualifications')?.scrollIntoView?.();
+    }
+  }, [location.hash, list.data]);
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: key });
+  }
+
+  return (
+    <QualificationsSection
+      state={
+        list.isError
+          ? {
+              status: 'error',
+              error: list.error,
+              onRetry: () => void list.refetch(),
+            }
+          : list.data
+            ? { status: 'ready', items: list.data }
+            : { status: 'loading' }
+      }
+      teachingSubjects={tutor.teaching_subjects}
+      canRequest={isSelf && tutor.state === 'active'}
+      onRequest={async (subjectId) => {
+        await requestQualification(tutor.user_id, subjectId);
+        await refresh();
+      }}
+      onCancel={async (item) => {
+        try {
+          await cancelQualification(tutor.user_id, item.id);
+        } finally {
+          await refresh();
+        }
+      }}
     />
   );
 }
@@ -93,6 +165,8 @@ interface TutorDetailViewProps {
   onReload: () => Promise<void>;
   /** Opens with the form shown (stories). */
   initiallyEditing?: boolean;
+  /** Sections below the profile (the page's Qualifications section). */
+  children?: ReactNode;
 }
 
 /** The detail page's content, without any query (stories use it). */
@@ -101,6 +175,7 @@ export function TutorDetailView({
   onSave,
   onReload,
   initiallyEditing = false,
+  children,
 }: TutorDetailViewProps) {
   const { t } = useTranslation();
   const id = useId();
@@ -195,6 +270,7 @@ export function TutorDetailView({
           ) : null}
         </section>
       )}
+      {children}
     </div>
   );
 }

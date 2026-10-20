@@ -315,6 +315,14 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   fields (a tutor never sees a name input), Save and Cancel, with
   `version_conflict` and "Reload" in its alert. Focus returns to "Edit"
   after Save or Cancel, and "Changes saved." is a status message.
+- **`QualificationsSection`** (`features/tutors`, #44): the tutor profile's
+  `#qualifications` section. "Teaching subjects" lists the approved ones;
+  a table lists every request with its status as a text badge, the request
+  and decision dates and a rejection's reason. For the tutor themselves,
+  "Request qualification" opens a dialog with a level select and a subject
+  select (active ones, loaded per level; API errors in the dialog's alert),
+  and a pending row has "Cancel request" behind a confirmation ("Keep
+  request" / "Cancel request"). Results are polite status messages.
 - **`SettingsForm`** (`features/settings`, #37): the business settings in
   three fieldsets of one form. Each operating-hours row has an "Open"
   checkbox and two `type="time"` inputs (15-minute step) that are disabled

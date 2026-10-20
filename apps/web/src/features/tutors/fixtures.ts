@@ -1,4 +1,11 @@
-import type { TutorDetail, TutorListItem, TutorListPage } from './api';
+import type {
+  CatalogOption,
+  QualificationItem,
+  TeachingSubject,
+  TutorDetail,
+  TutorListItem,
+  TutorListPage,
+} from './api';
 
 // Sample tutor profiles for the tests and stories (#43). Placeholder
 // contact data only.
@@ -42,6 +49,101 @@ export function tutorPage(
   return { items, total, limit: 25, offset };
 }
 
+export const LEVEL_SECUNDARIA: CatalogOption = {
+  id: '00000000-0000-4000-8000-0000000000d1',
+  name: 'Secundaria',
+};
+export const LEVEL_PREPARATORIA: CatalogOption = {
+  id: '00000000-0000-4000-8000-0000000000d2',
+  name: 'Preparatoria',
+};
+export const SUBJECT_ALGEBRA: CatalogOption = {
+  id: '00000000-0000-4000-8000-0000000000e1',
+  name: 'Álgebra',
+};
+export const SUBJECT_FISICA: CatalogOption = {
+  id: '00000000-0000-4000-8000-0000000000e2',
+  name: 'Física',
+};
+export const SUBJECT_CALCULO: CatalogOption = {
+  id: '00000000-0000-4000-8000-0000000000e3',
+  name: 'Cálculo',
+};
+
+/** The tutor's approved subjects (#44 D1). */
+export const TEACHING_SUBJECTS: TeachingSubject[] = [
+  {
+    subject_id: SUBJECT_ALGEBRA.id,
+    subject_name: SUBJECT_ALGEBRA.name,
+    education_level_id: LEVEL_SECUNDARIA.id,
+    education_level_name: LEVEL_SECUNDARIA.name,
+    subject_is_active: true,
+  },
+];
+
+function qualification(
+  id: string,
+  subject: CatalogOption,
+  level: CatalogOption,
+  overrides: Partial<QualificationItem>,
+): QualificationItem {
+  return {
+    id,
+    subject_id: subject.id,
+    subject_name: subject.name,
+    education_level_id: level.id,
+    education_level_name: level.name,
+    subject_is_active: true,
+    status: 'pending',
+    requested_at: '2026-10-01T15:00:00Z',
+    decided_at: null,
+    rejection_reason: null,
+    version: 1,
+    ...overrides,
+  };
+}
+
+/** One qualification in each status (#44 F4 "mixed statuses"). */
+export const QUALIFICATIONS: QualificationItem[] = [
+  qualification(
+    '00000000-0000-4000-8000-0000000000f1',
+    SUBJECT_ALGEBRA,
+    LEVEL_SECUNDARIA,
+    {
+      status: 'approved',
+      decided_at: '2026-10-02T16:30:00Z',
+      version: 2,
+    },
+  ),
+  qualification(
+    '00000000-0000-4000-8000-0000000000f2',
+    SUBJECT_FISICA,
+    LEVEL_SECUNDARIA,
+    {},
+  ),
+  qualification(
+    '00000000-0000-4000-8000-0000000000f3',
+    SUBJECT_CALCULO,
+    LEVEL_PREPARATORIA,
+    {
+      status: 'rejected',
+      decided_at: '2026-10-03T17:00:00Z',
+      rejection_reason: 'Please add a certificate for calculus first.',
+      version: 2,
+    },
+  ),
+  qualification(
+    '00000000-0000-4000-8000-0000000000f4',
+    SUBJECT_FISICA,
+    LEVEL_PREPARATORIA,
+    {
+      status: 'cancelled',
+      decided_at: '2026-10-04T18:00:00Z',
+      version: 2,
+    },
+  ),
+];
+
 /** As an Owner or Administrator sees it: every field editable. */
 export const TUTOR_AS_ADMIN: TutorDetail = {
   ...TUTOR_ITEM,
@@ -54,6 +156,7 @@ export const TUTOR_AS_ADMIN: TutorDetail = {
     'phone',
     'professional_experience',
   ],
+  teaching_subjects: TEACHING_SUBJECTS,
 };
 
 /** As the tutor sees their own profile: no display name. */
@@ -80,4 +183,5 @@ export const NEW_TUTOR: TutorDetail = {
     'phone',
     'professional_experience',
   ],
+  teaching_subjects: [],
 };

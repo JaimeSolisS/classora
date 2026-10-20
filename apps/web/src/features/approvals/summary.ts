@@ -12,6 +12,34 @@ interface RegistrationSubject {
   requested_role: RoleCode;
 }
 
+interface QualificationSubject {
+  tutor_display_name: string;
+  subject_name: string;
+  education_level_name: string;
+}
+
+function isQualification(subject: unknown): subject is QualificationSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  return (
+    typeof value.tutor_display_name === 'string' &&
+    typeof value.subject_name === 'string' &&
+    typeof value.education_level_name === 'string'
+  );
+}
+
+/** The tutor qualification subject of `item` (#44), or null. */
+export function qualificationSubject(
+  item: ApprovalRequestItem,
+): QualificationSubject | null {
+  return item.request_type === 'staff.qualification' &&
+    isQualification(item.subject)
+    ? item.subject
+    : null;
+}
+
 function isRegistration(subject: unknown): subject is RegistrationSubject {
   if (typeof subject !== 'object' || subject === null) {
     return false;
@@ -42,7 +70,8 @@ export function registrationSubject(
 
 /**
  * One line naming what the request is about: for a registration "display
- * name (username) · requested role"; for an unknown type the type code.
+ * name (username) · requested role"; for a tutor qualification "tutor —
+ * subject (level)"; for an unknown type the type code.
  */
 export function approvalSummary(item: ApprovalRequestItem, t: TFunction) {
   const registration = registrationSubject(item);
@@ -51,6 +80,14 @@ export function approvalSummary(item: ApprovalRequestItem, t: TFunction) {
       name: registration.display_name,
       username: registration.username,
       role: t(roleNameKey(registration.requested_role)),
+    });
+  }
+  const qualification = qualificationSubject(item);
+  if (qualification) {
+    return t('approvals.summary.qualification', {
+      tutor: qualification.tutor_display_name,
+      subject: qualification.subject_name,
+      level: qualification.education_level_name,
     });
   }
   return item.request_type;

@@ -42,7 +42,7 @@ from app.modules.identity.models import (
     UserDelegation,
     UserRole,
 )
-from app.modules.staff.models import TutorProfile
+from app.modules.staff.models import TutorProfile, TutorQualification
 from tests.integration.models import AuditedThing, TestBase
 
 
@@ -92,6 +92,7 @@ def test_the_guard_scans_the_real_audited_models():
         StudentGuardian,
         Subject,
         TutorProfile,
+        TutorQualification,
         User,
         UserDelegation,
         UserRole,
@@ -103,7 +104,8 @@ def test_the_guard_scans_the_real_audited_models():
     # are audited unmasked (spec §9 prior and new values). Guardian profiles
     # and links (#34 A5), families and their membership (#172 A3): the same.
     # Academic periods and closures (#38 D1), classrooms and their windows
-    # (#39 C1), approval requests (#40 E1), tutor profiles (#43 D1): the same.
+    # (#39 C1), approval requests (#40 E1), tutor profiles (#43 D1) and
+    # qualifications (#44 E1): the same.
     for unmasked in (
         ApprovalRequest,
         EducationLevel,
@@ -120,6 +122,7 @@ def test_the_guard_scans_the_real_audited_models():
         FamilyStudent,
         FamilyGuardian,
         TutorProfile,
+        TutorQualification,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()

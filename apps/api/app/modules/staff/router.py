@@ -15,6 +15,17 @@ Check order of the ``PATCH``: ``401`` → ``csrf_failed`` →
 ``permission_denied`` → ``422`` → ``404`` → ``403 permission_denied`` (a
 field the caller may not edit) → ``409 version_conflict``.
 
+Tutor qualifications (#44; ``staff/qualifications.py`` has the orders):
+
+- ``GET /api/v1/tutors/{user_id}/qualifications``: whoever may see the tutor.
+- ``POST /api/v1/tutors/{user_id}/qualifications``: only the tutor
+  themselves (another caller who may see the tutor gets ``403``).
+- ``POST …/qualifications/{qualification_id}/cancel``: only the tutor, only
+  while ``pending``.
+
+Reviewers decide through the approval inbox (``/api/v1/approval-requests``,
+``qualification.review``).
+
 The search text ``q`` is a query parameter: the access log line has no query
 string (#9), so it is never logged.
 """
@@ -31,7 +42,14 @@ from app.core.uow import UnitOfWorkDep
 from app.modules.identity.schemas import UserState
 from app.modules.staff import service
 from app.modules.staff.permissions import TUTOR_VIEW
-from app.modules.staff.schemas import TutorDetail, TutorListItem, TutorUpdate
+from app.modules.staff.schemas import (
+    QualificationCreate,
+    QualificationItem,
+    QualificationStatusFilter,
+    TutorDetail,
+    TutorListItem,
+    TutorUpdate,
+)
 
 router = APIRouter(prefix="/api/v1/tutors", tags=["tutors"])
 
@@ -121,4 +139,95 @@ async def update_tutor(
     tutor without a stored profile: the first change creates it."""
     return await service.update_tutor(
         uow.session, principal=principal, user_id=user_id, body=body
+    )
+
+
+# --- Tutor qualifications (#44) ------------------------------------------------------
+
+QUALIFICATION_SELF_ONLY = problem_response_doc(
+    f"{PERMISSION_RESPONSES[403]['description']} Also: the caller may see the"
+    " tutor but isn't the tutor themselves (permission_denied)."
+)
+
+
+@router.get(
+    "/{user_id}/qualifications",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: NOT_FOUND,
+        422: problem_response_doc("An unknown status (validation_error)."),
+    },
+)
+async def list_qualifications(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+    status: Annotated[
+        QualificationStatusFilter,
+        Query(description="One status, or all (the default)."),
+    ] = "all",
+) -> list[QualificationItem]:
+    """The tutor's qualifications, by the level's order, the subject name,
+    then the request time."""
+    return await service.list_qualifications(
+        uow.session, principal=principal, user_id=user_id, status=status
+    )
+
+
+@router.post(
+    "/{user_id}/qualifications",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: QUALIFICATION_SELF_ONLY,
+        404: NOT_FOUND,
+        409: problem_response_doc(
+            "The subject or its education level is inactive (subject_inactive),"
+            " or the tutor already has a pending or approved qualification for"
+            " it (qualification_exists)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid, or the subject doesn't exist (validation_error)."
+        ),
+    },
+)
+async def request_qualification(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    body: QualificationCreate,
+    uow: UnitOfWorkDep,
+) -> QualificationItem:
+    """The tutor requests to teach a subject: a pending qualification and a
+    staff.qualification approval request. Only the tutor themselves."""
+    return await service.request_qualification(
+        uow.session, principal=principal, user_id=user_id, subject_id=body.subject_id
+    )
+
+
+@router.post(
+    "/{user_id}/qualifications/{qualification_id}/cancel",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: QUALIFICATION_SELF_ONLY,
+        404: problem_response_doc(
+            "No such tutor or qualification of this tutor, or the caller may"
+            " not see the tutor (not_found)."
+        ),
+        409: problem_response_doc(
+            "The qualification is no longer pending (approval_transition_invalid)."
+        ),
+    },
+)
+async def cancel_qualification(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    qualification_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> QualificationItem:
+    """The tutor withdraws a pending request. Only the tutor themselves."""
+    return await service.cancel_qualification(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        qualification_id=qualification_id,
     )

@@ -80,6 +80,9 @@ FINANCE_REFUND_APPROVE = "finance.refund.approve"
 # tutor to their own profile (staff/permissions.py).
 TUTOR_VIEW = "tutor.view"
 TUTOR_MANAGE = "tutor.manage"
+# Tutor qualification requests (#44): who sees and decides the
+# staff.qualification approval requests.
+QUALIFICATION_REVIEW = "qualification.review"
 
 
 @dataclass(frozen=True)
@@ -110,6 +113,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(CONSENT_RECORD),
     PermissionDef(TUTOR_VIEW),
     PermissionDef(TUTOR_MANAGE),
+    PermissionDef(QUALIFICATION_REVIEW),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -144,6 +148,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 CONSENT_RECORD,
                 TUTOR_VIEW,
                 TUTOR_MANAGE,
+                QUALIFICATION_REVIEW,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(

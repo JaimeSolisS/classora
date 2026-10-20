@@ -10,7 +10,9 @@
   :func:`registered_approval_types`), the account-reference resolver
   (:func:`register_account_reference_resolver`), creating and requester
   actions (:func:`create_approval_request`, :func:`cancel_approval_request`,
-  :func:`resubmit_approval_request`), reviewer decisions and reads;
+  :func:`resubmit_approval_request`, :func:`approval_request_id_for_subject`),
+  reviewer decisions and reads, and :class:`ApprovalTransitionInvalidError`
+  for a handler that finds its subject already decided (#44);
   implemented in :mod:`app.modules.administration.approvals`.
 - Notifications (#41): types and their params models
   (:func:`register_notification_type`), :func:`create_notification` inside
@@ -58,6 +60,9 @@ from app.modules.administration.approvals import (
     ApprovalRequestView as ApprovalRequestView,
 )
 from app.modules.administration.approvals import (
+    approval_request_id_for_subject as approval_request_id_for_subject,
+)
+from app.modules.administration.approvals import (
     cancel_approval_request as cancel_approval_request,
 )
 from app.modules.administration.approvals import (
@@ -89,6 +94,9 @@ from app.modules.administration.approvals import (
 )
 from app.modules.administration.approvals import (
     unregister_approval_handler as unregister_approval_handler,
+)
+from app.modules.administration.errors import (
+    ApprovalTransitionInvalidError as ApprovalTransitionInvalidError,
 )
 from app.modules.administration.notifications import (
     InvalidNotificationParamsError as InvalidNotificationParamsError,

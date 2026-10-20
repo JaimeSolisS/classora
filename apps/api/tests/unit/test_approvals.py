@@ -20,6 +20,7 @@ from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
     get_account_references,
 )
+from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
 
 ALLOWED = {
     ("pending", "approved"),
@@ -132,16 +133,26 @@ def test_a_bad_review_permission_is_refused():
         register_approval_handler(FakeHandler(permission="Payroll"))
 
 
-def test_the_registration_handler_is_the_only_registered_type():
-    # D3: build_app registers exactly the identity.registration type.
-    unregister_approval_handler("identity.registration")
+REGISTERED_TYPES = {"identity.registration", "staff.qualification"}
+
+
+def test_build_app_registers_exactly_the_real_types():
+    # D3: build_app registers identity.registration and (#44 C1)
+    # staff.qualification.
+    for request_type in REGISTERED_TYPES:
+        unregister_approval_handler(request_type)
     build_app()
 
-    assert registered_approval_types() == {"identity.registration"}
+    assert registered_approval_types() == REGISTERED_TYPES
     handler = REGISTRATION_APPROVAL_HANDLER
     assert handler.review_permission == "registration.review"
     assert handler.supports_request_changes is False
     assert handler.reason_required_on_reject is False
+    qualification = QUALIFICATION_APPROVAL_HANDLER
+    assert qualification.request_type == "staff.qualification"
+    assert qualification.review_permission == "qualification.review"
+    assert qualification.supports_request_changes is False
+    assert qualification.reason_required_on_reject is True
 
 
 def test_build_app_registers_the_account_reference_resolver():
@@ -176,8 +187,9 @@ def test_the_cli_and_the_worker_register_the_wiring():
         lambda: pytest.raises(SystemExit, cli.main, ["bootstrap-owner"]),
         lambda: worker.main([]),
     ):
-        unregister_approval_handler("identity.registration")
+        for request_type in REGISTERED_TYPES:
+            unregister_approval_handler(request_type)
         register_account_reference_resolver(None)
         run()
-        assert registered_approval_types() == {"identity.registration"}
+        assert registered_approval_types() == REGISTERED_TYPES
         assert registered_account_reference_resolver() is get_account_references

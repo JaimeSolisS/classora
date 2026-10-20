@@ -1,12 +1,14 @@
-"""Tutor profile bodies (#43 C1-C3).
+"""Tutor profile bodies (#43 C1-C3) and tutor qualifications (#44 B3, D1).
 
 The contact fields are the account's (``users.email``/``phone``, #31) with
 the #31 formats; ``display_name`` is the account's too. Only
-``professional_experience`` is stored by ``staff``.
+``professional_experience`` is stored by ``staff``. Subject and level names
+come from ``catalog.service``.
 """
 
 import uuid
-from typing import Annotated, Any, cast
+from datetime import datetime
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import (
     BaseModel,
@@ -53,6 +55,17 @@ class TutorListItem(BaseModel):
     phone: str | None
 
 
+class TeachingSubject(BaseModel):
+    """A subject the tutor holds an **approved** qualification for (#44 D1).
+    A subject deactivated later stays, with ``subject_is_active`` false."""
+
+    subject_id: uuid.UUID
+    subject_name: str
+    education_level_id: uuid.UUID
+    education_level_name: str
+    subject_is_active: bool
+
+
 class TutorDetail(TutorListItem):
     """One tutor profile, with what the caller may edit."""
 
@@ -67,6 +80,12 @@ class TutorDetail(TutorListItem):
         description=(
             "The fields the caller may change, sorted; empty: read only."
             " Sending another field is 403 permission_denied."
+        )
+    )
+    teaching_subjects: list[TeachingSubject] = Field(
+        description=(
+            "The subjects of the tutor's approved qualifications, by the"
+            " level's order, then the subject name."
         )
     )
 
@@ -100,3 +119,37 @@ class TutorUpdate(BaseModel):
             frozenset[TutorField],
             frozenset(field for field in self.model_fields_set if field != "version"),
         )
+
+
+# --- Tutor qualifications (#44) ------------------------------------------------------
+
+type QualificationStatus = Literal["pending", "approved", "rejected", "cancelled"]
+type QualificationStatusFilter = Literal[
+    "all", "pending", "approved", "rejected", "cancelled"
+]
+
+
+class QualificationCreate(BaseModel):
+    """A tutor's request to teach one subject (the level follows from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: uuid.UUID
+
+
+class QualificationItem(BaseModel):
+    """One qualification of a tutor, with its subject and level names."""
+
+    id: uuid.UUID
+    subject_id: uuid.UUID
+    subject_name: str
+    education_level_id: uuid.UUID
+    education_level_name: str
+    subject_is_active: bool
+    status: QualificationStatus
+    requested_at: datetime
+    decided_at: datetime | None
+    rejection_reason: str | None = Field(
+        description="The reviewer's reason; set only for rejected."
+    )
+    version: int
