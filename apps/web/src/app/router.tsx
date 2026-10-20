@@ -1,8 +1,10 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { ClosuresPage } from '@/features/catalog/ClosuresPage';
 import { LevelPage } from '@/features/catalog/LevelPage';
 import { LevelsPage } from '@/features/catalog/LevelsPage';
+import { PeriodsPage } from '@/features/catalog/PeriodsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
@@ -127,6 +129,16 @@ export const routes: RouteObject[] = [
           {
             path: 'catalog/education-levels/:levelId',
             element: <LevelPage />,
+            handle: { permission: 'catalog.manage' },
+          },
+          {
+            path: 'catalog/periods',
+            element: <PeriodsPage />,
+            handle: { permission: 'catalog.manage' },
+          },
+          {
+            path: 'catalog/closures',
+            element: <ClosuresPage />,
             handle: { permission: 'catalog.manage' },
           },
           {

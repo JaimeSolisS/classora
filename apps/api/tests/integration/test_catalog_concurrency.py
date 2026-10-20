@@ -1,4 +1,4 @@
-"""Concurrent catalog changes (#32 D3, D5, E6), with two connections.
+"""Concurrent catalog changes (#32 D3, D5, E6; #38 B5), with two connections.
 
 Transaction A makes its change and then holds its transaction open for a
 moment; transaction B starts once A's change is flushed, so B's statements
@@ -8,12 +8,15 @@ end state must hold the rules whatever the order:
 - names stay unique ignoring case (the unique index catches what B's
   pre-check can't see yet);
 - a level is never inactive while it has an active subject (``FOR UPDATE``
-  on deactivation, ``FOR SHARE`` on subject creation).
+  on deactivation, ``FOR SHARE`` on subject creation);
+- active academic periods of one type never overlap (the exclusion
+  constraint catches what B's pre-check can't see yet).
 """
 
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import date
 from typing import Any
 
 import pytest
@@ -25,6 +28,8 @@ from app.core.models import StaleVersionError
 from app.core.uow import UnitOfWork
 from app.modules.catalog import service
 from app.modules.catalog.schemas import (
+    AcademicPeriodCreate,
+    AcademicPeriodUpdate,
     EducationLevelCreate,
     EducationLevelUpdate,
     SubjectCreate,
@@ -165,3 +170,50 @@ async def test_deactivation_racing_a_new_subject_never_leaves_it_orphaned(
     assert (state.level_active, state.active_subjects) == (
         (False, 0) if deactivation_first else (True, 1)
     )
+
+
+def _school_year(name: str, starts_on: date, ends_on: date) -> Change:
+    return lambda s: service.create_academic_period(
+        s,
+        AcademicPeriodCreate(
+            name=name, period_type="school_year", starts_on=starts_on, ends_on=ends_on
+        ),
+    )
+
+
+async def test_two_creates_of_overlapping_school_years_give_one_201_and_one_409(
+    head_url,
+):
+    outcomes = await race(
+        head_url,
+        _school_year("2026-2027", date(2026, 8, 1), date(2027, 7, 15)),
+        _school_year("Ciclo 2027", date(2027, 7, 15), date(2028, 7, 14)),
+    )
+
+    assert outcomes == ["ok", "period_overlap"]
+    rows = await run_sql_async(head_url, "SELECT name FROM academic_periods")
+    assert [row.name for row in rows] == ["2026-2027"]
+
+
+async def test_a_reactivation_racing_an_overlapping_create_gives_one_409(head_url):
+    [row] = await run_sql_async(
+        head_url,
+        "INSERT INTO academic_periods (name, period_type, starts_on, ends_on,"
+        " is_active) VALUES ('Viejo', 'school_year', :starts, :ends, false)"
+        " RETURNING id",
+        {"starts": date(2026, 8, 1), "ends": date(2027, 7, 15)},
+    )
+
+    outcomes = await race(
+        head_url,
+        _school_year("2026-2027", date(2026, 8, 1), date(2027, 7, 15)),
+        lambda s: service.update_academic_period(
+            s, row.id, AcademicPeriodUpdate(version=1, is_active=True)
+        ),
+    )
+
+    assert outcomes == ["ok", "period_overlap"]
+    active = await run_sql_async(
+        head_url, "SELECT name FROM academic_periods WHERE is_active"
+    )
+    assert [r.name for r in active] == ["2026-2027"]

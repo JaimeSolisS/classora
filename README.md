@@ -51,6 +51,10 @@ On the Catalog page, Owners and administrators maintain the education levels
 and the subjects taught at each level; records are deactivated instead of
 deleted, and four example levels (Primaria, Secundaria, Preparatoria,
 Universidad) are created by the reference seed.
+In the same Catalog, they also define academic periods (school years,
+semesters and terms; active periods of one type can't overlap) and center
+closures (holidays, closures and vacations), which later features use to
+know whether the center is closed on a given day.
 On the Settings page, Owners and administrators maintain the business
 settings: the center name and contact details, the weekly operating hours and
 the center time zone (Mexico City by default), which the app uses for every

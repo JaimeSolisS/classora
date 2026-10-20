@@ -437,7 +437,55 @@
     "validation": {
       "nameRequired": "Enter a name.",
       "nameTooLong": "The name can have up to 100 characters.",
-      "positionInvalid": "The position is a whole number from 0 to 9999."
+      "positionInvalid": "The position is a whole number from 0 to 9999.",
+      "typeRequired": "Choose a type.",
+      "startsOnRequired": "Enter the start date.",
+      "endsOnRequired": "Enter the end date.",
+      "endsBeforeStart": "The end date can't be before the start date.",
+      "spanTooLong": "The dates can be at most {{days}} days apart.",
+      "datesInvalid": "Check the dates: the end must be on or after the start, at most {{days}} days later."
+    },
+    "tabs": {
+      "label": "Catalog sections",
+      "levels": "Levels and subjects",
+      "periods": "Academic periods",
+      "closures": "Closures"
+    },
+    "range": {
+      "name": "Name",
+      "type": "Type",
+      "startsOn": "Start",
+      "endsOn": "End",
+      "dates": "Dates",
+      "dateRange": "{{start}} – {{end}}",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "periods": {
+      "title": "Academic periods",
+      "add": "Add period",
+      "edit": "Edit period",
+      "empty": "There are no academic periods yet.",
+      "typeLocked": "The type can't change. Deactivate the period and add a new one.",
+      "deactivateHelp": "An inactive period no longer counts when checking overlaps."
+    },
+    "closures": {
+      "title": "Closures",
+      "add": "Add closure",
+      "edit": "Edit closure",
+      "empty": "There are no closures in {{year}}.",
+      "year": "Year",
+      "deactivateHelp": "An inactive closure no longer closes the center."
+    },
+    "periodTypes": {
+      "school_year": "School year",
+      "semester": "Semester",
+      "term": "Term"
+    },
+    "closureTypes": {
+      "holiday": "Holiday",
+      "closure": "Closure",
+      "vacation": "Vacation"
     }
   },
   "students": {

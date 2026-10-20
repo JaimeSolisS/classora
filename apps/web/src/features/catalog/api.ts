@@ -141,3 +141,116 @@ export function updateSubject(
     }),
   );
 }
+
+// --- Academic periods and closures (#38) ---------------------------------
+
+export type AcademicPeriod = components['schemas']['AcademicPeriodDetail'];
+export type AcademicPeriodPage =
+  components['schemas']['OffsetPage_AcademicPeriodDetail_'];
+export type AcademicPeriodCreate =
+  components['schemas']['AcademicPeriodCreate'];
+export type AcademicPeriodUpdate =
+  components['schemas']['AcademicPeriodUpdate'];
+export type PeriodType = components['schemas']['PeriodType'];
+export type Closure = components['schemas']['ClosureDetail'];
+export type ClosurePage = components['schemas']['OffsetPage_ClosureDetail_'];
+export type ClosureCreate = components['schemas']['ClosureCreate'];
+export type ClosureUpdate = components['schemas']['ClosureUpdate'];
+export type ClosureType = components['schemas']['ClosureType'];
+
+/** Every cached period list. */
+export const PERIODS_QUERY_KEY = [...CATALOG_QUERY_KEY, 'periods'] as const;
+/** Every cached closure list. */
+export const CLOSURES_QUERY_KEY = [...CATALOG_QUERY_KEY, 'closures'] as const;
+
+export function periodsListKey(page: number) {
+  return [...PERIODS_QUERY_KEY, 'list', page] as const;
+}
+
+export function closuresListKey(year: number, page: number) {
+  return [...CLOSURES_QUERY_KEY, 'list', year, page] as const;
+}
+
+/** One page of every period, active or not (the managers' view). */
+export function fetchPeriods(
+  page: number,
+  signal: AbortSignal,
+): Promise<AcademicPeriodPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/academic-periods', {
+        params: {
+          query: {
+            status: 'all',
+            limit: CATALOG_PAGE_SIZE,
+            offset: offsetOf(page),
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function createPeriod(
+  body: AcademicPeriodCreate,
+): Promise<AcademicPeriod> {
+  return apiCall(() => api.POST('/api/v1/academic-periods', { body }));
+}
+
+/** PATCH a period: `body` holds `version` and only the changed fields. */
+export function updatePeriod(
+  periodId: string,
+  body: AcademicPeriodUpdate,
+): Promise<AcademicPeriod> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/academic-periods/{period_id}', {
+      params: { path: { period_id: periodId } },
+      body,
+    }),
+  );
+}
+
+/**
+ * One page of the closures, active or not, that overlap `[from, to]`
+ * (inclusive local dates).
+ */
+export function fetchClosures(
+  range: { from: string; to: string },
+  page: number,
+  signal: AbortSignal,
+): Promise<ClosurePage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/closures', {
+        params: {
+          query: {
+            status: 'all',
+            from: range.from,
+            to: range.to,
+            limit: CATALOG_PAGE_SIZE,
+            offset: offsetOf(page),
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function createClosure(body: ClosureCreate): Promise<Closure> {
+  return apiCall(() => api.POST('/api/v1/closures', { body }));
+}
+
+/** PATCH a closure: `body` holds `version` and only the changed fields. */
+export function updateClosure(
+  closureId: string,
+  body: ClosureUpdate,
+): Promise<Closure> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/closures/{closure_id}', {
+      params: { path: { closure_id: closureId } },
+      body,
+    }),
+  );
+}

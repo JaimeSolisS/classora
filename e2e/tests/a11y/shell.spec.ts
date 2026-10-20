@@ -23,6 +23,7 @@ const THEMES = ['light', 'dark'] as const;
 // the list: its id is not known in advance), /invitations,
 // /password-resets, /registration-requests, /account/password, the catalog
 // levels page and the seeded "Primaria" level's page (opened from the list),
+// /catalog/periods and /catalog/closures (#38 F2),
 // /settings (once its form loaded, #37 I2),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
@@ -84,6 +85,8 @@ const ROUTES: ScannedRoute[] = [
   },
   { name: 'account-password', path: '/account/password', signedIn: true },
   { name: 'catalog', path: '/catalog/education-levels', signedIn: true },
+  { name: 'catalog-periods', path: '/catalog/periods', signedIn: true },
+  { name: 'catalog-closures', path: '/catalog/closures', signedIn: true },
   {
     name: 'settings',
     path: '/settings',

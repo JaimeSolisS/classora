@@ -100,6 +100,7 @@ Codes in use today:
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
+| `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
 | `guardian_account_unavailable` | 422 | A guardian profile's `user_id` is an account that is unknown, archived or doesn't hold the `guardian` role; the field error is on `["body","user_id"]` (see Guardians and links). |
@@ -845,6 +846,65 @@ exactly one level and never moves to another.
 - **Audit:** automatic only (`education_levels` and `subjects` `create` and
   `update` with the changed fields); no named event. `403`, `404`, `409`,
   `422` and a body that changes nothing write no event.
+
+### Academic periods and closures
+
+Implemented by M3-02 (#38; spec §3, §4; ADR-0004) in
+`apps/api/app/modules/catalog/` (`periods.py`, `periods_router.py`).
+Academic periods (school years, semesters, terms) and center-wide closures
+(holidays, closures, vacations), both as ranges of local calendar dates.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/academic-periods` | `authenticated()` | Query `status` (`active` (default), `inactive`, `all`), `period_type` (`school_year`, `semester`, `term`), `on` (`YYYY-MM-DD`: only periods that contain that date), offset pagination. Sorted by `starts_on` (newest first), then name (not case-sensitive), then `id`. |
+| `POST /api/v1/academic-periods` | `require("catalog.manage")` | Body `{name, period_type, starts_on, ends_on}`. `201`. |
+| `GET /api/v1/academic-periods/{period_id}` | `authenticated()` | Active or inactive. Fields: `id`, `name`, `period_type`, `starts_on`, `ends_on`, `is_active`, `version`, `created_at`, `updated_at`. |
+| `PATCH /api/v1/academic-periods/{period_id}` | `require("catalog.manage")` | Body `{version, name?, starts_on?, ends_on?, is_active?}`; `period_type` can't change (`422`): deactivate the period and add a new one. |
+| `GET /api/v1/closures` | `authenticated()` | Query `status` (as above), `closure_type` (`holiday`, `closure`, `vacation`), `from`/`to` (optional dates: only closures that overlap `[from, to]`, inclusive; `from` after `to` is `422` on `to`), offset pagination. Sorted by `starts_on`, `ends_on`, `id`. |
+| `POST /api/v1/closures` | `require("catalog.manage")` | Body `{name, closure_type, starts_on, ends_on}`. `201`. |
+| `GET /api/v1/closures/check?date=YYYY-MM-DD` | `authenticated()` | `{date, closed, closures}`: the **active** closures that contain the date, in list order. `date` is required (`422` when missing or not a real `YYYY-MM-DD`). |
+| `GET /api/v1/closures/{closure_id}` | `authenticated()` | Active or inactive. Fields as a period, with `closure_type`. |
+| `PATCH /api/v1/closures/{closure_id}` | `require("catalog.manage")` | Body `{version, name?, closure_type?, starts_on?, ends_on?, is_active?}`. |
+
+- **Dates** are local calendar dates (`DATE`, `YYYY-MM-DD` only: no time, no
+  number), never converted between zones. Both `starts_on` and `ends_on` are
+  **inclusive**: a one-day closure has `starts_on = ends_on`. `ends_on` is on
+  or after `starts_on`, at most 730 days later for a period and 366 for a
+  closure (`422` on `ends_on`). A `PATCH` that sends one date is checked
+  against the stored one, after `404` and the version: `422
+  validation_error` with a field error on `["body","ends_on"]` (code
+  `date_range_invalid`).
+- **Overlap rule (periods only):** two **active** periods of the **same
+  type** never share a day (`409 period_overlap`). Touching ranges (one ends
+  on D, the next starts on D+1) are fine; a school year and a semester may
+  overlap; inactive periods are ignored, so a wrong period can be
+  deactivated and replaced, and reactivating it then gives `409
+  period_overlap` if it overlaps. The database enforces the rule with the
+  exclusion constraint `ex_academic_periods_no_overlap` (`btree_gist`); the
+  service checks first and maps a violation at flush to the same error, so
+  concurrent requests give one success and one `409`.
+- **Closures may overlap** each other (a holiday inside a vacation is
+  normal) and their names repeat. Only active closures close the center.
+- **Names:** trimmed, 1 to 100 characters. Period names are unique ignoring
+  case, inactive periods included (`409 name_taken`); closure names are not
+  unique.
+- **Updates:** fields not sent stay unchanged; `null` and unknown fields are
+  `422`. Check order: `422` → `404` → `409 version_conflict` → `422` (one
+  sent date breaks the stored range) → `409 name_taken` → `409
+  period_overlap`. A body that changes nothing returns `200` with no new
+  version. Nothing is deleted: `is_active` deactivates and reactivates.
+- **Service helpers** for other modules (`catalog.service`, ADR-0002):
+  `closures_between(session, start, end)` (active closures that share a day
+  with `[start, end]`; `start > end` raises `ValueError`; one statement),
+  `is_center_closed_on(session, local_date)` and
+  `is_center_closed_at(session, instant)`, which converts an aware instant to
+  its local date in the center time zone
+  (`administration.service.get_center_time_zone`; a naive `datetime` raises
+  `ValueError`). Tutor availability (#45) and scheduling (M4) use them.
+- **No reference or demo data:** holidays differ per year and per center.
+- **Audit:** automatic only (`academic_periods` and `closures` `create` and
+  `update` with the changed fields, dates as `YYYY-MM-DD`); `403`, `404`,
+  `409`, `422` and a body that changes nothing write no event.
 
 ### Students
 

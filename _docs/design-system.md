@@ -262,6 +262,19 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   Deactivate/Reactivate when editing. A `name_taken` error goes on the name
   field; other errors, `version_conflict` with "Reload", go in the dialog's
   alert; focus returns to the button that opened it. Later catalogs reuse it.
+- **`CatalogTabs`** (`features/catalog`, #38): the catalog pages' tab bar,
+  a labelled `nav` of links ("Levels and subjects", "Academic periods",
+  "Closures"); the current section has `aria-current="page"`. Not ARIA tabs:
+  each tab is its own page and URL.
+- **`RangeItemDialog`** (`features/catalog`, #38): the add/edit dialog of a
+  period or a closure: name, type (a select; a read-only field with a help
+  text when the type can't change), start and end as `type="date"`
+  (inclusive), Deactivate/Reactivate. An end before the start or a range too
+  long is an error on the end field; `name_taken` goes on the name field;
+  `period_overlap` and `version_conflict` (with "Reload") go in the alert.
+- **`RangesTable`** (`features/catalog`, #38): the periods and closures
+  table; dates are formatted as calendar dates (no zone conversion), and a
+  one-day closure shows one date instead of a range.
 - **`StudentStatusBadge` / `StudentAgeBadge`** (`features/students`, #33):
   "Active"/"Inactive" and "Minor"/"Adult" as text badges (the border only
   reinforces the word).

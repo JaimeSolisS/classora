@@ -1,5 +1,11 @@
 """The academic catalog: education levels and subjects (#32; spec §4).
 
+Academic periods and center closures (#38) are implemented in
+:mod:`app.modules.catalog.periods` and re-exported below: the reads and
+writes of both, and the closure checks other modules use
+(:func:`closures_between`, :func:`is_center_closed_on`,
+:func:`is_center_closed_at`).
+
 **Reads** (every signed-in user): :func:`list_education_levels`,
 :func:`get_education_level`, :func:`list_subjects`, :func:`get_subject`. The
 list functions take a ``status`` (``active`` by default, so a select offers
@@ -64,6 +70,42 @@ from app.modules.catalog.models import (
     SUBJECT_NAME_INDEX,
     EducationLevel,
     Subject,
+)
+from app.modules.catalog.periods import (
+    check_closures as check_closures,
+)
+from app.modules.catalog.periods import (
+    closures_between as closures_between,
+)
+from app.modules.catalog.periods import (
+    create_academic_period as create_academic_period,
+)
+from app.modules.catalog.periods import (
+    create_closure as create_closure,
+)
+from app.modules.catalog.periods import (
+    get_academic_period as get_academic_period,
+)
+from app.modules.catalog.periods import (
+    get_closure as get_closure,
+)
+from app.modules.catalog.periods import (
+    is_center_closed_at as is_center_closed_at,
+)
+from app.modules.catalog.periods import (
+    is_center_closed_on as is_center_closed_on,
+)
+from app.modules.catalog.periods import (
+    list_academic_periods as list_academic_periods,
+)
+from app.modules.catalog.periods import (
+    list_closures as list_closures,
+)
+from app.modules.catalog.periods import (
+    update_academic_period as update_academic_period,
+)
+from app.modules.catalog.periods import (
+    update_closure as update_closure,
 )
 from app.modules.catalog.schemas import (
     CatalogStatus,

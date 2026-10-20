@@ -48,8 +48,13 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
     assert set(document["paths"]) == {
         "/health/live",
         "/health/ready",
+        "/api/v1/academic-periods",
+        "/api/v1/academic-periods/{period_id}",
         "/api/v1/audit-events",
         "/api/v1/business-settings",
+        "/api/v1/closures",
+        "/api/v1/closures/check",
+        "/api/v1/closures/{closure_id}",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",

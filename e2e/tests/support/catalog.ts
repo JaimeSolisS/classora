@@ -115,6 +115,12 @@ type Common = {
       cancel: string;
     };
     saved: string;
+    tabs: { label: string; levels: string; periods: string; closures: string };
+    range: { name: string; type: string; startsOn: string; endsOn: string };
+    periods: { title: string; add: string };
+    closures: { title: string; add: string; edit: string; year: string };
+    periodTypes: Record<'school_year' | 'semester' | 'term', string>;
+    closureTypes: Record<'holiday' | 'closure' | 'vacation', string>;
   };
   students: {
     title: string;
@@ -270,6 +276,7 @@ type Errors = {
   current_password_invalid: string;
   name_taken: string;
   education_level_has_active_subjects: string;
+  period_overlap: string;
   guardian_consent_required: string;
   reauth_required: string;
 };

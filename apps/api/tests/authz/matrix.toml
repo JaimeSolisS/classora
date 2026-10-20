@@ -76,6 +76,35 @@
 
 [[route]]
 method = "GET"
+path = "/api/v1/academic-periods"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/academic-periods"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/academic-periods/{period_id}"
+access = "authenticated"
+# The placeholder id is no period: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/academic-periods/{period_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/audit-events"
 access = "permission"
 permission = "audit.view"
@@ -189,6 +218,43 @@ allow = ["owner", "administrator"]
 json = { version = 1 }
 reauth = "settings.payment_methods_or_time_zone"
 reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/closures"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures/check"
+access = "authenticated"
+# The matrix sends no query parameters: the missing date gets 422 for every
+# signed-in role ("not denied"). The 200 case is tested in
+# tests/integration/test_closures.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures/{closure_id}"
+access = "authenticated"
+# The placeholder id is no closure: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/closures/{closure_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
 
 [[route]]
 method = "POST"

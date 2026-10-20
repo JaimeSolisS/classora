@@ -380,7 +380,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Resolution — names part ACCEPTED** (human decision on GitHub issue #33, M2-15, 2026-10-18, owner JaimeSolisS; no ADR); the rest stays PROPOSED:
   - **Names and short fields — ACCEPTED:** `pg_trgm` + `unaccent` with the `simple` behaviour (no language stemming), enabled by the migration of their first consumer (M2-15, revision `0014`). Accent folding goes through an `IMMUTABLE` wrapper `public.f_unaccent(text)` (`SELECT public.unaccent('public.unaccent'::regdictionary, $1)`), because `unaccent()` itself is only `STABLE` and can't be used in an index; its `EXECUTE` stays granted to `PUBLIC`, so a least-privilege runtime role (#165) can call it. Search uses a GIN trigram **expression index** on `public.f_unaccent(lower(...))` of the searched text, never a stored search column (audit diffs carry no derived value). First use: student name search (`apps/api/app/modules/families/`).
   - Library documents — PROPOSED until M5: a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
-  - `btree_gist` — PROPOSED, decided with ISSUE-D4 (M4-01), which is its first consumer (exclusion constraints).
+  - `btree_gist` — PROPOSED, decided with ISSUE-D4 (M4-01). Enabled early by #38 (M3-02, revision `0021`, owner-delegated decision #38 E1 (a)) for the academic-period exclusion constraint `ex_academic_periods_no_overlap`; ISSUE-D4 / M4-02 reuses it (`CREATE EXTENSION IF NOT EXISTS` or nothing).
 
 #### ISSUE-D7 — Version pins (M)
 - **Problem:** The spec pins no major versions.

@@ -328,6 +328,9 @@ follows these rules.
   test that restores what it changed. The shared demo Owner session is
   never reauthenticated, so a zone change there always asks for the
   password.
+- Academic periods (#38) can't overlap within a type, so specs that add
+  periods or closures use dates in a year unique to the run (for example
+  `2100 + (Date.now() % 500)`), never the current years.
 - Named fixtures that tests read (for example one account per role, from M2)
   are added by their domain task as deterministic demo generators with
   documented keys. The task that adds them also lists them in this section.

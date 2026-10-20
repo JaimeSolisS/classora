@@ -61,5 +61,6 @@
   "network_error": "No hay conexión con el servidor. Revisa tu conexión a internet.",
   "unexpected_response": "El servidor respondió de forma inesperada. Inténtalo de nuevo.",
   "client_error": "No pudimos completar la solicitud.",
-  "server_error": "El servidor no pudo completar la solicitud. Inténtalo más tarde."
+  "server_error": "El servidor no pudo completar la solicitud. Inténtalo más tarde.",
+  "period_overlap": "Otro periodo activo de este tipo se traslapa con estas fechas."
 }
