@@ -74,6 +74,7 @@ from app.core.authz import (
     RecordNotFoundError,
     ResolvedSession,
     SessionExpiredError,
+    is_passive_session,
 )
 from app.core.config import Settings
 from app.modules.identity import sessions
@@ -93,6 +94,7 @@ from app.modules.identity.errors import (
     UsernameInvalidError,
 )
 from app.modules.identity.models import (
+    AuthSession,
     Permission,
     Role,
     RolePermission,
@@ -351,7 +353,8 @@ async def resolve_session_principal(
        cannot revive it);
     3. ``None`` for a user who is not ``active``;
     4. otherwise the principal, after the throttled ``last_seen_at`` update
-       (:func:`sessions.touch_session`, at most once a minute), with the
+       (:func:`sessions.touch_session`, at most once a minute; never on a
+       request marked :func:`~app.core.authz.passive_session`, #42), with the
        session's id and ``reauthenticated_at`` (#26) from the same row.
 
     Reads only the current mode's cookie name.
@@ -368,13 +371,33 @@ async def resolve_session_principal(
     principal = await load_principal(session, auth_session.user_id)
     if principal is None:
         return None
-    await sessions.touch_session(session, auth_session, now)
+    if not is_passive_session(request):
+        await sessions.touch_session(session, auth_session, now)
     return ResolvedSession(
         principal=principal,
         session_token=token,
         session_id=auth_session.id,
         reauthenticated_at=auth_session.reauthenticated_at,
     )
+
+
+async def is_session_live(session: AsyncSession, session_id: uuid.UUID) -> bool:
+    """Whether the session ``session_id`` is still live: unrevoked (so not
+    logged out), not past its idle or absolute limit, and its user
+    ``active``. Read-only: never refreshes ``last_seen_at``. The live
+    notification stream re-checks its session with it (#42 C4; registered
+    by ``app.main.build_app``)."""
+    row = (
+        await session.execute(
+            select(AuthSession, User.state)
+            .join(User, User.id == AuthSession.user_id)
+            .where(AuthSession.id == session_id, AuthSession.revoked_at.is_(None))
+        )
+    ).one_or_none()
+    if row is None:
+        return False
+    auth_session, state = row
+    return state == ACTIVE and not sessions.is_expired(auth_session, clock.now())
 
 
 # --- Lifecycle: sessions, state, roles, password (#25) -------------------------------

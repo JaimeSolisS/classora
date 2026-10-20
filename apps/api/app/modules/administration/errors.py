@@ -61,3 +61,22 @@ class ApprovalReasonInvalidError(AppError):
                 {"path": ["body", "reason"], "code": error_code, "message": message}
             ]
         )
+
+
+# --- Live notifications (#42) ------------------------------------------------------
+
+STREAM_RETRY_AFTER_SECONDS = 30
+
+
+class TooManyStreamsError(AppError):
+    """The caller already holds the most live notification streams one user
+    may open in this API process (#42 C5). ``Retry-After`` says when to try
+    again; the web app polls meanwhile."""
+
+    status = 429
+    code = "too_many_streams"
+    detail = "Too many open notification streams. Close a tab or try again later."
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.headers = {"Retry-After": str(STREAM_RETRY_AFTER_SECONDS)}

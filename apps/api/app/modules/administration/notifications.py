@@ -12,7 +12,12 @@ through ``administration.service`` (ADR-0002).
 
 **Creating** (:func:`create_notification`) happens inside the caller's
 transaction: the row is added and flushed, never committed, so the
-notification exists only if the caller's Unit of Work commits.
+notification exists only if the caller's Unit of Work commits. In the same
+transaction it issues ``pg_notify`` on :data:`NOTIFICATION_CHANNEL` with
+``{"user_id", "notification_id"}`` only (#42; ISSUE-N1). PostgreSQL delivers
+a ``NOTIFY`` only when its transaction commits (also through PgBouncer in
+transaction mode), and never after a rollback; the live stream
+(:mod:`app.modules.administration.live`) fans it out.
 
 **Params rules** (:func:`validated_params`): after the type's model, a flat
 object of strings (at most :data:`PARAM_STRING_MAX_LENGTH` characters),
@@ -55,6 +60,9 @@ from app.modules.administration.schemas import NotificationItem
 
 PARAM_STRING_MAX_LENGTH: Final = 200
 PARAMS_MAX_BYTES: Final = 2048
+
+NOTIFICATION_CHANNEL: Final = "notifications"
+"""The ``LISTEN``/``NOTIFY`` channel of new notifications (#42)."""
 
 _TYPE_RE: Final = re.compile(NOTIFICATION_TYPE_PATTERN)
 _types: dict[str, type[BaseModel]] = {}
@@ -161,7 +169,24 @@ async def create_notification(
     )
     session.add(notification)
     await session.flush()
+    await session.execute(
+        select(
+            func.pg_notify(
+                NOTIFICATION_CHANNEL,
+                notify_payload(recipient_user_id, notification.id),
+            )
+        )
+    )
     return notification.id
+
+
+def notify_payload(user_id: uuid.UUID, notification_id: uuid.UUID) -> str:
+    """The ``NOTIFY`` payload: compact JSON with the two ids only (no
+    content, far below PostgreSQL's 8000-byte limit)."""
+    return json.dumps(
+        {"user_id": str(user_id), "notification_id": str(notification_id)},
+        separators=(",", ":"),
+    )
 
 
 # --- Reading and read state -------------------------------------------------------
@@ -221,6 +246,47 @@ async def list_notifications(
         limit=page.limit,
         key=lambda item: [item.created_at.isoformat(), str(item.id)],
     )
+
+
+async def notification_ids_after(
+    session: AsyncSession,
+    *,
+    recipient_user_id: uuid.UUID,
+    after_id: uuid.UUID,
+    limit: int,
+) -> list[uuid.UUID] | None:
+    """The ids of the recipient's notifications created strictly after
+    ``after_id``'s ``(created_at, id)`` position, oldest first (#42 C3).
+
+    ``None`` when ``after_id`` is not one of the recipient's notifications
+    (missing or another user's: the caller can't tell which) or when more
+    than ``limit`` follow it.
+    """
+    position = (
+        await session.execute(
+            select(Notification.created_at, Notification.id).where(
+                Notification.recipient_user_id == recipient_user_id,
+                Notification.id == after_id,
+            )
+        )
+    ).one_or_none()
+    if position is None:
+        return None
+    ids = list(
+        (
+            await session.scalars(
+                select(Notification.id)
+                .where(
+                    Notification.recipient_user_id == recipient_user_id,
+                    tuple_(Notification.created_at, Notification.id)
+                    > tuple_(position.created_at, position.id),
+                )
+                .order_by(Notification.created_at, Notification.id)
+                .limit(limit + 1)
+            )
+        ).all()
+    )
+    return ids if len(ids) <= limit else None
 
 
 async def unread_notification_count(

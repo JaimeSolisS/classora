@@ -192,6 +192,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/approval-requests/{request_id}/request-changes",
         "/api/v1/audit-events",
         "/api/v1/notifications",
+        "/api/v1/notifications/stream",
         "/api/v1/notifications/unread-count",
         "/api/v1/notifications/read-all",
         "/api/v1/notifications/{notification_id}/read",

@@ -102,6 +102,7 @@ Codes in use today:
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
+| `too_many_streams` | 429 | `GET /api/v1/notifications/stream` when the caller already holds 10 open streams in this API process; `Retry-After: 30`. The web app polls meanwhile (see Live notifications). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -680,8 +681,8 @@ without one, building an item fails closed (`500`).
 Implemented by M3-05 (#41; spec §1, §9: in-app only; ISSUE-X1) in
 `apps/api/app/modules/administration/` (`models.py`, `notifications.py`,
 `notifications_router.py`, `notifications_dev.py`), exported through
-`administration.service`. Live delivery (SSE) is M3-06 (#42); preferences
-are M8-02 (#119); retention is M8-12 (#129).
+`administration.service`. Live delivery (SSE) is M3-06 (#42, below);
+preferences are M8-02 (#119); retention is M8-12 (#129).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -727,12 +728,61 @@ reminders):
 2. Create notifications with `create_notification(session,
    recipient_user_id=…, notification_type=…, params=Model(...))` **inside
    the transaction of the action that causes them**. It validates the
-   params, adds the row and flushes; it never commits, so a rollback leaves
-   no notification. An unknown type or bad params raise `ValueError` (a
-   programming error).
+   params, adds the row, flushes and issues the live `NOTIFY` (delivered
+   only if the transaction commits); it never commits, so a rollback leaves
+   no notification and no event. An unknown type or bad params raise
+   `ValueError` (a programming error).
 3. Web: add `notifications.types.<module_event>` to both `common.json`
    catalogs and, when the notification opens a page, an entry in
    `NOTIFICATION_LINKS` (`features/notifications/messages.ts`).
+
+### Live notifications
+
+Implemented by M3-06 (#42; spec §10 SSE and `LISTEN`/`NOTIFY`, architecture
+§7.2 and ISSUE-N1, ADR-0003) in `administration/live.py` and
+`notifications_router.py`, with `app/core/sse.py`.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/notifications/stream` | `authenticated()` | `text/event-stream` of the caller's new notifications. `401`, `403 privacy_notice_required`, `429 too_many_streams` (with `Retry-After: 30`) as Problem Details. Optional `Last-Event-ID` header. |
+
+- **Delivery:** `create_notification` issues `pg_notify('notifications',
+  '{"user_id": …, "notification_id": …}')` in the creating transaction, so an
+  event exists only after the commit. Each API process holds **one direct
+  `LISTEN` connection** (`DATABASE_DIRECT_URL`, never PgBouncer; started by
+  the app lifespan) and hands each event to the recipient's open streams in
+  that process only. Nothing but ids travels: the client refetches through
+  the routes above.
+- **Events:** first `retry: 5000` and a comment (so proxies flush), then
+  `event: notification` with `id: <notification_id>` and `data:
+  {"notification_id": "<uuid>"}`, `event: resync` with `data: {}` and no
+  `id` (refetch everything: events may have been missed), and a `:
+  heartbeat` comment every 15 s.
+- **`Last-Event-ID`** (the browser sends it when it reconnects by itself):
+  when it names one of the caller's notifications, the caller's notifications
+  created after it (by `(created_at, id)`) come first, oldest first, up to
+  100. More than 100, an unknown id, another user's id or a value that isn't
+  a UUID give one `resync` instead (the answer never tells which).
+- **`resync`** is also sent to every stream after the server's `LISTEN`
+  connection reconnects (backoff 1, 2, 4 … 30 s; the API keeps serving while
+  the database is down), and to a stream whose 100-event buffer overflowed.
+- **Sessions:** the stream doesn't keep a session alive. Opening it never
+  refreshes `last_seen_at`, and neither does the stream, so the idle
+  timeouts apply as if the tab were idle. Every 60 s the stream re-checks its
+  session read-only and ends when it was logged out, revoked or timed out (or
+  the user is no longer active).
+- **Limits:** at most 10 open streams per user per API process (`429
+  too_many_streams`). Streams end at shutdown; the API container stops
+  uvicorn with a 5 s graceful timeout so open streams never hang a stop.
+- **Headers:** `Cache-Control: no-store` (as every API response),
+  `X-Accel-Buffering: no`. A proxy in front of the API must not buffer or
+  compress this route (Caddy: M9-09 #139; CloudFront timeouts above the 15 s
+  heartbeat: M9-10 #140). The Vite dev proxy streams it unchanged.
+- **Web fallback:** the bell opens one `EventSource` per tab (signed in, the
+  privacy notice accepted). While it is open the 30 s unread-count polling is
+  off; while the browser reconnects by itself, or after the stream closed
+  (an HTTP error such as `429`), polling runs, and after a close a new stream
+  is tried every 60 s. Without `EventSource` the bell only polls.
 
 ### Password reset and change
 

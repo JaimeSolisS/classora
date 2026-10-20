@@ -6,8 +6,10 @@ serves any request.
 
 The lifespan creates the process's one database engine and opens the job app
 used to defer background jobs (neither connects yet, so the API starts while
-the database is down); both are closed at shutdown. The API never runs
-migrations (``make migrate``).
+the database is down), and starts the live-notification listener (#42: one
+direct ``LISTEN`` connection, retried in the background while the database is
+down); all are closed at shutdown, and the open notification streams end. The
+API never runs migrations (``make migrate``).
 
 The demo job route (``/api/v1/dev/demo-jobs``) and the demo notification
 route (``/api/v1/dev/notifications``, #41) exist only when ``APP_ENV`` is
@@ -29,12 +31,23 @@ from app.core.authz import register_principal_resolver
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.conventions import install_conventions
 from app.core.csrf import require_trusted_origin
-from app.core.db import create_engine, create_sessionmaker
+from app.core.db import (
+    async_direct_database_url,
+    create_direct_engine,
+    create_engine,
+    create_sessionmaker,
+)
 from app.core.demo_jobs import router as demo_jobs_router
 from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.approvals_router import router as approvals_router
+from app.modules.administration.live import (
+    NotificationListener,
+    install_notification_hub,
+    notification_hub_of,
+    register_stream_session_check,
+)
 from app.modules.administration.notifications_dev import (
     register_dev_notification_type,
 )
@@ -64,6 +77,7 @@ from app.modules.identity.registrations_router import (
 )
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.service import (
+    is_session_live,
     register_student_login_gate,
     resolve_session_principal,
 )
@@ -82,9 +96,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     job_app = create_api_job_app(settings)
     await job_app.open_async()
     app.state.job_app = job_app
+    # The one direct LISTEN connection (ADR-0003; pool of 1, never PgBouncer).
+    hub = notification_hub_of(app)
+    listener = NotificationListener(
+        hub,
+        create_direct_engine(
+            async_direct_database_url(settings), pool_size=1, max_overflow=0
+        ),
+    )
+    listener.start()
+    app.state.notification_listener = listener
     try:
         yield
     finally:
+        hub.close()
+        await listener.stop()
         await job_app.close_async()
         await engine.dispose()
 
@@ -125,6 +151,8 @@ def build_app(
     # The families consent check for every student activation (#35 B1).
     register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
     register_approval_wiring()
+    install_notification_hub(app)
+    register_stream_session_check(app, is_session_live)
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(invitations_router)
