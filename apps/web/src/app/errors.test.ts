@@ -69,6 +69,7 @@ const API_CODES = [
   'approval_transition_invalid',
   'approval_action_unsupported',
   'period_overlap',
+  'too_many_streams',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

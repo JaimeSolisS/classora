@@ -64,5 +64,6 @@
   "unexpected_response": "The server sent an unexpected response. Please try again.",
   "client_error": "We couldn't complete the request.",
   "server_error": "The server couldn't complete the request. Please try again later.",
-  "period_overlap": "Another active period of this type overlaps these dates."
+  "period_overlap": "Another active period of this type overlaps these dates.",
+  "too_many_streams": "Too many tabs are receiving live notifications. Close one or try again later."
 }

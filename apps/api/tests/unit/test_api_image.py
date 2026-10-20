@@ -1,5 +1,7 @@
 """The API image command (#27 C4): uvicorn must not rewrite the client address
-from ``X-Forwarded-For``; only ``app.core.client_ip`` reads it."""
+from ``X-Forwarded-For``; only ``app.core.client_ip`` reads it. It also bounds
+the graceful shutdown, so open notification streams can't hang a stop (#42
+C5)."""
 
 import json
 import re
@@ -26,3 +28,11 @@ def test_the_api_command_disables_uvicorn_proxy_headers():
     assert not any(
         re.match(r"--(proxy-headers|forwarded-allow-ips)", a) for a in command
     )
+
+
+def test_the_api_command_bounds_the_graceful_shutdown():
+    command = image_command()
+
+    position = command.index("--timeout-graceful-shutdown")
+    # Below Docker's default 10 s stop timeout, so the lifespan shutdown runs.
+    assert 0 < int(command[position + 1]) < 10

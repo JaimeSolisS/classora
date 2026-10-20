@@ -5,6 +5,10 @@ import { playwright } from '@vitest/browser-playwright';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import {
+  endStreamWithUpstream,
+  NOTIFICATION_STREAM_PATH,
+} from './src/dev-proxy.ts';
+import {
   DEVELOPMENT_HEADERS,
   PRODUCTION_HEADERS,
 } from './src/security-headers.ts';
@@ -59,6 +63,12 @@ export default defineConfig(({ mode }) => {
       headers: appDevServer ? { ...DEVELOPMENT_HEADERS } : undefined,
       proxy: {
         '/health': apiTarget,
+        // Before '/api': the live stream ends for the browser when the API
+        // aborts it (a restart), so EventSource reconnects (#42, QA D1).
+        [NOTIFICATION_STREAM_PATH]: {
+          target: apiTarget,
+          configure: endStreamWithUpstream,
+        },
         '/api': apiTarget,
       },
     },

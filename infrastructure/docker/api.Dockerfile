@@ -37,4 +37,7 @@ EXPOSE 8000
 # --no-access-log: app.access writes one JSON access line per request instead.
 # --no-proxy-headers: uvicorn never rewrites the client address from
 # X-Forwarded-For; only the app reads it, from TRUSTED_PROXIES (#27, ADR-0008).
-CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"]
+# --timeout-graceful-shutdown 5: open live-notification streams (#42) never
+# finish on their own, so on stop uvicorn cancels them after 5 s and then runs
+# the lifespan shutdown, well within Docker's 10 s stop timeout.
+CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers", "--timeout-graceful-shutdown", "5"]

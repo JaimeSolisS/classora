@@ -99,8 +99,9 @@ Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.
 Signed-in users have in-app notifications: a bell in the header shows how
-many are unread (refreshed every 30 seconds) and opens a panel where they
-read them and mark one or all as read. No feature sends notifications yet
+many are unread and opens a panel where they read them and mark one or all
+as read. New notifications arrive live over Server-Sent Events; when the
+live connection isn't available the bell checks every 30 seconds instead. No feature sends notifications yet
 (the first arrive with tutor qualifications); in local and dev, signed-in
 users can create a test notification for themselves.
 Requests that change data are protected by an `Origin` check and a CSRF
@@ -169,6 +170,10 @@ no host ports for PostgreSQL or PgBouncer; only the local developer override,
 PostgreSQL on `POSTGRES_PORT` (default 5432) and PgBouncer on `PGBOUNCER_PORT`
 (default 6432). The API and web ports are set in the app stack file, also on
 `127.0.0.1`: `API_PORT` (default 8000) and `WEB_PORT` (default 5173).
+
+Live notifications need no extra service: the API listens for them on a
+direct PostgreSQL connection (`DATABASE_DIRECT_URL`), and the web dev server
+proxies the stream like any other API call.
 
 ### Database migrations
 

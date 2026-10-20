@@ -95,6 +95,7 @@ from app.core.reauth import (
     SensitiveAction,
     route_reauth_rules,
 )
+from app.core.sse import EventStreamResponse
 from app.modules.identity import service as identity
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
@@ -104,6 +105,7 @@ from app.modules.identity.permissions import (
     ROLE_CODES,
 )
 from tests.authz.csrf import CSRF_HEADER, ORIGIN_HEADER
+from tests.authz.streaming import ClientStream
 from tests.factories.identity import TEST_USER_PASSWORD, persist_user
 
 MATRIX_PATH = Path(__file__).with_name("matrix.toml")
@@ -126,6 +128,7 @@ ENTRY_FIELDS = frozenset(
         "rate_limit",
         "rate_limit_exempt",
         "notice_exempt",
+        "stream",
     }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -160,6 +163,7 @@ class MatrixEntry:
     rate_limit: Any = None
     rate_limit_exempt: Any = None
     notice_exempt: Any = None
+    stream: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -179,6 +183,12 @@ class MatrixEntry:
         """``notice_exempt = true`` (#174): callable before the privacy notice
         is accepted."""
         return self.notice_exempt is True
+
+    @property
+    def is_stream(self) -> bool:
+        """``stream = true`` (#42): the route answers an endless event
+        stream; the runtime check reads only its status and headers."""
+        return self.stream is True
 
     @property
     def needs_reauth(self) -> bool:
@@ -287,6 +297,11 @@ def entry_problems(
             problems.append("notice_exempt must be true or false")
         if entry.access != "authenticated":
             problems.append("notice_exempt is only for access = 'authenticated'")
+    if entry.stream is not None:
+        if not isinstance(entry.stream, bool):
+            problems.append("stream must be true or false")
+        if entry.method != "GET":
+            problems.append("stream is only for GET")
     return problems
 
 
@@ -511,6 +526,17 @@ def _policy_coverage_problems(
     return problems
 
 
+def _is_event_stream(route: RouteContext) -> bool:
+    """Whether the route answers with an event stream (#42)."""
+    original = route.original_route
+    if not isinstance(original, APIRoute):
+        return False
+    response_class = original.response_class
+    return isinstance(response_class, type) and issubclass(
+        response_class, EventStreamResponse
+    )
+
+
 def check_matrix(
     app: FastAPI,
     entries: list[MatrixEntry],
@@ -607,6 +633,12 @@ def check_matrix(
         if entry is None:
             continue
         problems.extend(_reauth_entry_problems(label, route, entry))
+        streams = _is_event_stream(route)
+        if streams != entry.is_stream:
+            problems.append(
+                f"{label}: the route's stream is {str(streams).lower()}"
+                f" but the matrix says {str(entry.is_stream).lower()}"
+            )
         if rule.notice_exempt != entry.is_notice_exempt:
             problems.append(
                 f"{label}: the route's notice_exempt is"
@@ -905,12 +937,26 @@ def _send(
         )
         if omit == "no-origin" and "origin" in request.headers:
             del request.headers["origin"]
+        if entry.is_stream:
+            return _send_stream(client, request)
         return client.send(request)
     finally:
         client.cookies.clear()
         overrides.pop(get_current_session, None)
         if previous is not None:
             overrides[get_current_session] = previous
+
+
+def _send_stream(client: TestClient, request: Any) -> Response:
+    """A ``stream = true`` request: a ``200`` stream is closed as soon as its
+    status and headers arrived (its body would never end); any other answer
+    is read to the end."""
+    with ClientStream(
+        client, request.method, str(request.url), headers=dict(request.headers)
+    ) as stream:
+        if stream.status == 200:
+            return Response(200, headers=stream.headers)
+        return stream.response()
 
 
 def run_case(

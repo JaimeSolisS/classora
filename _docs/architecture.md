@@ -574,6 +574,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - `NOTIFY` is transactional, so it is issued in the same transaction as the insert.
   - The server sends a heartbeat comment every 15 s. Caddy disables response buffering for the SSE route. Set CloudFront's origin response timeout so an idle stream stays open between heartbeats.
   - The client reconnects with `Last-Event-ID` and falls back to TanStack Query polling.
+  - **Implementation note (M3-06, #42):** the per-process listener and the in-memory SSE fan-out are implemented as proposed (`administration/live.py`; `GET /api/v1/notifications/stream`; details in [`api.md`](api.md) "Live notifications"). Also implemented: `resync` events after a listener reconnect or a buffer overflow, `Last-Event-ID` replay of up to 100 notifications, a 10-streams-per-user limit per process, and streams that never refresh the session. The Caddy (no buffering or compression on the stream route) and CloudFront (timeouts above the heartbeat) parts stay with M9-09 (#139) and M9-10 (#140). The resolution stays PROPOSED.
 
 ### 10.9 Files
 

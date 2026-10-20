@@ -218,8 +218,27 @@ returns the principal together with the raw session token, or ``None`` when
 there is no signed-in user. It raises :class:`SessionExpiredError` for a
 session that timed out (#25), before it checks the user. It writes nothing
 except the throttled ``last_seen_at`` update of a live session (#25), in the
-request's Unit of Work.
+request's Unit of Work, and skips even that on a request marked by
+:func:`passive_session` (#42).
 """
+
+PASSIVE_SESSION_STATE: Final = "passive_session"
+"""``request.state`` flag set by :func:`passive_session`."""
+
+
+def passive_session(request: Request) -> None:
+    """Route dependency: this request is not user activity, so the resolver
+    must not refresh the session's ``last_seen_at`` (#42 C4: the live
+    notification stream never keeps a session alive). Put it in the route's
+    ``dependencies=[...]`` so it runs before the access rule. It changes
+    nothing else: an expired session is still refused."""
+    setattr(request.state, PASSIVE_SESSION_STATE, True)
+
+
+def is_passive_session(request: Request) -> bool:
+    """Whether :func:`passive_session` marked this request."""
+    return bool(getattr(request.state, PASSIVE_SESSION_STATE, False))
+
 
 PRINCIPAL_RESOLVER_STATE: Final = "principal_resolver"
 """``app.state`` attribute holding the registered :data:`PrincipalResolver`."""

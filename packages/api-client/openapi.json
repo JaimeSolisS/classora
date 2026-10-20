@@ -2812,6 +2812,97 @@
         }
       }
     },
+    "/api/v1/notifications/stream": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Stream",
+        "description": "The caller's new notifications, live (Server-Sent Events).\n\nEvents carry only the notification id; the client refetches through the\nother routes. With ``Last-Event-ID`` the caller's later notifications\n(up to 100) come first, oldest first; more, or an id that isn't one of\nthe caller's, gives one ``resync`` instead.",
+        "operationId": "stream_api_v1_notifications_stream_get",
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The id of the last notification event received (sent by the browser when it reconnects).",
+              "title": "Last-Event-Id"
+            },
+            "description": "The id of the last notification event received (sent by the browser when it reconnects)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events: `notification` (id = data.notification_id), `resync` and a `: heartbeat` comment every 15 s.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The caller already has 10 open streams in this API process (too_many_streams).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait (30).",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications/read-all": {
       "post": {
         "tags": [

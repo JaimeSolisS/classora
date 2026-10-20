@@ -769,6 +769,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream
+         * @description The caller's new notifications, live (Server-Sent Events).
+         *
+         *     Events carry only the notification id; the client refetches through the
+         *     other routes. With ``Last-Event-ID`` the caller's later notifications
+         *     (up to 100) come first, oldest first; more, or an id that isn't one of
+         *     the caller's, gives one ``resync`` instead.
+         */
+        get: operations["stream_api_v1_notifications_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/read-all": {
         parameters: {
             query?: never;
@@ -5713,6 +5738,67 @@ export interface operations {
             /** @description The privacy notice must be accepted first (privacy_notice_required). */
             403: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    stream_api_v1_notifications_stream_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The id of the last notification event received (sent by the browser when it reconnects). */
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-Sent Events: `notification` (id = data.notification_id), `resync` and a `: heartbeat` comment every 15 s. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The caller already has 10 open streams in this API process (too_many_streams). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait (30). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
