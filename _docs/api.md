@@ -94,7 +94,9 @@ Codes in use today:
 | `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption, self-registration); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
 | `token_invalid` | 410 | A one-time link (invitation or password reset) that is unknown, malformed, used, replaced or expired, of the other kind, or that can no longer be redeemed. One body for every case (see Invitations). |
 | `username_taken` | 409 | `POST /api/v1/invitations` or `POST /api/v1/auth/registrations` with a username another user already has, in any state. |
-| `registration_already_decided` | 409 | Approving or rejecting a registration request that was already approved or rejected, or whose account is no longer `pending` (see Registration requests). |
+| `registration_already_decided` | 409 | Since #40 only the `identity.registration` approval handler's defensive check: approving or rejecting a registration whose own record was already decided, or whose account is no longer `pending` (for example archived meanwhile); the approval request stays `pending` (see Registration requests). |
+| `approval_transition_invalid` | 409 | The approval request's status doesn't allow the action: it was already approved, rejected or cancelled, or it waits for the requester's changes (see Approval requests). Of two concurrent decisions, the second gets this. |
+| `approval_action_unsupported` | 409 | `request-changes` on an approval type that doesn't support it (registrations don't; see Approval requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
@@ -530,47 +532,148 @@ in `apps/api/app/modules/identity/` (`tokens.py`, `invitations.py`,
 
 Implemented by M2-11b (#169; spec §9, ADR-0007 D6, D7, D13) in
 `apps/api/app/modules/identity/` (`registrations.py`,
-`registrations_router.py`). No email is sent.
+`registrations_router.py`, `registration_approval.py`); reviewed through the
+approval inbox since M3-04 (#40). No email is sent.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `POST /api/v1/auth/registrations` | `public()` | Body `{username, display_name, password, role}`, where `role` is `guardian` or `student` (anything else is `422 validation_error`). `202` with `{"status": "pending"}` and no ids. |
-| `GET /api/v1/registration-requests` | `require("registration.review")` | Query `status` (`pending` by default, `approved` or `rejected`); oldest first (`created_at`, then `id`); offset pagination. Items: `id`, `username`, `display_name`, `requested_role`, `status`, `submitted_at`, `decided_at`. No password data. |
-| `POST /api/v1/registration-requests/{request_id}/approve` | `require("registration.review")` | `200` with the item: the account becomes `active` with the requested role. |
-| `POST /api/v1/registration-requests/{request_id}/reject` | `require("registration.review")` | `200` with the item: the account is archived and its password hash is cleared. |
+
+Staff review requests as **approval requests of type `identity.registration`**
+(see Approval requests): `GET /api/v1/approval-requests?request_type=identity.registration`,
+then `POST /api/v1/approval-requests/{id}/approve` or `…/reject`. The former
+`/api/v1/registration-requests` routes are removed; the web app's
+`/registration-requests` redirects to `/approvals?type=identity.registration`.
 
 - **Only Parent/Guardian or Student** can be requested; staff and tutors join
   only by invitation. A request creates a `pending` user with the password's
-  Argon2id hash and **no role**, and a `pending` row in
-  `registration_requests`. A pending account cannot sign in (`401
-  invalid_credentials`, like any account that is not `active`).
+  Argon2id hash and **no role**, a `pending` row in `registration_requests`
+  and, in the same transaction, its `pending` approval request (the
+  requester is the new user; the subject is the registration request).
+  A pending account cannot sign in (`401 invalid_credentials`, like any
+  account that is not `active`).
 - **Order on submit:** a foreign `Origin` (`403 csrf_failed`, never counted)
   → `registration.ip` (`429`, 10 per IP per hour) → body validation (`422`)
   → `username_invalid` (`422`) → `409 username_taken` (any user in any state,
   also a concurrent request for the same username) → the password policy
   (`422`). Every request counts against the hourly budget, including `409`
   and `422` answers, which bounds username probing.
+- **The `identity.registration` type:** review permission
+  `registration.review` (Owner and Administrator), no `request-changes`
+  (`409 approval_action_unsupported`), a rejection reason is optional (kept
+  on the approval request only). Its summary is `{username, display_name,
+  requested_role}`.
 - **Approve and reject:** an Owner or Administrator confirms the person's
-  identity out of band first. The request is locked: an unknown id is `404
-  not_found`; a request that is no longer `pending`, or whose account is no
-  longer `pending`, is `409 registration_already_decided` (of two concurrent
-  decisions exactly one succeeds). Approval also needs the authority to
-  assign the requested role (`403 permission_denied`; both reviewing roles
-  have it), then adds the role and moves the account `pending → active`.
-  Rejection moves it `pending → archived` and clears the hash; the username
-  stays taken. Neither needs a reauthentication (ADR-0007 D10: approval
-  grants only Parent/Guardian or Student). The request records `decided_at`
-  and `decided_by_user_id`.
+  identity out of band first. After the approval request's checks, the
+  handler locks the registration and its account; a registration that is no
+  longer `pending`, or whose account is no longer `pending`, is `409
+  registration_already_decided` (defensive). Approval also needs the
+  authority to assign the requested role (`403 permission_denied`; both
+  reviewing roles have it), then adds the role and moves the account
+  `pending → active` (the student-login gate may refuse: `409
+  guardian_consent_required` or `student_profile_required`, and the request
+  stays `pending`). Rejection moves it `pending → archived` and clears the
+  hash; the username stays taken. Neither needs a reauthentication
+  (ADR-0007 D10: approval grants only Parent/Guardian or Student). The
+  registration records `decided_at` and `decided_by_user_id`, in step with
+  the approval request's `resolved_*` (expand-and-contract: a later step may
+  drop the duplicated columns).
 - **Registration never links or enrolls anyone** (spec §9): it changes only
-  `users`, `user_roles`, `registration_requests`, `audit_events` and
-  `rate_limit_counters`. Linking a guardian to a student and enrollment stay
-  administrator actions.
+  `users`, `user_roles`, `registration_requests`, `approval_requests`,
+  `audit_events` and `rate_limit_counters`. Linking a guardian to a student
+  and enrollment stay administrator actions.
 - **Audit:** `identity.registration_requested` (no actor),
   `identity.registration_approved` and `identity.registration_rejected` (the
   reviewer), each on the request (`record_type` `registration_requests`) with
   `details` `user_id` and `requested_role`, plus the automatic `users`,
-  `user_roles` and `registration_requests` events. No event holds the
-  password or its hash. `404`, `409`, `422` and `429` write no event.
+  `user_roles`, `registration_requests` and `approval_requests` events. No
+  event holds the password or its hash. `404`, `409`, `422` and `429` write
+  no event.
+
+### Approval requests
+
+Implemented by M3-04 (#40; spec §9 "central administrative approval inbox";
+architecture §4.1) in `apps/api/app/modules/administration/` (`models.py`,
+`approvals.py`, `approvals_router.py`), exported through
+`administration.service`. The full inbox UI (assignment, detail panels) is
+M8-01 (#118); the web app has a basic list at `/approvals`.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/approval-requests` | `authenticated()` | Query `status` (`open` by default = `pending` + `changes_requested`, one of the five statuses, or `all`), `request_type` (a registered type; anything else is `422`), `assignee` (`any` by default, `me`, `unassigned`), `limit`/`offset`. Only the types whose review permission the caller holds; a caller with none gets an empty page. Order: priority (`high`, `normal`, `low`), then `created_at`, then `id`. |
+| `GET /api/v1/approval-requests/{request_id}` | `authenticated()` | The item; `404 not_found` when missing or not reviewable by the caller. |
+| `POST /api/v1/approval-requests/{request_id}/approve` | `authenticated()` | No body. `200` with the updated item. |
+| `POST /api/v1/approval-requests/{request_id}/reject` | `authenticated()` | Body `{reason?}`. `200` with the updated item. |
+| `POST /api/v1/approval-requests/{request_id}/request-changes` | `authenticated()` | Body `{reason}`. `200` with the updated item. |
+
+- **Model** (`approval_requests`, versioned, audited): `request_type` (a
+  dotted code a module registers in code, CHECKed format, at most 64
+  characters), `subject_id` (the record in the owning module, no foreign
+  key; **one approval request per `(request_type, subject_id)`**: a
+  resubmission reuses it), `requester_user_id` (`NULL` for system-raised
+  items), `assignee_user_id` (`NULL` while unassigned; assignment is
+  M8-01), `status`, `priority` (`low`, `normal`, `high`), `resolved_at` and
+  `resolved_by_user_id` (set for the final states; a system cancel has no
+  resolver), `reason` (at most 1000 characters; required for
+  `changes_requested`).
+- **State machine:** `pending → approved | rejected | changes_requested |
+  cancelled`; `changes_requested → pending` (resubmit) `| rejected |
+  cancelled`; `approved`, `rejected` and `cancelled` are final. Anything else
+  is `409 approval_transition_invalid`.
+- **Visibility:** each type has a **review permission**. The routes are
+  `authenticated()`; a request whose type the caller can't review answers
+  `404 not_found` exactly like a missing one (the #21 record-policy rule).
+- **Decision order:** `401` → `csrf_failed` / `privacy_notice_required` →
+  body `422` → the row is locked `FOR UPDATE` → `404` (missing, unregistered
+  type, or no review permission) → `409 approval_action_unsupported` → `409
+  approval_transition_invalid` → `422 validation_error` on `["body",
+  "reason"]` (required for `request-changes`, and for `reject` when the type
+  says so; trimmed, at most 1000 characters) → the type's handler → status,
+  `resolved_*`, `reason` and `version`. The handler runs in the **same Unit
+  of Work**: any error it raises (with its own code, for example `409
+  guardian_consent_required`) rolls everything back and the request stays as
+  it was. Of two concurrent decisions exactly one succeeds; the other gets
+  `409 approval_transition_invalid`.
+- **Item** `ApprovalRequestItem`: `id`, `request_type`, `status`,
+  `priority`, `requester`, `assignee` and `resolved_by` (`{id,
+  display_name}` or `null`), `created_at`, `resolved_at`, `reason`,
+  `subject` (the type's summary object; never a secret), `allowed_actions`
+  (from `approve`, `reject`, `request_changes`: what the status and the type
+  allow now), `version`. A page takes at most `3 + types on the page`
+  statements.
+- **Audit:** the automatic `create` event when a request is raised, and an
+  `update` event with `status`, `resolved_*` and `reason` on each transition
+  (the actor is the reviewer). `404`, `409` and `422` write nothing.
+- **Types today:** `identity.registration` only (see Registration
+  requests).
+
+**Adding a type** (later issues: #44 qualifications, M4 offers, session and
+availability requests):
+
+1. Implement `administration.service.ApprovalHandler` in the owning module:
+   `request_type`, `review_permission`, `supports_request_changes`,
+   `reason_required_on_reject`, and async `approve(session, request,
+   principal)`, `reject(…, reason)`, `request_changes(…, reason)` and
+   `summaries(session, subject_ids)` (display data by subject id, a fixed
+   number of statements). The actions receive a read-only
+   `ApprovalRequestView`, lock their own subject, raise an `AppError` to
+   refuse and never commit.
+2. Register it in `app/wiring.py` (`register_approval_wiring`, called by
+   `build_app`, `app.cli` and `app.worker`) and extend the unit test that
+   pins `registered_approval_types()`.
+3. Raise requests with `create_approval_request(session, request_type=…,
+   subject_id=…, requester_user_id=…)` in the owning transaction. Requester
+   actions use `cancel_approval_request` and `resubmit_approval_request`
+   behind the type's own routes (there is no generic requester route).
+4. Web: add the review permission to `APPROVAL_REVIEW_PERMISSIONS`, a label
+   to `APPROVAL_TYPE_LABELS`, a summary renderer in
+   `features/approvals/summary.ts` and, when a rejection needs a reason, the
+   type to `REJECT_REASON_REQUIRED`.
+
+`administration` imports no other module: names come from the
+account-reference resolver that the composition roots register
+(`register_account_reference_resolver(identity.service.get_account_references)`);
+without one, building an item fails closed (`500`).
 
 ### Password reset and change
 
