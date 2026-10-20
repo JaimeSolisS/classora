@@ -39,7 +39,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * account there is a self-registration approved by the Owner or an
  * invitation, never createActiveUser; #35), preferences/preferences.spec.ts
  * 2 (the tutor on two devices; #36), tutors/profiles.spec.ts 1 (the tutor;
- * #43) = 43 attempts, 2 failures for
+ * #43), tutors/qualifications.spec.ts 2 (the demo Owner's reauthenticated
+ * API context for the tutor's role change, and the tutor; #44) = 45
+ * attempts, 2 failures for
  * `demo.owner`. Keep the total well under both limits; never add a setting
  * that disables the limits.
  *
@@ -56,9 +58,12 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * invitation page: 1 lookup, 1 redemption refused by the consent gate and
  * 1 that succeeds; #35), tutors/profiles.spec.ts 1 (createActiveUser; #43)
  * = 20, the whole budget: a new spec must invite without redeeming (as
- * a11y/shell.spec.ts does for its tutor, support/tutors.ts) or rebalance.
+ * a11y/shell.spec.ts does for its tutor, support/tutors.ts), get its
+ * account through an approved self-registration (as
+ * tutors/qualifications.spec.ts does with createApprovedTutor, #44) or
+ * rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 43;
+export const LOGIN_ATTEMPTS_PER_RUN = 45;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 20;
@@ -67,10 +72,11 @@ export const TOKEN_REDEMPTIONS_PER_RUN = 20;
  * Self-registration requests in one run (#169; `registration.ip` allows 10
  * per hour for the run's one IP): auth/registration.spec.ts sends 1,
  * families/consent.spec.ts 3 (createApprovedAccount for two parents and the
- * adult student, #35) and families/guardians.spec.ts 1 (createApprovedAccount
- * for the guardian, #36) = 5.
+ * adult student, #35), families/guardians.spec.ts 1 (createApprovedAccount
+ * for the guardian, #36) and tutors/qualifications.spec.ts 1
+ * (createApprovedTutor, #44) = 6.
  */
-export const REGISTRATIONS_PER_RUN = 5;
+export const REGISTRATIONS_PER_RUN = 6;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

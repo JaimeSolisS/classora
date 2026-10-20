@@ -108,6 +108,21 @@ type Common = {
       saved: string;
     };
     form: { phone: string; experience: string; save: string };
+    qualifications: {
+      title: string;
+      teachingTitle: string;
+      empty: string;
+      statuses: Record<
+        'pending' | 'approved' | 'rejected' | 'cancelled',
+        string
+      >;
+      request: string;
+      levelLabel: string;
+      subjectLabel: string;
+      send: string;
+      close: string;
+      requested: string;
+    };
   };
   catalog: {
     title: string;
@@ -279,8 +294,15 @@ type Common = {
   relationships: Record<string, string>;
   approvals: {
     title: string;
-    actions: { approve: string; approveFor: string };
-    done: { approved: string };
+    actions: {
+      approve: string;
+      approveFor: string;
+      reject: string;
+      rejectFor: string;
+    };
+    summary: { qualification: string };
+    dialog: { reasonRequiredLabel: string };
+    done: { approved: string; rejected: string };
   };
   invite: {
     title: string;
@@ -309,7 +331,11 @@ type Common = {
     unread: string;
     read: string;
     unknown: string;
-    types: { dev_demo: string };
+    types: {
+      dev_demo: string;
+      staff_qualification_approved: string;
+      staff_qualification_rejected: string;
+    };
   };
 };
 
@@ -323,6 +349,7 @@ type Errors = {
   too_many_streams: string;
   guardian_consent_required: string;
   reauth_required: string;
+  qualification_exists: string;
 };
 
 function read<T>(path: string): T {

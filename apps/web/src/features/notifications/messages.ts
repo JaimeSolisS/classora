@@ -55,13 +55,35 @@ export function notificationMessage(
   );
 }
 
+/** Who is reading the notification: its recipient, the signed-in user. */
+export interface NotificationRecipient {
+  userId: string;
+}
+
+/** The tutor's own qualifications section (#44). */
+function ownQualifications(
+  _params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+): string {
+  return `/tutors/${encodeURIComponent(recipient.userId)}#qualifications`;
+}
+
 /**
- * Where activating a notification of a type goes, from its params; a type
- * without an entry only becomes read. None in #41 (#44 adds the first).
+ * Where activating a notification of a type goes, from its params and its
+ * recipient; a type without an entry only becomes read.
  */
 export const NOTIFICATION_LINKS: Readonly<
-  Record<string, (params: NotificationItem['params']) => string>
-> = {};
+  Record<
+    string,
+    (
+      params: NotificationItem['params'],
+      recipient: NotificationRecipient,
+    ) => string
+  >
+> = {
+  'staff.qualification_approved': ownQualifications,
+  'staff.qualification_rejected': ownQualifications,
+};
 
 /** The bell's badge text: the count, or "99+" above 99. */
 export function badgeText(count: number): string {
