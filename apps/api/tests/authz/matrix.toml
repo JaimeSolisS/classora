@@ -105,6 +105,37 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/approval-requests"
+access = "authenticated"
+# Every signed-in role may call it; the list holds only the types whose
+# review permission the caller holds (#40 C1).
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/approve"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/reject"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/request-changes"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "GET"
 path = "/api/v1/audit-events"
 access = "permission"
 permission = "audit.view"
@@ -487,29 +518,6 @@ access = "authenticated"
 notice_exempt = true
 # An empty body gets 422, so no case accepts the notice.
 json = {}
-
-[[route]]
-method = "GET"
-path = "/api/v1/registration-requests"
-access = "permission"
-permission = "registration.review"
-allow = ["owner", "administrator"]
-
-[[route]]
-method = "POST"
-path = "/api/v1/registration-requests/{request_id}/approve"
-access = "permission"
-permission = "registration.review"
-allow = ["owner", "administrator"]
-# The placeholder id is no request: 404 for the allowed roles.
-
-[[route]]
-method = "POST"
-path = "/api/v1/registration-requests/{request_id}/reject"
-access = "permission"
-permission = "registration.review"
-allow = ["owner", "administrator"]
-# The placeholder id is no request: 404 for the allowed roles.
 
 [[route]]
 method = "GET"

@@ -28,6 +28,8 @@ MAY_CHANGE = frozenset(
         "users",
         "user_roles",
         "registration_requests",
+        # The registration's approval request (#40 D1).
+        "approval_requests",
         "audit_events",
         "rate_limit_counters",
     }
@@ -83,6 +85,7 @@ def test_submit_approve_and_reject_change_only_the_allowed_tables(
     assert changed(before, submitted) <= MAY_CHANGE
     assert submitted["users"] == before["users"] + 2
     assert submitted["registration_requests"] == before["registration_requests"] + 2
+    assert submitted["approval_requests"] == before["approval_requests"] + 2
     assert submitted["user_roles"] == before["user_roles"]
 
     approved_row = request_row(module_seeded_url, approved)
@@ -91,12 +94,12 @@ def test_submit_approve_and_reject_change_only_the_allowed_tables(
         # created outside the counted steps.
         adult_profile_for(module_seeded_url, approved_row.user_id)
         submitted = row_counts(module_seeded_url)
-    assert code_of(approve(client, cookie, approved_row.id)) == (200, None)
+    assert code_of(approve(client, cookie, approved_row.approval_id)) == (200, None)
     after_approval = row_counts(module_seeded_url)
     assert changed(submitted, after_approval) <= MAY_CHANGE
     assert after_approval["user_roles"] == submitted["user_roles"] + 1
 
-    rejected_id = request_row(module_seeded_url, rejected).id
+    rejected_id = request_row(module_seeded_url, rejected).approval_id
     assert code_of(reject(client, cookie, rejected_id)) == (200, None)
     after_rejection = row_counts(module_seeded_url)
     assert changed(after_approval, after_rejection) <= MAY_CHANGE

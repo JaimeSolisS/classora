@@ -288,7 +288,6 @@ class PasswordChange(BaseModel):
 # A named string enum in OpenAPI (``RegistrationRole`` in the web client): the
 # only roles a person may request (ADR-0007 D13). Anything else is 422.
 type RegistrationRole = Literal["guardian", "student"]
-type RegistrationStatus = Literal["pending", "approved", "rejected"]
 
 
 class RegistrationCreate(BaseModel):
@@ -311,18 +310,6 @@ class RegistrationSubmitted(BaseModel):
     """The answer to a registration request (``202``). Holds no id."""
 
     status: Literal["pending"]
-
-
-class RegistrationRequestItem(BaseModel):
-    """One registration request in the review list. Holds no password data."""
-
-    id: uuid.UUID
-    username: str
-    display_name: str
-    requested_role: RegistrationRole
-    status: RegistrationStatus
-    submitted_at: datetime
-    decided_at: datetime | None
 
 
 # --- User administration (#31) -------------------------------------------------------

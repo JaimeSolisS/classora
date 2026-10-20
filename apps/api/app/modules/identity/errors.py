@@ -194,6 +194,11 @@ class RegistrationAlreadyDecidedError(AppError):
     """Approving or rejecting a registration request that is no longer
     pending, or whose user is no longer ``pending`` (#169). Takes no
     arguments.
+
+    Since #40 only the ``identity.registration`` approval handler's defensive
+    check: the inbox refuses a decided approval request first (``409
+    approval_transition_invalid``), so this answers only when the account
+    changed outside the inbox (for example it was archived meanwhile).
     """
 
     status = 409

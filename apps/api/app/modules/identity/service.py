@@ -7,6 +7,9 @@
   :func:`resolve_permissions` (pure), :func:`may_assign_role`, the role codes
   and :data:`STAFF_ROLES` (D4; ``permissions.py``).
 - Delegation: :func:`grant_delegation` and :func:`revoke_delegation`.
+- Self-registration approvals (#40 D2): :data:`REGISTRATION_APPROVAL_HANDLER`
+  (type :data:`REGISTRATION_APPROVAL_TYPE`), registered by the composition
+  roots with ``administration.service.register_approval_handler``.
 - Account references (#34 B1): :func:`get_account_reference` and
   :func:`get_account_references` (``schemas.AccountReference``: id, username,
   display name, state and roles; never a hash or contact data).
@@ -110,6 +113,7 @@ from app.modules.identity.permissions import (
     DELEGABLE_PERMISSIONS,
     OWNER,
     PENDING,
+    REGISTRATION_APPROVAL_TYPE,
     ROLE_CODES,
     STAFF_ROLES,
     STUDENT,
@@ -134,6 +138,9 @@ from app.modules.identity.privacy import (
     has_accepted_current_privacy_notice,
     privacy_notice_versions,
 )
+from app.modules.identity.registration_approval import (
+    REGISTRATION_APPROVAL_HANDLER,
+)
 from app.modules.identity.schemas import AccountReference, PrivacyNotice
 
 __all__ = [
@@ -141,6 +148,8 @@ __all__ = [
     "ADMINISTRATOR",
     "LANGUAGES",
     "OWNER",
+    "REGISTRATION_APPROVAL_HANDLER",
+    "REGISTRATION_APPROVAL_TYPE",
     "ROLE_CODES",
     "STAFF_ROLES",
     "THEMES",

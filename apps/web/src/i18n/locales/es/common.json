@@ -32,7 +32,7 @@
     "users": "Usuarios",
     "invitations": "Invitaciones",
     "passwordResets": "Restablecer contraseñas",
-    "registrations": "Solicitudes de cuenta",
+    "approvals": "Aprobaciones",
     "catalog": "Catálogo",
     "settings": "Configuración",
     "students": "Estudiantes",
@@ -256,42 +256,86 @@
     "goHome": "Ir al inicio",
     "backToLogin": "Volver a iniciar sesión"
   },
-  "registrations": {
-    "title": "Solicitudes de cuenta",
-    "intro": "Confirma la identidad de cada persona fuera de la aplicación antes de aprobar. Aprobar una solicitud nunca inscribe a nadie.",
+  "approvals": {
+    "title": "Aprobaciones",
+    "intro": "Solicitudes que esperan una decisión. En las solicitudes de cuenta, confirma la identidad de cada persona fuera de la aplicación antes de aprobar; aprobar nunca inscribe a nadie.",
     "filter": {
-      "label": "Estado",
-      "pending": "Pendientes",
-      "approved": "Aprobadas",
-      "rejected": "Rechazadas"
+      "status": "Estado",
+      "type": "Tipo",
+      "allTypes": "Todos los tipos",
+      "assignee": "Asignadas a"
+    },
+    "status": {
+      "open": "Abiertas",
+      "pending": "Pendiente",
+      "approved": "Aprobada",
+      "rejected": "Rechazada",
+      "changes_requested": "Cambios solicitados",
+      "cancelled": "Cancelada",
+      "all": "Todas"
+    },
+    "assignee": {
+      "any": "Cualquiera",
+      "me": "Asignadas a mí",
+      "unassigned": "Sin asignar"
+    },
+    "priority": {
+      "low": "Baja",
+      "normal": "Normal",
+      "high": "Alta"
+    },
+    "types": {
+      "identity_registration": "Solicitud de cuenta"
+    },
+    "summary": {
+      "registration": "{{name}} ({{username}}) · {{role}}"
     },
     "list": {
       "title": "Solicitudes",
-      "displayName": "Nombre",
-      "username": "Usuario",
-      "role": "Rol solicitado",
+      "type": "Tipo",
+      "request": "Solicitud",
+      "requester": "Solicitada por",
       "submittedAt": "Enviada",
-      "decidedAt": "Resuelta",
+      "priority": "Prioridad",
+      "status": "Estado",
       "actions": "Acciones",
-      "empty": "No hay solicitudes aquí.",
+      "system": "Sistema",
+      "empty": "No hay nada que revisar.",
       "pagination": "Páginas",
       "previous": "Anterior",
       "next": "Siguiente",
       "range": "{{from}}–{{to}} de {{total}}"
     },
-    "approve": "Aprobar",
-    "reject": "Rechazar",
-    "approveFor": "Aprobar a {{username}}",
-    "rejectFor": "Rechazar a {{username}}",
-    "approveTitle": "Aprobar la solicitud de {{name}} ({{role}})",
-    "rejectTitle": "Rechazar la solicitud de {{name}} ({{role}})",
-    "approveConfirm": "Confirma que verificaste la identidad de {{name}} ({{role}}).",
-    "rejectConfirm": "El nombre de usuario {{username}} ya no podrá usarse.",
-    "approving": "Aprobando…",
-    "rejecting": "Rechazando…",
-    "cancel": "Cancelar",
-    "approved": "Solicitud aprobada.",
-    "rejected": "Solicitud rechazada."
+    "actions": {
+      "approve": "Aprobar",
+      "reject": "Rechazar",
+      "requestChanges": "Pedir cambios",
+      "approveFor": "Aprobar a {{name}}",
+      "rejectFor": "Rechazar a {{name}}",
+      "requestChangesFor": "Pedir cambios a {{name}}"
+    },
+    "dialog": {
+      "approveTitle": "Aprobar: {{summary}}",
+      "rejectTitle": "Rechazar: {{summary}}",
+      "requestChangesTitle": "Pedir cambios: {{summary}}",
+      "registrationApprove": "Confirma que verificaste la identidad de {{name}} ({{role}}).",
+      "registrationReject": "El nombre de usuario {{username}} ya no podrá usarse.",
+      "approveConfirm": "¿Aprobar esta solicitud?",
+      "rejectConfirm": "¿Rechazar esta solicitud? No se puede deshacer.",
+      "requestChangesConfirm": "La solicitud vuelve a quien la envió, con tu motivo.",
+      "reasonRequiredLabel": "Motivo (obligatorio)",
+      "reasonOptionalLabel": "Motivo (opcional)",
+      "reasonRequired": "Escribe un motivo.",
+      "approving": "Aprobando…",
+      "rejecting": "Rechazando…",
+      "requestingChanges": "Enviando…",
+      "cancel": "Cancelar"
+    },
+    "done": {
+      "approved": "Aprobada.",
+      "rejected": "Rechazada.",
+      "changesRequested": "Cambios solicitados."
+    }
   },
   "users": {
     "title": "Usuarios",

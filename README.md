@@ -35,8 +35,10 @@ same way, they can create a one-time password reset link from the Password
 resets page, and every signed-in user can change their own password.
 Parents, guardians and students can request an account from the sign-in page;
 the account works only after an Owner or administrator confirms their
-identity and approves it on the Account requests page (or rejects it).
-Approving a request never enrolls anyone.
+identity and approves it on the Approvals page (or rejects it). Approvals is
+the shared list of requests waiting for a decision, filtered by status, type
+and assignee; account requests are its first type. Approving a request never
+enrolls anyone.
 On the Users page, Owners and administrators can search and filter every
 account, edit a person's name and optional contact details (never used to
 sign in), create a password reset link for them, and suspend, archive or

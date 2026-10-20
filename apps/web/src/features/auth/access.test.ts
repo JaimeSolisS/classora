@@ -52,11 +52,75 @@ describe('canAccess', () => {
   });
 });
 
+describe('canAccess with anyPermission (#40 F1)', () => {
+  it('allows a user who holds one of the permissions', () => {
+    expect(
+      canAccess(user, { anyPermission: ['registration.review', 'user.view'] }),
+    ).toBe(true);
+    expect(canAccess(user, { anyPermission: ['payroll.finalize'] })).toBe(true);
+  });
+
+  it('denies a user who holds none of them', () => {
+    expect(
+      canAccess(user, { anyPermission: ['registration.review', 'audit.view'] }),
+    ).toBe(false);
+  });
+
+  it('denies an empty list', () => {
+    expect(canAccess(user, { anyPermission: [] })).toBe(false);
+  });
+
+  it('applies permission and anyPermission together', () => {
+    expect(
+      canAccess(user, {
+        permission: 'user.view',
+        anyPermission: ['payroll.finalize'],
+      }),
+    ).toBe(true);
+    expect(
+      canAccess(user, {
+        permission: 'audit.view',
+        anyPermission: ['payroll.finalize'],
+      }),
+    ).toBe(false);
+    expect(
+      canAccess(user, {
+        permission: 'user.view',
+        anyPermission: ['audit.view'],
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed on a malformed list', () => {
+    expect(
+      canAccess(user, {
+        anyPermission: 'user.view' as unknown as PermissionCode[],
+      }),
+    ).toBe(false);
+    expect(
+      canAccess(user, {
+        anyPermission: [null, 42] as unknown as PermissionCode[],
+      }),
+    ).toBe(false);
+    expect(
+      canAccess(user, {
+        anyPermission: null as unknown as PermissionCode[],
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('routeRequirement', () => {
   it('reads handle.permission', () => {
     expect(routeRequirement({ permission: 'user.view' })).toEqual({
       permission: 'user.view',
     });
+  });
+
+  it('reads handle.anyPermission', () => {
+    expect(
+      routeRequirement({ anyPermission: ['registration.review'] }),
+    ).toEqual({ anyPermission: ['registration.review'] });
   });
 
   it('is null without a handle or a permission', () => {

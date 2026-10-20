@@ -21,7 +21,7 @@ const THEMES = ['light', 'dark'] as const;
 
 // Home, 404, /users, a user's detail (demo.owner's own record, opened from
 // the list: its id is not known in advance), /invitations,
-// /password-resets, /registration-requests, /account/password, the catalog
+// /password-resets, /approvals (#40 G2), /account/password, the catalog
 // levels page and the seeded "Primaria" level's page (opened from the list),
 // /catalog/periods and /catalog/closures (#38 F2), /catalog/classrooms
 // (#39 E2),
@@ -79,11 +79,7 @@ const ROUTES: ScannedRoute[] = [
   { name: '404', path: '/e2e-route-that-does-not-exist', signedIn: true },
   { name: 'invitations', path: '/invitations', signedIn: true },
   { name: 'password-resets', path: '/password-resets', signedIn: true },
-  {
-    name: 'registration-requests',
-    path: '/registration-requests',
-    signedIn: true,
-  },
+  { name: 'approvals', path: '/approvals', signedIn: true },
   { name: 'account-password', path: '/account/password', signedIn: true },
   { name: 'catalog', path: '/catalog/education-levels', signedIn: true },
   { name: 'catalog-periods', path: '/catalog/periods', signedIn: true },

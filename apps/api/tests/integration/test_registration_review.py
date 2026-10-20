@@ -1,5 +1,7 @@
 """Reviewing self-registration requests (#169 C1-C3, C5, D) with real logins,
-the ``clock`` fixture and the #27 rate-limit reset."""
+the ``clock`` fixture and the #27 rate-limit reset. Since #40 (D5) the
+review goes through the approval inbox: ``identity.registration`` approval
+requests under ``/api/v1/approval-requests``."""
 
 import logging
 import uuid
@@ -45,6 +47,7 @@ from tests.integration.registration_support import (
 OK = (200, None)
 ACCEPTED = (202, None)
 ALREADY_DECIDED = (409, "registration_already_decided")
+TRANSITION_INVALID = (409, "approval_transition_invalid")
 APPROVED_EVENT = "identity.registration_approved"
 REJECTED_EVENT = "identity.registration_rejected"
 
@@ -96,17 +99,31 @@ def test_approval_activates_the_user_with_exactly_the_requested_role(
     username = username_of(module_seeded_url, row.user_id)
     cookie = signed_in(client, reviewer.username)
 
-    response = approve(client, cookie, row.id)
+    response = approve(client, cookie, row.approval_id)
 
     assert code_of(response) == OK
     body = response.json()
-    assert body["id"] == str(row.id)
-    assert body["username"] == username
-    assert body["requested_role"] == role
+    assert body["id"] == str(row.approval_id)
+    assert body["request_type"] == "identity.registration"
+    assert body["subject"] == {
+        "username": username,
+        "display_name": "Requesting Person",
+        "requested_role": role,
+    }
     assert body["status"] == "approved"
-    assert datetime.fromisoformat(body["decided_at"]) == CLOCK_START
+    assert body["allowed_actions"] == []
+    assert datetime.fromisoformat(body["resolved_at"]) == CLOCK_START
+    assert body["resolved_by"]["id"] == str(reviewer.id)
     after = request_row(module_seeded_url, username)
-    assert (after.state, after.status) == ("active", "approved")
+    assert (after.state, after.status, after.approval_status) == (
+        "active",
+        "approved",
+        "approved",
+    )
+    assert (after.resolved_at, after.resolved_by_user_id) == (
+        CLOCK_START,
+        reviewer.id,
+    )
     assert after.decided_at == CLOCK_START
     assert after.decided_by_user_id == reviewer.id
     assert roles_of(module_seeded_url, row.user_id) == [role]
@@ -119,7 +136,7 @@ def test_approval_writes_the_named_event(module_seeded_url, client, clock, owner
     row = requested(module_seeded_url, client, "student")
     cookie = signed_in(client, owner.username)
 
-    assert code_of(approve(client, cookie, row.id)) == OK
+    assert code_of(approve(client, cookie, row.approval_id)) == OK
 
     [event] = events(module_seeded_url, record_id=row.id, action=APPROVED_EVENT)
     assert event.record_type == "registration_requests"
@@ -141,6 +158,13 @@ def test_approval_writes_the_named_event(module_seeded_url, client, clock, owner
         {"user_id": str(row.user_id)},
     )
     assert role_events[0] == 1
+    # #40 E1: the approval request's update event, by the reviewer.
+    [update] = events(module_seeded_url, record_id=row.approval_id, action="update")
+    assert update.record_type == "approval_requests"
+    assert update.actor_user_id == owner.id
+    assert update.changes["status"] == {"old": "pending", "new": "approved"}
+    assert update.changes["resolved_by_user_id"]["new"] == str(owner.id)
+    assert "resolved_at" in update.changes
     no_secret_in_audit(module_seeded_url, REQUEST_PASSWORD, row.password_hash)
 
 
@@ -178,11 +202,12 @@ def test_rejection_archives_the_user_and_clears_the_hash(
     username = username_of(module_seeded_url, row.user_id)
     cookie = signed_in(client, administrator.username)
 
-    response = reject(client, cookie, row.id)
+    response = reject(client, cookie, row.approval_id)
 
     assert code_of(response) == OK
     assert response.json()["status"] == "rejected"
     after = request_row(module_seeded_url, username)
+    assert after.approval_status == "rejected"
     assert (after.state, after.status, after.password_hash) == (
         "archived",
         "rejected",
@@ -214,11 +239,13 @@ def test_rejection_archives_the_user_and_clears_the_hash(
 def test_deciding_twice_is_409(module_seeded_url, client, clock, owner, first, second):
     row = requested(module_seeded_url, client)
     cookie = signed_in(client, owner.username)
-    assert code_of(first(client, cookie, row.id)) == OK
+    assert code_of(first(client, cookie, row.approval_id)) == OK
     before = len(events(module_seeded_url, record_id=row.id))
+    approval_before = len(events(module_seeded_url, record_id=row.approval_id))
 
-    assert code_of(second(client, cookie, row.id)) == ALREADY_DECIDED
+    assert code_of(second(client, cookie, row.approval_id)) == TRANSITION_INVALID
     assert len(events(module_seeded_url, record_id=row.id)) == before
+    assert len(events(module_seeded_url, record_id=row.approval_id)) == approval_before
 
 
 def test_a_request_whose_user_is_no_longer_pending_is_409(
@@ -232,9 +259,12 @@ def test_a_request_whose_user_is_no_longer_pending_is_409(
     )
     cookie = signed_in(client, owner.username)
 
-    assert code_of(approve(client, cookie, row.id)) == ALREADY_DECIDED
-    assert code_of(reject(client, cookie, row.id)) == ALREADY_DECIDED
+    # The handler's defensive check (#40 D4); the approval stays pending.
+    assert code_of(approve(client, cookie, row.approval_id)) == ALREADY_DECIDED
+    assert code_of(reject(client, cookie, row.approval_id)) == ALREADY_DECIDED
     assert roles_of(module_seeded_url, row.user_id) == []
+    after = request_row(module_seeded_url, username_of(module_seeded_url, row.user_id))
+    assert after.approval_status == "pending"
 
 
 def test_two_concurrent_approvals_give_one_200_and_one_409(
@@ -245,10 +275,13 @@ def test_two_concurrent_approvals_give_one_200_and_one_409(
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
-            pool.map(lambda _: code_of(approve(client, cookie, row.id)), range(2))
+            pool.map(
+                lambda _: code_of(approve(client, cookie, row.approval_id)), range(2)
+            )
         )
 
-    assert sorted(results) == [OK, ALREADY_DECIDED]
+    # The approval row lock (#40 B4): the second sees the first's status.
+    assert sorted(results) == [OK, TRANSITION_INVALID]
     assert roles_of(module_seeded_url, row.user_id) == ["guardian"]
     assert len(events(module_seeded_url, record_id=row.id, action=APPROVED_EVENT)) == 1
 
@@ -262,16 +295,23 @@ def test_a_concurrent_approval_and_rejection_decide_once(
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
             pool.map(
-                lambda call: code_of(call(client, cookie, row.id)), (approve, reject)
+                lambda call: code_of(call(client, cookie, row.approval_id)),
+                (approve, reject),
             )
         )
 
-    assert sorted(results) == [OK, ALREADY_DECIDED]
+    assert sorted(results) == [OK, TRANSITION_INVALID]
     after = request_row(module_seeded_url, username_of(module_seeded_url, row.user_id))
-    assert (after.state, after.status) in {
-        ("active", "approved"),
-        ("archived", "rejected"),
+    assert (after.state, after.status, after.approval_status) in {
+        ("active", "approved", "approved"),
+        ("archived", "rejected", "rejected"),
     }
+    decided = [
+        e
+        for action in (APPROVED_EVENT, REJECTED_EVENT)
+        for e in events(module_seeded_url, record_id=row.id, action=action)
+    ]
+    assert len(decided) == 1
 
 
 def test_an_unknown_id_is_404(module_seeded_url, client, clock, owner):
@@ -290,12 +330,15 @@ def test_other_roles_are_denied(module_seeded_url, client, clock, role):
     member = create_user(module_seeded_url, roles=(role,))
     cookie = signed_in(client, member.username)
 
-    assert code_of(list_requests(client, cookie)) == (403, "permission_denied")
-    assert code_of(approve(client, cookie, row.id)) == (403, "permission_denied")
-    assert code_of(reject(client, cookie, row.id)) == (403, "permission_denied")
-    assert request_row(
-        module_seeded_url, username_of(module_seeded_url, row.user_id)
-    ).status == ("pending")
+    # #40 C5: the list is empty and the request is hidden (404).
+    listed = list_requests(client, cookie, request_type=None, status="all")
+    assert code_of(listed) == OK
+    assert listed.json()["items"] == []
+    assert listed.json()["total"] == 0
+    assert code_of(approve(client, cookie, row.approval_id)) == (404, "not_found")
+    assert code_of(reject(client, cookie, row.approval_id)) == (404, "not_found")
+    after = request_row(module_seeded_url, username_of(module_seeded_url, row.user_id))
+    assert (after.status, after.approval_status) == ("pending", "pending")
 
 
 # --- C1: the list --------------------------------------------------------------------
@@ -307,50 +350,72 @@ def ids_in(client: TestClient, cookie: Any, **params: Any) -> list[str]:
     return [item["id"] for item in response.json()["items"]]
 
 
+def clear_pending(url: str) -> None:
+    """Remove the pending registrations of earlier tests (and their approval
+    requests): the list tests count what they create."""
+    run_sql(
+        url,
+        "DELETE FROM approval_requests WHERE request_type = 'identity.registration'"
+        " AND status = 'pending'",
+    )
+    run_sql(url, "DELETE FROM registration_requests WHERE status = 'pending'")
+
+
 def test_the_list_filters_by_status_oldest_first(
     module_seeded_url, client, clock, owner
 ):
-    run_sql(
-        module_seeded_url, "DELETE FROM registration_requests WHERE status = 'pending'"
-    )
+    clear_pending(module_seeded_url)
     first = requested(module_seeded_url, client, "guardian")
     second = requested(module_seeded_url, client, "student")
     third = requested(module_seeded_url, client, "guardian")
     reset_rate_limits(module_seeded_url)
     cookie = signed_in(client, owner.username)
-    assert code_of(approve(client, cookie, second.id)) == OK
-    assert code_of(reject(client, cookie, third.id)) == OK
+    assert code_of(approve(client, cookie, second.approval_id)) == OK
+    assert code_of(reject(client, cookie, third.approval_id)) == OK
 
     pending = list_requests(client, cookie, limit=100)
     assert code_of(pending) == OK
-    assert [i["id"] for i in pending.json()["items"]] == [str(first.id)]
-    assert ids_in(client, cookie, status="pending") == [str(first.id)]
-    assert str(second.id) in ids_in(client, cookie, status="approved")
-    assert str(third.id) in ids_in(client, cookie, status="rejected")
-    assert code_of(list_requests(client, cookie, status="other")) == (
-        422,
-        "validation_error",
-    )
+    assert [i["id"] for i in pending.json()["items"]] == [str(first.approval_id)]
+    assert ids_in(client, cookie, status="pending") == [str(first.approval_id)]
+    assert str(second.approval_id) in ids_in(client, cookie, status="approved")
+    assert str(third.approval_id) in ids_in(client, cookie, status="rejected")
+    for bad in ({"status": "other"}, {"request_type": "identity.unknown"}):
+        assert code_of(list_requests(client, cookie, **bad)) == (
+            422,
+            "validation_error",
+        )
 
     [item] = pending.json()["items"]
-    submitted_at = item.pop("submitted_at")
-    assert datetime.fromisoformat(submitted_at).tzinfo is not None
+    created_at = item.pop("created_at")
+    assert datetime.fromisoformat(created_at).tzinfo is not None
     assert item == {
-        "id": str(first.id),
-        "username": username_of(module_seeded_url, first.user_id),
-        "display_name": "Requesting Person",
-        "requested_role": "guardian",
+        "id": str(first.approval_id),
+        "request_type": "identity.registration",
         "status": "pending",
-        "decided_at": None,
+        "priority": "normal",
+        "requester": {"id": str(first.user_id), "display_name": "Requesting Person"},
+        "assignee": None,
+        "resolved_at": None,
+        "resolved_by": None,
+        "reason": None,
+        "subject": {
+            "username": username_of(module_seeded_url, first.user_id),
+            "display_name": "Requesting Person",
+            "requested_role": "guardian",
+        },
+        "allowed_actions": ["approve", "reject"],
+        "version": 1,
     }
     [approved] = [
         i
         for i in list_requests(client, cookie, status="approved", limit=100).json()[
             "items"
         ]
-        if i["id"] == str(second.id)
+        if i["id"] == str(second.approval_id)
     ]
-    assert datetime.fromisoformat(approved["decided_at"]) == CLOCK_START
+    assert datetime.fromisoformat(approved["resolved_at"]) == CLOCK_START
+    assert approved["resolved_by"]["id"] == str(owner.id)
+    assert approved["version"] == 2
     assert "password" not in pending.text
     assert "argon2" not in pending.text
 
@@ -358,9 +423,7 @@ def test_the_list_filters_by_status_oldest_first(
 def test_the_list_is_oldest_first_and_paginated(
     module_seeded_url, client, clock, owner
 ):
-    run_sql(
-        module_seeded_url, "DELETE FROM registration_requests WHERE status = 'pending'"
-    )
+    clear_pending(module_seeded_url)
     rows = [requested(module_seeded_url, client) for _ in range(3)]
     cookie = signed_in(client, owner.username)
 
@@ -368,9 +431,11 @@ def test_the_list_is_oldest_first_and_paginated(
     second_page = list_requests(client, cookie, limit=2, offset=2).json()
 
     assert (first_page["total"], first_page["limit"], first_page["offset"]) == (3, 2, 0)
-    assert [i["id"] for i in first_page["items"]] == [str(r.id) for r in rows[:2]]
+    assert [i["id"] for i in first_page["items"]] == [
+        str(r.approval_id) for r in rows[:2]
+    ]
     assert (second_page["total"], second_page["offset"]) == (3, 2)
-    assert [i["id"] for i in second_page["items"]] == [str(rows[2].id)]
+    assert [i["id"] for i in second_page["items"]] == [str(rows[2].approval_id)]
 
 
 # --- D3: no password in any log ----------------------------------------------------
@@ -398,10 +463,10 @@ def test_no_password_reaches_a_log(
     register(client, password=short_password)  # 422
     register(client, role="tutor", password=approved_password)  # 422
     pending = list_requests(client, cookie, limit=100).json()["items"]
-    by_name = {i["username"]: i["id"] for i in pending}
-    rejected_id = next(i["id"] for i in pending if i["username"] != taken)
+    by_name = {i["subject"]["username"]: i["id"] for i in pending}
+    rejected_id = next(i["id"] for i in pending if i["subject"]["username"] != taken)
     assert code_of(approve(client, cookie, by_name[taken])) == OK
-    assert code_of(approve(client, cookie, by_name[taken])) == ALREADY_DECIDED
+    assert code_of(approve(client, cookie, by_name[taken])) == TRANSITION_INVALID
     assert code_of(reject(client, cookie, rejected_id)) == OK
     assert code_of(reject(client, cookie, uuid.uuid4())) == (404, "not_found")
     reset_rate_limits(module_seeded_url)

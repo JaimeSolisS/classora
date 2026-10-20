@@ -63,7 +63,7 @@ export async function createStudentLogin(
  * API context sends a self-registration request (`registration.ip`, see
  * REGISTRATIONS_PER_RUN), then the Owner's page session links the pending
  * account to `studentId` (a Student request must have a profile to pass the
- * gate) and approves the request. Budget: 0 logins, 0 redemptions, 1
+ * gate) and approves the request through the approval inbox API (#40 G1). Budget: 0 logins, 0 redemptions, 1
  * registration. Returns the account's id.
  */
 export async function createApprovedAccount(
@@ -113,16 +113,16 @@ export async function createApprovedAccount(
   }
   const pending = await api(
     page,
-    '/api/v1/registration-requests?status=pending&limit=100',
+    '/api/v1/approval-requests?request_type=identity.registration&status=pending&limit=100',
   );
   expect(pending.status).toBe(200);
   const item = (
-    pending.body as { items: { id: string; username: string }[] }
-  ).items.find((row) => row.username === username);
+    pending.body as { items: { id: string; subject: { username?: string } }[] }
+  ).items.find((row) => row.subject.username === username);
   expect(item).toBeTruthy();
   const approved = await api(
     page,
-    `/api/v1/registration-requests/${item!.id}/approve`,
+    `/api/v1/approval-requests/${item!.id}/approve`,
     { method: 'POST', headers: { 'X-CSRF-Token': await csrf(page) } },
   );
   expect(approved.status).toBe(200);

@@ -48,13 +48,15 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # and privacy_notice_acceptances, M2-17b; consent_records, M2-17;
     # user_preferences, M2-18), then administration (business_settings and
     # operating_hours, M3-01; academic_periods and closures in catalog, M3-02;
-    # classrooms and classroom_availability_windows in catalog, M3-03);
+    # classrooms and classroom_availability_windows in catalog, M3-03;
+    # approval_requests, M3-04);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
+        "approval_requests",
         "academic_periods",
         "closures",
         "classrooms",

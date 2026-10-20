@@ -1,10 +1,11 @@
 import type { ParseKeys } from 'i18next';
+import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
 // UX only: the API checks every request. Feature issues add their own items
-// here, with the `permission` their route requires.
+// here, with the `permission` (or `anyPermission`) their route requires.
 
 export interface NavItem extends AccessRequirement {
   to: string;
@@ -27,10 +28,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.passwordResets',
     permission: 'user.password_reset.issue',
   },
+  // One review permission per approval type (#40 F1).
   {
-    to: '/registration-requests',
-    labelKey: 'nav.registrations',
-    permission: 'registration.review',
+    to: '/approvals',
+    labelKey: 'nav.approvals',
+    anyPermission: APPROVAL_REVIEW_PERMISSIONS,
   },
   {
     to: '/catalog/education-levels',

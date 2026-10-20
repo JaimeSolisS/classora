@@ -1,4 +1,5 @@
-"""Helpers for the self-registration tests (#169).
+"""Helpers for the self-registration tests (#169), reviewed through the
+approval inbox since #40 (``identity.registration`` approval requests).
 
 Real requests through the real app (``auth_support.auth_client``); every
 request sends its cookie, CSRF token and ``Origin`` by hand, so the client's
@@ -15,7 +16,8 @@ from tests.integration.auth_support import SetCookie, cookie_header, signed_head
 from tests.integration.conftest import run_sql
 
 REGISTRATIONS = "/api/v1/auth/registrations"
-REQUESTS = "/api/v1/registration-requests"
+APPROVALS = "/api/v1/approval-requests"
+REGISTRATION_TYPE = "identity.registration"
 
 REQUEST_PASSWORD = "requester-password-one"
 """A password that passes the policy (test-only, low entropy)."""
@@ -46,34 +48,51 @@ def register(
 
 
 def list_requests(client: TestClient, cookie: SetCookie, **params: Any) -> Response:
+    """The approval list, by default of registrations only
+    (``request_type=None``: every type)."""
     client.cookies.clear()
-    return client.get(REQUESTS, params=params, headers=cookie_header(cookie))
+    params.setdefault("request_type", REGISTRATION_TYPE)
+    params = {key: value for key, value in params.items() if value is not None}
+    return client.get(APPROVALS, params=params, headers=cookie_header(cookie))
 
 
 def decide(
-    client: TestClient, cookie: SetCookie, request_id: Any, decision: str
+    client: TestClient,
+    cookie: SetCookie,
+    approval_id: Any,
+    decision: str,
+    body: Any = None,
 ) -> Response:
+    """``POST /approval-requests/{approval_id}/{decision}``."""
     client.cookies.clear()
     return client.post(
-        f"{REQUESTS}/{request_id}/{decision}", headers=signed_headers(cookie)
+        f"{APPROVALS}/{approval_id}/{decision}",
+        headers=signed_headers(cookie),
+        json=body,
     )
 
 
-def approve(client: TestClient, cookie: SetCookie, request_id: Any) -> Response:
-    return decide(client, cookie, request_id, "approve")
+def approve(client: TestClient, cookie: SetCookie, approval_id: Any) -> Response:
+    return decide(client, cookie, approval_id, "approve")
 
 
-def reject(client: TestClient, cookie: SetCookie, request_id: Any) -> Response:
-    return decide(client, cookie, request_id, "reject")
+def reject(client: TestClient, cookie: SetCookie, approval_id: Any) -> Response:
+    return decide(client, cookie, approval_id, "reject")
 
 
 def request_row(url: str, username: str) -> Any:
-    """The request and its user, by username (``None`` when absent)."""
+    """The request, its approval request (``approval_id``,
+    ``approval_status``, ``resolved_at``, ``resolved_by_user_id``) and its
+    user, by username (``None`` when absent)."""
     rows = run_sql(
         url,
         "SELECT r.id, r.user_id, r.requested_role, r.status, r.decided_at,"
-        " r.decided_by_user_id, u.state, u.password_hash, u.display_name"
+        " r.decided_by_user_id, u.state, u.password_hash, u.display_name,"
+        " a.id AS approval_id, a.status AS approval_status, a.resolved_at,"
+        " a.resolved_by_user_id, a.requester_user_id"
         " FROM registration_requests r JOIN users u ON u.id = r.user_id"
+        " LEFT JOIN approval_requests a ON a.subject_id = r.id"
+        " AND a.request_type = 'identity.registration'"
         " WHERE u.username = :username",
         {"username": username},
     )

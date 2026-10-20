@@ -141,6 +141,34 @@ does not run the Storybook story tests or E2E.
 - Never add a setting that disables the limits. A test that must log in more
   often resets the counters; E2E reuses signed-in sessions.
 
+### Approval types (M3-04)
+
+- `tests/conftest.py` registers the real approval wiring for every test
+  (`approval_wiring`, autouse: the `identity.registration` handler and the
+  account-reference resolver, as `app/wiring.py` does), so a registration
+  submitted outside an app (`in_uow`) raises its approval request too.
+- A test that needs another type registers a **fake handler** and removes it
+  afterwards, in a fixture:
+
+  ```python
+  @pytest.fixture
+  def sample_type() -> Iterator[SampleHandler]:
+      handler = SampleHandler()  # request_type "test.sample"
+      administration.register_approval_handler(handler)
+      yield handler
+      administration.unregister_approval_handler("test.sample")
+  ```
+
+  The handler is any object with the `ApprovalHandler` attributes and async
+  methods (see `tests/integration/test_approval_requests.py`: it records
+  calls and can be told to fail). Use a `test.*` type and a real permission
+  code as its review permission (`payroll.finalize` there, so an
+  Administrator sees it only with that delegation). The registry is
+  process-wide, like the student-login gate: never leave a fake type
+  registered, or the pinned `registered_approval_types()` test fails.
+- A test that unregisters the resolver (`register_account_reference_resolver(None)`)
+  restores `identity.service.get_account_references` in a `finally`.
+
 ## Permission-matrix approach
 
 These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization
