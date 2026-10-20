@@ -105,7 +105,7 @@ class TutorQualification(Audited, VersionedMixin, Model):
             "tutor_user_id",
             "subject_id",
             unique=True,
-            postgresql_where=text(f"status IN ({_quoted(ACTIVE_STATUSES)})"),
+            postgresql_where=text("status IN ('pending', 'approved')"),
         ),
     )
 
