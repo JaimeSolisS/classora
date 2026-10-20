@@ -219,6 +219,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ACCOUNT_TOKEN_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
+            *CLASSROOM_TABLES,
             *CONSENT_TABLES,
             *FAMILY_TABLES,
             *GUARDIAN_TABLES,
