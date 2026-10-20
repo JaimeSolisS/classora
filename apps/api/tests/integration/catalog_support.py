@@ -1,4 +1,4 @@
-"""Helpers for the academic catalog tests (#32).
+"""Helpers for the academic catalog tests (#32; periods and closures #38).
 
 Real logins through the real app (``auth_support.auth_client``); every
 request sends its cookie (and, when unsafe, its CSRF token and ``Origin``) by
@@ -7,6 +7,8 @@ the next.
 """
 
 import asyncio
+import itertools
+import random
 import uuid
 from typing import Any
 
@@ -21,6 +23,19 @@ from tests.integration.conftest import run_sql, run_sql_async, short_lived_engin
 
 LEVELS = "/api/v1/education-levels"
 SUBJECTS = "/api/v1/subjects"
+PERIODS = "/api/v1/academic-periods"
+CLOSURES = "/api/v1/closures"
+CLOSURE_CHECK = "/api/v1/closures/check"
+
+# Years no other test of the process uses (#38): the period and closure
+# tables of a module database are shared, so each test takes its own decade.
+_YEARS = itertools.count(2200 + random.randrange(0, 5000, 100), 10)  # noqa: S311
+
+
+def unique_year() -> int:
+    """The first year of a decade no other test of this process has used: a
+    test may use this year and the next nine."""
+    return next(_YEARS)
 
 
 def unique_name(prefix: str = "Nivel") -> str:
@@ -162,3 +177,71 @@ def count_statements(url: str, call: Any) -> tuple[int, Any]:
             await engine.dispose()
 
     return asyncio.run(_run())
+
+
+def period_path(period_id: Any) -> str:
+    return f"{PERIODS}/{period_id}"
+
+
+def closure_path(closure_id: Any) -> str:
+    return f"{CLOSURES}/{closure_id}"
+
+
+def create_period(
+    client: TestClient,
+    cookie: SetCookie,
+    starts_on: str,
+    ends_on: str,
+    period_type: str = "school_year",
+    name: str | None = None,
+) -> dict[str, Any]:
+    """``POST /academic-periods`` that must succeed; returns the detail."""
+    response = post(
+        client,
+        cookie,
+        PERIODS,
+        {
+            "name": name or unique_name("Periodo"),
+            "period_type": period_type,
+            "starts_on": starts_on,
+            "ends_on": ends_on,
+        },
+    )
+    assert response.status_code == 201, response.text
+    detail: dict[str, Any] = response.json()
+    return detail
+
+
+def create_closure(
+    client: TestClient,
+    cookie: SetCookie,
+    starts_on: str,
+    ends_on: str | None = None,
+    closure_type: str = "holiday",
+    name: str = "Cierre",
+) -> dict[str, Any]:
+    """``POST /closures`` that must succeed; returns the detail."""
+    response = post(
+        client,
+        cookie,
+        CLOSURES,
+        {
+            "name": name,
+            "closure_type": closure_type,
+            "starts_on": starts_on,
+            "ends_on": ends_on or starts_on,
+        },
+    )
+    assert response.status_code == 201, response.text
+    detail: dict[str, Any] = response.json()
+    return detail
+
+
+def range_event_count(url: str) -> int:
+    """Audit events of the period and closure tables."""
+    [row] = run_sql(
+        url,
+        "SELECT count(*) AS n FROM audit_events"
+        " WHERE record_type IN ('academic_periods', 'closures')",
+    )
+    return int(row.n)

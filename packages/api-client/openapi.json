@@ -3195,6 +3195,756 @@
         }
       }
     },
+    "/api/v1/academic-periods": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Academic Periods",
+        "description": "The academic periods with ``status`` (active ones by default), newest\nstart first, then by name.",
+        "operationId": "list_academic_periods_api_v1_academic_periods_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CatalogStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "period_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PeriodType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only periods of this type.",
+              "title": "Period Type"
+            },
+            "description": "Only periods of this type."
+          },
+          {
+            "name": "on",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "A calendar date, YYYY-MM-DD (no time zone)."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only periods that contain this date (YYYY-MM-DD).",
+              "title": "On"
+            },
+            "description": "Only periods that contain this date (YYYY-MM-DD)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_AcademicPeriodDetail_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Create Academic Period",
+        "description": "Add an active academic period (inclusive dates, at most 730 days\napart).",
+        "operationId": "create_academic_period_api_v1_academic_periods_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademicPeriodCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicPeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another period already has this name, ignoring case; inactive periods count (name_taken). Or Another active period of the same type shares at least one day with these dates (period_overlap).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academic-periods/{period_id}": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Get Academic Period",
+        "description": "One academic period, active or not.",
+        "operationId": "get_academic_period_api_v1_academic_periods__period_id__get",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicPeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such academic period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Update Academic Period",
+        "description": "Rename, change the dates, deactivate (``is_active: false``) or\nreactivate a period. Fields not sent stay unchanged; the type can't\nchange.",
+        "operationId": "update_academic_period_api_v1_academic_periods__period_id__patch",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademicPeriodUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicPeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such academic period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The record changed since it was loaded (version_conflict); reload and retry. Or Another period already has this name, ignoring case; inactive periods count (name_taken). Or Another active period of the same type shares at least one day with these dates (period_overlap).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/closures": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Closures",
+        "description": "The closures with ``status`` (active ones by default) that overlap\n``[from, to]`` (inclusive; either bound optional), by start, then end.",
+        "operationId": "list_closures_api_v1_closures_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CatalogStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "closure_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClosureType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only closures of this type.",
+              "title": "Closure Type"
+            },
+            "description": "Only closures of this type."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "A calendar date, YYYY-MM-DD (no time zone)."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only closures that end on or after this date.",
+              "title": "From"
+            },
+            "description": "Only closures that end on or after this date."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "description": "A calendar date, YYYY-MM-DD (no time zone)."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only closures that start on or before this date.",
+              "title": "To"
+            },
+            "description": "Only closures that start on or before this date."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ClosureDetail_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Create Closure",
+        "description": "Add an active closure (whole local days, inclusive, at most 366 days\napart). Closures may overlap each other.",
+        "operationId": "create_closure_api_v1_closures_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosureCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/closures/check": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Check Closures",
+        "description": "Whether the center is closed on a local date, with the active closures\nthat contain it.",
+        "operationId": "check_closures_api_v1_closures_check_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "The local date to check (YYYY-MM-DD).",
+              "title": "Date"
+            },
+            "description": "The local date to check (YYYY-MM-DD)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/closures/{closure_id}": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Get Closure",
+        "description": "One closure, active or not.",
+        "operationId": "get_closure_api_v1_closures__closure_id__get",
+        "parameters": [
+          {
+            "name": "closure_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Closure Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such closure (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Update Closure",
+        "description": "Rename, retype, change the dates, deactivate or reactivate a closure.\nFields not sent stay unchanged.",
+        "operationId": "update_closure_api_v1_closures__closure_id__patch",
+        "parameters": [
+          {
+            "name": "closure_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Closure Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosureUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such closure (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The record changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/students": {
       "get": {
         "tags": [
@@ -5078,6 +5828,165 @@
   },
   "components": {
     "schemas": {
+      "AcademicPeriodCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "period_type": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "A calendar date, YYYY-MM-DD (no time zone)."
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On",
+            "description": "Inclusive; on or after starts_on."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "period_type",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "AcademicPeriodCreate",
+        "description": "A new academic period (``POST /api/v1/academic-periods``): inclusive\ndates, at most 730 days apart. It starts active."
+      },
+      "AcademicPeriodDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "period_type": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "period_type",
+          "starts_on",
+          "ends_on",
+          "is_active",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AcademicPeriodDetail",
+        "description": "One academic period. ``starts_on`` and ``ends_on`` are inclusive local\ndates."
+      },
+      "AcademicPeriodUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "A calendar date, YYYY-MM-DD (no time zone)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "A calendar date, YYYY-MM-DD (no time zone)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "AcademicPeriodUpdate",
+        "description": "A change to a period with the ``version`` the caller loaded. Fields not\nsent stay unchanged; the type can't change (deactivate and recreate)."
+      },
       "AuditChange": {
         "properties": {
           "old": {
@@ -5376,6 +6285,211 @@
           "inactive",
           "all"
         ]
+      },
+      "ClosureCheck": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "closures": {
+            "items": {
+              "$ref": "#/components/schemas/ClosureDetail"
+            },
+            "type": "array",
+            "title": "Closures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "closed",
+          "closures"
+        ],
+        "title": "ClosureCheck",
+        "description": "Whether the center is closed on a local date\n(``GET /api/v1/closures/check``): the active closures that contain it."
+      },
+      "ClosureCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "closure_type": {
+            "$ref": "#/components/schemas/ClosureType"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "A calendar date, YYYY-MM-DD (no time zone)."
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On",
+            "description": "Inclusive; on or after starts_on."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "closure_type",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "ClosureCreate",
+        "description": "A new center closure (``POST /api/v1/closures``): whole local days,\ninclusive, at most 366 days apart. It starts active."
+      },
+      "ClosureDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "closure_type": {
+            "$ref": "#/components/schemas/ClosureType"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "closure_type",
+          "starts_on",
+          "ends_on",
+          "is_active",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClosureDetail",
+        "description": "One closure. ``starts_on`` and ``ends_on`` are inclusive local dates."
+      },
+      "ClosureType": {
+        "type": "string",
+        "enum": [
+          "holiday",
+          "closure",
+          "vacation"
+        ]
+      },
+      "ClosureUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "closure_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClosureType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "A calendar date, YYYY-MM-DD (no time zone)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "A calendar date, YYYY-MM-DD (no time zone)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ClosureUpdate",
+        "description": "A change to a closure with the ``version`` the caller loaded. Fields\nnot sent stay unchanged."
       },
       "ConsentCreate": {
         "properties": {
@@ -6869,6 +7983,68 @@
         "title": "LoginRequest",
         "description": "Username and password. The bounds do not depend on any account."
       },
+      "OffsetPage_AcademicPeriodDetail_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicPeriodDetail"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[AcademicPeriodDetail]"
+      },
+      "OffsetPage_ClosureDetail_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClosureDetail"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ClosureDetail]"
+      },
       "OffsetPage_EducationLevelDetail_": {
         "properties": {
           "items": {
@@ -7289,6 +8465,14 @@
         ],
         "title": "PasswordResetTokenRequest",
         "description": "The token from a reset link (``POST …/password-reset/lookup``)."
+      },
+      "PeriodType": {
+        "type": "string",
+        "enum": [
+          "school_year",
+          "semester",
+          "term"
+        ]
       },
       "PermissionCode": {
         "type": "string",

@@ -1,10 +1,10 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A); each test
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A); each test
 uses a fresh database."""
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0020"
+HEAD = "0021"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -88,6 +88,7 @@ PRIVACY_TABLES = ["privacy_notice_acceptances", "privacy_notice_versions"]
 CONSENT_TABLES = ["consent_records"]
 PREFERENCE_TABLES = ["user_preferences"]
 SETTINGS_TABLES = ["business_settings", "operating_hours"]
+PERIOD_TABLES = ["academic_periods", "closures"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -175,6 +176,9 @@ def test_history_is_linear_with_one_head():
     settings = script.get_revision("0020")
     assert settings.down_revision == "0019"
     assert Path(settings.path).name == "0020_administration_business_settings.py"
+    periods = script.get_revision("0021")
+    assert periods.down_revision == "0020"
+    assert Path(periods.path).name == "0021_catalog_academic_periods_closures.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -188,12 +192,17 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
     command.upgrade(alembic_config(fresh_database_url), "head")
 
     assert version_nums(fresh_database_url) == [HEAD]
-    # Beyond plpgsql, only the ISSUE-D6 name-search extensions (#33):
-    # usernames are normalized and CHECKed, not citext.
+    # Beyond plpgsql, only the ISSUE-D6 name-search extensions (#33) and
+    # btree_gist (#38 E1): usernames are normalized and CHECKed, not citext.
     extensions = run_sql(
         fresh_database_url, "SELECT extname FROM pg_extension ORDER BY extname"
     )
-    assert [row.extname for row in extensions] == ["pg_trgm", "plpgsql", "unaccent"]
+    assert [row.extname for row in extensions] == [
+        "btree_gist",
+        "pg_trgm",
+        "plpgsql",
+        "unaccent",
+    ]
     tables = run_sql(
         fresh_database_url,
         "SELECT table_name FROM information_schema.tables "
@@ -211,6 +220,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *GUARDIAN_TABLES,
             *GROUPING_TABLES,
             *IDENTITY_TABLES,
+            *PERIOD_TABLES,
             *PREFERENCE_TABLES,
             *PRIVACY_TABLES,
             *PROCRASTINATE_TABLES,
@@ -2148,3 +2158,305 @@ def test_valid_contact_values_and_a_sunday_are_accepted(fresh_database_url):
         "INSERT INTO operating_hours (weekday, opens_at, closes_at)"
         " VALUES (7, '10:00', '13:00')",
     )
+
+
+# --- 0021: btree_gist, academic periods and closures (#38 A) -------------------------
+
+
+def test_0021_adds_btree_gist_and_the_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0020")
+    before = public_tables(fresh_database_url)
+    extensions_before = [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)]
+    assert "btree_gist" not in extensions_before
+    command.upgrade(config, "0021")
+
+    assert public_tables(fresh_database_url) - before == set(PERIOD_TABLES)
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == sorted(
+        [*extensions_before, "btree_gist"]
+    )
+    # No reference seed and no demo data (A5).
+    [count] = run_sql(
+        fresh_database_url,
+        "SELECT (SELECT count(*) FROM academic_periods)"
+        " + (SELECT count(*) FROM closures) AS n",
+    )
+    assert count.n == 0
+
+    command.downgrade(config, "0020")
+
+    assert version_nums(fresh_database_url) == ["0020"]
+    assert public_tables(fresh_database_url) == before
+    assert [
+        r.extname for r in run_sql(fresh_database_url, EXTENSIONS)
+    ] == extensions_before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+RANGE_COLUMNS = {
+    **STANDARD_COLUMNS,
+    "name": ("character varying", "NO", 100, None),
+    "starts_on": ("date", "NO", None, None),
+    "ends_on": ("date", "NO", None, None),
+    "is_active": ("boolean", "NO", None, "true"),
+}
+
+
+def test_academic_periods_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "academic_periods") == {
+        **RANGE_COLUMNS,
+        "period_type": ("character varying", "NO", 20, None),
+    }
+    constraints = _constraints(fresh_database_url, "academic_periods")
+    assert set(constraints) == {
+        "pk_academic_periods",
+        "ck_academic_periods_name_trimmed",
+        "ck_academic_periods_name_not_blank",
+        "ck_academic_periods_period_type_known",
+        "ck_academic_periods_starts_before_ends",
+        "ck_academic_periods_span_max",
+        "ex_academic_periods_no_overlap",
+    }
+    assert "730" in constraints["ck_academic_periods_span_max"]
+    exclusion = constraints["ex_academic_periods_no_overlap"]
+    assert exclusion.startswith("EXCLUDE USING gist (period_type WITH =,")
+    assert "daterange(starts_on, ends_on, '[]'::text) WITH &&" in exclusion
+    assert exclusion.endswith("WHERE (is_active)")
+    indexes = _indexes(fresh_database_url, "academic_periods")
+    assert set(indexes) == {
+        "pk_academic_periods",
+        "uq_academic_periods_name_ci",
+        "ex_academic_periods_no_overlap",
+    }
+    assert "UNIQUE INDEX" in indexes["uq_academic_periods_name_ci"]
+    assert "lower((name)::text)" in indexes["uq_academic_periods_name_ci"]
+
+
+def test_closures_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "closures") == {
+        **RANGE_COLUMNS,
+        "closure_type": ("character varying", "NO", 20, None),
+    }
+    constraints = _constraints(fresh_database_url, "closures")
+    assert set(constraints) == {
+        "pk_closures",
+        "ck_closures_name_trimmed",
+        "ck_closures_name_not_blank",
+        "ck_closures_closure_type_known",
+        "ck_closures_starts_before_ends",
+        "ck_closures_span_max",
+    }
+    assert "366" in constraints["ck_closures_span_max"]
+    indexes = _indexes(fresh_database_url, "closures")
+    assert set(indexes) == {"pk_closures", "ix_closures_active_range"}
+    assert (
+        "USING gist (daterange(starts_on, ends_on, '[]'::text))"
+        in (indexes["ix_closures_active_range"])
+    )
+    assert indexes["ix_closures_active_range"].endswith("WHERE is_active")
+
+
+Statement = tuple[str, dict[str, Any]]
+
+
+def _period(
+    name: str, period_type: str, starts: str, ends: str, active: bool = True
+) -> Statement:
+    return (
+        "INSERT INTO academic_periods (name, period_type, starts_on, ends_on,"
+        " is_active) VALUES (:name, :type, :starts, :ends, :active)",
+        {
+            "name": name,
+            "type": period_type,
+            "starts": date.fromisoformat(starts),
+            "ends": date.fromisoformat(ends),
+            "active": active,
+        },
+    )
+
+
+def _closure(name: str, closure_type: str, starts: str, ends: str) -> Statement:
+    return (
+        "INSERT INTO closures (name, closure_type, starts_on, ends_on)"
+        " VALUES (:name, :type, :starts, :ends)",
+        {
+            "name": name,
+            "type": closure_type,
+            "starts": date.fromisoformat(starts),
+            "ends": date.fromisoformat(ends),
+        },
+    )
+
+
+def _sqlstate(error: DBAPIError) -> str | None:
+    orig = error.orig
+    return getattr(orig, "sqlstate", None) or getattr(
+        getattr(orig, "__cause__", None), "sqlstate", None
+    )
+
+
+def test_two_overlapping_active_school_years_are_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        *_period("2026-2027", "school_year", "2026-08-01", "2027-07-15"),
+    )
+
+    with pytest.raises(IntegrityError, match="ex_academic_periods_no_overlap") as exc:
+        run_sql(
+            fresh_database_url,
+            *_period("Otro", "school_year", "2027-01-01", "2027-12-31"),
+        )
+    assert _sqlstate(exc.value) == "23P01"
+
+
+def test_periods_of_other_types_inactive_rows_and_touching_ranges_are_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        *_period("2026-2027", "school_year", "2026-08-01", "2027-07-15"),
+    )
+
+    # Another type over the same days.
+    run_sql(
+        fresh_database_url,
+        *_period("Semestre 1", "semester", "2026-08-01", "2026-12-20"),
+    )
+    # An inactive school year over the same days.
+    run_sql(
+        fresh_database_url,
+        *_period("Borrador", "school_year", "2026-09-01", "2027-06-30", active=False),
+    )
+    # The next school year starts the day after the first one ends.
+    run_sql(
+        fresh_database_url,
+        *_period("2027-2028", "school_year", "2027-07-16", "2028-07-15"),
+    )
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM academic_periods")
+    assert count.n == 4
+
+
+def test_two_school_years_sharing_one_day_are_rejected(fresh_database_url):
+    # Inclusive bounds: ends_on = D and starts_on = D share the day D.
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        *_period("2026-2027", "school_year", "2026-08-01", "2027-07-15"),
+    )
+
+    with pytest.raises(IntegrityError, match="ex_academic_periods_no_overlap"):
+        run_sql(
+            fresh_database_url,
+            *_period("2027-2028", "school_year", "2027-07-15", "2028-07-14"),
+        )
+
+
+def test_reactivating_an_overlapping_period_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        *_period("A", "term", "2026-01-01", "2026-03-31", active=False),
+    )
+    run_sql(fresh_database_url, *_period("B", "term", "2026-03-01", "2026-05-31"))
+
+    with pytest.raises(IntegrityError, match="ex_academic_periods_no_overlap"):
+        run_sql(fresh_database_url, "UPDATE academic_periods SET is_active = true")
+
+
+@pytest.mark.parametrize(
+    ("statement", "constraint"),
+    [
+        (
+            _period("Al revés", "term", "2026-02-01", "2026-01-31"),
+            "ck_academic_periods_starts_before_ends",
+        ),
+        (
+            _period("Largo", "school_year", "2026-01-01", "2028-01-02"),
+            "ck_academic_periods_span_max",
+        ),
+        (
+            _period("Trimestre", "quarter", "2026-01-01", "2026-03-31"),
+            "ck_academic_periods_period_type_known",
+        ),
+        (
+            _period(" Espacio", "term", "2026-01-01", "2026-03-31"),
+            "ck_academic_periods_name_trimmed",
+        ),
+        (
+            _period("   ", "term", "2026-01-01", "2026-03-31"),
+            "ck_academic_periods_name",
+        ),
+        (
+            _closure("Al revés", "holiday", "2026-12-26", "2026-12-25"),
+            "ck_closures_starts_before_ends",
+        ),
+        (
+            _closure("Largo", "vacation", "2026-01-01", "2027-01-03"),
+            "ck_closures_span_max",
+        ),
+        (
+            _closure("Puente", "bridge", "2026-12-25", "2026-12-25"),
+            "ck_closures_closure_type_known",
+        ),
+        (
+            _closure("Navidad ", "holiday", "2026-12-25", "2026-12-25"),
+            "ck_closures_name_trimmed",
+        ),
+    ],
+)
+def test_invalid_period_and_closure_rows_are_rejected(
+    fresh_database_url, statement, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(fresh_database_url, *statement)
+
+
+def test_period_names_are_unique_ignoring_case_and_inactive_rows_count(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    run_sql(
+        fresh_database_url,
+        *_period("Ciclo 2026", "school_year", "2026-08-01", "2027-07-15", active=False),
+    )
+
+    with pytest.raises(IntegrityError, match="uq_academic_periods_name_ci"):
+        run_sql(
+            fresh_database_url,
+            *_period("CICLO 2026", "semester", "2026-08-01", "2026-12-20"),
+        )
+
+
+def test_overlapping_closures_with_one_name_and_the_longest_spans_are_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    run_sql(
+        fresh_database_url,
+        *_closure("Vacaciones", "vacation", "2026-12-20", "2027-01-06"),
+    )
+    run_sql(
+        fresh_database_url, *_closure("Navidad", "holiday", "2026-12-25", "2026-12-25")
+    )
+    run_sql(
+        fresh_database_url, *_closure("Navidad", "holiday", "2026-12-25", "2026-12-25")
+    )
+    run_sql(fresh_database_url, *_closure("Año", "closure", "2026-01-01", "2027-01-02"))
+    run_sql(
+        fresh_database_url,
+        *_period("Dos años", "school_year", "2030-01-01", "2031-12-31"),
+    )
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM closures")
+    assert count.n == 4

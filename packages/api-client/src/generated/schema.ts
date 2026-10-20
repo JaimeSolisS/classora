@@ -832,6 +832,130 @@ export interface paths {
         patch: operations["update_subject_api_v1_subjects__subject_id__patch"];
         trace?: never;
     };
+    "/api/v1/academic-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Academic Periods
+         * @description The academic periods with ``status`` (active ones by default), newest
+         *     start first, then by name.
+         */
+        get: operations["list_academic_periods_api_v1_academic_periods_get"];
+        put?: never;
+        /**
+         * Create Academic Period
+         * @description Add an active academic period (inclusive dates, at most 730 days
+         *     apart).
+         */
+        post: operations["create_academic_period_api_v1_academic_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academic-periods/{period_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Academic Period
+         * @description One academic period, active or not.
+         */
+        get: operations["get_academic_period_api_v1_academic_periods__period_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Academic Period
+         * @description Rename, change the dates, deactivate (``is_active: false``) or
+         *     reactivate a period. Fields not sent stay unchanged; the type can't
+         *     change.
+         */
+        patch: operations["update_academic_period_api_v1_academic_periods__period_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/closures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Closures
+         * @description The closures with ``status`` (active ones by default) that overlap
+         *     ``[from, to]`` (inclusive; either bound optional), by start, then end.
+         */
+        get: operations["list_closures_api_v1_closures_get"];
+        put?: never;
+        /**
+         * Create Closure
+         * @description Add an active closure (whole local days, inclusive, at most 366 days
+         *     apart). Closures may overlap each other.
+         */
+        post: operations["create_closure_api_v1_closures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/closures/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Closures
+         * @description Whether the center is closed on a local date, with the active closures
+         *     that contain it.
+         */
+        get: operations["check_closures_api_v1_closures_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/closures/{closure_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Closure
+         * @description One closure, active or not.
+         */
+        get: operations["get_closure_api_v1_closures__closure_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Closure
+         * @description Rename, retype, change the dates, deactivate or reactivate a closure.
+         *     Fields not sent stay unchanged.
+         */
+        patch: operations["update_closure_api_v1_closures__closure_id__patch"];
+        trace?: never;
+    };
     "/api/v1/students": {
         parameters: {
             query?: never;
@@ -1160,6 +1284,84 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcademicPeriodCreate
+         * @description A new academic period (``POST /api/v1/academic-periods``): inclusive
+         *     dates, at most 730 days apart. It starts active.
+         */
+        AcademicPeriodCreate: {
+            /** Name */
+            name: string;
+            period_type: components["schemas"]["PeriodType"];
+            /**
+             * Starts On
+             * Format: date
+             * @description A calendar date, YYYY-MM-DD (no time zone).
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             * @description Inclusive; on or after starts_on.
+             */
+            ends_on: string;
+        };
+        /**
+         * AcademicPeriodDetail
+         * @description One academic period. ``starts_on`` and ``ends_on`` are inclusive local
+         *     dates.
+         */
+        AcademicPeriodDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            period_type: components["schemas"]["PeriodType"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * AcademicPeriodUpdate
+         * @description A change to a period with the ``version`` the caller loaded. Fields not
+         *     sent stay unchanged; the type can't change (deactivate and recreate).
+         */
+        AcademicPeriodUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * AuditChange
          * @description One column's value before and after the change (null when there is none).
          */
@@ -1261,6 +1463,102 @@ export interface components {
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * ClosureCheck
+         * @description Whether the center is closed on a local date
+         *     (``GET /api/v1/closures/check``): the active closures that contain it.
+         */
+        ClosureCheck: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Closed */
+            closed: boolean;
+            /** Closures */
+            closures: components["schemas"]["ClosureDetail"][];
+        };
+        /**
+         * ClosureCreate
+         * @description A new center closure (``POST /api/v1/closures``): whole local days,
+         *     inclusive, at most 366 days apart. It starts active.
+         */
+        ClosureCreate: {
+            /** Name */
+            name: string;
+            closure_type: components["schemas"]["ClosureType"];
+            /**
+             * Starts On
+             * Format: date
+             * @description A calendar date, YYYY-MM-DD (no time zone).
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             * @description Inclusive; on or after starts_on.
+             */
+            ends_on: string;
+        };
+        /**
+         * ClosureDetail
+         * @description One closure. ``starts_on`` and ``ends_on`` are inclusive local dates.
+         */
+        ClosureDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            closure_type: components["schemas"]["ClosureType"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** @enum {string} */
+        ClosureType: "holiday" | "closure" | "vacation";
+        /**
+         * ClosureUpdate
+         * @description A change to a closure with the ``version`` the caller loaded. Fields
+         *     not sent stay unchanged.
+         */
+        ClosureUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            closure_type?: components["schemas"]["ClosureType"] | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
         /**
          * ConsentCreate
          * @description A consent (``POST /api/v1/students/{student_id}/consents``).
@@ -1982,6 +2280,28 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** OffsetPage[AcademicPeriodDetail] */
+        OffsetPage_AcademicPeriodDetail_: {
+            /** Items */
+            items: components["schemas"]["AcademicPeriodDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ClosureDetail] */
+        OffsetPage_ClosureDetail_: {
+            /** Items */
+            items: components["schemas"]["ClosureDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[EducationLevelDetail] */
         OffsetPage_EducationLevelDetail_: {
             /** Items */
@@ -2173,6 +2493,8 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** @enum {string} */
+        PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
         PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
@@ -5176,6 +5498,494 @@ export interface operations {
                 };
             };
             /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another record already has this name, ignoring case; inactive records count (name_taken). (within the level) Or the subject is reactivated while its level is inactive (education_level_inactive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_academic_periods_api_v1_academic_periods_get: {
+        parameters: {
+            query?: {
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["CatalogStatus"];
+                /** @description Only periods of this type. */
+                period_type?: components["schemas"]["PeriodType"] | null;
+                /** @description Only periods that contain this date (YYYY-MM-DD). */
+                on?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_AcademicPeriodDetail_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_academic_period_api_v1_academic_periods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicPeriodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicPeriodDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another period already has this name, ignoring case; inactive periods count (name_taken). Or Another active period of the same type shares at least one day with these dates (period_overlap). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_academic_period_api_v1_academic_periods__period_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicPeriodDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such academic period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_academic_period_api_v1_academic_periods__period_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicPeriodUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicPeriodDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such academic period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another period already has this name, ignoring case; inactive periods count (name_taken). Or Another active period of the same type shares at least one day with these dates (period_overlap). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_closures_api_v1_closures_get: {
+        parameters: {
+            query?: {
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["CatalogStatus"];
+                /** @description Only closures of this type. */
+                closure_type?: components["schemas"]["ClosureType"] | null;
+                /** @description Only closures that end on or after this date. */
+                from?: string | null;
+                /** @description Only closures that start on or before this date. */
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ClosureDetail_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_closure_api_v1_closures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClosureCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    check_closures_api_v1_closures_check_get: {
+        parameters: {
+            query: {
+                /** @description The local date to check (YYYY-MM-DD). */
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureCheck"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_closure_api_v1_closures__closure_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                closure_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such closure (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_closure_api_v1_closures__closure_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                closure_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClosureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such closure (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The record changed since it was loaded (version_conflict); reload and retry. */
             409: {
                 headers: {
                     [name: string]: unknown;

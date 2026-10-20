@@ -16,7 +16,7 @@ import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
 from app.modules.administration.settings_models import BusinessSettings, OperatingHours
-from app.modules.catalog.models import EducationLevel, Subject
+from app.modules.catalog.models import AcademicPeriod, Closure, EducationLevel, Subject
 from app.modules.families.models import (
     ConsentRecord,
     Family,
@@ -63,7 +63,9 @@ def test_every_audited_model_lists_its_sensitive_columns():
 def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
+        AcademicPeriod,
         BusinessSettings,
+        Closure,
         ConsentRecord,
         EducationLevel,
         Family,
@@ -87,9 +89,12 @@ def test_the_guard_scans_the_real_audited_models():
     # Student profiles (#33 A5): no sensitive column either; personal fields
     # are audited unmasked (spec §9 prior and new values). Guardian profiles
     # and links (#34 A5), families and their membership (#172 A3): the same.
+    # Academic periods and closures (#38 D1): the same.
     for unmasked in (
         EducationLevel,
         Subject,
+        AcademicPeriod,
+        Closure,
         Student,
         StudentEmergencyContact,
         Guardian,

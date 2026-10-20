@@ -36,3 +36,38 @@ class EducationLevelInactiveError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class PeriodOverlapError(AppError):
+    """Another active academic period of the same type shares at least one
+    day with these dates (#38 B5)."""
+
+    status = 409
+    code = "period_overlap"
+    detail = "Another active period of this type overlaps these dates."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class DateRangeInvalidError(AppError):
+    """A ``PATCH`` that sends one date makes the stored range invalid (the
+    end before the start, or too long). The generic ``validation_error``
+    code with a field error on ``["body", "ends_on"]``, as the body check
+    gives when both dates are sent; it needs the stored record, so the
+    service checks it after ``404`` and the version."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "ends_on"],
+                    "code": "date_range_invalid",
+                    "message": message,
+                }
+            ]
+        )

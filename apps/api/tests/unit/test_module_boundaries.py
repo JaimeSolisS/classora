@@ -163,9 +163,23 @@ def test_administration_imports_no_other_module():
         if t.startswith("app.modules.")
         and not t.startswith("app.modules.administration.")
     }
-    for module in ("identity", "families"):
+    for module in ("identity", "families", "catalog"):
         reached = {t for t in targets(module) if "administration" in t}
         assert reached == {"app.modules.administration.service"}, module
+
+
+def test_catalog_imports_only_core_and_the_administration_service():
+    # #38 D4: the catalog (levels, subjects, periods, closures) uses app.core,
+    # its own files and administration.service (the center time zone of
+    # is_center_closed_at) only.
+    allowed = (
+        "app.core.",
+        "app.modules.catalog.",
+        "app.modules.administration.service",
+    )
+    catalog = targets("catalog")
+    assert "app.modules.administration.service" in catalog
+    assert not {t for t in catalog if not t.startswith(allowed)}
 
 
 # --- The checker on a synthetic tree (B5) ----------------------------------------

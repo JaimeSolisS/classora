@@ -1,4 +1,4 @@
-"""Catalog tables (spec §4, §12; #32).
+"""Catalog tables (spec §3, §4, §12; #32, #38).
 
 - ``education_levels``: a level (Primaria, Secundaria, …) with a position
   (``sort_order``) for lists. ``seed_key`` is set only on the rows the
@@ -17,13 +17,19 @@ Nothing is deleted: rows are deactivated (``is_active``) and can be
 reactivated, so later records keep valid references (``ON DELETE RESTRICT``).
 Both tables are :class:`~app.core.audit.Audited` with nothing excluded or
 masked (#22) and versioned (optimistic concurrency, architecture §4.4).
+
+#38 adds ``academic_periods`` and ``closures``: inclusive ``DATE`` ranges
+(local calendar days, ADR-0004) with the same lifecycle (deactivate, never
+delete), audit and versioning.
 """
 
 import uuid
+from datetime import date
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     ForeignKey,
     Index,
     SmallInteger,
@@ -31,7 +37,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -92,6 +98,96 @@ class Subject(Audited, VersionedMixin, Model):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+# --- Academic periods and closures (#38) ---------------------------------------------
+
+PERIOD_TYPES = ("school_year", "semester", "term")
+CLOSURE_TYPES = ("holiday", "closure", "vacation")
+PERIOD_MAX_SPAN_DAYS = 730
+CLOSURE_MAX_SPAN_DAYS = 366
+RANGE_TYPE_MAX_LENGTH = 20
+
+PERIOD_NAME_INDEX = "uq_academic_periods_name_ci"
+PERIOD_OVERLAP_CONSTRAINT = "ex_academic_periods_no_overlap"
+"""The exclusion constraint (``btree_gist``): active periods of one type never
+share a day. The service maps a violation at flush to ``409 period_overlap``."""
+CLOSURE_RANGE_INDEX = "ix_closures_active_range"
+
+# The inclusive range of a row: ``[starts_on, ends_on]``.
+DATE_RANGE_SQL = "daterange(starts_on, ends_on, '[]')"
+
+
+def _range_checks(max_span: int) -> tuple[CheckConstraint, CheckConstraint]:
+    return (
+        CheckConstraint("starts_on <= ends_on", name="starts_before_ends"),
+        CheckConstraint(f"ends_on - starts_on <= {max_span}", name="span_max"),
+    )
+
+
+def _quoted(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
+
+
+class AcademicPeriod(Audited, VersionedMixin, Model):
+    """A school year, semester or term: an inclusive range of local dates
+    (ADR-0004). Names are unique ignoring case (inactive rows count); active
+    periods of one type never overlap (``ex_academic_periods_no_overlap``);
+    the type never changes."""
+
+    __tablename__ = "academic_periods"
+    __table_args__ = (
+        *_name_checks(),
+        CheckConstraint(
+            f"period_type IN ({_quoted(PERIOD_TYPES)})", name="period_type_known"
+        ),
+        *_range_checks(PERIOD_MAX_SPAN_DAYS),
+        Index(PERIOD_NAME_INDEX, func.lower(text("name")), unique=True),
+        ExcludeConstraint(
+            (text("period_type"), "="),
+            (text(DATE_RANGE_SQL), "&&"),
+            name=PERIOD_OVERLAP_CONSTRAINT,
+            using="gist",
+            where=text("is_active"),
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    period_type: Mapped[str] = mapped_column(String(RANGE_TYPE_MAX_LENGTH))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class Closure(Audited, VersionedMixin, Model):
+    """A center-wide holiday, closure or vacation: whole local days, an
+    inclusive range. Names repeat (every year has its "Navidad") and closures
+    may overlap each other."""
+
+    __tablename__ = "closures"
+    __table_args__ = (
+        *_name_checks(),
+        CheckConstraint(
+            f"closure_type IN ({_quoted(CLOSURE_TYPES)})", name="closure_type_known"
+        ),
+        *_range_checks(CLOSURE_MAX_SPAN_DAYS),
+        Index(
+            CLOSURE_RANGE_INDEX,
+            text(DATE_RANGE_SQL),
+            postgresql_using="gist",
+            postgresql_where=text("is_active"),
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    closure_type: Mapped[str] = mapped_column(String(RANGE_TYPE_MAX_LENGTH))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
