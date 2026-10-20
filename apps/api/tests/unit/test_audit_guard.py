@@ -15,6 +15,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
+from app.modules.administration.models import ApprovalRequest
 from app.modules.administration.settings_models import BusinessSettings, OperatingHours
 from app.modules.catalog.models import (
     AcademicPeriod,
@@ -71,6 +72,7 @@ def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
         AcademicPeriod,
+        ApprovalRequest,
         BusinessSettings,
         Classroom,
         ClassroomAvailabilityWindow,
@@ -99,8 +101,9 @@ def test_the_guard_scans_the_real_audited_models():
     # are audited unmasked (spec §9 prior and new values). Guardian profiles
     # and links (#34 A5), families and their membership (#172 A3): the same.
     # Academic periods and closures (#38 D1), classrooms and their windows
-    # (#39 C1): the same.
+    # (#39 C1), approval requests (#40 E1): the same.
     for unmasked in (
+        ApprovalRequest,
         EducationLevel,
         Subject,
         AcademicPeriod,

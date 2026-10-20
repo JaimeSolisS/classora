@@ -87,6 +87,7 @@ from app.seeds.runner import (
     create_seed_engine,
     ensure_at_head,
 )
+from app.wiring import register_approval_wiring
 
 logger = logging.getLogger("app.cli")
 
@@ -370,6 +371,8 @@ def main(
     # Every identity state change a command makes passes the families
     # student-login gate (#35 B1), as in the API.
     register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+    # The approval inbox wiring (#40 D3), as in the API.
+    register_approval_wiring()
     args = build_parser().parse_args(argv)
     try:
         settings = get_settings()

@@ -1,6 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A); each test
-uses a fresh database."""
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
+M3-03 A, M3-04 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0022"
+HEAD = "0023"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -90,6 +90,7 @@ PREFERENCE_TABLES = ["user_preferences"]
 SETTINGS_TABLES = ["business_settings", "operating_hours"]
 PERIOD_TABLES = ["academic_periods", "closures"]
 CLASSROOM_TABLES = ["classroom_availability_windows", "classrooms"]
+APPROVAL_TABLES = ["approval_requests"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -183,6 +184,9 @@ def test_history_is_linear_with_one_head():
     classrooms = script.get_revision("0022")
     assert classrooms.down_revision == "0021"
     assert Path(classrooms.path).name == "0022_catalog_classrooms.py"
+    approvals = script.get_revision("0023")
+    assert approvals.down_revision == "0022"
+    assert Path(approvals.path).name == "0023_administration_approval_requests.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -217,6 +221,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             "alembic_version",
             "audit_events",
             *ACCOUNT_TOKEN_TABLES,
+            *APPROVAL_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -2692,3 +2697,243 @@ def test_a_classroom_with_windows_cannot_be_deleted(fresh_database_url):
             "DELETE FROM classrooms WHERE id = :id",
             {"id": room.id},
         )
+
+
+# --- 0023: approval requests, backfilled from registrations (#40 A) -----------------
+
+
+def test_0023_adds_exactly_approval_requests_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0022")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0023")
+
+    assert public_tables(fresh_database_url) - before == set(APPROVAL_TABLES)
+
+    command.downgrade(config, "0022")
+
+    assert version_nums(fresh_database_url) == ["0022"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_approval_requests_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "approval_requests"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "request_type": ("character varying", "NO", 64, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "requester_user_id": ("uuid", "YES", None, None),
+        "assignee_user_id": ("uuid", "YES", None, None),
+        "status": ("character varying", "NO", 20, "'pending'::character varying"),
+        "priority": ("character varying", "NO", 10, "'normal'::character varying"),
+        "resolved_at": ("timestamp with time zone", "YES", None, None),
+        "resolved_by_user_id": ("uuid", "YES", None, None),
+        "reason": ("character varying", "YES", 1000, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"uq_{table}_request_type",
+        f"fk_{table}_requester_user_id_users",
+        f"fk_{table}_assignee_user_id_users",
+        f"fk_{table}_resolved_by_user_id_users",
+        f"ck_{table}_request_type_format",
+        f"ck_{table}_status_valid",
+        f"ck_{table}_priority_valid",
+        f"ck_{table}_resolved_iff_final",
+        f"ck_{table}_resolver_unless_cancelled",
+        f"ck_{table}_reason_for_changes",
+    }
+    assert constraints[f"uq_{table}_request_type"] == (
+        "UNIQUE (request_type, subject_id)"
+    )
+    for column in ("requester_user_id", "assignee_user_id", "resolved_by_user_id"):
+        assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_{column}_users"]
+    indexes = _indexes(fresh_database_url, table)
+    assert set(indexes) == {
+        f"pk_{table}",
+        f"uq_{table}_request_type",
+        "ix_approval_requests_status_priority_created_at_id",
+        "ix_approval_requests_assignee_user_id_status",
+        "ix_approval_requests_requester_user_id",
+    }
+    assert (
+        "(status, priority, created_at, id)"
+        in indexes["ix_approval_requests_status_priority_created_at_id"]
+    )
+    assert (
+        "(assignee_user_id, status)"
+        in indexes["ix_approval_requests_assignee_user_id_status"]
+    )
+
+
+def _registration(dsn: str, status: str, decider: Any = None) -> Any:
+    """A raw user and registration request (no audit); returns the request."""
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES (:username, 'Requester', :state) RETURNING id",
+        {
+            "username": f"requester.{uuid.uuid4().hex[:8]}",
+            "state": {"pending": "pending", "approved": "active"}.get(
+                status, "archived"
+            ),
+        },
+    )
+    decided = status != "pending"
+    [request] = run_sql(
+        dsn,
+        "INSERT INTO registration_requests"
+        " (user_id, requested_role, status, decided_at, decided_by_user_id,"
+        " created_at)"
+        " VALUES (:user_id, 'guardian', :status, :decided_at, :decider,"
+        " :created_at)"
+        " RETURNING id, user_id, status, decided_at, decided_by_user_id,"
+        " created_at",
+        {
+            "user_id": user.id,
+            "status": status,
+            "decided_at": datetime(2026, 10, 2, 9, 30, tzinfo=UTC) if decided else None,
+            "decider": decider if decided else None,
+            "created_at": datetime(2026, 10, 1, 8, 0, tzinfo=UTC),
+        },
+    )
+    return request
+
+
+def test_0023_backfills_one_approval_request_per_registration(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0022")
+    [reviewer] = run_sql(
+        fresh_database_url,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES ('reviewer', 'Reviewer', 'active') RETURNING id",
+    )
+    registrations = {
+        status: _registration(fresh_database_url, status, reviewer.id)
+        for status in ("pending", "approved", "rejected")
+    }
+    [audit_before] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM audit_events"
+    )
+
+    command.upgrade(config, "0023")
+
+    rows = run_sql(
+        fresh_database_url,
+        "SELECT id, request_type, subject_id, requester_user_id, assignee_user_id,"
+        " status, priority, resolved_at, resolved_by_user_id, reason, created_at,"
+        " version FROM approval_requests",
+    )
+    assert len(rows) == 3
+    by_subject = {row.subject_id: row for row in rows}
+    for status, registration in registrations.items():
+        row = by_subject[registration.id]
+        assert row.id.version == 7
+        assert (row.request_type, row.status, row.priority, row.version) == (
+            "identity.registration",
+            status,
+            "normal",
+            1,
+        )
+        assert row.requester_user_id == registration.user_id
+        assert row.assignee_user_id is None
+        assert row.reason is None
+        assert row.resolved_at == registration.decided_at
+        assert row.resolved_by_user_id == registration.decided_by_user_id
+        assert row.created_at == registration.created_at
+    assert by_subject[registrations["pending"].id].resolved_at is None
+    assert by_subject[registrations["approved"].id].resolved_by_user_id == reviewer.id
+    # The migration writes no audit row (A2).
+    [audit_after] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM audit_events"
+    )
+    assert audit_after.n == audit_before.n
+
+
+def _approval(**overrides: Any) -> Statement:
+    values: dict[str, Any] = {
+        "request_type": "identity.registration",
+        "subject_id": uuid.uuid4(),
+        "status": "pending",
+        "resolved_at": None,
+        "reason": None,
+        **overrides,
+    }
+    return (
+        "INSERT INTO approval_requests"
+        " (request_type, subject_id, status, resolved_at, reason)"
+        " VALUES (:request_type, :subject_id, :status, :resolved_at, :reason)",
+        values,
+    )
+
+
+RESOLVED = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"request_type": "registration"}, "request_type_format"),
+        ({"request_type": "Identity.Registration"}, "request_type_format"),
+        ({"request_type": "identity.registration."}, "request_type_format"),
+        ({"status": "approved"}, "resolved_iff_final"),
+        ({"status": "pending", "resolved_at": RESOLVED}, "resolved_iff_final"),
+        ({"status": "approved", "resolved_at": RESOLVED}, "resolver_unless_cancelled"),
+        ({"status": "rejected", "resolved_at": RESOLVED}, "resolver_unless_cancelled"),
+        ({"status": "changes_requested"}, "reason_for_changes"),
+        ({"status": "done"}, "status_valid"),
+    ],
+)
+def test_invalid_approval_requests_are_rejected(
+    fresh_database_url, overrides, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=f"ck_approval_requests_{constraint}"):
+        run_sql(fresh_database_url, *_approval(**overrides))
+
+
+def test_a_bad_priority_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match="ck_approval_requests_priority_valid"):
+        run_sql(
+            fresh_database_url,
+            "INSERT INTO approval_requests (request_type, subject_id, priority)"
+            " VALUES ('identity.registration', :id, 'urgent')",
+            {"id": uuid.uuid4()},
+        )
+
+
+def test_a_second_request_for_one_type_and_subject_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = uuid.uuid4()
+    run_sql(fresh_database_url, *_approval(subject_id=subject))
+
+    with pytest.raises(IntegrityError, match="uq_approval_requests_request_type"):
+        run_sql(fresh_database_url, *_approval(subject_id=subject))
+    # Another type may point at the same subject.
+    run_sql(
+        fresh_database_url, *_approval(subject_id=subject, request_type="test.sample")
+    )
+
+
+def test_valid_approval_rows_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    # A system cancel has no resolver; changes requested carry a reason.
+    run_sql(fresh_database_url, *_approval(status="cancelled", resolved_at=RESOLVED))
+    run_sql(
+        fresh_database_url,
+        *_approval(status="changes_requested", reason="Add the birth certificate."),
+    )
+
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM approval_requests")
+    assert count.n == 2

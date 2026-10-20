@@ -33,6 +33,7 @@ from app.core.demo_jobs import router as demo_jobs_router
 from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
+from app.modules.administration.approvals_router import router as approvals_router
 from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
@@ -57,6 +58,7 @@ from app.modules.identity.service import (
     resolve_session_principal,
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
+from app.wiring import register_approval_wiring
 
 
 @asynccontextmanager
@@ -93,7 +95,8 @@ def build_app(
     Registers the identity module's session resolver, so
     ``get_current_principal`` resolves the session cookie (#23), and the
     families student-login gate (#35 B1; activating a student fails closed
-    without it), and installs
+    without it), the approval types and the account-reference resolver of
+    the approval inbox (#40 D3, E4), and installs
     the ``Origin`` check on every unsafe request as an app-level dependency, so
     it runs before authentication (#24).
     ``include_dev_routes`` mounts the local/DEV demo job route; the exported
@@ -110,6 +113,7 @@ def build_app(
     register_principal_resolver(app, resolve_session_principal)
     # The families consent check for every student activation (#35 B1).
     register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+    register_approval_wiring()
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(invitations_router)
@@ -118,6 +122,7 @@ def build_app(
     app.include_router(registrations_router)
     app.include_router(user_admin_router)
     app.include_router(administration_router)
+    app.include_router(approvals_router)
     app.include_router(business_settings_router)
     app.include_router(catalog_router)
     app.include_router(periods_router)

@@ -1,11 +1,11 @@
-"""Administration request and response bodies: the audit log (#22) and the
-business settings (#37)."""
+"""Administration request and response bodies: the audit log (#22), the
+business settings (#37) and the approval requests (#40)."""
 
 import uuid
 import zoneinfo
 from datetime import datetime
 from functools import cache
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -200,3 +200,67 @@ class BusinessSettingsUpdate(BaseModel):
             if len(set(weekdays)) != len(weekdays):
                 raise ValueError("Each weekday may appear only once.")
         return value
+
+
+# --- Approval requests (#40) -------------------------------------------------------
+
+type ApprovalStatus = Literal[
+    "pending", "approved", "rejected", "changes_requested", "cancelled"
+]
+type ApprovalPriority = Literal["low", "normal", "high"]
+type ApprovalAction = Literal["approve", "reject", "request_changes"]
+type ApprovalStatusFilter = Literal[
+    "open", "pending", "approved", "rejected", "changes_requested", "cancelled", "all"
+]
+type ApprovalAssigneeFilter = Literal["any", "me", "unassigned"]
+
+
+class AccountName(BaseModel):
+    """A user named in an approval request: the id and the display name only."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    display_name: str
+
+
+class ApprovalRequestItem(BaseModel):
+    """One approval request as a reviewer sees it.
+
+    ``subject`` is the type's own display data (for ``identity.registration``:
+    ``username``, ``display_name`` and ``requested_role``); never a secret.
+    ``allowed_actions`` are the decisions the request takes now (from its
+    status and its type)."""
+
+    id: uuid.UUID
+    request_type: str
+    status: ApprovalStatus
+    priority: ApprovalPriority
+    requester: AccountName | None
+    assignee: AccountName | None
+    created_at: datetime
+    resolved_at: datetime | None
+    resolved_by: AccountName | None
+    reason: str | None
+    subject: dict[str, Any]
+    allowed_actions: list[ApprovalAction]
+    version: int
+
+
+class ApprovalRejectBody(BaseModel):
+    """``POST …/reject``: the reason, required only by some types (at most
+    1000 characters once trimmed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
+class ApprovalRequestChangesBody(BaseModel):
+    """``POST …/request-changes``: what the requester must change (required;
+    at most 1000 characters once trimmed). A missing reason is a ``422`` on
+    ``reason`` after the ``404`` and ``409`` checks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None

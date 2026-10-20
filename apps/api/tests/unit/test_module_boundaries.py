@@ -153,7 +153,9 @@ def test_families_imports_only_core_and_the_catalog_and_identity_public_api():
 def test_administration_imports_no_other_module():
     # #37 E6: administration (business settings, the time-zone registry)
     # sits below the other modules; identity and families reach it only
-    # through administration.service.
+    # through administration.service. #40 E4: the approval inbox keeps it so
+    # (handlers and the account-reference resolver are registered by the
+    # composition roots).
     administration = targets("administration")
     # The scan found imports.
     assert any(t.startswith("app.modules.administration.") for t in administration)

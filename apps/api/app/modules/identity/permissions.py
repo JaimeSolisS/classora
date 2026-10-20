@@ -62,6 +62,9 @@ USER_DELEGATION_MANAGE = "user.delegation.manage"
 # S105: a permission code, not a password.
 USER_PASSWORD_RESET_ISSUE = "user.password_reset.issue"  # noqa: S105
 REGISTRATION_REVIEW = "registration.review"
+# The approval type of self-registration requests (#40 D), reviewed with
+# REGISTRATION_REVIEW.
+REGISTRATION_APPROVAL_TYPE = "identity.registration"
 AUDIT_VIEW = "audit.view"
 CATALOG_MANAGE = "catalog.manage"
 SETTINGS_MANAGE = "settings.manage"

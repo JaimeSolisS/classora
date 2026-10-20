@@ -6,11 +6,18 @@ guardian, or Student only). The request creates a ``pending`` user with the
 password's Argon2id hash and **no role**, who cannot sign in, and a
 ``pending`` :class:`~app.modules.identity.models.RegistrationRequest`.
 
-An Owner or Administrator (``registration.review``) confirms the person's
-identity out of band, then approves (the requested role is added and the user
-becomes ``active``) or rejects (the user is archived and the password hash is
-cleared; the username stays taken). Registration never links or enrolls
-anyone. No email is sent (spec §1, §14).
+The same transaction raises an approval request of type
+``identity.registration`` (#40; ``administration.service``) whose subject is
+the registration request. An Owner or Administrator (``registration.review``)
+confirms the person's identity out of band, then approves (the requested role
+is added and the user becomes ``active``) or rejects (the user is archived and
+the password hash is cleared; the username stays taken) through the approval
+inbox; :data:`~app.modules.identity.registration_approval.
+REGISTRATION_APPROVAL_HANDLER` runs :func:`approve_registration` or
+:func:`reject_registration`, which keep ``registration_requests.status`` and
+``decided_*`` in step with the approval request (expand-and-contract: the
+columns stay until a later contract step). Registration never links or
+enrolls anyone. No email is sent (spec §1, §14).
 
 Audit (#22): ``identity.registration_requested`` (no actor),
 ``identity.registration_approved`` and ``identity.registration_rejected``
@@ -22,24 +29,29 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from typing import Final
+from collections.abc import Iterable
+from typing import Any, Final
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.audit import record_audit_event
 from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
-from app.core.pagination import OffsetPage, OffsetParams
+from app.modules.administration import service as administration
 from app.modules.identity import service
 from app.modules.identity.errors import (
     RegistrationAlreadyDecidedError,
     UsernameTakenError,
 )
 from app.modules.identity.models import RegistrationRequest, User
-from app.modules.identity.permissions import ACTIVE, ARCHIVED, PENDING
-from app.modules.identity.schemas import RegistrationRequestItem
+from app.modules.identity.permissions import (
+    ACTIVE,
+    ARCHIVED,
+    PENDING,
+    REGISTRATION_APPROVAL_TYPE,
+)
 
 REGISTRATION_REQUESTED_EVENT: Final = "identity.registration_requested"
 REGISTRATION_APPROVED_EVENT: Final = "identity.registration_approved"
@@ -70,7 +82,8 @@ async def submit_registration(
     password: str,
     role: str,
 ) -> None:
-    """Create a pending user without a role and a pending request.
+    """Create a pending user without a role, a pending request and its
+    pending approval request (#40 D1).
 
     In this order: ``422 username_invalid`` (normalization), ``409
     username_taken`` when any user (in any state) has the username, also when
@@ -101,52 +114,51 @@ async def submit_registration(
     session.add(request)
     await session.flush()
     _record(session, REGISTRATION_REQUESTED_EVENT, request)
-
-
-def _item(request: RegistrationRequest, user: User) -> RegistrationRequestItem:
-    return RegistrationRequestItem.model_validate(
-        {
-            "id": request.id,
-            "username": user.username,
-            "display_name": user.display_name,
-            "requested_role": request.requested_role,
-            "status": request.status,
-            "submitted_at": request.created_at,
-            "decided_at": request.decided_at,
-        }
+    await administration.create_approval_request(
+        session,
+        request_type=REGISTRATION_APPROVAL_TYPE,
+        subject_id=request.id,
+        requester_user_id=user.id,
     )
 
 
-async def list_registration_requests(
-    session: AsyncSession, *, status: str, page: OffsetParams
-) -> OffsetPage[RegistrationRequestItem]:
-    """The requests with ``status``, oldest first (``created_at``, then id)."""
-    base = (
-        select(RegistrationRequest, User)
-        .join(User, User.id == RegistrationRequest.user_id)
-        .where(RegistrationRequest.status == status)
-    )
-    total = await session.scalar(select(func.count()).select_from(base.subquery()))
-    rows = (
-        await session.execute(
-            base.order_by(RegistrationRequest.created_at, RegistrationRequest.id)
-            .limit(page.limit)
-            .offset(page.offset)
+async def registration_summaries(
+    session: AsyncSession, request_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """``{username, display_name, requested_role}`` by registration request
+    id, in one statement (the approval list's summaries). Never a hash."""
+    ids = set(request_ids)
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(
+            RegistrationRequest.id,
+            RegistrationRequest.requested_role,
+            User.username,
+            User.display_name,
         )
-    ).all()
-    return OffsetPage[RegistrationRequestItem](
-        items=[_item(row.RegistrationRequest, row.User) for row in rows],
-        total=total or 0,
-        limit=page.limit,
-        offset=page.offset,
+        .join(User, User.id == RegistrationRequest.user_id)
+        .where(RegistrationRequest.id.in_(ids))
     )
+    return {
+        row.id: {
+            "username": row.username,
+            "display_name": row.display_name,
+            "requested_role": row.requested_role,
+        }
+        for row in rows
+    }
 
 
 async def _pending_request(
     session: AsyncSession, request_id: uuid.UUID
 ) -> tuple[RegistrationRequest, User]:
-    """The request and its user, both locked; ``404`` when unknown, ``409``
-    unless both are still pending."""
+    """The request and its user, both locked; ``404`` when unknown, ``409
+    registration_already_decided`` unless both are still pending.
+
+    Defensive since #40: the approval request is locked and checked first,
+    so this fires only when the registration or its account changed outside
+    the inbox (for example an account archived by staff meanwhile)."""
     # Locked: two decisions on the same request run one after the other, and
     # the second sees the first one's result.
     request: RegistrationRequest | None = await session.scalar(
@@ -172,7 +184,7 @@ def _decide(request: RegistrationRequest, status: str, principal: Principal) -> 
 
 async def approve_registration(
     session: AsyncSession, *, principal: Principal, request_id: uuid.UUID
-) -> RegistrationRequestItem:
+) -> None:
     """Activate the request's user with the requested role.
 
     ``404 not_found``, ``409 registration_already_decided``, then ``403
@@ -189,12 +201,11 @@ async def approve_registration(
     _decide(request, APPROVED, principal)
     await session.flush()
     _record(session, REGISTRATION_APPROVED_EVENT, request)
-    return _item(request, user)
 
 
 async def reject_registration(
     session: AsyncSession, *, principal: Principal, request_id: uuid.UUID
-) -> RegistrationRequestItem:
+) -> None:
     """Archive the request's user and clear the password hash.
 
     ``404 not_found`` and ``409 registration_already_decided`` as for
@@ -207,4 +218,3 @@ async def reject_registration(
     _decide(request, REJECTED, principal)
     await session.flush()
     _record(session, REGISTRATION_REJECTED_EVENT, request)
-    return _item(request, user)
