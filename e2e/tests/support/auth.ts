@@ -38,7 +38,8 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * scan; #174), families/consent.spec.ts 4 (2 parents and 2 students; every
  * account there is a self-registration approved by the Owner or an
  * invitation, never createActiveUser; #35), preferences/preferences.spec.ts
- * 2 (the tutor on two devices; #36) = 42 attempts, 2 failures for
+ * 2 (the tutor on two devices; #36), tutors/profiles.spec.ts 1 (the tutor;
+ * #43) = 43 attempts, 2 failures for
  * `demo.owner`. Keep the total well under both limits; never add a setting
  * that disables the limits.
  *
@@ -53,12 +54,14 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * createActiveUser), families/families.spec.ts 1
  * (createGuardianAccountViaPage), families/consent.spec.ts 3 (the minor's
  * invitation page: 1 lookup, 1 redemption refused by the consent gate and
- * 1 that succeeds; #35) = 19.
+ * 1 that succeeds; #35), tutors/profiles.spec.ts 1 (createActiveUser; #43)
+ * = 20, the whole budget: a new spec must invite without redeeming (as
+ * a11y/shell.spec.ts does for its tutor, support/tutors.ts) or rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 42;
+export const LOGIN_ATTEMPTS_PER_RUN = 43;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
-export const TOKEN_REDEMPTIONS_PER_RUN = 19;
+export const TOKEN_REDEMPTIONS_PER_RUN = 20;
 
 /**
  * Self-registration requests in one run (#169; `registration.ip` allows 10

@@ -31,6 +31,8 @@ import {
   NewStudentPage,
 } from '@/features/students/StudentFormPages';
 import { StudentsPage } from '@/features/students/StudentsPage';
+import { TutorDetailPage } from '@/features/tutors/TutorDetailPage';
+import { TutorsPage } from '@/features/tutors/TutorsPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
 import { UserDetailPage } from '@/features/users/admin/UserDetailPage';
@@ -215,6 +217,16 @@ export const routes: RouteObject[] = [
             path: 'families/:familyId/edit',
             element: <EditFamilyPage />,
             handle: { permission: 'family.manage' },
+          },
+          {
+            path: 'tutors',
+            element: <TutorsPage />,
+            handle: { permission: 'tutor.view' },
+          },
+          {
+            path: 'tutors/:userId',
+            element: <TutorDetailPage />,
+            handle: { permission: 'tutor.view' },
           },
           {
             path: 'settings',

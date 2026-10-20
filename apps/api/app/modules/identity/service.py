@@ -13,6 +13,12 @@
 - Account references (#34 B1): :func:`get_account_reference` and
   :func:`get_account_references` (``schemas.AccountReference``: id, username,
   display name, state and roles; never a hash or contact data).
+- Role members (#43; ``members.py``): :func:`list_role_members` and
+  :func:`get_role_member` (``schemas.RoleMember``: the account reference
+  fields **plus** ``email`` and ``phone``, for a module whose record policy
+  allows them) and :func:`update_account_contact` (display name, email and
+  phone; no authority check, the caller checked it), with
+  :func:`may_manage_user` (the #31 who-may-manage-whom rule).
 - Privacy notice (#174; ``privacy.py``): :func:`current_privacy_notice`,
   :func:`accept_privacy_notice` and :func:`has_accepted_current_privacy_notice`
   (schema ``schemas.PrivacyNotice``; errors
@@ -92,6 +98,11 @@ from app.modules.identity.errors import (
     UnknownRoleError,
     UsernameInvalidError,
 )
+from app.modules.identity.members import (
+    get_role_member,
+    list_role_members,
+    update_account_contact,
+)
 from app.modules.identity.models import (
     Permission,
     Role,
@@ -121,6 +132,7 @@ from app.modules.identity.permissions import (
     USER_DELEGATION_MANAGE,
     USER_STATES,
     may_assign_role,
+    may_manage_user,
     resolve_permissions,
 )
 from app.modules.identity.preferences import (
@@ -141,7 +153,7 @@ from app.modules.identity.privacy import (
 from app.modules.identity.registration_approval import (
     REGISTRATION_APPROVAL_HANDLER,
 )
-from app.modules.identity.schemas import AccountReference, PrivacyNotice
+from app.modules.identity.schemas import AccountReference, PrivacyNotice, RoleMember
 
 __all__ = [
     "ACTIVE",
@@ -171,6 +183,7 @@ __all__ = [
     "UnknownRoleError",
     "UserPreferences",
     "AccountReference",
+    "RoleMember",
     "UsernameInvalidError",
     "accept_privacy_notice",
     "add_user_role",
@@ -179,14 +192,17 @@ __all__ = [
     "effective_permissions",
     "get_account_reference",
     "get_account_references",
+    "get_role_member",
     "get_user_preferences",
     "grant_delegation",
     "has_accepted_current_privacy_notice",
     "hash_password",
+    "list_role_members",
     "load_principal",
     "lock_owner_guard",
     "lock_user",
     "may_assign_role",
+    "may_manage_user",
     "needs_rehash",
     "normalize_username",
     "privacy_notice_versions",
@@ -197,6 +213,7 @@ __all__ = [
     "revoke_delegation",
     "revoke_user_sessions",
     "set_password",
+    "update_account_contact",
     "update_user_preferences",
     "validate_password",
     "verify_password",

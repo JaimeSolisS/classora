@@ -1454,6 +1454,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tutors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tutors
+         * @description The users holding the tutor role, by display name, then username, with
+         *     their contact fields. A tutor sees only themselves.
+         */
+        get: operations["list_tutors_api_v1_tutors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor
+         * @description One tutor profile, with the fields the caller may edit.
+         */
+        get: operations["get_tutor_api_v1_tutors__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Tutor
+         * @description Change the sent fields. Administrators edit every field; a tutor edits
+         *     their own email, phone and professional experience. ``version`` 0 is a
+         *     tutor without a stored profile: the first change creates it.
+         */
+        patch: operations["update_tutor_api_v1_tutors__user_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2786,6 +2833,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[TutorListItem] */
+        OffsetPage_TutorListItem_: {
+            /** Items */
+            items: components["schemas"]["TutorListItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[UserListItem] */
         OffsetPage_UserListItem_: {
             /** Items */
@@ -2903,7 +2961,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -3377,6 +3435,82 @@ export interface components {
         };
         /** @enum {string} */
         Theme: "light" | "dark" | "system";
+        /**
+         * TutorDetail
+         * @description One tutor profile, with what the caller may edit.
+         */
+        TutorDetail: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Professional Experience */
+            professional_experience: string | null;
+            /**
+             * Version
+             * @description The profile's version; 0 while the tutor has no stored profile (the first edit creates it, at version 1).
+             */
+            version: number;
+            /**
+             * Editable Fields
+             * @description The fields the caller may change, sorted; empty: read only. Sending another field is 403 permission_denied.
+             */
+            editable_fields: components["schemas"]["TutorField"][];
+        };
+        /** @enum {string} */
+        TutorField: "display_name" | "email" | "phone" | "professional_experience";
+        /**
+         * TutorListItem
+         * @description One tutor: a user holding the ``tutor`` role, with the account's
+         *     contact fields.
+         */
+        TutorListItem: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+        };
+        /**
+         * TutorUpdate
+         * @description A profile change (``PATCH /api/v1/tutors/{user_id}``). Fields not sent
+         *     stay unchanged; ``""`` or ``null`` clears ``email``, ``phone`` or
+         *     ``professional_experience``.
+         */
+        TutorUpdate: {
+            /**
+             * Version
+             * @description The version the caller loaded (0: no profile yet).
+             */
+            version: number;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Professional Experience */
+            professional_experience?: string | null;
+        };
         /**
          * UserAllowedActions
          * @description What the caller may do to this user, computed by the server with the
@@ -8300,6 +8434,189 @@ export interface operations {
                 };
             };
             /** @description The consent was already revoked (consent_already_revoked). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_tutors_api_v1_tutors_get: {
+        parameters: {
+            query?: {
+                /** @description Part of the username or display name (not case-sensitive; accents are not folded). */
+                q?: string | null;
+                /** @description One user state. */
+                state?: components["schemas"]["UserState"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_TutorListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_tutor_api_v1_tutors__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_tutor_api_v1_tutors__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: a sent field is not in the caller's editable_fields; nothing changes (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The profile changed since it was loaded, or another first edit created it (version_conflict); reload and retry. */
             409: {
                 headers: {
                     [name: string]: unknown;

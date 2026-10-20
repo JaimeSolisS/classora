@@ -37,7 +37,8 @@
     "settings": "Configuración",
     "students": "Estudiantes",
     "guardians": "Padres y tutores",
-    "families": "Familias"
+    "families": "Familias",
+    "tutors": "Tutores"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -430,6 +431,55 @@
       "saving": "Guardando…",
       "saved": "Permisos delegados guardados.",
       "none": "Sin permisos delegados."
+    }
+  },
+  "tutors": {
+    "title": "Tutores",
+    "list": {
+      "search": "Buscar por nombre o usuario",
+      "state": "Estado",
+      "allStates": "Todos los estados",
+      "displayName": "Nombre",
+      "username": "Usuario",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "empty": "Ningún tutor coincide con estos filtros.",
+      "pagination": "Páginas de la lista de tutores",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "range": "{{from}}–{{to}} de {{total}}"
+    },
+    "detail": {
+      "username": "Usuario",
+      "state": "Estado",
+      "notFound": "Este tutor no existe.",
+      "backToList": "Volver a tutores"
+    },
+    "profile": {
+      "title": "Perfil",
+      "displayName": "Nombre",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "experience": "Experiencia profesional",
+      "notSet": "Sin registrar",
+      "edit": "Editar",
+      "saved": "Cambios guardados."
+    },
+    "form": {
+      "title": "Editar perfil",
+      "email": "Correo electrónico (opcional)",
+      "phone": "Teléfono (opcional)",
+      "experience": "Experiencia profesional (opcional)",
+      "contactHelp": "Solo para contacto. No se usa para iniciar sesión.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "reload": "Recargar",
+      "displayNameRequired": "Escribe un nombre.",
+      "displayNameTooLong": "Usa como máximo 200 caracteres.",
+      "emailInvalid": "Escribe un correo como nombre@ejemplo.com, o déjalo vacío.",
+      "phoneInvalid": "Escribe un teléfono de 7 a 32 caracteres entre dígitos, espacios o ( ) . -, o déjalo vacío.",
+      "experienceTooLong": "Usa como máximo 4000 caracteres."
     }
   },
   "userStates": {

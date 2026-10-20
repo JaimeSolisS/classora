@@ -161,7 +161,12 @@ def test_success_returns_the_session_user(seeded_url, client):
         "username": user.username,
         "display_name": "Ana Ruiz",
         "roles": ["guardian", "tutor"],
-        "permissions": ["consent.record", "guardian.view", "student.view"],
+        "permissions": [
+            "consent.record",
+            "guardian.view",
+            "student.view",
+            "tutor.view",
+        ],
         "csrf_token": csrf_for(only_set_cookie(response)),
         "privacy_notice_required": False,
         "preferences": {"language": None, "theme": None},

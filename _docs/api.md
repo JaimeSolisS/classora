@@ -1430,6 +1430,56 @@ It has no money, ledger or billing account yet.
   ids); no named event and no `details`. An idempotent re-add, `403`, `404`,
   `409`, `422` and a body that changes nothing write no event.
 
+### Tutor profiles
+
+Implemented by M3-07 (#43; spec §4) in `apps/api/app/modules/staff/`. A
+tutor is a user who holds the `tutor` role now; their profile combines the
+account's contact fields with a `tutor_profiles` row. Teaching subjects come
+with qualifications (#44), availability with #45 and documents with M5-08.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/tutors` | `require("tutor.view")`, list filtered by record policy | Query `q` (part of the username or display name, ignoring case; accents not folded; at most 100 characters), `state` (one user state), offset pagination. Sorted by display name, then username. Items: `user_id`, `username`, `display_name`, `state`, `email`, `phone`. |
+| `GET /api/v1/tutors/{user_id}` | `require("tutor.view")` + record policy | The list item fields plus `professional_experience`, `version` and `editable_fields` (sorted). |
+| `PATCH /api/v1/tutors/{user_id}` | `require("tutor.view")` + record and field policy | Body `{version, display_name?, email?, phone?, professional_experience?}` (unknown fields are `422`). |
+
+- **Who sees what** (owner decision on #43, E1 (a)): `tutor.view` is held by
+  Owners, Administrators, Academic Coordinators and Tutors. Owners and
+  Administrators (`tutor.manage`) and Academic Coordinators see every tutor;
+  a tutor sees only themselves (the list has at most their own row). Finance
+  Staff, Students and Guardians get `403` on every route. A user who doesn't
+  exist, doesn't hold the `tutor` role now, or isn't visible to the caller
+  is the same `404 not_found`. Losing the role hides the profile; its row is
+  kept.
+- **Contact details live on the account:** `display_name`, `email` and
+  `phone` are the `users` fields (#31, same formats; `""` or `null` clears
+  `email` and `phone`), so a change here shows on the Users page and the
+  other way round. Only `professional_experience` (trimmed, at most 4000
+  characters; blank clears it) is stored in `tutor_profiles`.
+- **Who edits what** (`editable_fields`): with `tutor.manage` every field;
+  the tutor themselves `email`, `phone` and `professional_experience`;
+  nobody else anything (Academic Coordinators only view). The account fields
+  of another user also follow the User administration rule (an Administrator
+  doesn't manage an Owner or another Administrator), so for a tutor who is
+  also an Owner an Administrator edits only the experience. Sending a field
+  outside `editable_fields` is `403 permission_denied` and changes nothing.
+- **Lazy row and `version`:** no row is created when the role is granted. A
+  tutor without one has an empty experience and `version` 0; the first
+  change creates the row at `version` 1. Every later change, account fields
+  included, increments the profile's `version`, so it guards the whole
+  page. Of two concurrent first edits from `version` 0, one gets `200` and
+  the other `409 version_conflict`. A contact change also increments
+  `users.version`, so a Users page loaded before it gets `409` on save.
+- **Check order of the `PATCH`:** `422` → `404` → `403 permission_denied`
+  (a field outside `editable_fields`) → `409 version_conflict` → the update.
+  A body that changes nothing returns `200` with no new version and no
+  event. No reauthentication. No new error code.
+- **Audit:** automatic only: `tutor_profiles` `create`/`update` (with
+  `professional_experience`) and `users` `update` for the account fields. A
+  change of account fields alone increments the profile's version without a
+  `tutor_profiles` event (unless it creates the row). `403`, `404`, `409`,
+  `422` and a body that changes nothing write no event.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one

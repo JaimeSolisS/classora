@@ -46,4 +46,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/guardians', labelKey: 'nav.guardians', permission: 'guardian.view' },
   // Guardians see only their own family (#172 H1; there is no family.view).
   { to: '/families', labelKey: 'nav.families', permission: 'guardian.view' },
+  // Tutors see only their own profile (#43 E1).
+  { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
 ];

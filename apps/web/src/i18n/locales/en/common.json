@@ -37,7 +37,8 @@
     "settings": "Settings",
     "students": "Students",
     "guardians": "Guardians",
-    "families": "Families"
+    "families": "Families",
+    "tutors": "Tutors"
   },
   "notFound": {
     "title": "Page not found",
@@ -430,6 +431,55 @@
       "saving": "Saving…",
       "saved": "Delegated permissions saved.",
       "none": "No delegated permissions."
+    }
+  },
+  "tutors": {
+    "title": "Tutors",
+    "list": {
+      "search": "Search by name or username",
+      "state": "Status",
+      "allStates": "All states",
+      "displayName": "Name",
+      "username": "Username",
+      "email": "Email",
+      "phone": "Phone",
+      "empty": "No tutors match these filters.",
+      "pagination": "Tutor list pages",
+      "previous": "Previous",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}"
+    },
+    "detail": {
+      "username": "Username",
+      "state": "Status",
+      "notFound": "This tutor doesn't exist.",
+      "backToList": "Back to tutors"
+    },
+    "profile": {
+      "title": "Profile",
+      "displayName": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "experience": "Professional experience",
+      "notSet": "Not set",
+      "edit": "Edit",
+      "saved": "Changes saved."
+    },
+    "form": {
+      "title": "Edit profile",
+      "email": "Email (optional)",
+      "phone": "Phone (optional)",
+      "experience": "Professional experience (optional)",
+      "contactHelp": "For contact only. Never used to sign in.",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "reload": "Reload",
+      "displayNameRequired": "Enter a name.",
+      "displayNameTooLong": "Use at most 200 characters.",
+      "emailInvalid": "Enter an email like name@example.com, or leave it empty.",
+      "phoneInvalid": "Enter a phone number of 7 to 32 characters using digits, spaces or ( ) . -, or leave it empty.",
+      "experienceTooLong": "Use at most 4000 characters."
     }
   },
   "userStates": {

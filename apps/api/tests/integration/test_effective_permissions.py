@@ -117,7 +117,10 @@ async def test_retired_codes_in_the_database_are_ignored(session):
     )
     tutor = await persist_user(session, roles=[TUTOR])
 
-    assert await service.effective_permissions(session, tutor.id) == {"student.view"}
+    assert await service.effective_permissions(session, tutor.id) == {
+        "student.view",
+        "tutor.view",
+    }
 
 
 # --- I1: factories -------------------------------------------------------------

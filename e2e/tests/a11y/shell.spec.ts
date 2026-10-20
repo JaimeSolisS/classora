@@ -11,6 +11,7 @@ import { recordConsentViaApi } from '../support/consent';
 import { createDemoNotificationViaApi } from '../support/notifications';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
+import { inviteTutorViaApi } from '../support/tutors';
 import { createActiveUser } from '../support/users';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
@@ -32,7 +33,9 @@ const THEMES = ['light', 'dark'] as const;
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
 // of a guardian the scan creates and links to a new student first (#34 K2),
 // /families, /families/new and the detail of a family the scan creates with
-// that student and guardian (#172 J2), and the open notification panel
+// that student and guardian (#172 J2), /tutors and the profile of a tutor
+// the scan invites through the API first (#43 F2; an invitation only, no
+// redemption), and the open notification panel
 // (#41 F2, its own test below)
 // are behind the guard: scanned signed in
 // (the shared state). /login, /invite and
@@ -59,6 +62,11 @@ interface ScannedRoute {
    * `path` is then the family's detail.
    */
   createsFamily?: boolean;
+  /**
+   * First invite a tutor through the API; `path` is then the tutor's
+   * profile.
+   */
+  createsTutor?: boolean;
   /** Wait for this labelled field (the page's data loaded) before scanning. */
   waitForField?: string;
   /**
@@ -125,6 +133,13 @@ const ROUTES: ScannedRoute[] = [
     signedIn: true,
     createsGuardian: true,
     createsFamily: true,
+  },
+  { name: 'tutors', path: '/tutors', signedIn: true },
+  {
+    name: 'tutor-detail',
+    path: '/tutors/<created>',
+    signedIn: true,
+    createsTutor: true,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },
@@ -202,6 +217,19 @@ for (const theme of THEMES) {
               path = `/families/${familyId}`;
             }
           }
+        }
+        if (route.createsTutor) {
+          // The app origin first, so the API call carries the session.
+          await page.goto('/');
+          await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+            timeout: FIRST_RENDER_TIMEOUT_MS,
+          });
+          const sfx = `${theme}${testInfo.workerIndex}${Date.now().toString(36)}`;
+          const id = await inviteTutorViaApi(page, {
+            username: `e2e.a11y.tutor.${sfx}`,
+            displayName: `Tutor Accesible ${sfx}`,
+          });
+          path = `/tutors/${id}`;
         }
         await page.goto(path);
         await expect(page).toHaveURL(path);
