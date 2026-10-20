@@ -26,29 +26,52 @@ Tutor qualifications (#44; ``staff/qualifications.py`` has the orders):
 Reviewers decide through the approval inbox (``/api/v1/approval-requests``,
 ``qualification.review``).
 
+Tutor availability (#45; ``staff/tutor_availability.py`` has the orders),
+local wall-clock times of the center:
+
+- ``GET …/availability`` and ``GET …/availability/check``: whoever may see
+  the tutor.
+- ``PUT …/availability/weekly``, ``POST …/availability/exceptions``,
+  ``DELETE …/availability/exceptions/{exception_id}``: the tutor themselves
+  or ``tutor.manage`` (an Academic Coordinator gets ``403``). A change that
+  affects scheduled sessions is ``409 availability_change_requires_approval``
+  (the M4-18 seam, ``staff/assignment_impact.py``).
+
 The search text ``q`` is a query parameter: the access log line has no query
 string (#9), so it is never logged.
 """
 
 import uuid
-from typing import Annotated
+from datetime import time
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query, Response
+from fastapi.exceptions import RequestValidationError
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
 from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.uow import UnitOfWorkDep
+from app.modules.catalog.schemas import LocalDate, LocalTime
 from app.modules.identity.schemas import UserState
 from app.modules.staff import service
+from app.modules.staff.assignment_impact import (
+    AvailabilityImpactSource,
+    get_availability_impact_source,
+)
 from app.modules.staff.permissions import TUTOR_VIEW
 from app.modules.staff.schemas import (
+    AvailabilityCheck,
+    AvailabilityExceptionCreate,
+    AvailabilityExceptionItem,
     QualificationCreate,
     QualificationItem,
     QualificationStatusFilter,
+    TutorAvailabilityDetail,
     TutorDetail,
     TutorListItem,
     TutorUpdate,
+    WeeklyAvailabilityUpdate,
 )
 
 router = APIRouter(prefix="/api/v1/tutors", tags=["tutors"])
@@ -230,4 +253,182 @@ async def cancel_qualification(
         principal=principal,
         user_id=user_id,
         qualification_id=qualification_id,
+    )
+
+
+# --- Tutor availability (#45) --------------------------------------------------------
+
+ImpactSource = Annotated[
+    AvailabilityImpactSource, Depends(get_availability_impact_source)
+]
+
+AVAILABILITY_EDITORS_ONLY = problem_response_doc(
+    f"{PERMISSION_RESPONSES[403]['description']} Also: the caller may see the"
+    " tutor but is neither the tutor themselves nor a holder of tutor.manage"
+    " (permission_denied)."
+)
+REQUIRES_APPROVAL = (
+    "The change affects scheduled classes and needs approval; nothing changed"
+    " (availability_change_requires_approval)."
+)
+
+
+@router.get(
+    "/{user_id}/availability",
+    responses={**PERMISSION_RESPONSES, 404: NOT_FOUND},
+)
+async def get_availability(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> TutorAvailabilityDetail:
+    """The tutor's weekly windows and exceptions, in the center's local
+    wall-clock time."""
+    return await service.get_availability(
+        uow.session, principal=principal, user_id=user_id
+    )
+
+
+@router.put(
+    "/{user_id}/availability/weekly",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: AVAILABILITY_EDITORS_ONLY,
+        404: NOT_FOUND,
+        409: problem_response_doc(
+            "The weekly availability changed since it was loaded, or another"
+            f" first change created it (version_conflict). Or: {REQUIRES_APPROVAL}"
+        ),
+        422: problem_response_doc(
+            "The body is not valid: a missing or negative version, more than 42"
+            " windows, a weekday outside 1-7, a time not in the HH:MM form, an"
+            " end not after its start (on ends_at), two windows of one weekday"
+            " that overlap (window_overlap on the later item), an unknown field"
+            " (validation_error)."
+        ),
+    },
+)
+async def replace_weekly_availability(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    body: WeeklyAvailabilityUpdate,
+    uow: UnitOfWorkDep,
+    impact: ImpactSource,
+) -> TutorAvailabilityDetail:
+    """Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0
+    is a tutor whose availability never changed. A body that changes nothing
+    keeps the version."""
+    return await service.replace_weekly_availability(
+        uow.session, principal=principal, user_id=user_id, body=body, impact=impact
+    )
+
+
+@router.post(
+    "/{user_id}/availability/exceptions",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: AVAILABILITY_EDITORS_ONLY,
+        404: NOT_FOUND,
+        409: problem_response_doc(REQUIRES_APPROVAL),
+        422: problem_response_doc(
+            "The body is not valid: an unknown kind, a date not in the"
+            " YYYY-MM-DD form, an end date before the start or more than 366"
+            " days after it, only one time, an end time not after the start,"
+            " extra availability without times, a note longer than 200"
+            " characters, an unknown field (validation_error)."
+        ),
+    },
+)
+async def create_availability_exception(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    body: AvailabilityExceptionCreate,
+    uow: UnitOfWorkDep,
+    impact: ImpactSource,
+) -> AvailabilityExceptionItem:
+    """Add time off (``unavailable``, whole days or hours) or extra
+    availability (``available``, hours) on each day of an inclusive range."""
+    return await service.create_exception(
+        uow.session, principal=principal, user_id=user_id, body=body, impact=impact
+    )
+
+
+@router.delete(
+    "/{user_id}/availability/exceptions/{exception_id}",
+    status_code=204,
+    response_class=Response,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: AVAILABILITY_EDITORS_ONLY,
+        404: problem_response_doc(
+            "No such tutor or exception of this tutor, or the caller may not"
+            " see the tutor (not_found)."
+        ),
+        409: problem_response_doc(REQUIRES_APPROVAL),
+    },
+)
+async def delete_availability_exception(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    exception_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+    impact: ImpactSource,
+) -> None:
+    """Delete one of the tutor's exceptions."""
+    await service.delete_exception(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        exception_id=exception_id,
+        impact=impact,
+    )
+
+
+def _ensure_start_before_end(start: str, end: str) -> None:
+    # HH:MM strings compare like the times they hold.
+    if end <= start:
+        errors: list[dict[str, Any]] = [
+            {
+                "loc": ("query", "end"),
+                "type": "value_error",
+                "msg": "end must be after start",
+            }
+        ]
+        raise RequestValidationError(errors)
+
+
+@router.get(
+    "/{user_id}/availability/check",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: NOT_FOUND,
+        422: problem_response_doc(
+            "A missing date, start or end, a date not in the YYYY-MM-DD form, a"
+            " time not in the HH:MM form, or an end not after the start"
+            " (validation_error)."
+        ),
+    },
+)
+async def check_availability(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+    local_date: Annotated[
+        LocalDate, Query(alias="date", description="The local date, YYYY-MM-DD.")
+    ],
+    start: Annotated[LocalTime, Query(description="Local start time, HH:MM.")],
+    end: Annotated[LocalTime, Query(description="Local end time, HH:MM, after start.")],
+) -> AvailabilityCheck:
+    """Whether the tutor is available on the local date from ``start`` to
+    ``end`` (the center's wall-clock time), center closures included, with
+    every reason they are not."""
+    _ensure_start_before_end(start, end)
+    return await service.check_availability(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        local_date=local_date,
+        start=time.fromisoformat(start),
+        end=time.fromisoformat(end),
     )

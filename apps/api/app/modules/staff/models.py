@@ -16,22 +16,39 @@
   with its ``staff.qualification`` approval request in one transaction, so
   eligibility never reads ``approval_requests`` (ADR-0002). ``Audited``,
   versioned.
+- ``tutor_availability_settings`` (#45): one row per tutor at most
+  (``uq_tutor_availability_settings_user_id``), created lazily by the first
+  weekly-availability change (``version`` 0 before). Its ``version`` covers
+  the tutor's weekly windows; M3-09b (#197) adds the teaching limits to it.
+  ``Audited``, versioned.
+- ``tutor_availability_windows`` (#45): the tutor's recurring weekly
+  windows, the #39 shape: ISO weekday and ``[starts_at, ends_at)`` in local
+  wall-clock time, whole minutes, never across midnight; windows of one
+  weekday never overlap (``ex_tutor_windows_no_overlap``), touching is
+  allowed. ``Audited``.
+- ``tutor_availability_exceptions`` (#45): an inclusive range of local dates
+  on which the tutor is ``unavailable`` (the whole day, or hours) or
+  ``available`` (always hours), with an optional note. Overlaps are allowed.
+  Created and deleted, never edited. ``Audited``.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Final
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Text,
+    Time,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -124,4 +141,120 @@ class TutorQualification(Audited, VersionedMixin, Model):
     )
     rejection_reason: Mapped[str | None] = mapped_column(
         String(REJECTION_REASON_MAX_LENGTH), nullable=True
+    )
+
+
+# --- Tutor availability (#45) --------------------------------------------------------
+
+FIRST_WEEKDAY: Final = 1
+LAST_WEEKDAY: Final = 7
+AVAILABILITY_WINDOWS_MAX: Final = 42
+"""At most this many weekly windows per tutor (six per weekday)."""
+EXCEPTION_MAX_SPAN_DAYS: Final = 366
+EXCEPTION_NOTE_MAX_LENGTH: Final = 200
+
+UNAVAILABLE: Final = "unavailable"
+AVAILABLE: Final = "available"
+EXCEPTION_KINDS: Final = (UNAVAILABLE, AVAILABLE)
+
+# A concurrent first weekly change that loses the race (the unique user_id)
+# is 409 version_conflict.
+SETTINGS_USER_ID_UNIQUE: Final = "uq_tutor_availability_settings_user_id"
+TUTOR_WINDOW_OVERLAP_CONSTRAINT: Final = "ex_tutor_windows_no_overlap"
+"""The exclusion constraint (``btree_gist``, revision 0021): windows of one
+tutor on one weekday never overlap; touching windows are allowed."""
+
+# A window's times as a range on a fixed Monday, so GiST can compare them.
+WINDOW_RANGE_SQL: Final = (
+    "tsrange(DATE '2000-01-03' + starts_at, DATE '2000-01-03' + ends_at, '[)')"
+)
+
+
+class TutorAvailabilitySettings(Audited, VersionedMixin, Model):
+    """The version anchor of a tutor's weekly windows: the weekly ``PUT``
+    takes and bumps it. Created by the first change (``version`` 0 = no
+    row)."""
+
+    __tablename__ = "tutor_availability_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
+    )
+
+
+class TutorAvailabilityWindow(Audited, Model):
+    """One recurring weekly window in which the tutor is available: an ISO
+    weekday (1 = Monday) and ``[starts_at, ends_at)`` in local wall-clock
+    time, whole minutes, never across midnight. Not versioned: the settings
+    row's ``version`` covers the windows."""
+
+    __tablename__ = "tutor_availability_windows"
+    __table_args__ = (
+        CheckConstraint(
+            f"weekday BETWEEN {FIRST_WEEKDAY} AND {LAST_WEEKDAY}", name="weekday_range"
+        ),
+        CheckConstraint("starts_at < ends_at", name="starts_before_ends"),
+        CheckConstraint(
+            "EXTRACT(SECOND FROM starts_at) = 0 AND EXTRACT(SECOND FROM ends_at) = 0",
+            name="zero_seconds",
+        ),
+        ExcludeConstraint(
+            (text("tutor_user_id"), "="),
+            (text("weekday"), "="),
+            (text(WINDOW_RANGE_SQL), "&&"),
+            name=TUTOR_WINDOW_OVERLAP_CONSTRAINT,
+            using="gist",
+        ),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    weekday: Mapped[int] = mapped_column(SmallInteger)
+    starts_at: Mapped[time] = mapped_column(Time(timezone=False))
+    ends_at: Mapped[time] = mapped_column(Time(timezone=False))
+
+
+class TutorAvailabilityException(Audited, Model):
+    """An exception to the weekly windows on an inclusive range of local
+    dates: ``unavailable`` (time off; the whole day when both times are
+    null, otherwise those hours of each day) or ``available`` (extra hours
+    of each day; always with hours). ``unavailable`` wins where both apply.
+    Never edited: created and deleted."""
+
+    __tablename__ = "tutor_availability_exceptions"
+    __table_args__ = (
+        CheckConstraint(f"kind IN ({_quoted(EXCEPTION_KINDS)})", name="kind_valid"),
+        CheckConstraint("starts_on <= ends_on", name="starts_before_ends"),
+        CheckConstraint(
+            f"ends_on - starts_on <= {EXCEPTION_MAX_SPAN_DAYS}", name="span_max"
+        ),
+        CheckConstraint(
+            "(starts_at IS NULL AND ends_at IS NULL)"
+            " OR (starts_at IS NOT NULL AND ends_at IS NOT NULL"
+            " AND starts_at < ends_at)",
+            name="hours_valid",
+        ),
+        CheckConstraint(
+            "starts_at IS NULL OR (EXTRACT(SECOND FROM starts_at) = 0"
+            " AND EXTRACT(SECOND FROM ends_at) = 0)",
+            name="zero_seconds",
+        ),
+        CheckConstraint(
+            "kind = 'unavailable' OR starts_at IS NOT NULL",
+            name="available_has_hours",
+        ),
+        CheckConstraint("note = btrim(note)", name="note_trimmed"),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
+    starts_at: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
+    ends_at: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
+    note: Mapped[str | None] = mapped_column(
+        String(EXCEPTION_NOTE_MAX_LENGTH), nullable=True
     )
