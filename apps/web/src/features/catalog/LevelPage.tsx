@@ -25,6 +25,7 @@ import {
   type SubjectUpdate,
 } from './api';
 import { CatalogItemDialog } from './CatalogItemDialog';
+import { CatalogTabs } from './CatalogTabs';
 import { CatalogStatusBadge } from './CatalogStatusBadge';
 import { CATALOG_LINK_CLASS } from './LevelsTable';
 import { pageParam, subjectUpdateBody } from './rules';
@@ -180,6 +181,7 @@ export function LevelPageView({
 
   return (
     <div className="flex flex-col gap-8">
+      <CatalogTabs />
       <div className="flex flex-col gap-3">
         <BackLink />
         <h1 className="text-2xl font-semibold break-words">{level.name}</h1>

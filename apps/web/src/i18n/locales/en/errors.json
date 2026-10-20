@@ -61,5 +61,6 @@
   "network_error": "Can't reach the server. Check your internet connection.",
   "unexpected_response": "The server sent an unexpected response. Please try again.",
   "client_error": "We couldn't complete the request.",
-  "server_error": "The server couldn't complete the request. Please try again later."
+  "server_error": "The server couldn't complete the request. Please try again later.",
+  "period_overlap": "Another active period of this type overlaps these dates."
 }

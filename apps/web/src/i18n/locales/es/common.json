@@ -437,7 +437,55 @@
     "validation": {
       "nameRequired": "Escribe un nombre.",
       "nameTooLong": "El nombre puede tener hasta 100 caracteres.",
-      "positionInvalid": "La posición es un número entero de 0 a 9999."
+      "positionInvalid": "La posición es un número entero de 0 a 9999.",
+      "typeRequired": "Elige un tipo.",
+      "startsOnRequired": "Escribe la fecha de inicio.",
+      "endsOnRequired": "Escribe la fecha de fin.",
+      "endsBeforeStart": "La fecha de fin no puede ser anterior a la de inicio.",
+      "spanTooLong": "Las fechas pueden estar separadas como máximo {{days}} días.",
+      "datesInvalid": "Revisa las fechas: el fin debe ser el mismo día o posterior al inicio, como máximo {{days}} días después."
+    },
+    "tabs": {
+      "label": "Secciones del catálogo",
+      "levels": "Niveles y materias",
+      "periods": "Periodos académicos",
+      "closures": "Cierres"
+    },
+    "range": {
+      "name": "Nombre",
+      "type": "Tipo",
+      "startsOn": "Inicio",
+      "endsOn": "Fin",
+      "dates": "Fechas",
+      "dateRange": "{{start}} – {{end}}",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "periods": {
+      "title": "Periodos académicos",
+      "add": "Agregar periodo",
+      "edit": "Editar periodo",
+      "empty": "Todavía no hay periodos académicos.",
+      "typeLocked": "El tipo no se puede cambiar. Desactiva el periodo y agrega uno nuevo.",
+      "deactivateHelp": "Un periodo inactivo ya no cuenta al revisar traslapes."
+    },
+    "closures": {
+      "title": "Cierres",
+      "add": "Agregar cierre",
+      "edit": "Editar cierre",
+      "empty": "No hay cierres en {{year}}.",
+      "year": "Año",
+      "deactivateHelp": "Un cierre inactivo ya no cierra el centro."
+    },
+    "periodTypes": {
+      "school_year": "Ciclo escolar",
+      "semester": "Semestre",
+      "term": "Periodo"
+    },
+    "closureTypes": {
+      "holiday": "Día festivo",
+      "closure": "Cierre",
+      "vacation": "Vacaciones"
     }
   },
   "students": {

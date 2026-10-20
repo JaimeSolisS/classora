@@ -17,6 +17,7 @@ import {
   type EducationLevel,
 } from './api';
 import { CatalogItemDialog } from './CatalogItemDialog';
+import { CatalogTabs } from './CatalogTabs';
 import { LevelsTable, type LevelsTableState } from './LevelsTable';
 import {
   levelCreateBody,
@@ -112,6 +113,7 @@ export function LevelsPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <CatalogTabs />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 id={titleId} className="text-2xl font-semibold">
           {t('catalog.title')}
