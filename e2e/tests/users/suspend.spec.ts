@@ -21,8 +21,8 @@ import { createActiveUser } from '../support/users';
 // belongs to one session, and logins never touch the shared session (#28
 // H2). The spec never changes `demo.owner`.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 5 logins (1 by
-// createActiveUser), 1 of them refused for the tutor's own username while
+// Budgets (#27, ADR-0008; see support/auth.ts): 4 logins (createActiveUser
+// uses the shared Owner session, #36), 1 of them refused for the tutor's own username while
 // suspended, and 1 redemption call (createActiveUser). No
 // setting that disables limits is used. Usernames are unique per run: every
 // `make e2e` starts from an empty database.
@@ -116,7 +116,7 @@ test('suspending a user ends their access; reactivating restores it', async ({
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  // 1. The tutor exists with P1 (login 1, redemption call 1) and is signed
+  // 1. The tutor exists with P1 (no login, redemption call 1) and is signed
   // in in context B (login 2).
   await createActiveUser(playwright.request, baseURL!, {
     username: TUTOR,

@@ -18,8 +18,8 @@ import { createActiveUser } from '../support/users';
 // Names carry a unique per-test suffix, and every search includes it, so
 // parallel tests and runs never see each other's students.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (1 by
-// createActiveUser, 1 for the tutor) and 1 redemption call
+// Budgets (#27, ADR-0008; see support/auth.ts): 1 login (the tutor;
+// createActiveUser uses the shared Owner session, #36) and 1 redemption call
 // (createActiveUser). Every `make e2e` starts from an empty database, so the
 // username `e2e.students.tutor` is unique per run.
 
@@ -198,8 +198,8 @@ test('managing a student profile, and a tutor who may not see it', async ({
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);
 
-  // 5. A Tutor without assignments (login 1 by createActiveUser, login 2
-  // here) sees neither this student nor any other.
+  // 5. A Tutor without assignments (created with the shared Owner session;
+  // login 1 here) sees neither this student nor any other.
   await createActiveUser(playwright.request, baseURL!, {
     username: TUTOR,
     role: 'tutor',

@@ -14,9 +14,9 @@ import { createActiveUser } from '../support/users';
 // they asked for. Signing out and in again shows no notice, and /auth/me
 // says privacy_notice_required: false.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (1 by
-// createActiveUser, then the tutor twice), no wrong password, and 1
-// redemption call (createActiveUser). The username has a per-run random
+// Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (the tutor twice;
+// createActiveUser uses the shared Owner session, #36), no wrong password,
+// and 1 redemption call (createActiveUser). The username has a per-run random
 // suffix with its own prefix, so it never matches another spec's search.
 
 const SUFFIX = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -80,7 +80,7 @@ test('a new user accepts the privacy notice once, then goes where they asked', a
   const notice = common.privacyNotice;
   const noticeEn = commonEn.privacyNotice;
 
-  // 1. A guarded page asks for a sign-in (login 2), then the notice.
+  // 1. A guarded page asks for a sign-in (login 1), then the notice.
   await page.goto('/students');
   await expect(page).toHaveURL(
     `/login?next=${encodeURIComponent('/students')}`,
@@ -124,7 +124,7 @@ test('a new user accepts the privacy notice once, then goes where they asked', a
   ).toHaveCount(0);
   await expect(page.getByRole('banner').getByRole('navigation')).toBeVisible();
 
-  // 4. Sign out, sign in again (login 3): no notice.
+  // 4. Sign out, sign in again (login 2): no notice.
   await page
     .getByRole('banner')
     .getByRole('button', { name: commonEn.auth.userMenu.signOut })

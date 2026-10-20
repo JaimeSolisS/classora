@@ -20,25 +20,27 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
 /**
  * Login budget (#27, ADR-0008): one run shares one `login.ip` budget of 50
  * per 15 minutes, and `demo.owner` has 10 failures per 15 minutes. Every
- * `make e2e` starts from an empty volume, so the budget is per run. Logins in
- * the whole run today: global setup 1, auth/session.spec.ts 8 (2 of them
- * wrong passwords), security/headers.spec.ts 1, auth/invitations.spec.ts 2,
- * auth/password-reset.spec.ts 8 (2 of them by createActiveUser),
+ * `make e2e` starts from an empty volume, so the budget is per run.
+ * createActiveUser invites a tutor or guardian with the shared Owner session
+ * (no login) and logs the Owner in only for a staff role (#36 rebalance).
+ * Logins in the whole run today: global setup 1, auth/session.spec.ts 8 (2
+ * of them wrong passwords), security/headers.spec.ts 1,
+ * auth/invitations.spec.ts 2, auth/password-reset.spec.ts 6,
  * auth/registration.spec.ts 2 (the first refused while the account is
  * pending: 1 failure on `e2e.parent`'s own `login.username` budget),
- * users/suspend.spec.ts 5 (1 by createActiveUser; 1 refused while the tutor
- * is suspended: a failure on `e2e.suspend.tutor`'s own budget),
- * users/roles.spec.ts 7 (2 by createActiveUser), students/students.spec.ts 2
- * (1 by createActiveUser), families/guardians.spec.ts 2 (1 by
- * createActiveUser), families/families.spec.ts 1 (the guardian; its account
- * is invited with the shared session, #172), auth/privacy-notice.spec.ts 3
- * (1 by createActiveUser), a11y/shell.spec.ts 2 (the privacy-notice scan,
- * 1 by createActiveUser; #174), families/consent.spec.ts 4 (2 parents
- * and 2 students; every account there is a self-registration approved by
- * the Owner or an invitation, never createActiveUser; #35) = 48 attempts,
- * 2 failures
- * for `demo.owner`. Keep the total well under both limits; never add a
- * setting that disables the limits.
+ * users/suspend.spec.ts 4 (1 refused while the tutor is suspended: a failure
+ * on `e2e.suspend.tutor`'s own budget), users/roles.spec.ts 6 (1 by
+ * createActiveUser for the Administrator), students/students.spec.ts 1,
+ * families/guardians.spec.ts 1 (the guardian; its account is a
+ * self-registration the Owner approves, #36), families/families.spec.ts 1
+ * (the guardian; its account is invited with the shared session, #172),
+ * auth/privacy-notice.spec.ts 2, a11y/shell.spec.ts 1 (the privacy-notice
+ * scan; #174), families/consent.spec.ts 4 (2 parents and 2 students; every
+ * account there is a self-registration approved by the Owner or an
+ * invitation, never createActiveUser; #35), preferences/preferences.spec.ts
+ * 2 (the tutor on two devices; #36) = 42 attempts, 2 failures for
+ * `demo.owner`. Keep the total well under both limits; never add a setting
+ * that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20
  * lookups and redemptions per 15 minutes for the run's one IP, invitations
@@ -46,25 +48,26 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * per user, #34). auth/invitations.spec.ts makes 3 (2 lookups, 1
  * redemption), auth/password-reset.spec.ts 5 (2 of them by
  * createActiveUser), users/suspend.spec.ts 1, users/roles.spec.ts 2,
- * students/students.spec.ts 1, families/guardians.spec.ts 1,
- * auth/privacy-notice.spec.ts 1 and a11y/shell.spec.ts 1 (all by
+ * students/students.spec.ts 1, auth/privacy-notice.spec.ts 1,
+ * a11y/shell.spec.ts 1 and preferences/preferences.spec.ts 1 (all by
  * createActiveUser), families/families.spec.ts 1
  * (createGuardianAccountViaPage), families/consent.spec.ts 3 (the minor's
  * invitation page: 1 lookup, 1 redemption refused by the consent gate and
  * 1 that succeeds; #35) = 19.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 48;
+export const LOGIN_ATTEMPTS_PER_RUN = 42;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 19;
 
 /**
  * Self-registration requests in one run (#169; `registration.ip` allows 10
- * per hour for the run's one IP): auth/registration.spec.ts sends 1 and
+ * per hour for the run's one IP): auth/registration.spec.ts sends 1,
  * families/consent.spec.ts 3 (createApprovedAccount for two parents and the
- * adult student, #35) = 4.
+ * adult student, #35) and families/guardians.spec.ts 1 (createApprovedAccount
+ * for the guardian, #36) = 5.
  */
-export const REGISTRATIONS_PER_RUN = 4;
+export const REGISTRATIONS_PER_RUN = 5;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

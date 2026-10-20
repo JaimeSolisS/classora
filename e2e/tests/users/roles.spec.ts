@@ -23,8 +23,9 @@ import { createActiveUser } from '../support/users';
 // belongs to one session, so the dialog always opens, and logins never touch
 // the shared session (#28 H2). The spec never changes `demo.owner`.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 7 logins (2 by
-// createActiveUser; I1: the tutor twice and the Owner once; I2: the
+// Budgets (#27, ADR-0008; see support/auth.ts): 6 logins (1 by
+// createActiveUser for the Administrator; the tutor is invited with the
+// shared Owner session, #36; I1: the tutor twice and the Owner once; I2: the
 // Administrator and the Owner once each), no wrong password, and 2
 // redemption calls (createActiveUser, twice). The
 // Administrator invitation also reauthenticates the demo Owner once in the
@@ -149,7 +150,7 @@ test('a role change ends the user’s sessions; the next login has the new role'
   baseURL,
 }) => {
   test.setTimeout(TEST_TIMEOUT_MS);
-  // 1. The tutor exists with P1 (login 1, redemption call 1) and is signed
+  // 1. The tutor exists with P1 (no login, redemption call 1) and is signed
   // in in context B (login 2).
   await createActiveUser(playwright.request, baseURL!, {
     username: TUTOR,

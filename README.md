@@ -19,7 +19,9 @@ layer; its home page shows whether the API is live,
 calling it through a typed client generated from the API's OpenAPI document.
 It also has its design system foundation (central design tokens, Tailwind CSS,
 shadcn/ui components catalogued in Storybook), a light/dark/system theme
-switch, and Spanish and English UI text with a language switch. The API has
+switch, and Spanish and English UI text with a language switch. Signed-in
+users' language and theme are saved to their account and applied when they
+sign in on any device. The API has
 username and password login with server-side sessions (an HTTP-only session
 cookie) that expire after a period of inactivity or a maximum lifetime, with
 rate limits on login, password confirmation, one-time links and account
@@ -60,8 +62,9 @@ On the Guardians page, Owners and administrators keep a profile for every
 parent or guardian (with or without a login), link it to the guardian's
 account, and link guardians to students with a relationship (a child may
 have several guardians, and a guardian several children). A signed-in
-guardian sees only their linked children (minors in full, adult students
-only with the student's consent), never the child's other guardians, and
+guardian sees only their linked children (minors in full; an adult
+student's personal details only with that student's consent), never the
+child's other guardians, and
 unlinking takes effect on their next request.
 A student profile can have an optional login. A minor's login works only
 while a linked guardian has consented (in the app, or recorded by staff on

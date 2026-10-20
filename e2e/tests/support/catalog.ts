@@ -6,6 +6,11 @@ import { readFileSync } from 'node:fs';
 
 type Common = {
   apiStatus: { live: string };
+  theme: {
+    label: string;
+    options: Record<'light' | 'dark' | 'system', string>;
+  };
+  language: { label: string; options: Record<'es' | 'en', string> };
   notFound: { title: string };
   nav: {
     home: string;

@@ -242,6 +242,8 @@ test.describe('the login page', () => {
     expect(me.status).toBe(401);
   });
 
+  // #36: the local English choice applies to the login page; after signing
+  // in, demo.owner's stored language (es) wins and replaces it.
   test('in English, the login page uses the en catalog and signs in', async ({
     page,
   }) => {
@@ -266,7 +268,13 @@ test.describe('the login page', () => {
 
     await expect(page).toHaveURL('/');
     await expect(
-      page.getByText(signedInAs(commonEn, 'Demo Owner')),
+      page.getByText(signedInAs(common, 'Demo Owner')),
     ).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'es');
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem('classora.language'),
+      ),
+    ).toBe('es');
   });
 });
