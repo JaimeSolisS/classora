@@ -66,6 +66,8 @@ const API_CODES = [
   'consent_already_given',
   'consent_already_revoked',
   'tz_change_requires_migration',
+  'approval_transition_invalid',
+  'approval_action_unsupported',
   'period_overlap',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).

@@ -52,6 +52,8 @@
   "consent_already_given": "Ese consentimiento ya está vigente.",
   "consent_already_revoked": "Ese consentimiento ya fue revocado.",
   "tz_change_requires_migration": "No se puede cambiar la zona horaria porque ya hay clases programadas.",
+  "approval_transition_invalid": "Esta solicitud ya fue resuelta o no admite esa acción ahora. La lista se actualizó.",
+  "approval_action_unsupported": "Este tipo de solicitud no admite esa acción.",
   "bad_request": "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.",
   "unauthorized": "Tu sesión no es válida. Inicia sesión de nuevo.",
   "forbidden": "No tienes permiso para realizar esta acción.",

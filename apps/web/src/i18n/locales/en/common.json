@@ -32,7 +32,7 @@
     "users": "Users",
     "invitations": "Invitations",
     "passwordResets": "Password resets",
-    "registrations": "Account requests",
+    "approvals": "Approvals",
     "catalog": "Catalog",
     "settings": "Settings",
     "students": "Students",
@@ -256,42 +256,86 @@
     "goHome": "Go to home",
     "backToLogin": "Back to sign in"
   },
-  "registrations": {
-    "title": "Account requests",
-    "intro": "Confirm each person's identity outside the app before you approve. Approving a request never enrolls anyone.",
+  "approvals": {
+    "title": "Approvals",
+    "intro": "Requests waiting for a decision. For account requests, confirm each person's identity outside the app before you approve; approving never enrolls anyone.",
     "filter": {
-      "label": "Status",
+      "status": "Status",
+      "type": "Type",
+      "allTypes": "All types",
+      "assignee": "Assigned to"
+    },
+    "status": {
+      "open": "Open",
       "pending": "Pending",
       "approved": "Approved",
-      "rejected": "Rejected"
+      "rejected": "Rejected",
+      "changes_requested": "Changes requested",
+      "cancelled": "Cancelled",
+      "all": "All"
+    },
+    "assignee": {
+      "any": "Anyone",
+      "me": "Assigned to me",
+      "unassigned": "Unassigned"
+    },
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High"
+    },
+    "types": {
+      "identity_registration": "Account request"
+    },
+    "summary": {
+      "registration": "{{name}} ({{username}}) · {{role}}"
     },
     "list": {
       "title": "Requests",
-      "displayName": "Name",
-      "username": "Username",
-      "role": "Requested role",
+      "type": "Type",
+      "request": "Request",
+      "requester": "Requested by",
       "submittedAt": "Submitted",
-      "decidedAt": "Decided",
+      "priority": "Priority",
+      "status": "Status",
       "actions": "Actions",
-      "empty": "There are no requests here.",
+      "system": "System",
+      "empty": "Nothing to review.",
       "pagination": "Pages",
       "previous": "Previous",
       "next": "Next",
       "range": "{{from}}–{{to}} of {{total}}"
     },
-    "approve": "Approve",
-    "reject": "Reject",
-    "approveFor": "Approve {{username}}",
-    "rejectFor": "Reject {{username}}",
-    "approveTitle": "Approve the request of {{name}} ({{role}})",
-    "rejectTitle": "Reject the request of {{name}} ({{role}})",
-    "approveConfirm": "Confirm that you have verified the identity of {{name}} ({{role}}).",
-    "rejectConfirm": "The username {{username}} can't be used again.",
-    "approving": "Approving…",
-    "rejecting": "Rejecting…",
-    "cancel": "Cancel",
-    "approved": "Request approved.",
-    "rejected": "Request rejected."
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "requestChanges": "Request changes",
+      "approveFor": "Approve {{name}}",
+      "rejectFor": "Reject {{name}}",
+      "requestChangesFor": "Request changes from {{name}}"
+    },
+    "dialog": {
+      "approveTitle": "Approve: {{summary}}",
+      "rejectTitle": "Reject: {{summary}}",
+      "requestChangesTitle": "Request changes: {{summary}}",
+      "registrationApprove": "Confirm that you have verified the identity of {{name}} ({{role}}).",
+      "registrationReject": "The username {{username}} can't be used again.",
+      "approveConfirm": "Approve this request?",
+      "rejectConfirm": "Reject this request? This can't be undone.",
+      "requestChangesConfirm": "The request goes back to the person who sent it, with your reason.",
+      "reasonRequiredLabel": "Reason (required)",
+      "reasonOptionalLabel": "Reason (optional)",
+      "reasonRequired": "Give a reason.",
+      "approving": "Approving…",
+      "rejecting": "Rejecting…",
+      "requestingChanges": "Sending…",
+      "cancel": "Cancel"
+    },
+    "done": {
+      "approved": "Approved.",
+      "rejected": "Rejected.",
+      "changesRequested": "Changes requested."
+    }
   },
   "users": {
     "title": "Users",

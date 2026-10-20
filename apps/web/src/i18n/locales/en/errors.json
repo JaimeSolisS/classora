@@ -52,6 +52,8 @@
   "consent_already_given": "That consent is already active.",
   "consent_already_revoked": "That consent was already revoked.",
   "tz_change_requires_migration": "The time zone can't be changed because classes are already scheduled.",
+  "approval_transition_invalid": "This request was already decided or can't take that action now. The list has been updated.",
+  "approval_action_unsupported": "This type of request doesn't support that action.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",
