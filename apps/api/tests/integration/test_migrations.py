@@ -1,6 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
-M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A); each test uses a fresh
-database."""
+M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A); each test
+uses a fresh database."""
 
 import asyncio
 import uuid
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0019"
+HEAD = "0020"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -87,6 +87,7 @@ GROUPING_TABLES = ["families", "family_guardians", "family_students"]
 PRIVACY_TABLES = ["privacy_notice_acceptances", "privacy_notice_versions"]
 CONSENT_TABLES = ["consent_records"]
 PREFERENCE_TABLES = ["user_preferences"]
+SETTINGS_TABLES = ["business_settings", "operating_hours"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -171,6 +172,9 @@ def test_history_is_linear_with_one_head():
     preferences = script.get_revision("0019")
     assert preferences.down_revision == "0018"
     assert Path(preferences.path).name == "0019_identity_user_preferences.py"
+    settings = script.get_revision("0020")
+    assert settings.down_revision == "0019"
+    assert Path(settings.path).name == "0020_administration_business_settings.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -212,6 +216,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PROCRASTINATE_TABLES,
             *RATE_LIMIT_TABLES,
             *REGISTRATION_TABLES,
+            *SETTINGS_TABLES,
         ]
     )
 
@@ -1948,3 +1953,198 @@ def test_deleting_a_user_with_preferences_is_rejected(fresh_database_url):
 
     with pytest.raises(IntegrityError, match="fk_user_preferences_user_id_users"):
         run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": user})
+
+
+# --- 0020: business settings and operating hours (#37 A) ------------------------------
+
+
+def test_0020_adds_exactly_the_settings_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0019")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0020")
+
+    assert public_tables(fresh_database_url) - before == set(SETTINGS_TABLES)
+
+    command.downgrade(config, "0019")
+
+    assert version_nums(fresh_database_url) == ["0019"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_business_settings_columns_and_constraints(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    assert _columns(fresh_database_url, "business_settings") == {
+        **STANDARD_COLUMNS,
+        "singleton": ("boolean", "NO", None, "true"),
+        "center_name": ("character varying", "NO", 100, None),
+        "contact_phone": ("character varying", "YES", 32, None),
+        "contact_email": ("character varying", "YES", 254, None),
+        "address": ("character varying", "YES", 300, None),
+        "time_zone": (
+            "character varying",
+            "NO",
+            64,
+            "'America/Mexico_City'::character varying",
+        ),
+    }
+    constraints = _constraints(fresh_database_url, "business_settings")
+    assert set(constraints) == {
+        "pk_business_settings",
+        "uq_business_settings_singleton",
+        "ck_business_settings_singleton_true",
+        "ck_business_settings_center_name_trimmed",
+        "ck_business_settings_center_name_not_blank",
+        "ck_business_settings_email_format",
+        "ck_business_settings_phone_format",
+        "ck_business_settings_address_trimmed",
+    }
+    assert set(_indexes(fresh_database_url, "business_settings")) == {
+        "pk_business_settings",
+        "uq_business_settings_singleton",
+    }
+
+
+def test_operating_hours_columns_and_constraints(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    columns = _columns(fresh_database_url, "operating_hours")
+    assert columns == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "weekday": ("smallint", "NO", None, None),
+        "opens_at": ("time without time zone", "NO", None, None),
+        "closes_at": ("time without time zone", "NO", None, None),
+    }
+    assert set(_constraints(fresh_database_url, "operating_hours")) == {
+        "pk_operating_hours",
+        "uq_operating_hours_weekday",
+        "ck_operating_hours_weekday_range",
+        "ck_operating_hours_opens_before_closes",
+        "ck_operating_hours_zero_seconds",
+    }
+
+
+def test_0020_inserts_the_settings_row_and_the_default_week(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT singleton, center_name, contact_phone, contact_email, address,"
+        " time_zone, version FROM business_settings",
+    )
+    assert tuple(row) == (
+        True,
+        "Classora",
+        None,
+        None,
+        None,
+        "America/Mexico_City",
+        1,
+    )
+    hours = run_sql(
+        fresh_database_url,
+        "SELECT weekday, opens_at, closes_at FROM operating_hours ORDER BY weekday",
+    )
+    assert [
+        (h.weekday, h.opens_at.isoformat(), h.closes_at.isoformat()) for h in hours
+    ] == [
+        *((day, "09:00:00", "20:00:00") for day in range(1, 6)),
+        (6, "09:00:00", "14:00:00"),
+    ]
+    # Raw inserts: no audit event.
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM audit_events")
+    assert count.n == 0
+
+
+@pytest.mark.parametrize(
+    ("statement", "constraint"),
+    [
+        (
+            "INSERT INTO business_settings (center_name) VALUES ('Otro')",
+            "uq_business_settings_singleton",
+        ),
+        (
+            "INSERT INTO business_settings (singleton, center_name)"
+            " VALUES (false, 'Otro')",
+            "ck_business_settings_singleton_true",
+        ),
+        (
+            "UPDATE business_settings SET singleton = false",
+            "ck_business_settings_singleton_true",
+        ),
+        (
+            "UPDATE business_settings SET center_name = '   '",
+            "ck_business_settings_center_name",
+        ),
+        (
+            "UPDATE business_settings SET center_name = ' Classora'",
+            "ck_business_settings_center_name_trimmed",
+        ),
+        (
+            "UPDATE business_settings SET contact_email = 'nope'",
+            "ck_business_settings_email_format",
+        ),
+        (
+            "UPDATE business_settings SET contact_phone = '12'",
+            "ck_business_settings_phone_format",
+        ),
+        (
+            "UPDATE business_settings SET address = 'Calle 1 '",
+            "ck_business_settings_address_trimmed",
+        ),
+        (
+            "INSERT INTO operating_hours (weekday, opens_at, closes_at)"
+            " VALUES (0, '09:00', '10:00')",
+            "ck_operating_hours_weekday_range",
+        ),
+        (
+            "INSERT INTO operating_hours (weekday, opens_at, closes_at)"
+            " VALUES (8, '09:00', '10:00')",
+            "ck_operating_hours_weekday_range",
+        ),
+        (
+            "UPDATE operating_hours SET closes_at = opens_at WHERE weekday = 1",
+            "ck_operating_hours_opens_before_closes",
+        ),
+        (
+            "UPDATE operating_hours SET opens_at = '21:00' WHERE weekday = 1",
+            "ck_operating_hours_opens_before_closes",
+        ),
+        (
+            "UPDATE operating_hours SET opens_at = '09:00:30' WHERE weekday = 1",
+            "ck_operating_hours_zero_seconds",
+        ),
+        (
+            "INSERT INTO operating_hours (weekday, opens_at, closes_at)"
+            " VALUES (1, '07:00', '08:00')",
+            "uq_operating_hours_weekday",
+        ),
+    ],
+)
+def test_invalid_settings_rows_are_rejected(fresh_database_url, statement, constraint):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(fresh_database_url, statement)
+
+
+def test_valid_contact_values_and_a_sunday_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    run_sql(
+        fresh_database_url,
+        "UPDATE business_settings SET contact_email = 'hola@centro.mx',"
+        " contact_phone = '+52 (55) 1234-5678', address = 'Av. Reforma 1'",
+    )
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO operating_hours (weekday, opens_at, closes_at)"
+        " VALUES (7, '10:00', '13:00')",
+    )

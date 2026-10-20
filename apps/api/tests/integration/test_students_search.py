@@ -282,7 +282,7 @@ def staff_principal() -> Principal:
     )
 
 
-def test_the_list_takes_three_statements_for_thirty_rows(seeded_url):
+def test_the_list_takes_four_statements_for_thirty_rows(seeded_url):
     level_ids = [
         row.id for row in run_sql(seeded_url, "SELECT id FROM education_levels")
     ]
@@ -309,7 +309,9 @@ def test_the_list_takes_three_statements_for_thirty_rows(seeded_url):
                 page=OffsetParams(limit=30, offset=0),
             ),
         )
-        assert statements == 3, q
+        # Three, plus the center time zone for "today" (#37: once per Unit
+        # of Work).
+        assert statements == 4, q
         if q is None:
             assert page.total == 30
             assert len(page.items) == 30

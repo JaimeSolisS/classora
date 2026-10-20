@@ -51,6 +51,7 @@
   "consent_not_applicable": "That consent doesn't apply at the student's age.",
   "consent_already_given": "That consent is already active.",
   "consent_already_revoked": "That consent was already revoked.",
+  "tz_change_requires_migration": "The time zone can't be changed because classes are already scheduled.",
   "bad_request": "We couldn't process the request. Check the data and try again.",
   "unauthorized": "Your session isn't valid. Please sign in again.",
   "forbidden": "You don't have permission to do this.",

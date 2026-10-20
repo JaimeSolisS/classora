@@ -23,8 +23,9 @@ import { es } from 'date-fns/locale/es';
 import type { Language } from '@/i18n/language';
 
 /**
- * The center's time zone. M3-01 replaces this constant with the business
- * setting read from the API; until then every caller passes this value.
+ * The default center time zone (ADR-0004). The center's zone is a business
+ * setting (#37) that the app reads from the session through
+ * `useCenterTimeZone()`; this value is only for signed-out pages and tests.
  */
 export const DEFAULT_CENTER_TIME_ZONE = 'America/Mexico_City';
 

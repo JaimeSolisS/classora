@@ -217,6 +217,7 @@ describe('after a change (K3, K4)', () => {
         permissions: TEST_USER.permissions,
         privacy_notice_required: false,
         preferences: TEST_USER.preferences,
+        center_time_zone: TEST_USER.center_time_zone,
       },
     });
     expect(JSON.stringify(cached)).not.toContain(NEW_CSRF);

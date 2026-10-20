@@ -70,6 +70,7 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['consent_not_applicable', 'consent_not_applicable'],
   ['consent_already_given', 'consent_already_given'],
   ['consent_already_revoked', 'consent_already_revoked'],
+  ['tz_change_requires_migration', 'tz_change_requires_migration'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

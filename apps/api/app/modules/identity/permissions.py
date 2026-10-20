@@ -64,6 +64,7 @@ USER_PASSWORD_RESET_ISSUE = "user.password_reset.issue"  # noqa: S105
 REGISTRATION_REVIEW = "registration.review"
 AUDIT_VIEW = "audit.view"
 CATALOG_MANAGE = "catalog.manage"
+SETTINGS_MANAGE = "settings.manage"
 STUDENT_VIEW = "student.view"
 STUDENT_MANAGE = "student.manage"
 GUARDIAN_VIEW = "guardian.view"
@@ -94,6 +95,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(REGISTRATION_REVIEW),
     PermissionDef(AUDIT_VIEW),
     PermissionDef(CATALOG_MANAGE),
+    PermissionDef(SETTINGS_MANAGE),
     PermissionDef(STUDENT_VIEW),
     PermissionDef(STUDENT_MANAGE),
     PermissionDef(GUARDIAN_VIEW),
@@ -125,6 +127,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 REGISTRATION_REVIEW,
                 AUDIT_VIEW,
                 CATALOG_MANAGE,
+                SETTINGS_MANAGE,
                 STUDENT_VIEW,
                 STUDENT_MANAGE,
                 GUARDIAN_VIEW,

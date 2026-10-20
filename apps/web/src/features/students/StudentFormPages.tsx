@@ -6,7 +6,8 @@ import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
-import { DEFAULT_CENTER_TIME_ZONE, todayInZone } from '@/lib/time';
+import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
+import { todayInZone } from '@/lib/time';
 import {
   ACTIVE_LEVELS_QUERY_KEY,
   createStudent,
@@ -62,7 +63,8 @@ export function NewStudentPage() {
   const titleId = useId();
   const levels = useActiveLevels();
   const store = useStore();
-  const today = todayInZone(DEFAULT_CENTER_TIME_ZONE);
+  const timeZone = useCenterTimeZone();
+  const today = todayInZone(timeZone);
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,7 +103,8 @@ export function EditStudentPage() {
   const levels = useActiveLevels();
   const store = useStore();
   useDocumentTitle(t('students.edit'));
-  const today = todayInZone(DEFAULT_CENTER_TIME_ZONE);
+  const timeZone = useCenterTimeZone();
+  const today = todayInZone(timeZone);
 
   if (detail.isError) {
     const notFound =

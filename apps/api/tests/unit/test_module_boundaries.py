@@ -116,20 +116,23 @@ def test_the_real_tree_is_scanned():
     ]
 
 
+def targets(module: str) -> set[str]:
+    """Every ``app.*`` name the files of ``app/modules/<module>`` import."""
+    found: set[str] = set()
+    for path in (API_ROOT / "app" / "modules" / module).rglob("*.py"):
+        name = module_name(API_ROOT, path)
+        package = name if path.name == "__init__.py" else name[:-1]
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            found.update(import_targets(node, package))
+    return {t for t in found if t.startswith("app.")}
+
+
 def test_families_imports_only_core_and_the_catalog_and_identity_public_api():
     # #33 H3, #34 H3: families uses app.core, its own files, catalog.service /
-    # catalog.schemas and identity.service / identity.schemas only; neither
-    # catalog nor identity imports anything from families.
-    def targets(module: str) -> set[str]:
-        found: set[str] = set()
-        for path in (API_ROOT / "app" / "modules" / module).rglob("*.py"):
-            name = module_name(API_ROOT, path)
-            package = name if path.name == "__init__.py" else name[:-1]
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                found.update(import_targets(node, package))
-        return {t for t in found if t.startswith("app.")}
-
+    # catalog.schemas, identity.service / identity.schemas and (#37 E6)
+    # administration.service only; neither catalog nor identity imports
+    # anything from families.
     allowed = (
         "app.core.",
         "app.modules.families.",
@@ -137,6 +140,7 @@ def test_families_imports_only_core_and_the_catalog_and_identity_public_api():
         "app.modules.catalog.schemas",
         "app.modules.identity.service",
         "app.modules.identity.schemas",
+        "app.modules.administration.service",
     )
     families = targets("families")
     assert "app.modules.catalog.service" in families  # the scan found imports
@@ -144,6 +148,24 @@ def test_families_imports_only_core_and_the_catalog_and_identity_public_api():
     assert not {t for t in families if not t.startswith(allowed)}
     assert not {t for t in targets("catalog") if "families" in t}
     assert not {t for t in targets("identity") if "families" in t}
+
+
+def test_administration_imports_no_other_module():
+    # #37 E6: administration (business settings, the time-zone registry)
+    # sits below the other modules; identity and families reach it only
+    # through administration.service.
+    administration = targets("administration")
+    # The scan found imports.
+    assert any(t.startswith("app.modules.administration.") for t in administration)
+    assert not {
+        t
+        for t in administration
+        if t.startswith("app.modules.")
+        and not t.startswith("app.modules.administration.")
+    }
+    for module in ("identity", "families"):
+        reached = {t for t in targets(module) if "administration" in t}
+        assert reached == {"app.modules.administration.service"}, module
 
 
 # --- The checker on a synthetic tree (B5) ----------------------------------------

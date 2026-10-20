@@ -130,9 +130,9 @@ def student_access_level(
     """``"full"``, ``"limited"``, or ``None`` when the student is not visible.
 
     ``is_minor`` is the student's status today in the center's time zone
-    (``ages.is_minor(birthdate, center_today())``), passed in so the function
-    stays pure. With several roles, the highest level wins (``full`` >
-    ``limited``).
+    (``ages.is_minor(birthdate, administration.service.center_today(session))``),
+    passed in so the function stays pure. With several roles, the highest
+    level wins (``full`` > ``limited``).
 
     A linked guardian gets ``full`` for a minor and, for an adult, only when
     the student gave **that** guardian a ``guardian_academic_access`` consent

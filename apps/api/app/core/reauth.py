@@ -170,7 +170,7 @@ _ACTIONS: Final = (
         "settings.payment_methods_or_time_zone",
         "Change the payment methods or the time zone in the business settings.",
         "business-settings changes to payment methods or time zone",
-        "M8-04",
+        "#37 (time zone), M8-04 (payment methods)",
     ),
     SensitiveAction(
         "data.personal_export",

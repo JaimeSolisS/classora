@@ -34,6 +34,9 @@ from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as administration_router
+from app.modules.administration.settings_router import (
+    router as business_settings_router,
+)
 from app.modules.catalog.router import router as catalog_router
 from app.modules.families import service as families_service
 from app.modules.families.consent_router import router as consent_router
@@ -113,6 +116,7 @@ def build_app(
     app.include_router(registrations_router)
     app.include_router(user_admin_router)
     app.include_router(administration_router)
+    app.include_router(business_settings_router)
     app.include_router(catalog_router)
     app.include_router(families_router)
     app.include_router(guardians_router)

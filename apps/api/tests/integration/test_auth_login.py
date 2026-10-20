@@ -165,6 +165,7 @@ def test_success_returns_the_session_user(seeded_url, client):
         "csrf_token": csrf_for(only_set_cookie(response)),
         "privacy_notice_required": False,
         "preferences": {"language": None, "theme": None},
+        "center_time_zone": "America/Mexico_City",
     }
     cookie = only_set_cookie(response)
     assert cookie.value not in response.text
@@ -483,4 +484,5 @@ def test_login_documents_401_403_and_422_as_problem_details(client):
         "csrf_token",
         "privacy_notice_required",
         "preferences",
+        "center_time_zone",
     }

@@ -34,6 +34,7 @@
     "passwordResets": "Password resets",
     "registrations": "Account requests",
     "catalog": "Catalog",
+    "settings": "Settings",
     "students": "Students",
     "guardians": "Guardians",
     "families": "Families"
@@ -808,5 +809,52 @@
   },
   "preferences": {
     "saveFailed": "Your preference couldn't be saved to your account. For now it applies only on this device."
+  },
+  "settings": {
+    "title": "Settings",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "reload": "Reload",
+    "brand": {
+      "title": "Center",
+      "centerName": "Center name",
+      "phone": "Phone",
+      "email": "Email",
+      "address": "Address"
+    },
+    "hours": {
+      "title": "Operating hours",
+      "help": "Days that are not open are closed. Times are in the center's time zone.",
+      "open": "Open",
+      "openOn": "Open on {{day}}",
+      "opensAt": "Opening time",
+      "closesAt": "Closing time",
+      "dayOpensAt": "{{day}} opening time",
+      "dayClosesAt": "{{day}} closing time"
+    },
+    "timeZone": {
+      "title": "Time zone",
+      "label": "Center time zone",
+      "help": "Dates and times in the app use this zone. Changing it asks for your password, and it can't be changed once classes are scheduled."
+    },
+    "weekdays": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "validation": {
+      "nameRequired": "Enter the center name.",
+      "nameTooLong": "Use at most 100 characters.",
+      "emailInvalid": "Enter a valid email address, like name@example.com.",
+      "phoneInvalid": "Enter a valid phone number, for example +52 55 1234 5678.",
+      "addressTooLong": "Use at most 300 characters.",
+      "timeRequired": "Enter a time.",
+      "closesAfterOpens": "Closing time must be after opening time."
+    }
   }
 }

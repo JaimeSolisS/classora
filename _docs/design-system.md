@@ -145,11 +145,14 @@ Rules for every user-visible string, date and amount in `apps/web`
   Show them with `formatLocalDate(localDate, { language })`: it never goes
   through `new Date('YYYY-MM-DD')` or a zone conversion, so every viewer sees
   the same day. `todayInZone(timeZone)` gives today's date in a zone.
-- **Center time zone:** `DEFAULT_CENTER_TIME_ZONE` (`America/Mexico_City`) is
-  the one source until M3-01 replaces it with the business setting. Every
-  helper takes the zone as a required argument; nothing uses the browser's
-  zone. In components, `useFormatters()` (`src/lib/formatters.ts`) binds the
-  active language and the center zone.
+- **Center time zone:** a business setting (#37) that the session carries
+  (`SessionUser.center_time_zone`). Components read it with
+  `useCenterTimeZone()` (`features/auth`); `DEFAULT_CENTER_TIME_ZONE`
+  (`America/Mexico_City`) is only the value for signed-out pages and tests.
+  Every helper takes the zone as a required argument; nothing uses the
+  browser's zone. In components, `useFormatters()` (`src/lib/formatters.ts`)
+  binds the active language and the center zone, and follows a zone change
+  (a settings save refreshes the session).
 - **Local to instant:** `localDateTimeToInstant(localDate, 'HH:mm', timeZone)`
   and `localDayBounds(localDate, timeZone)` (end exclusive, so 23- and 25-hour
   days work). DST follows Temporal's `'compatible'` rule: a time in a
@@ -277,6 +280,12 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   picker and the student's "Link guardian" dialog; no combobox dependency.
 - **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
   account" as a text badge.
+- **`SettingsForm`** (`features/settings`, #37): the business settings in
+  three fieldsets of one form. Each operating-hours row has an "Open"
+  checkbox and two `type="time"` inputs (15-minute step) that are disabled
+  while the day is closed; every control's accessible name includes the day
+  (for example "Monday opening time"). A closing time not after the opening
+  time is an error on the closing field. "Saved." is a polite status.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

@@ -1,11 +1,15 @@
-"""Ages and the center date (#33 B1-B3; ADR-0007 D17)."""
+"""Ages and the date in a zone (#33 B1-B3, #37 E2; ADR-0007 D17).
+
+The center's zone comes from the business settings (#37); the integration
+tests (``test_business_settings.py``) prove ``administration.service.
+center_today`` reads it. Here ``today_in`` gets the default zone."""
 
 from datetime import UTC, date, datetime
 
 import pytest
 
 from app.core import clock as app_clock
-from app.core.clock import DEFAULT_CENTER_TIME_ZONE, center_today
+from app.core.clock import DEFAULT_CENTER_TIME_ZONE, today_in
 from app.modules.families import service
 from app.modules.families.ages import is_minor
 
@@ -19,12 +23,24 @@ def test_the_center_zone_is_mexico_city_and_resolves_without_tzdata():
     )
 
 
-def test_center_today_is_the_mexico_city_date(clock):
+def test_today_in_mexico_city(clock):
     clock.set(datetime(2026, 10, 18, 5, 30, tzinfo=UTC))
 
-    assert center_today() == date(2026, 10, 17)
+    assert today_in(DEFAULT_CENTER_TIME_ZONE) == date(2026, 10, 17)
     clock.set(datetime(2026, 10, 18, 6, 0, tzinfo=UTC))
-    assert center_today() == date(2026, 10, 18)
+    assert today_in(DEFAULT_CENTER_TIME_ZONE) == date(2026, 10, 18)
+
+
+def test_today_in_follows_the_zone_it_is_given(clock):
+    clock.set(datetime(2026, 10, 17, 10, 30, tzinfo=UTC))
+
+    assert today_in("Pacific/Kiritimati") == date(2026, 10, 18)
+    assert today_in("America/Mexico_City") == date(2026, 10, 17)
+    assert today_in("UTC") == date(2026, 10, 17)
+
+
+def test_the_clock_has_no_zone_free_center_today():
+    assert not hasattr(app_clock, "center_today")
 
 
 def test_the_18th_birthday_starts_at_midnight_in_mexico_city(clock):
@@ -33,9 +49,9 @@ def test_the_18th_birthday_starts_at_midnight_in_mexico_city(clock):
     # 23:59:59 on the 18th in Mexico City; the UTC date is already the 19th.
     clock.set(datetime(2026, 10, 19, 5, 59, 59, tzinfo=UTC))
     assert app_clock.now().date() == date(2026, 10, 19)
-    assert is_minor(born, center_today()) is True
+    assert is_minor(born, today_in(DEFAULT_CENTER_TIME_ZONE)) is True
     clock.set(datetime(2026, 10, 19, 6, 0, 0, tzinfo=UTC))
-    assert is_minor(born, center_today()) is False
+    assert is_minor(born, today_in(DEFAULT_CENTER_TIME_ZONE)) is False
 
 
 @pytest.mark.parametrize(

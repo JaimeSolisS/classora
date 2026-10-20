@@ -24,7 +24,7 @@ EXPECTED_ACTIONS = {
     "finance.refund_or_reversal": "M6-15",
     "finance.correction": "M6-15",
     "data.retention_or_deletion": "M8-12",
-    "settings.payment_methods_or_time_zone": "M8-04",
+    "settings.payment_methods_or_time_zone": "#37 (time zone), M8-04 (payment methods)",
     "data.personal_export": "M8-07",
 }
 

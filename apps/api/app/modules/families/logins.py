@@ -44,8 +44,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import record_audit_event
-from app.core.clock import center_today
 from app.core.models import ensure_version
+from app.modules.administration import service as administration
 from app.modules.families.ages import is_minor
 from app.modules.families.errors import (
     GuardianConsentRequiredError,
@@ -109,7 +109,9 @@ async def has_login_basis(
 ) -> bool:
     """B3 steps 2-3 for this profile: an adult, or a minor with a valid
     consent. ``birthdate`` overrides the stored one (#35 E5)."""
-    if not is_minor(birthdate or student.birthdate, center_today()):
+    if not is_minor(
+        birthdate or student.birthdate, await administration.center_today(session)
+    ):
         return True
     return bool(await valid_login_consent_ids(session, student.id))
 

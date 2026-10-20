@@ -135,6 +135,7 @@ def test_saved_values_come_back_on_login_me_and_password_change(
         "csrf_token",
         "privacy_notice_required",
         "preferences",
+        "center_time_zone",
     }
 
 

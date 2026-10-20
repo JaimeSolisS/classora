@@ -1,4 +1,13 @@
-"""Reading the audit log (spec §9; architecture §4.4 cursor pagination).
+"""The administration module's public service (ADR-0002).
+
+- The business settings (#37): :func:`get_business_settings`,
+  :func:`update_business_settings`, the center time zone
+  (:func:`get_center_time_zone`, :func:`center_today`) and the time-zone
+  dependency registry (:func:`register_time_zone_dependency`); implemented in
+  :mod:`app.modules.administration.settings`.
+- Reading the audit log, below.
+
+**Audit log** (spec §9; architecture §4.4 cursor pagination).
 
 Newest first, by ``(occurred_at DESC, id DESC)``. The cursor is the keyset
 position ``[occurred_at, id]`` of the last item of a page; the next page
@@ -23,6 +32,30 @@ from app.core.pagination import (
     decode_cursor,
 )
 from app.modules.administration.schemas import AuditChange, AuditEventListItem
+from app.modules.administration.settings import (
+    TimeZoneDependency as TimeZoneDependency,
+)
+from app.modules.administration.settings import (
+    center_today as center_today,
+)
+from app.modules.administration.settings import (
+    get_business_settings as get_business_settings,
+)
+from app.modules.administration.settings import (
+    get_center_time_zone as get_center_time_zone,
+)
+from app.modules.administration.settings import (
+    register_time_zone_dependency as register_time_zone_dependency,
+)
+from app.modules.administration.settings import (
+    time_zone_dependencies as time_zone_dependencies,
+)
+from app.modules.administration.settings import (
+    unregister_time_zone_dependency as unregister_time_zone_dependency,
+)
+from app.modules.administration.settings import (
+    update_business_settings as update_business_settings,
+)
 
 
 @dataclass(frozen=True)

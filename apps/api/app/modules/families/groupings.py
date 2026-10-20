@@ -38,9 +38,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal, RecordNotFoundError, authorize_record
-from app.core.clock import center_today
 from app.core.models import Model, ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
+from app.modules.administration import service as administration
 from app.modules.families import search
 from app.modules.families.ages import is_minor
 from app.modules.families.errors import FamilyInactiveError, FamilyMemberConflictError
@@ -121,7 +121,7 @@ async def _students_of(
         .where(FamilyStudent.family_id == family_id)
         .order_by(*STUDENT_ORDER)
     )
-    today = center_today()
+    today = await administration.center_today(session)
     return [
         FamilyStudentItem(
             student_id=student.id,

@@ -365,8 +365,9 @@ def test_staff_requests_never_load_family_facts(module_seeded_url, owner, world)
         ),
     )
 
-    # The family, its students and its guardians.
-    assert statements == 3
+    # The family, its students and its guardians, plus the center time zone
+    # for the students' ages (#37: once per Unit of Work).
+    assert statements == 4
     assert len(detail.students) == 2
 
 

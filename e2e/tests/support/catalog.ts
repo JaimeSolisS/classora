@@ -19,6 +19,7 @@ type Common = {
     passwordResets: string;
     registrations: string;
     catalog: string;
+    settings: string;
     students: string;
     guardians: string;
     families: string;
@@ -35,7 +36,12 @@ type Common = {
       passwordReset: string;
       requestAccount: string;
     };
-    reauth: { title: string; password: string; confirm: string };
+    reauth: {
+      title: string;
+      password: string;
+      confirm: string;
+      cancel: string;
+    };
     userMenu: { signedInAs: string; signOut: string };
   };
   invitations: {
@@ -213,6 +219,24 @@ type Common = {
       removed: string;
     };
   };
+  settings: {
+    title: string;
+    save: string;
+    saved: string;
+    brand: { centerName: string };
+    hours: { openOn: string; dayOpensAt: string; dayClosesAt: string };
+    timeZone: { label: string };
+    weekdays: Record<
+      | 'monday'
+      | 'tuesday'
+      | 'wednesday'
+      | 'thursday'
+      | 'friday'
+      | 'saturday'
+      | 'sunday',
+      string
+    >;
+  };
   relationships: Record<string, string>;
   registrations: {
     title: string;
@@ -247,6 +271,7 @@ type Errors = {
   name_taken: string;
   education_level_has_active_subjects: string;
   guardian_consent_required: string;
+  reauth_required: string;
 };
 
 function read<T>(path: string): T {

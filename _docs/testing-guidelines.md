@@ -322,6 +322,12 @@ follows these rules.
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a
   Faker-generated value by position.
+- The business settings are a singleton (#37): specs never change the
+  center time zone (every spec relies on `America/Mexico_City`), and only
+  `e2e/tests/settings/settings.spec.ts` edits the settings, in one serial
+  test that restores what it changed. The shared demo Owner session is
+  never reauthenticated, so a zone change there always asks for the
+  password.
 - Named fixtures that tests read (for example one account per role, from M2)
   are added by their domain task as deterministic demo generators with
   documented keys. The task that adds them also lists them in this section.

@@ -65,6 +65,7 @@ const API_CODES = [
   'consent_not_applicable',
   'consent_already_given',
   'consent_already_revoked',
+  'tz_change_requires_migration',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

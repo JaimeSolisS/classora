@@ -117,6 +117,7 @@ Codes in use today:
 | `consent_not_applicable` | 422 | `student_login` for an adult or `guardian_academic_access` for a minor; the field error is on `["body","scope"]`. |
 | `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
 | `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
+| `tz_change_requires_migration` | 409 | A business-settings change of the center time zone while scheduled data exists (see Business settings); nothing changes. The body never names the data. |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -198,6 +199,9 @@ Implemented by M2-05 and M2-07 (ADR-0007 D7, D8) in
   - `POST /api/v1/auth/logout` (`authenticated()`): revokes the current session
     only, clears the cookie, `204`.
   - `GET /api/v1/auth/me` (`authenticated()`): the same body as login.
+    `SessionUser` also carries `center_time_zone` (#37), the center's IANA
+    time zone from the business settings: the web app shows instants and
+    computes "today" in it.
 - **Cookie:** `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and
   `Max-Age` equal to the session's absolute timeout (`43200` for staff,
   `2592000` for the others; no `Expires`). The server stays the authority:
@@ -725,6 +729,77 @@ delegation rules in `service.py`).
   state, `user_roles` and `user_delegations` `create`/`delete`, plus
   `identity.sessions_revoked`); no named event. `403`, `404`, `409`, `422`
   and a body that changes nothing write no event.
+
+### Business settings
+
+Implemented by M3-01 (#37; spec §9, §16; ADR-0004) in
+`apps/api/app/modules/administration/` (`settings.py`, `settings_router.py`).
+One record for the center: its name and contact details, the weekly
+operating hours and the **center time zone**.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/business-settings` | `authenticated()` | `BusinessSettingsDetail`: `center_name`, `contact_phone`, `contact_email`, `address`, `time_zone`, `operating_hours` (`[{weekday, opens_at, closes_at}]` by weekday, times `HH:MM`), `version`, `updated_at`. Every role reads it: nothing in it is personal data. |
+| `PATCH /api/v1/business-settings` | `require("settings.manage")` + `recent_auth_guard("settings.payment_methods_or_time_zone")` | Body `{version, center_name?, contact_phone?, contact_email?, address?, time_zone?, operating_hours?}`. |
+
+- **Singleton:** exactly one row, inserted by migration 0020 (`Classora`, no
+  contact details, `America/Mexico_City`, `version` 1) with the default hours
+  Monday to Friday 09:00-20:00 and Saturday 09:00-14:00 (Sunday closed). The
+  database allows no second row. `make seed` never touches it.
+- **Permission:** `settings.manage` (Owners and Administrators; not
+  delegable).
+- **Fields:** fields not sent stay unchanged. `center_name` is trimmed, 1-100
+  characters; `null` is `422`. `contact_phone`, `contact_email` (the
+  user-profile patterns, see User administration) and `address` (up to 300
+  characters) are trimmed; `null` or `""` clears them. `time_zone` is any
+  IANA key in the system zone data (`zoneinfo`); the web app offers Mexico's
+  zones; `null` is `422`.
+- **Operating hours:** local wall-clock times in the center's zone, one
+  interval per ISO weekday (1 = Monday … 7 = Sunday); a weekday that isn't
+  listed is **closed**. `operating_hours`, when sent, **replaces the whole
+  week**: 0-7 entries, each weekday at most once, `opens_at < closes_at`,
+  `HH:MM` times (`422` on the field otherwise; `null` is `422`). Only the
+  weekdays that changed are written. Split shifts and holiday hours are not
+  supported (closures are a separate record, M3-02).
+- **Reauthentication:** a `time_zone` that **differs** from the stored one
+  needs a recent reauthentication (`403 reauth_required`, ADR-0007 D10;
+  sensitive action `settings.payment_methods_or_time_zone`, which M8-04 also
+  applies to payment methods). Sending the current zone needs none.
+- **Check order:** `401` → `403 csrf_failed` → `403 privacy_notice_required`
+  → `403 permission_denied` → `422` → `403 reauth_required` (time-zone
+  change only) → `409 version_conflict` (the row is locked `FOR UPDATE`) →
+  `409 tz_change_requires_migration` (time-zone change only) → the update.
+  Any change, hours only included, bumps `version` once; a body that changes
+  nothing returns `200` with no new version and no audit event.
+- **Time-zone guard.** *Scheduled data* means rows whose stored **instants**
+  were computed from the center's local time: class sessions and recurrence
+  series (owner-delegated decision on #37, E1 (a)). Rows that hold only
+  calendar dates or local wall-clock times (academic periods, closures,
+  classroom and tutor availability, operating hours) keep their meaning
+  when the zone changes (ADR-0004) and don't count. A module that owns
+  scheduled data registers a check when the app is built:
+  `administration.service.register_time_zone_dependency(name, has_data)`,
+  where `has_data(session)` returns whether it holds any; a name registered
+  twice with a different check raises. A time-zone change runs every check
+  under the settings row lock and, if any returns true, answers `409
+  tz_change_requires_migration` and changes nothing. M3-01 registers no
+  check: M4-02 (#47, class sessions) and M4-08 (#53, recurrence series)
+  register theirs, and read the zone with
+  `administration.service.get_center_time_zone(session, for_share=True)`
+  (`FOR SHARE` on the settings row) while they create sessions, so a
+  concurrent zone change can't slip in. The migration job that would move
+  existing instants to a new zone has no issue yet.
+- **Reading the zone elsewhere:** `administration.service.get_center_time_zone(session)`
+  and `center_today(session)` (today's date in the center's zone, from the
+  application clock), cached in the Unit of Work (one statement per
+  request). `app.core.clock.today_in(zone)` is the pure helper;
+  `DEFAULT_CENTER_TIME_ZONE` is only the migration's default.
+  `SessionUser.center_time_zone` carries the zone to the web app (see
+  Sessions).
+- **Audit:** automatic only: `business_settings` `update` with the changed
+  fields; `operating_hours` `create`/`update`/`delete` per weekday. An
+  hours-only change writes only `operating_hours` events. `403`, `409`,
+  `422` and a body that changes nothing write no event.
 
 ### Academic catalog
 

@@ -15,6 +15,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
+from app.modules.administration.settings_models import BusinessSettings, OperatingHours
 from app.modules.catalog.models import EducationLevel, Subject
 from app.modules.families.models import (
     ConsentRecord,
@@ -62,12 +63,14 @@ def test_every_audited_model_lists_its_sensitive_columns():
 def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
+        BusinessSettings,
         ConsentRecord,
         EducationLevel,
         Family,
         FamilyGuardian,
         FamilyStudent,
         Guardian,
+        OperatingHours,
         PrivacyNoticeAcceptance,
         RegistrationRequest,
         Student,

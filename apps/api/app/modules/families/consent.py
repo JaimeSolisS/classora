@@ -44,7 +44,7 @@ from app.core.authz import (
     RecordNotFoundError,
     authorize_record,
 )
-from app.core.clock import center_today
+from app.modules.administration import service as administration
 from app.modules.families import logins, search
 from app.modules.families.ages import is_minor
 from app.modules.families.assignments import TutorAssignmentSource
@@ -184,9 +184,9 @@ class _LoginFacts:
 
 
 async def _login_facts(session: AsyncSession, student: Student) -> _LoginFacts:
-    if not is_minor(student.birthdate, center_today()) or not (
-        await logins.login_is_active_student(session, student.user_id)
-    ):
+    if not is_minor(
+        student.birthdate, await administration.center_today(session)
+    ) or not (await logins.login_is_active_student(session, student.user_id)):
         return _LoginFacts(active_minor_login=False, valid=())
     return _LoginFacts(
         active_minor_login=True,
@@ -246,7 +246,7 @@ async def get_consents(
     """The consent overview of a student (D2); ``404`` when hidden."""
     context = await _context(session, principal, source, student_id)
     student = _visible(principal, context, await session.get(Student, student_id))
-    minor = is_minor(student.birthdate, center_today())
+    minor = is_minor(student.birthdate, await administration.center_today(session))
     links = await _links(session, student.id)
     rows = [
         (record, guardian)
@@ -318,7 +318,10 @@ async def record_consent(
     if guardian is None or not guardian.is_active:
         raise ConsentGuardianInvalidError()
     if not applies_at_age(
-        body.scope, is_minor=is_minor(student.birthdate, center_today())
+        body.scope,
+        is_minor=is_minor(
+            student.birthdate, await administration.center_today(session)
+        ),
     ):
         raise ConsentNotApplicableError()
     existing = await session.scalar(

@@ -2442,6 +2442,108 @@
         }
       }
     },
+    "/api/v1/business-settings": {
+      "get": {
+        "tags": [
+          "business-settings"
+        ],
+        "summary": "Get Business Settings",
+        "description": "The center's name, contact details, time zone and weekly operating\nhours. A weekday that is not listed is closed.",
+        "operationId": "get_business_settings_api_v1_business_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "business-settings"
+        ],
+        "summary": "Update Business Settings",
+        "description": "Change the sent fields; fields not sent stay unchanged.\n``operating_hours`` replaces the whole week. Changing ``time_zone``\nneeds a password reauthentication in the last 5 minutes (``403\nreauth_required``) and is refused once classes are scheduled (``409\ntz_change_requires_migration``); sending the current zone needs none.",
+        "operationId": "update_business_settings_api_v1_business_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The settings changed since they were loaded (version_conflict); reload and retry. Or the time zone can't change because scheduled classes exist (tz_change_requires_migration).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/education-levels": {
       "get": {
         "tags": [
@@ -5097,6 +5199,176 @@
         "title": "AuditEventListItem",
         "description": "One audit event; the actor and the record are given by id."
       },
+      "BusinessSettingsDetail": {
+        "properties": {
+          "center_name": {
+            "type": "string",
+            "title": "Center Name"
+          },
+          "contact_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Phone"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone",
+            "description": "The center's IANA time zone."
+          },
+          "operating_hours": {
+            "items": {
+              "$ref": "#/components/schemas/OperatingHoursItem"
+            },
+            "type": "array",
+            "title": "Operating Hours"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "center_name",
+          "contact_phone",
+          "contact_email",
+          "address",
+          "time_zone",
+          "operating_hours",
+          "version",
+          "updated_at"
+        ],
+        "title": "BusinessSettingsDetail",
+        "description": "The center's business settings (``GET /api/v1/business-settings``).\n\n``operating_hours`` lists the open weekdays, by weekday; a weekday that\nis not listed is closed."
+      },
+      "BusinessSettingsUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "center_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center Name"
+          },
+          "contact_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^\\+?[0-9][0-9 ().-]{5,30}[0-9]$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Phone"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "time_zone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "description": "An IANA time zone key, e.g. America/Mexico_City."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Zone"
+          },
+          "operating_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OperatingHoursItem"
+                },
+                "type": "array",
+                "maxItems": 7
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Hours"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "BusinessSettingsUpdate",
+        "description": "A change to the settings (``PATCH /api/v1/business-settings``) with the\n``version`` the caller loaded. Fields not sent stay unchanged; ``null``\n(or an empty string) clears a contact field; ``null`` is ``422`` for\n``center_name``, ``time_zone`` and ``operating_hours``.\n``operating_hours``, when sent, replaces the whole week (0 to 7 entries,\none per weekday)."
+      },
       "CatalogStatus": {
         "type": "string",
         "enum": [
@@ -6845,6 +7117,38 @@
         ],
         "title": "OffsetPage[UserListItem]"
       },
+      "OperatingHoursItem": {
+        "properties": {
+          "weekday": {
+            "type": "integer",
+            "maximum": 7.0,
+            "minimum": 1.0,
+            "title": "Weekday",
+            "description": "ISO weekday: 1 = Monday … 7 = Sunday."
+          },
+          "opens_at": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Opens At",
+            "description": "A local wall-clock time, HH:MM (24-hour)."
+          },
+          "closes_at": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Closes At",
+            "description": "A local wall-clock time, HH:MM (24-hour)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "weekday",
+          "opens_at",
+          "closes_at"
+        ],
+        "title": "OperatingHoursItem",
+        "description": "The opening interval of one weekday, in the center's local time."
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -6998,6 +7302,7 @@
           "payroll.finalize",
           "registration.review",
           "schedule.override",
+          "settings.manage",
           "student.manage",
           "student.view",
           "user.admin_role.assign",
@@ -7354,6 +7659,11 @@
           "preferences": {
             "$ref": "#/components/schemas/UserPreferences",
             "description": "The user's stored UI language and theme (#36); null when never stored. The web app applies them at sign-in."
+          },
+          "center_time_zone": {
+            "type": "string",
+            "title": "Center Time Zone",
+            "description": "The center's IANA time zone (business settings, #37). The web app shows instants and computes today's date in it."
           }
         },
         "type": "object",
@@ -7365,7 +7675,8 @@
           "permissions",
           "csrf_token",
           "privacy_notice_required",
-          "preferences"
+          "preferences",
+          "center_time_zone"
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login``, ``GET /auth/me`` and\n``POST /auth/password``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
