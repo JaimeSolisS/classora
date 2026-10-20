@@ -10,7 +10,10 @@ end state must hold the rules whatever the order:
 - a level is never inactive while it has an active subject (``FOR UPDATE``
   on deactivation, ``FOR SHARE`` on subject creation);
 - active academic periods of one type never overlap (the exclusion
-  constraint catches what B's pre-check can't see yet).
+  constraint catches what B's pre-check can't see yet);
+- two classroom ``PATCH`` requests from one version give one success and one
+  ``version_conflict`` (``FOR UPDATE``), and the windows are those of the
+  winner (#39 B7).
 """
 
 import asyncio
@@ -30,6 +33,8 @@ from app.modules.catalog import service
 from app.modules.catalog.schemas import (
     AcademicPeriodCreate,
     AcademicPeriodUpdate,
+    AvailabilityWindow,
+    ClassroomUpdate,
     EducationLevelCreate,
     EducationLevelUpdate,
     SubjectCreate,
@@ -217,3 +222,36 @@ async def test_a_reactivation_racing_an_overlapping_create_gives_one_409(head_ur
         head_url, "SELECT name FROM academic_periods WHERE is_active"
     )
     assert [r.name for r in active] == ["2026-2027"]
+
+
+async def test_two_classroom_patches_from_one_version_give_one_200_and_one_409(
+    head_url,
+):
+    [room] = await run_sql_async(
+        head_url,
+        "INSERT INTO classrooms (name, capacity) VALUES ('Aula 1', 10) RETURNING id",
+    )
+
+    def windows(starts_at: str, ends_at: str) -> ClassroomUpdate:
+        return ClassroomUpdate(
+            version=1,
+            availability=[
+                AvailabilityWindow(weekday=1, starts_at=starts_at, ends_at=ends_at)
+            ],
+        )
+
+    outcomes = await race(
+        head_url,
+        lambda s: service.update_classroom(s, room.id, windows("09:00", "12:00")),
+        lambda s: service.update_classroom(s, room.id, windows("10:00", "13:00")),
+    )
+
+    assert outcomes == ["ok", "version_conflict"]
+    [state] = await run_sql_async(head_url, "SELECT version FROM classrooms")
+    assert state.version == 2
+    rows = await run_sql_async(
+        head_url,
+        "SELECT to_char(starts_at, 'HH24:MI') AS starts_at"
+        " FROM classroom_availability_windows",
+    )
+    assert [r.starts_at for r in rows] == ["09:00"]

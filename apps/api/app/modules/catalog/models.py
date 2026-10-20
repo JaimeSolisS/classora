@@ -21,10 +21,14 @@ masked (#22) and versioned (optimistic concurrency, architecture §4.4).
 #38 adds ``academic_periods`` and ``closures``: inclusive ``DATE`` ranges
 (local calendar days, ADR-0004) with the same lifecycle (deactivate, never
 delete), audit and versioning.
+
+#39 adds ``classrooms`` (name, capacity, active or not) and their weekly
+availability windows (``classroom_availability_windows``, local wall-clock
+times, ADR-0004). A room without windows has no time restriction.
 """
 
 import uuid
-from datetime import date
+from datetime import date, time
 
 from sqlalchemy import (
     Boolean,
@@ -34,6 +38,7 @@ from sqlalchemy import (
     Index,
     SmallInteger,
     String,
+    Time,
     func,
     text,
 )
@@ -191,3 +196,82 @@ class Closure(Audited, VersionedMixin, Model):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+
+
+# --- Classrooms (#39) ----------------------------------------------------------------
+
+CLASSROOM_CAPACITY_MIN = 1
+CLASSROOM_CAPACITY_MAX = 500
+CLASSROOM_WINDOWS_MAX = 28
+FIRST_WEEKDAY = 1
+LAST_WEEKDAY = 7
+
+CLASSROOM_NAME_INDEX = "uq_classrooms_name_ci"
+CLASSROOM_WINDOW_OVERLAP_CONSTRAINT = "ex_classroom_windows_no_overlap"
+"""The exclusion constraint (``btree_gist``, #38): windows of one room on one
+weekday never overlap; touching windows (``[)`` bounds) are allowed. The
+service maps a violation at flush to ``422 validation_error``."""
+
+# A window as a timestamp range on a fixed Monday, so a GiST range operator
+# can compare TIME values (there is no built-in time range type).
+WINDOW_RANGE_SQL = (
+    "tsrange(DATE '2000-01-03' + starts_at, DATE '2000-01-03' + ends_at, '[)')"
+)
+
+
+class Classroom(Audited, VersionedMixin, Model):
+    """A room of the center (spec §3: a basic catalog, no equipment). Names
+    are unique ignoring case (inactive rows count); capacity is 1 to 500.
+    Its weekly windows (:class:`ClassroomAvailabilityWindow`) change only
+    through the classroom ``PATCH``, whose ``version`` covers them."""
+
+    __tablename__ = "classrooms"
+    __table_args__ = (
+        *_name_checks(),
+        CheckConstraint(
+            f"capacity BETWEEN {CLASSROOM_CAPACITY_MIN} AND {CLASSROOM_CAPACITY_MAX}",
+            name="capacity_range",
+        ),
+        Index(CLASSROOM_NAME_INDEX, func.lower(text("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
+    capacity: Mapped[int] = mapped_column(SmallInteger)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class ClassroomAvailabilityWindow(Audited, Model):
+    """One weekly window in which a room may be used: an ISO weekday
+    (1 = Monday) and ``[starts_at, ends_at)`` in local wall-clock time,
+    whole minutes, never across midnight. Not versioned: the classroom's
+    ``version`` covers its windows."""
+
+    __tablename__ = "classroom_availability_windows"
+    __table_args__ = (
+        CheckConstraint(
+            f"weekday BETWEEN {FIRST_WEEKDAY} AND {LAST_WEEKDAY}", name="weekday_range"
+        ),
+        CheckConstraint("starts_at < ends_at", name="starts_before_ends"),
+        CheckConstraint(
+            "EXTRACT(SECOND FROM starts_at) = 0 AND EXTRACT(SECOND FROM ends_at) = 0",
+            name="zero_seconds",
+        ),
+        ExcludeConstraint(
+            (text("classroom_id"), "="),
+            (text("weekday"), "="),
+            (text(WINDOW_RANGE_SQL), "&&"),
+            name=CLASSROOM_WINDOW_OVERLAP_CONSTRAINT,
+            using="gist",
+        ),
+    )
+
+    classroom_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("classrooms.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    weekday: Mapped[int] = mapped_column(SmallInteger)
+    starts_at: Mapped[time] = mapped_column(Time(timezone=False))
+    ends_at: Mapped[time] = mapped_column(Time(timezone=False))

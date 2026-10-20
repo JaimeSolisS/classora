@@ -254,3 +254,62 @@ export function updateClosure(
     }),
   );
 }
+
+// --- Classrooms (#39) ----------------------------------------------------
+
+export type Classroom = components['schemas']['ClassroomDetail'];
+export type ClassroomPage =
+  components['schemas']['OffsetPage_ClassroomDetail_'];
+export type ClassroomCreate = components['schemas']['ClassroomCreate'];
+export type ClassroomUpdate = components['schemas']['ClassroomUpdate'];
+
+/** Every cached classroom list. */
+export const CLASSROOMS_QUERY_KEY = [
+  ...CATALOG_QUERY_KEY,
+  'classrooms',
+] as const;
+
+export function classroomsListKey(page: number) {
+  return [...CLASSROOMS_QUERY_KEY, 'list', page] as const;
+}
+
+/** One page of every classroom, active or not (the managers' view). */
+export function fetchClassrooms(
+  page: number,
+  signal: AbortSignal,
+): Promise<ClassroomPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/classrooms', {
+        params: {
+          query: {
+            status: 'all',
+            limit: CATALOG_PAGE_SIZE,
+            offset: offsetOf(page),
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function createClassroom(body: ClassroomCreate): Promise<Classroom> {
+  return apiCall(() => api.POST('/api/v1/classrooms', { body }));
+}
+
+/**
+ * PATCH a classroom: `body` holds `version` and only the changed fields
+ * (`availability` as the full list when it changed).
+ */
+export function updateClassroom(
+  classroomId: string,
+  body: ClassroomUpdate,
+): Promise<Classroom> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/classrooms/{classroom_id}', {
+      params: { path: { classroom_id: classroomId } },
+      body,
+    }),
+  );
+}

@@ -5,12 +5,13 @@ import { cn } from '@/lib/utils';
 // The catalog pages' tab bar (#38 E1): links (not ARIA tabs), the current
 // section marked with aria-current="page" by NavLink. A level's page belongs
 // to "Levels and subjects". Every catalog route needs catalog.manage, so the
-// bar shows every section. #39 adds "Classrooms".
+// bar shows every section, "Classrooms" (#39) included.
 
 const SECTIONS = [
   { to: '/catalog/education-levels', labelKey: 'catalog.tabs.levels' },
   { to: '/catalog/periods', labelKey: 'catalog.tabs.periods' },
   { to: '/catalog/closures', labelKey: 'catalog.tabs.closures' },
+  { to: '/catalog/classrooms', labelKey: 'catalog.tabs.classrooms' },
 ] as const;
 
 export function CatalogTabs() {

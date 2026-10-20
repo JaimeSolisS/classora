@@ -264,8 +264,8 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   alert; focus returns to the button that opened it. Later catalogs reuse it.
 - **`CatalogTabs`** (`features/catalog`, #38): the catalog pages' tab bar,
   a labelled `nav` of links ("Levels and subjects", "Academic periods",
-  "Closures"); the current section has `aria-current="page"`. Not ARIA tabs:
-  each tab is its own page and URL.
+  "Closures", "Classrooms"); the current section has `aria-current="page"`.
+  Not ARIA tabs: each tab is its own page and URL.
 - **`RangeItemDialog`** (`features/catalog`, #38): the add/edit dialog of a
   period or a closure: name, type (a select; a read-only field with a help
   text when the type can't change), start and end as `type="date"`
@@ -275,6 +275,21 @@ Loading and error primitives in `apps/web/src/components/feedback/`
 - **`RangesTable`** (`features/catalog`, #38): the periods and closures
   table; dates are formatted as calendar dates (no zone conversion), and a
   one-day closure shows one date instead of a range.
+- **`WeeklyWindowsEditor`** (`components/weekly-windows`, #39; reused by
+  #45 for tutor availability): a fieldset of weekly windows, each row a
+  weekday select, start and end (`type="time"`, 15-minute step) and
+  "Remove", with "Add window" below (disabled at 28 rows, with a help
+  text). Controlled: the parent keeps the rows and passes each row's errors
+  (`validateWindows` mirrors the API: `HH:MM`, end after start, no overlap
+  with an earlier row of the same weekday; touching is fine). Every control
+  names its row ("Window 2 start time"); focus moves to the new row's
+  weekday after "Add window" and to "Add window" after a removal.
+  `windowsSummary` gives the one-line text of a list ("Lun–Vie
+  09:00–20:00", or "Sin restricción" without windows).
+- **`ClassroomDialog` / `ClassroomsTable`** (`features/catalog`, #39): the
+  classroom add/edit dialog (name, capacity, the windows editor,
+  Deactivate/Reactivate; a server window error goes on its row) and the
+  classrooms table with the availability summary.
 - **`StudentStatusBadge` / `StudentAgeBadge`** (`features/students`, #33):
   "Active"/"Inactive" and "Minor"/"Adult" as text badges (the border only
   reinforces the word).

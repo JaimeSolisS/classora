@@ -165,6 +165,7 @@ describe('access and tabs (E1)', () => {
       ],
       ['Academic periods', current === 'Academic periods' ? 'page' : null],
       ['Closures', current === 'Closures' ? 'page' : null],
+      ['Classrooms', null],
     ]);
     const hrefs = [
       ...main().querySelectorAll('nav[aria-label="Catalog sections"] a'),
@@ -173,6 +174,7 @@ describe('access and tabs (E1)', () => {
       '/catalog/education-levels',
       '/catalog/periods',
       '/catalog/closures',
+      '/catalog/classrooms',
     ]);
   });
 

@@ -55,6 +55,9 @@ In the same Catalog, they also define academic periods (school years,
 semesters and terms; active periods of one type can't overlap) and center
 closures (holidays, closures and vacations), which later features use to
 know whether the center is closed on a given day.
+They also keep the classroom catalog: each room's name, capacity and
+optional weekly availability windows (a room without windows can be used at
+any time).
 On the Settings page, Owners and administrators maintain the business
 settings: the center name and contact details, the weekly operating hours and
 the center time zone (Mexico City by default), which the app uses for every

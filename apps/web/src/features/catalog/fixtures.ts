@@ -1,4 +1,10 @@
-import type { AcademicPeriod, Closure, EducationLevel, Subject } from './api';
+import type {
+  AcademicPeriod,
+  Classroom,
+  Closure,
+  EducationLevel,
+  Subject,
+} from './api';
 
 // Fixtures of the catalog pages (#32 I3, J4): the seeded levels plus an
 // inactive one, and subjects. No request.
@@ -166,3 +172,49 @@ export const WORKS = closure(
   },
 );
 export const CLOSURES: Closure[] = [INDEPENDENCE, WORKS, WINTER];
+
+// --- Classrooms (#39 D5, D6) -----------------------------------------------
+
+export function classroom(
+  index: number,
+  name: string,
+  capacity: number,
+  availability: Classroom['availability'] = [],
+  overrides: Partial<Classroom> = {},
+): Classroom {
+  return {
+    id: `00000000-0000-4000-8000-00000000f0${String(index).padStart(2, '0')}`,
+    name,
+    capacity,
+    is_active: true,
+    availability,
+    version: 1,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+}
+
+const WEEKDAYS_9_TO_8 = [1, 2, 3, 4, 5].map((weekday) => ({
+  weekday,
+  starts_at: '09:00',
+  ends_at: '20:00',
+}));
+
+export const AULA_1 = classroom(1, 'Aula 1', 12, [
+  ...WEEKDAYS_9_TO_8,
+  { weekday: 6, starts_at: '09:00', ends_at: '14:00' },
+]);
+export const LABORATORIO = classroom(2, 'Laboratorio', 20, [], { version: 3 });
+export const BODEGA = classroom(
+  3,
+  'Sala de juntas',
+  6,
+  [
+    { weekday: 1, starts_at: '09:00', ends_at: '12:00' },
+    { weekday: 1, starts_at: '12:00', ends_at: '14:00' },
+  ],
+  { is_active: false, version: 2 },
+);
+
+export const CLASSROOMS: Classroom[] = [AULA_1, LABORATORIO, BODEGA];

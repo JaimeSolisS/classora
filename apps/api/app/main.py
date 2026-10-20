@@ -37,6 +37,7 @@ from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
 )
+from app.modules.catalog.classrooms_router import router as classrooms_router
 from app.modules.catalog.periods_router import router as periods_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.families import service as families_service
@@ -120,6 +121,7 @@ def build_app(
     app.include_router(business_settings_router)
     app.include_router(catalog_router)
     app.include_router(periods_router)
+    app.include_router(classrooms_router)
     app.include_router(families_router)
     app.include_router(guardians_router)
     app.include_router(groupings_router)

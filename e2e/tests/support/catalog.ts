@@ -115,12 +115,33 @@ type Common = {
       cancel: string;
     };
     saved: string;
-    tabs: { label: string; levels: string; periods: string; closures: string };
+    tabs: {
+      label: string;
+      levels: string;
+      periods: string;
+      closures: string;
+      classrooms: string;
+    };
     range: { name: string; type: string; startsOn: string; endsOn: string };
     periods: { title: string; add: string };
     closures: { title: string; add: string; edit: string; year: string };
     periodTypes: Record<'school_year' | 'semester' | 'term', string>;
     closureTypes: Record<'holiday' | 'closure' | 'vacation', string>;
+    classrooms: {
+      title: string;
+      add: string;
+      edit: string;
+      name: string;
+      capacity: string;
+      validation: { capacityRange: string };
+    };
+  };
+  weeklyWindows: {
+    add: string;
+    weekdayLabel: string;
+    startsAtLabel: string;
+    endsAtLabel: string;
+    validation: { overlap: string };
   };
   students: {
     title: string;

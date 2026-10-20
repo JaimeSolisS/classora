@@ -956,6 +956,57 @@ export interface paths {
         patch: operations["update_closure_api_v1_closures__closure_id__patch"];
         trace?: never;
     };
+    "/api/v1/classrooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Classrooms
+         * @description The classrooms with ``status`` (active ones by default), by name, with
+         *     their weekly windows (empty: no time restriction).
+         */
+        get: operations["list_classrooms_api_v1_classrooms_get"];
+        put?: never;
+        /**
+         * Create Classroom
+         * @description Add an active classroom, optionally with weekly windows.
+         */
+        post: operations["create_classroom_api_v1_classrooms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/classrooms/{classroom_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Classroom
+         * @description One classroom, active or not.
+         */
+        get: operations["get_classroom_api_v1_classrooms__classroom_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Classroom
+         * @description Rename, change the capacity, deactivate (``is_active: false``) or
+         *     reactivate a classroom, or replace its windows (``availability``: the
+         *     full list; ``[]`` clears them). Fields not sent stay unchanged.
+         */
+        patch: operations["update_classroom_api_v1_classrooms__classroom_id__patch"];
+        trace?: never;
+    };
     "/api/v1/students": {
         parameters: {
             query?: never;
@@ -1406,6 +1457,28 @@ export interface components {
             request_id: string | null;
         };
         /**
+         * AvailabilityWindow
+         * @description One weekly window, ``[starts_at, ends_at)`` in local time on an ISO
+         *     weekday. Never crosses midnight.
+         */
+        AvailabilityWindow: {
+            /**
+             * Weekday
+             * @description ISO weekday: 1 = Monday … 7 = Sunday.
+             */
+            weekday: number;
+            /**
+             * Starts At
+             * @description A local wall-clock time, HH:MM (24-hour).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * @description After starts_at (same day).
+             */
+            ends_at: string;
+        };
+        /**
          * BusinessSettingsDetail
          * @description The center's business settings (``GET /api/v1/business-settings``).
          *
@@ -1463,6 +1536,72 @@ export interface components {
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * ClassroomCreate
+         * @description A new classroom (``POST /api/v1/classrooms``). It starts active;
+         *     without ``availability`` it has no time restriction.
+         */
+        ClassroomCreate: {
+            /** Name */
+            name: string;
+            /** Capacity */
+            capacity: number;
+            /**
+             * Availability
+             * @description The room's weekly windows (at most 28; windows of one weekday may touch but not overlap). Empty: no time restriction.
+             */
+            availability?: components["schemas"]["AvailabilityWindow"][];
+        };
+        /**
+         * ClassroomDetail
+         * @description One classroom. ``availability`` is ordered by weekday, then start;
+         *     empty means no time restriction.
+         */
+        ClassroomDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Capacity */
+            capacity: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Availability */
+            availability: components["schemas"]["AvailabilityWindow"][];
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ClassroomUpdate
+         * @description A change to a classroom with the ``version`` the caller loaded. Fields
+         *     not sent stay unchanged; ``availability``, when sent, replaces all the
+         *     room's windows (``[]`` clears them).
+         */
+        ClassroomUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Capacity */
+            capacity?: number | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Availability */
+            availability?: components["schemas"]["AvailabilityWindow"][] | null;
+        };
         /**
          * ClosureCheck
          * @description Whether the center is closed on a local date
@@ -2284,6 +2423,17 @@ export interface components {
         OffsetPage_AcademicPeriodDetail_: {
             /** Items */
             items: components["schemas"]["AcademicPeriodDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ClassroomDetail] */
+        OffsetPage_ClassroomDetail_: {
+            /** Items */
+            items: components["schemas"]["ClassroomDetail"][];
             /** Total */
             total: number;
             /** Limit */
@@ -5986,6 +6136,229 @@ export interface operations {
                 };
             };
             /** @description The record changed since it was loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_classrooms_api_v1_classrooms_get: {
+        parameters: {
+            query?: {
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["CatalogStatus"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ClassroomDetail_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_classroom_api_v1_classrooms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassroomCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassroomDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another classroom already has this name, ignoring case; inactive classrooms count (name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_classroom_api_v1_classrooms__classroom_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classroom_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassroomDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such classroom (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_classroom_api_v1_classrooms__classroom_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classroom_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassroomUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassroomDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such classroom (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another classroom already has this name, ignoring case; inactive classrooms count (name_taken). */
             409: {
                 headers: {
                     [name: string]: unknown;
