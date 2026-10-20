@@ -5,11 +5,32 @@
   the first profile edit (#43 A3): a tutor without one has an empty profile
   at ``version`` 0. Losing the ``tutor`` role hides the profile but keeps the
   row. ``Audited`` with nothing excluded, versioned.
+- ``tutor_qualifications`` (#44): a tutor's request to teach one subject (the
+  level follows from the subject, #32). ``status`` is ``pending`` →
+  ``approved`` | ``rejected`` | ``cancelled``; ``decided_at`` is set exactly
+  for the three final states and ``rejection_reason`` exactly for
+  ``rejected``. The partial unique index
+  ``uq_tutor_qualifications_active`` allows one active (``pending`` or
+  ``approved``) qualification per tutor and subject; rejected and cancelled
+  rows don't block a new request. The row keeps its own status, mirrored
+  with its ``staff.qualification`` approval request in one transaction, so
+  eligibility never reads ``approval_requests`` (ADR-0002). ``Audited``,
+  versioned.
 """
 
 import uuid
+from datetime import datetime
+from typing import Final
 
-from sqlalchemy import CheckConstraint, ForeignKey, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,3 +61,67 @@ class TutorProfile(Audited, VersionedMixin, Model):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
     )
     professional_experience: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# --- Tutor qualifications (#44) ------------------------------------------------------
+
+PENDING: Final = "pending"
+APPROVED: Final = "approved"
+REJECTED: Final = "rejected"
+CANCELLED: Final = "cancelled"
+
+QUALIFICATION_STATUSES: Final = (PENDING, APPROVED, REJECTED, CANCELLED)
+ACTIVE_STATUSES: Final = (PENDING, APPROVED)
+"""The statuses that block another request for the same tutor and subject."""
+
+REJECTION_REASON_MAX_LENGTH: Final = 1000
+
+# The "no duplicate active qualification" index (#44 A1): a concurrent
+# duplicate request that loses the race is 409 qualification_exists.
+ACTIVE_UNIQUE: Final = "uq_tutor_qualifications_active"
+
+
+def _quoted(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
+
+
+class TutorQualification(Audited, VersionedMixin, Model):
+    __tablename__ = "tutor_qualifications"
+    __table_args__ = (
+        CheckConstraint(
+            f"status IN ({_quoted(QUALIFICATION_STATUSES)})", name="status_valid"
+        ),
+        CheckConstraint(
+            "(status IN ('approved', 'rejected', 'cancelled'))"
+            " = (decided_at IS NOT NULL)",
+            name="decided_iff_final",
+        ),
+        CheckConstraint(
+            "(status = 'rejected') = (rejection_reason IS NOT NULL)",
+            name="reason_iff_rejected",
+        ),
+        Index(
+            ACTIVE_UNIQUE,
+            "tutor_user_id",
+            "subject_id",
+            unique=True,
+            postgresql_where=text(f"status IN ({_quoted(ACTIVE_STATUSES)})"),
+        ),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(REJECTION_REASON_MAX_LENGTH), nullable=True
+    )

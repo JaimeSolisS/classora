@@ -135,6 +135,21 @@ class EducationLevelReference(BaseModel):
     is_active: bool
 
 
+class SubjectReference(BaseModel):
+    """A subject as another module's record shows it (#44): its id, current
+    name and active flag, with its level's (the level follows from the
+    subject, #32). ``education_level_sort_order`` lets the caller order its
+    records like the catalog does."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+    education_level_id: uuid.UUID
+    education_level_name: str
+    education_level_is_active: bool
+    education_level_sort_order: int
+
+
 # --- Academic periods and closures (#38) ---------------------------------------------
 
 type PeriodType = Literal["school_year", "semester", "term"]

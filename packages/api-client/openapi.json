@@ -7022,6 +7022,281 @@
           }
         }
       }
+    },
+    "/api/v1/tutors/{user_id}/qualifications": {
+      "get": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "List Qualifications",
+        "description": "The tutor's qualifications, by the level's order, the subject name,\nthen the request time.",
+        "operationId": "list_qualifications_api_v1_tutors__user_id__qualifications_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/QualificationStatusFilter",
+              "description": "One status, or all (the default).",
+              "default": "all"
+            },
+            "description": "One status, or all (the default)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QualificationItem"
+                  },
+                  "title": "Response List Qualifications Api V1 Tutors  User Id  Qualifications Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Request Qualification",
+        "description": "The tutor requests to teach a subject: a pending qualification and a\nstaff.qualification approval request. Only the tutor themselves.",
+        "operationId": "request_qualification_api_v1_tutors__user_id__qualifications_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but isn't the tutor themselves (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The subject or its education level is inactive (subject_inactive), or the tutor already has a pending or approved qualification for it (qualification_exists).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel": {
+      "post": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Cancel Qualification",
+        "description": "The tutor withdraws a pending request. Only the tutor themselves.",
+        "operationId": "cancel_qualification_api_v1_tutors__user_id__qualifications__qualification_id__cancel_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "qualification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Qualification Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but isn't the tutor themselves (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor or qualification of this tutor, or the caller may not see the tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The qualification is no longer pending (approval_transition_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10282,6 +10557,7 @@
           "finance.refund.approve",
           "guardian.view",
           "payroll.finalize",
+          "qualification.review",
           "registration.review",
           "schedule.override",
           "settings.manage",
@@ -10428,6 +10704,124 @@
         ],
         "title": "ProblemDetails",
         "type": "object"
+      },
+      "QualificationCreate": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject_id"
+        ],
+        "title": "QualificationCreate",
+        "description": "A tutor's request to teach one subject (the level follows from it)."
+      },
+      "QualificationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "education_level_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Education Level Id"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          },
+          "subject_is_active": {
+            "type": "boolean",
+            "title": "Subject Is Active"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QualificationStatus"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason",
+            "description": "The reviewer's reason; set only for rejected."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject_id",
+          "subject_name",
+          "education_level_id",
+          "education_level_name",
+          "subject_is_active",
+          "status",
+          "requested_at",
+          "decided_at",
+          "rejection_reason",
+          "version"
+        ],
+        "title": "QualificationItem",
+        "description": "One qualification of a tutor, with its subject and level names."
+      },
+      "QualificationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "cancelled"
+        ]
+      },
+      "QualificationStatusFilter": {
+        "type": "string",
+        "enum": [
+          "all",
+          "pending",
+          "approved",
+          "rejected",
+          "cancelled"
+        ]
       },
       "ReauthenticateRequest": {
         "properties": {
@@ -11353,6 +11747,42 @@
         "title": "SubjectUpdate",
         "description": "A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with\nthe ``version`` the caller loaded. The level can't be changed."
       },
+      "TeachingSubject": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "education_level_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Education Level Id"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          },
+          "subject_is_active": {
+            "type": "boolean",
+            "title": "Subject Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_id",
+          "subject_name",
+          "education_level_id",
+          "education_level_name",
+          "subject_is_active"
+        ],
+        "title": "TeachingSubject",
+        "description": "A subject the tutor holds an **approved** qualification for (#44 D1).\nA subject deactivated later stays, with ``subject_is_active`` false."
+      },
       "Theme": {
         "type": "string",
         "enum": [
@@ -11424,6 +11854,14 @@
             "type": "array",
             "title": "Editable Fields",
             "description": "The fields the caller may change, sorted; empty: read only. Sending another field is 403 permission_denied."
+          },
+          "teaching_subjects": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingSubject"
+            },
+            "type": "array",
+            "title": "Teaching Subjects",
+            "description": "The subjects of the tutor's approved qualifications, by the level's order, then the subject name."
           }
         },
         "type": "object",
@@ -11436,7 +11874,8 @@
           "phone",
           "professional_experience",
           "version",
-          "editable_fields"
+          "editable_fields",
+          "teaching_subjects"
         ],
         "title": "TutorDetail",
         "description": "One tutor profile, with what the caller may edit."

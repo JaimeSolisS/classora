@@ -147,6 +147,7 @@ def test_the_detail_of_a_tutor_without_a_profile(module_seeded_url, client, owne
         "professional_experience": None,
         "version": 0,
         "editable_fields": ALL_FIELDS,
+        "teaching_subjects": [],
     }
     assert profile_rows(module_seeded_url, person.id) == []
 

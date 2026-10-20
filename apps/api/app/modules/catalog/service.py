@@ -23,7 +23,9 @@ existing reference to a deactivated one stays valid and is still shown
 :func:`ensure_active_education_level` checks a level a new record picks.
 :func:`get_level_for_reference` and :func:`education_level_references` give
 the id, name and active flag of levels a record points at (#33: one row,
-optionally locked ``FOR SHARE``, or one statement for a page of records).
+optionally locked ``FOR SHARE``, or one statement for a page of records);
+:func:`get_subject_for_reference` and :func:`subject_references` do the same
+for subjects, with their level (#44 tutor qualifications).
 
 **Writes** (``catalog.manage``): create and ``PATCH`` (rename, reorder,
 deactivate, reactivate). Nothing is ever deleted. Every change sends the
@@ -136,6 +138,7 @@ from app.modules.catalog.schemas import (
     EducationLevelUpdate,
     SubjectCreate,
     SubjectDetail,
+    SubjectReference,
     SubjectUpdate,
 )
 
@@ -284,6 +287,56 @@ async def education_level_references(
         select(EducationLevel).where(EducationLevel.id.in_(set(level_ids)))
     )
     return {level.id: _reference(level) for level in levels}
+
+
+def _subject_reference(subject: Subject, level: EducationLevel) -> SubjectReference:
+    return SubjectReference(
+        id=subject.id,
+        name=subject.name,
+        is_active=subject.is_active,
+        education_level_id=level.id,
+        education_level_name=level.name,
+        education_level_is_active=level.is_active,
+        education_level_sort_order=level.sort_order,
+    )
+
+
+def _subject_reference_query() -> Select[Subject, EducationLevel]:
+    return select(Subject, EducationLevel).join(
+        EducationLevel, EducationLevel.id == Subject.education_level_id
+    )
+
+
+async def get_subject_for_reference(
+    session: AsyncSession, subject_id: uuid.UUID, *, lock: bool
+) -> SubjectReference | None:
+    """The subject a new record picks (active or not) with its level, or
+    ``None`` when unknown (#44).
+
+    With ``lock`` both rows are locked ``FOR SHARE`` until the transaction
+    ends, so a subject or level checked as active can't be deactivated
+    before the record that picks it commits. One statement.
+    """
+    query = _subject_reference_query().where(Subject.id == subject_id)
+    if lock:
+        query = query.with_for_update(read=True)
+    row = (
+        await session.execute(query.execution_options(populate_existing=True))
+    ).first()
+    return None if row is None else _subject_reference(*row)
+
+
+async def subject_references(
+    session: AsyncSession, subject_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, SubjectReference]:
+    """The subjects with these ids, with their levels (unknown ids are left
+    out), in one statement; none when ``subject_ids`` is empty (#44)."""
+    if not subject_ids:
+        return {}
+    rows = await session.execute(
+        _subject_reference_query().where(Subject.id.in_(set(subject_ids)))
+    )
+    return {subject.id: _subject_reference(subject, level) for subject, level in rows}
 
 
 def _subjects_query() -> Select[Subject, str]:
