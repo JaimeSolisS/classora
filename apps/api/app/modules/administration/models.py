@@ -1,4 +1,5 @@
-"""Approval requests (#40; spec §9 "central administrative approval inbox").
+"""Approval requests (#40; spec §9 "central administrative approval inbox")
+and notifications (#41, :class:`Notification` below).
 
 ``approval_requests``: one row per item that waits for a reviewer, whatever
 module raised it. ``request_type`` is a dotted code that a module registers
@@ -23,7 +24,7 @@ holds ids, codes and the reviewer's reason, never a secret.
 
 import uuid
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import (
     CheckConstraint,
@@ -34,7 +35,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -123,3 +124,58 @@ class ApprovalRequest(Audited, VersionedMixin, Model):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(String(REASON_MAX_LENGTH), nullable=True)
+
+
+# --- Notifications (#41) -------------------------------------------------------------
+
+NOTIFICATION_TYPE_MAX_LENGTH: Final = 64
+NOTIFICATION_TYPE_PATTERN: Final = r"^[a-z_]+(\.[a-z_]+)+$"
+
+
+class Notification(Model):
+    """One in-app notification for one recipient (#41; spec §1, §9).
+
+    Stored as ``{notification_type, params}`` (ISSUE-X1): the client renders
+    the message from an i18n key, so a language switch applies to old
+    notifications too. ``params`` is a flat JSON object of data (names,
+    dates, codes), checked by
+    :func:`app.modules.administration.notifications.create_notification`.
+    ``read_at`` is ``NULL`` while unread and keeps its first value.
+
+    Neither :class:`~app.core.audit.Audited` nor versioned: these are
+    per-user messages, and the action that caused one is audited where it
+    happens.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        CheckConstraint(
+            f"notification_type ~ '{NOTIFICATION_TYPE_PATTERN}'",
+            name="notification_type_format",
+        ),
+        CheckConstraint("jsonb_typeof(params) = 'object'", name="params_object"),
+        # The list: one recipient's notifications, newest first.
+        Index(
+            "ix_notifications_recipient_created",
+            "recipient_user_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        # The unread count.
+        Index(
+            "ix_notifications_recipient_unread",
+            "recipient_user_id",
+            postgresql_where=text("read_at IS NULL"),
+        ),
+    )
+
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    notification_type: Mapped[str] = mapped_column(String(NOTIFICATION_TYPE_MAX_LENGTH))
+    params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -12,6 +12,10 @@
   actions (:func:`create_approval_request`, :func:`cancel_approval_request`,
   :func:`resubmit_approval_request`), reviewer decisions and reads;
   implemented in :mod:`app.modules.administration.approvals`.
+- Notifications (#41): types and their params models
+  (:func:`register_notification_type`), :func:`create_notification` inside
+  the caller's transaction, and the recipient's reads and read state;
+  implemented in :mod:`app.modules.administration.notifications`.
 - Reading the audit log, below.
 
 **Audit log** (spec §9; architecture §4.4 cursor pagination).
@@ -85,6 +89,39 @@ from app.modules.administration.approvals import (
 )
 from app.modules.administration.approvals import (
     unregister_approval_handler as unregister_approval_handler,
+)
+from app.modules.administration.notifications import (
+    InvalidNotificationParamsError as InvalidNotificationParamsError,
+)
+from app.modules.administration.notifications import (
+    create_notification as create_notification,
+)
+from app.modules.administration.notifications import (
+    get_notification as get_notification,
+)
+from app.modules.administration.notifications import (
+    list_notifications as list_notifications,
+)
+from app.modules.administration.notifications import (
+    mark_all_notifications_read as mark_all_notifications_read,
+)
+from app.modules.administration.notifications import (
+    mark_notification_read as mark_notification_read,
+)
+from app.modules.administration.notifications import (
+    register_notification_type as register_notification_type,
+)
+from app.modules.administration.notifications import (
+    registered_notification_types as registered_notification_types,
+)
+from app.modules.administration.notifications import (
+    unread_notification_count as unread_notification_count,
+)
+from app.modules.administration.notifications import (
+    unregister_notification_type as unregister_notification_type,
+)
+from app.modules.administration.notifications import (
+    validated_params as validated_params,
 )
 from app.modules.administration.schemas import AuditChange, AuditEventListItem
 from app.modules.administration.settings import (

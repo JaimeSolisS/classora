@@ -85,9 +85,10 @@ def test_matrix_file_has_a_how_to_header():
 
 
 def test_the_contract_app_is_covered_too():
-    # build_app() without dev routes is a subset: only the demo route is extra.
+    # build_app() without dev routes is a subset: only the dev routes are extra.
     assert check_matrix(build_app(), load_matrix()) == [
-        "POST /api/v1/dev/demo-jobs: stale entry (no such route)"
+        "POST /api/v1/dev/demo-jobs: stale entry (no such route)",
+        "POST /api/v1/dev/notifications: stale entry (no such route)",
     ]
 
 

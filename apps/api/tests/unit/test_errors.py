@@ -173,7 +173,8 @@ def test_unhandled_exception_is_generic_500_without_leak(client: TestClient):
 def test_production_app_has_no_demo_route(
     app_env: None, monkeypatch: pytest.MonkeyPatch
 ):
-    # APP_ENV=prod: the local/DEV demo job route is not mounted (M1-16 D4).
+    # APP_ENV=prod: the local/DEV demo job and notification routes are not
+    # mounted (M1-16 D4, #41 D2).
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("APP_ORIGIN", PROD_APP_ORIGIN)
     app = create_app()
@@ -190,6 +191,10 @@ def test_production_app_has_no_demo_route(
         "/api/v1/approval-requests/{request_id}/reject",
         "/api/v1/approval-requests/{request_id}/request-changes",
         "/api/v1/audit-events",
+        "/api/v1/notifications",
+        "/api/v1/notifications/unread-count",
+        "/api/v1/notifications/read-all",
+        "/api/v1/notifications/{notification_id}/read",
         "/api/v1/business-settings",
         "/api/v1/classrooms",
         "/api/v1/classrooms/{classroom_id}",

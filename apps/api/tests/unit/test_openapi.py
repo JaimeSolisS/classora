@@ -44,7 +44,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
     assert document["openapi"].startswith("3.1")
     assert document["info"] == {"title": API_TITLE, "version": API_VERSION}
     assert document["info"]["title"] == "Classora API"
-    # A8: never the dev-only demo route.
+    # A8: never the dev-only demo routes (#41 D2: nor the notification one).
     assert set(document["paths"]) == {
         "/health/live",
         "/health/ready",
@@ -56,6 +56,10 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/approval-requests/{request_id}/reject",
         "/api/v1/approval-requests/{request_id}/request-changes",
         "/api/v1/audit-events",
+        "/api/v1/notifications",
+        "/api/v1/notifications/unread-count",
+        "/api/v1/notifications/read-all",
+        "/api/v1/notifications/{notification_id}/read",
         "/api/v1/business-settings",
         "/api/v1/classrooms",
         "/api/v1/classrooms/{classroom_id}",
