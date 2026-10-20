@@ -32,6 +32,7 @@ import {
   NotificationPanel,
   type NotificationListState,
 } from './NotificationPanel';
+import { useLiveNotifications, type LiveState } from './useLiveNotifications';
 
 interface NotificationBellViewProps {
   count: number;
@@ -39,6 +40,8 @@ interface NotificationBellViewProps {
   onOpenChange: (open: boolean) => void;
   headingId: string;
   children: ReactNode;
+  /** The live stream's state (#42), exposed as `data-live` on the bell. */
+  live?: LiveState;
 }
 
 // The bell button and its popover, without data (stories use it directly).
@@ -50,6 +53,7 @@ export function NotificationBellView({
   onOpenChange,
   headingId,
   children,
+  live,
 }: NotificationBellViewProps) {
   const { t } = useTranslation();
   const label =
@@ -58,7 +62,11 @@ export function NotificationBellView({
       : t('notifications.bell');
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <span data-slot="notification-bell" className="relative inline-flex">
+      <span
+        data-slot="notification-bell"
+        data-live={live}
+        className="relative inline-flex"
+      >
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -92,9 +100,12 @@ export function NotificationBellView({
 }
 
 // The header bell (#41 E1–E3), for a signed-in user who accepted the privacy
-// notice. The unread count is polled every NOTIFICATION_POLL_MS while the tab
-// is visible (TanStack Query pauses the interval in a hidden tab) and
-// refetched on focus; the panel loads the newest notifications when it opens.
+// notice. New notifications arrive live over the stream (#42,
+// useLiveNotifications), which invalidates the count and the list. While the
+// stream isn't open, the unread count is polled every NOTIFICATION_POLL_MS
+// while the tab is visible (TanStack Query pauses the interval in a hidden
+// tab); it is refetched on focus either way. The panel loads the newest
+// notifications when it opens.
 export function NotificationBell() {
   const session = useSession();
   const enabled =
@@ -112,11 +123,13 @@ function ConnectedBell() {
   const [open, setOpen] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
+  const live = useLiveNotifications();
 
   const count = useQuery({
     queryKey: UNREAD_COUNT_KEY,
     queryFn: ({ signal }) => fetchUnreadCount(signal),
-    refetchInterval: NOTIFICATION_POLL_MS,
+    // Polling is the fallback: off while the live stream is open.
+    refetchInterval: live === 'open' ? false : NOTIFICATION_POLL_MS,
     refetchOnWindowFocus: true,
   });
 
@@ -194,6 +207,7 @@ function ConnectedBell() {
       open={open}
       onOpenChange={onOpenChange}
       headingId={headingId}
+      live={live}
     >
       <NotificationPanel
         headingId={headingId}

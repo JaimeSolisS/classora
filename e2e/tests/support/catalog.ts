@@ -308,6 +308,7 @@ type Errors = {
   name_taken: string;
   education_level_has_active_subjects: string;
   period_overlap: string;
+  too_many_streams: string;
   guardian_consent_required: string;
   reauth_required: string;
 };
