@@ -47,7 +47,7 @@ function watchConsole(page: Page): string[] {
 async function openTutors(page: Page) {
   await page
     .getByRole('banner')
-    .getByRole('link', { name: common.nav.tutors })
+    .getByRole('link', { name: common.nav.tutors, exact: true })
     .click();
   await expect(page).toHaveURL('/tutors');
   await expect(
