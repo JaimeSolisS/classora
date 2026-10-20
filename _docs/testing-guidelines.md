@@ -83,7 +83,7 @@ does not run the Storybook story tests or E2E.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | No (a rerun adds rows) |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -396,9 +396,13 @@ follows these rules.
 - **Student data** (#33): students a spec creates carry a unique per-test
   suffix in their family names (for example `Ñúñez Pérez <suffix>`), and
   specs search with that suffix, so parallel tests never see each other's
-  students. There are no demo students. Guardian profiles a spec creates
-  (#34) and families (#172, `Familia Ñúñez <suffix>`) follow the same rule;
-  there are no demo guardians or families.
+  students. Guardian profiles a spec creates (#34) and families (#172,
+  `Familia Ñúñez <suffix>`) follow the same rule. The E2E stack also has the
+  #195 demo accounts (`demo.admin`, `demo.coordinator`, `demo.finance`,
+  `demo.tutor`, `demo.student` and `demo.guardian`) and the three demo
+  families with their students and guardians. They are **not** E2E fixtures:
+  specs never sign them in, change them, or assert on them or on unfiltered
+  list totals. `demo.owner` remains the only named demo fixture.
 - **Never change `demo.owner` in a spec** (its profile, state, roles,
   password or preferences): every test shares its signed-in session
   (`storageState`). A test that needs an Owner to act signs `demo.owner` in

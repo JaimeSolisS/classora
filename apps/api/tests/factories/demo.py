@@ -16,9 +16,10 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 5. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-Demo data is not idempotent: a rerun adds rows or fails atomically (for
-example on a unique conflict). Reset with ``docker compose down -v``, then
-``make migrate`` and ``make seed-demo``.
+The registered generators (#23, #195) write nothing on a rerun (``0 rows``).
+A future generator may add rows on a rerun unless its issue says otherwise.
+To start over, reset with ``docker compose down -v``, then ``make migrate``
+and ``make seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -47,7 +48,8 @@ from app.seeds.runner import (
 )
 from app.seeds.upsert import UpsertResult
 from tests.factories.base import GeneratorSkipped, reseed
-from tests.factories.identity import DemoOwnerGenerator
+from tests.factories.families import DemoFamiliesGenerator
+from tests.factories.identity import DEMO_ACCOUNT_GENERATORS
 
 ALLOWED_APP_ENVS = frozenset({"local", "dev"})
 DEFAULT_SEED = 1
@@ -65,11 +67,20 @@ class DemoGenerator(Protocol):
     async def generate(self, session: AsyncSession) -> int | GeneratorSkipped: ...
 
 
-DEMO_GENERATORS: tuple[DemoGenerator, ...] = (DemoOwnerGenerator(),)
+DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
+    *DEMO_ACCOUNT_GENERATORS,
+    DemoFamiliesGenerator(),
+)
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
 
-- ``identity.demo_owner`` (#23): the demo Owner, ``APP_ENV=local`` only."""
+- ``identity.demo_owner`` (#23): the demo Owner, ``APP_ENV=local`` only.
+- ``identity.demo_admin``, ``identity.demo_coordinator``,
+  ``identity.demo_finance``, ``identity.demo_tutor``, ``identity.demo_student``
+  and ``identity.demo_guardian`` (#195): one demo account per other role,
+  ``APP_ENV=local`` only.
+- ``families.demo_families`` (#195): three demo families, the first with the
+  ``demo.student`` and ``demo.guardian`` logins, ``APP_ENV=local`` only."""
 
 
 @dataclass

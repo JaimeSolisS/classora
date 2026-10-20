@@ -10,16 +10,24 @@ generated number can be a real one.
 
 The default birthdate (2012-2016, a fixed range) makes the student a minor
 until 2030; pass ``birthdate=`` for an adult.
+
+:class:`DemoFamiliesGenerator` is the ``families.demo_families`` demo
+generator (#195): three fixed demo families, the first one holding the
+``demo.student`` and ``demo.guardian`` logins (``APP_ENV=local`` only).
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
 import factory
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
+from app.core.config import get_settings
+from app.modules.families import service as families_service
 from app.modules.families.models import (
     ConsentRecord,
     Family,
@@ -31,7 +39,19 @@ from app.modules.families.models import (
     StudentGuardian,
 )
 from app.modules.identity import service as identity
-from tests.factories.base import ClassoraFactory, calendar_date, get_faker, persist
+from app.modules.identity.models import User
+from tests.factories.base import (
+    ClassoraFactory,
+    GeneratorSkipped,
+    calendar_date,
+    get_faker,
+    persist,
+)
+from tests.factories.identity import (
+    DEMO_ACCOUNT_APP_ENVS,
+    DEMO_GUARDIAN_USERNAME,
+    DEMO_STUDENT_USERNAME,
+)
 
 ADULT_BIRTHDATE = date(2000, 1, 1)
 """A birthdate that makes a student an adult (#35: no consent needed)."""
@@ -189,3 +209,161 @@ async def login_consent(
     session.add(record)
     await session.flush()
     return record
+
+
+# --- The demo families (#195 B) ------------------------------------------------------
+
+DEMO_STUDENT_BIRTHDATE = date(2014, 3, 15)
+"""The ``demo.student`` profile's birthdate: a minor until 2032 (#35 D18)."""
+
+
+class DemoFamilyMissingLoginError(RuntimeError):
+    """``demo.student`` or ``demo.guardian`` does not exist in a local run."""
+
+
+def _settings_app_env() -> str:
+    return get_settings().app_env
+
+
+class DemoFamiliesGenerator:
+    """``families.demo_families``: three fixed demo families (34 rows).
+
+    1. The login family: the ``demo.guardian`` profile (``mother``), the
+       ``demo.student`` profile (a minor, :data:`DEMO_STUDENT_BIRTHDATE`) and
+       a sibling without a login; one ``in_app`` ``student_login`` consent from
+       ``demo.guardian`` for ``demo.student``.
+    2. Two guardians (``mother``, ``father``) and two minor students.
+    3. One guardian (``grandparent``) and one adult student.
+
+    Every guardian is linked to every student of its family; the students of a
+    family share one surname pair and the family is named after it.
+
+    Writes nothing outside ``APP_ENV=local`` (skipped), and nothing (0 rows)
+    once a profile is linked to ``demo.student`` or ``demo.guardian``. Raises
+    when either login is missing, and checks the student's login basis with
+    the families student-login gate at the end, so an inconsistent seed rolls
+    the whole run back.
+    """
+
+    name = "families.demo_families"
+
+    def __init__(self, app_env: Callable[[], str] = _settings_app_env) -> None:
+        self._app_env = app_env
+
+    async def generate(self, session: AsyncSession) -> int | GeneratorSkipped:
+        app_env = self._app_env()
+        if app_env not in DEMO_ACCOUNT_APP_ENVS:
+            return GeneratorSkipped(f"APP_ENV={app_env}; local only")
+        student_user_id = await _user_id(session, DEMO_STUDENT_USERNAME)
+        guardian_user_id = await _user_id(session, DEMO_GUARDIAN_USERNAME)
+        if await _already_linked(session, student_user_id, guardian_user_id):
+            return 0
+
+        writer = _DemoFamilyWriter(session)
+
+        # 1. The login family.
+        surnames = await writer.family()
+        demo_guardian = await writer.guardian(user_id=guardian_user_id)
+        demo_student = await writer.student(surnames, birthdate=DEMO_STUDENT_BIRTHDATE)
+        await student_login(session, demo_student, student_user_id)
+        sibling = await writer.student(surnames)
+        await writer.members([(demo_guardian, "mother")], [demo_student, sibling])
+        await login_consent(
+            session,
+            demo_student,
+            demo_guardian,
+            recorded_by=guardian_user_id,
+            method="in_app",
+        )
+        writer.rows += 1
+
+        # 2. Two guardians, two minors.
+        surnames = await writer.family()
+        mother = await writer.guardian()
+        father = await writer.guardian()
+        await writer.members(
+            [(mother, "mother"), (father, "father")],
+            [await writer.student(surnames), await writer.student(surnames)],
+        )
+
+        # 3. One guardian, one adult student.
+        surnames = await writer.family()
+        grandparent = await writer.guardian()
+        adult = await writer.student(surnames, birthdate=ADULT_BIRTHDATE)
+        await writer.members([(grandparent, "grandparent")], [adult])
+
+        # B5: the login basis is checked, not assumed (a refusal rolls back).
+        await families_service.STUDENT_LOGIN_GATE.ensure_login_allowed(
+            session, user_id=student_user_id
+        )
+        return writer.rows
+
+
+class _DemoFamilyWriter:
+    """Writes one demo family at a time with the factory helpers and counts
+    the rows it inserts."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.rows = 0
+        self.current: Family | None = None
+
+    async def family(self) -> str:
+        """A new family named after a fresh surname pair; returns the pair."""
+        surnames = f"{get_faker().last_name()} {get_faker().last_name()}"
+        self.current = await persist(
+            self.session, FamilyFactory, name=f"Familia {surnames}"
+        )
+        self.rows += 1
+        return surnames
+
+    async def student(self, surnames: str, **overrides: Any) -> Student:
+        student = await persist_student(
+            self.session, family_names=surnames, **overrides
+        )
+        self.rows += 2  # the profile and its one emergency contact
+        return student
+
+    async def guardian(self, **overrides: Any) -> Guardian:
+        guardian: Guardian = await persist(self.session, GuardianFactory, **overrides)
+        self.rows += 1
+        return guardian
+
+    async def members(
+        self, guardians: list[tuple[Guardian, str]], students: list[Student]
+    ) -> None:
+        """Link every guardian to every student, then add all of them to the
+        current family."""
+        assert self.current is not None
+        for student in students:
+            for guardian, relationship in guardians:
+                await link_guardian(self.session, student, guardian, relationship)
+                self.rows += 1
+        added = await add_to_family(
+            self.session,
+            self.current,
+            *students,
+            *(guardian for guardian, _ in guardians),
+        )
+        self.rows += len(added)
+
+
+async def _user_id(session: AsyncSession, username: str) -> uuid.UUID:
+    user_id = await session.scalar(select(User.id).where(User.username == username))
+    if user_id is None:
+        raise DemoFamilyMissingLoginError(
+            f"{username} must exist before families.demo_families"
+        )
+    return user_id
+
+
+async def _already_linked(
+    session: AsyncSession, student_user_id: uuid.UUID, guardian_user_id: uuid.UUID
+) -> bool:
+    student = await session.scalar(
+        select(Student.id).where(Student.user_id == student_user_id)
+    )
+    guardian = await session.scalar(
+        select(Guardian.id).where(Guardian.user_id == guardian_user_id)
+    )
+    return student is not None or guardian is not None
