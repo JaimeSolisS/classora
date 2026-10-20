@@ -9,9 +9,9 @@ import { common, errors, signedInAs } from '../support/catalog';
 
 // Request, approve, sign in (#169 I1): a parent or guardian requests an
 // account on /register (reached from /login), can't sign in while it is
-// pending, the demo Owner approves it on /registration-requests (the shared
-// signed-in state: approval needs no reauthentication), and the person then
-// signs in.
+// pending, the demo Owner approves it on /approvals (the approval inbox,
+// #40 G1; the shared signed-in state: approval needs no reauthentication),
+// and the person then signs in.
 //
 // Budgets (#169 I2; #27, ADR-0008; see support/auth.ts): 1 registration
 // request (`registration.ip`: 10 per hour), 2 logins (`login.ip`), and 1
@@ -107,34 +107,38 @@ test('a parent requests an account, the Owner approves it and the parent signs i
     errors.invalid_credentials,
   );
 
-  // 3. The demo Owner (the shared session) approves the request.
+  // 3. The demo Owner (the shared session) approves the request in the
+  // approval inbox.
   await owner.goto('/');
   await owner
     .getByRole('banner')
-    .getByRole('link', { name: common.nav.registrations })
+    .getByRole('link', { name: common.nav.approvals })
     .click();
-  await expect(owner).toHaveURL('/registration-requests');
+  await expect(owner).toHaveURL('/approvals');
   const ownerMain = owner.getByRole('main');
   await expect(
     ownerMain.getByRole('heading', {
       level: 1,
-      name: common.registrations.title,
+      name: common.approvals.title,
     }),
   ).toBeVisible();
   const approveButton = ownerMain.getByRole('button', {
-    name: common.registrations.approveFor.replace('{{username}}', USERNAME),
+    name: common.approvals.actions.approveFor.replace('{{name}}', USERNAME),
   });
   await approveButton.click();
   const dialog = owner.getByRole('dialog');
   await expect(dialog).toContainText(DISPLAY_NAME);
   await dialog
-    .getByRole('button', { name: common.registrations.approve, exact: true })
+    .getByRole('button', {
+      name: common.approvals.actions.approve,
+      exact: true,
+    })
     .click();
   await expect(dialog).toBeHidden();
   await expect(ownerMain.getByRole('status')).toHaveText(
-    common.registrations.approved,
+    common.approvals.done.approved,
   );
-  // The row left the Pending view.
+  // The row left the Open view.
   await expect(approveButton).toHaveCount(0);
 
   // 4. Back in the requester's browser, signing in works (login 2).

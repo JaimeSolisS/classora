@@ -1,4 +1,4 @@
-import { createBrowserRouter, type RouteObject } from 'react-router';
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ClassroomsPage } from '@/features/catalog/ClassroomsPage';
@@ -22,6 +22,8 @@ import {
   NewGuardianPage,
 } from '@/features/guardians/GuardianFormPages';
 import { GuardiansPage } from '@/features/guardians/GuardiansPage';
+import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
+import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
 import { PrivacyNoticePage } from '@/features/privacy-notice/PrivacyNoticePage';
 import { StudentDetailPage } from '@/features/students/StudentDetailPage';
 import {
@@ -31,7 +33,6 @@ import {
 import { StudentsPage } from '@/features/students/StudentsPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
-import { RegistrationRequestsPage } from '@/features/users/registrations/RegistrationRequestsPage';
 import { UserDetailPage } from '@/features/users/admin/UserDetailPage';
 import { UsersPage } from '@/features/users/admin/UsersPage';
 import { HomePage } from '@/pages/HomePage';
@@ -50,7 +51,7 @@ import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 // (/login, /invite, /reset, /register) and the error elements are the only
 // things outside the guard. Every other page goes
 // under the guard route and needs a session; a page that needs a permission
-// declares `handle: { permission: '…' }`. A unit test fails if a page is
+// declares `handle: { permission: '…' }` (or `anyPermission: [...]`). A unit test fails if a page is
 // added outside the guard. Until the user accepts the current privacy notice
 // (#174), the guard shows /privacy-notice instead of any other page.
 export const routes: RouteObject[] = [
@@ -118,9 +119,17 @@ export const routes: RouteObject[] = [
             handle: { permission: 'user.password_reset.issue' },
           },
           {
+            path: 'approvals',
+            element: <ApprovalsPage />,
+            handle: { anyPermission: APPROVAL_REVIEW_PERMISSIONS },
+          },
+          // The former account-requests page (#169): bookmarks keep working
+          // (#40 F2). /approvals checks the access.
+          {
             path: 'registration-requests',
-            element: <RegistrationRequestsPage />,
-            handle: { permission: 'registration.review' },
+            element: (
+              <Navigate to="/approvals?type=identity.registration" replace />
+            ),
           },
           {
             path: 'catalog/education-levels',

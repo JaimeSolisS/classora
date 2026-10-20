@@ -5,6 +5,13 @@
   (:func:`get_center_time_zone`, :func:`center_today`) and the time-zone
   dependency registry (:func:`register_time_zone_dependency`); implemented in
   :mod:`app.modules.administration.settings`.
+- The approval inbox core (#40): handlers and their registry
+  (:class:`ApprovalHandler`, :func:`register_approval_handler`,
+  :func:`registered_approval_types`), the account-reference resolver
+  (:func:`register_account_reference_resolver`), creating and requester
+  actions (:func:`create_approval_request`, :func:`cancel_approval_request`,
+  :func:`resubmit_approval_request`), reviewer decisions and reads;
+  implemented in :mod:`app.modules.administration.approvals`.
 - Reading the audit log, below.
 
 **Audit log** (spec §9; architecture §4.4 cursor pagination).
@@ -30,6 +37,54 @@ from app.core.pagination import (
     InvalidCursorError,
     build_cursor_page,
     decode_cursor,
+)
+from app.modules.administration.approvals import (
+    AccountReferenceResolver as AccountReferenceResolver,
+)
+from app.modules.administration.approvals import (
+    AccountResolverMissingError as AccountResolverMissingError,
+)
+from app.modules.administration.approvals import (
+    ApprovalHandler as ApprovalHandler,
+)
+from app.modules.administration.approvals import (
+    ApprovalRequestFilters as ApprovalRequestFilters,
+)
+from app.modules.administration.approvals import (
+    ApprovalRequestView as ApprovalRequestView,
+)
+from app.modules.administration.approvals import (
+    cancel_approval_request as cancel_approval_request,
+)
+from app.modules.administration.approvals import (
+    create_approval_request as create_approval_request,
+)
+from app.modules.administration.approvals import (
+    decide_approval_request as decide_approval_request,
+)
+from app.modules.administration.approvals import (
+    get_approval_request as get_approval_request,
+)
+from app.modules.administration.approvals import (
+    list_approval_requests as list_approval_requests,
+)
+from app.modules.administration.approvals import (
+    register_account_reference_resolver as register_account_reference_resolver,
+)
+from app.modules.administration.approvals import (
+    register_approval_handler as register_approval_handler,
+)
+from app.modules.administration.approvals import (
+    registered_account_reference_resolver as registered_account_reference_resolver,
+)
+from app.modules.administration.approvals import (
+    registered_approval_types as registered_approval_types,
+)
+from app.modules.administration.approvals import (
+    resubmit_approval_request as resubmit_approval_request,
+)
+from app.modules.administration.approvals import (
+    unregister_approval_handler as unregister_approval_handler,
 )
 from app.modules.administration.schemas import AuditChange, AuditEventListItem
 from app.modules.administration.settings import (

@@ -17,7 +17,7 @@ type Common = {
     users: string;
     invitations: string;
     passwordResets: string;
-    registrations: string;
+    approvals: string;
     catalog: string;
     settings: string;
     students: string;
@@ -265,11 +265,10 @@ type Common = {
     >;
   };
   relationships: Record<string, string>;
-  registrations: {
+  approvals: {
     title: string;
-    approve: string;
-    approveFor: string;
-    approved: string;
+    actions: { approve: string; approveFor: string };
+    done: { approved: string };
   };
   invite: {
     title: string;

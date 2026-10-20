@@ -406,6 +406,22 @@ def test_a_request_writes_the_named_event_without_secrets(
     no_secret_in_audit(module_seeded_url, REQUEST_PASSWORD, row.password_hash)
 
 
+def test_a_request_raises_its_approval_request(module_seeded_url, client, clock):
+    """#40 D1, E1: the same transaction creates a pending
+    ``identity.registration`` approval request (with its create event)."""
+    username = unique_username()
+    assert code_of(register(client, username=username)) == ACCEPTED
+    row = request_row(module_seeded_url, username)
+
+    assert row.approval_id is not None
+    assert row.approval_status == "pending"
+    assert row.requester_user_id == row.user_id
+    assert row.resolved_at is None
+    [created] = events(module_seeded_url, record_id=row.approval_id, action="create")
+    assert created.record_type == "approval_requests"
+    assert created.actor_user_id is None
+
+
 def test_failed_requests_write_no_event(module_seeded_url, client, clock):
     taken = create_user(module_seeded_url, roles=(TUTOR,))
     before = len(events(module_seeded_url, action=REQUESTED_EVENT))

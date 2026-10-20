@@ -1239,260 +1239,6 @@
         }
       }
     },
-    "/api/v1/registration-requests": {
-      "get": {
-        "tags": [
-          "registrations"
-        ],
-        "summary": "List Registration Requests",
-        "description": "The registration requests with ``status`` (default ``pending``),\noldest first. Holds no password data.",
-        "operationId": "list_registration_requests_api_v1_registration_requests_get",
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/RegistrationStatus",
-              "default": "pending"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 25,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OffsetPage_RegistrationRequestItem_"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/registration-requests/{request_id}/approve": {
-      "post": {
-        "tags": [
-          "registrations"
-        ],
-        "summary": "Approve Registration",
-        "description": "Approve a pending request: the account becomes active with the\nrequested role. Confirm the person's identity first, out of band.",
-        "operationId": "approve_registration_api_v1_registration_requests__request_id__approve_post",
-        "parameters": [
-          {
-            "name": "request_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Request Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegistrationRequestItem"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such registration request (not_found).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/registration-requests/{request_id}/reject": {
-      "post": {
-        "tags": [
-          "registrations"
-        ],
-        "summary": "Reject Registration",
-        "description": "Reject a pending request: the account is archived and can never sign\nin; its username can't be used again.",
-        "operationId": "reject_registration_api_v1_registration_requests__request_id__reject_post",
-        "parameters": [
-          {
-            "name": "request_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Request Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegistrationRequestItem"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such registration request (not_found).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -2421,6 +2167,484 @@
           },
           "400": {
             "description": "The pagination cursor is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "List Approval Requests",
+        "description": "The approval requests of the types the caller may review, by priority\n(high first), then oldest first. Empty for a caller who reviews none.",
+        "operationId": "list_approval_requests_api_v1_approval_requests_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalStatusFilter",
+              "description": "open (the default: pending and changes_requested), one status, or all.",
+              "default": "open"
+            },
+            "description": "open (the default: pending and changes_requested), one status, or all."
+          },
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalAssigneeFilter",
+              "description": "any (the default), me or unassigned.",
+              "default": "any"
+            },
+            "description": "any (the default), me or unassigned."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "request_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One registered type, for example identity.registration.",
+              "title": "Request Type"
+            },
+            "description": "One registered type, for example identity.registration."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ApprovalRequestItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Get Approval Request",
+        "description": "One approval request the caller may review.",
+        "operationId": "get_approval_request_api_v1_approval_requests__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}/approve": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Approve Approval Request",
+        "description": "Approve a pending request; the type's handler applies the approval in\nthe same transaction (a registration: the account becomes active with the\nrequested role; confirm the person's identity first, out of band).",
+        "operationId": "approve_approval_request_api_v1_approval_requests__request_id__approve_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}/reject": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Reject Approval Request",
+        "description": "Reject an open request, with a reason when the type requires one (a\nregistration: the account is archived and can never sign in).",
+        "operationId": "reject_approval_request_api_v1_approval_requests__request_id__reject_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApprovalRejectBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}/request-changes": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Request Changes Approval Request",
+        "description": "Send a pending request back to its requester with a reason, when the\ntype supports it.",
+        "operationId": "request_changes_approval_request_api_v1_approval_requests__request_id__request_changes_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApprovalRequestChangesBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -6291,6 +6515,221 @@
         "title": "AcademicPeriodUpdate",
         "description": "A change to a period with the ``version`` the caller loaded. Fields not\nsent stay unchanged; the type can't change (deactivate and recreate)."
       },
+      "AccountName": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "AccountName",
+        "description": "A user named in an approval request: the id and the display name only."
+      },
+      "ApprovalAction": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "reject",
+          "request_changes"
+        ]
+      },
+      "ApprovalAssigneeFilter": {
+        "type": "string",
+        "enum": [
+          "any",
+          "me",
+          "unassigned"
+        ]
+      },
+      "ApprovalPriority": {
+        "type": "string",
+        "enum": [
+          "low",
+          "normal",
+          "high"
+        ]
+      },
+      "ApprovalRejectBody": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ApprovalRejectBody",
+        "description": "``POST …/reject``: the reason, required only by some types (at most\n1000 characters once trimmed)."
+      },
+      "ApprovalRequestChangesBody": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ApprovalRequestChangesBody",
+        "description": "``POST …/request-changes``: what the requester must change (required;\nat most 1000 characters once trimmed). A missing reason is a ``422`` on\n``reason`` after the ``404`` and ``409`` checks."
+      },
+      "ApprovalRequestItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "request_type": {
+            "type": "string",
+            "title": "Request Type"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/ApprovalPriority"
+          },
+          "requester": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "subject": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Subject"
+          },
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalAction"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "request_type",
+          "status",
+          "priority",
+          "requester",
+          "assignee",
+          "created_at",
+          "resolved_at",
+          "resolved_by",
+          "reason",
+          "subject",
+          "allowed_actions",
+          "version"
+        ],
+        "title": "ApprovalRequestItem",
+        "description": "One approval request as a reviewer sees it.\n\n``subject`` is the type's own display data (for ``identity.registration``:\n``username``, ``display_name`` and ``requested_role``); never a secret.\n``allowed_actions`` are the decisions the request takes now (from its\nstatus and its type)."
+      },
+      "ApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "changes_requested",
+          "cancelled"
+        ]
+      },
+      "ApprovalStatusFilter": {
+        "type": "string",
+        "enum": [
+          "open",
+          "pending",
+          "approved",
+          "rejected",
+          "changes_requested",
+          "cancelled",
+          "all"
+        ]
+      },
       "AuditChange": {
         "properties": {
           "old": {
@@ -8507,6 +8946,37 @@
         ],
         "title": "OffsetPage[AcademicPeriodDetail]"
       },
+      "OffsetPage_ApprovalRequestItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRequestItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ApprovalRequestItem]"
+      },
       "OffsetPage_ClassroomDetail_": {
         "properties": {
           "items": {
@@ -8692,37 +9162,6 @@
           "offset"
         ],
         "title": "OffsetPage[InvitationListItem]"
-      },
-      "OffsetPage_RegistrationRequestItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/RegistrationRequestItem"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "limit": {
-            "type": "integer",
-            "title": "Limit"
-          },
-          "offset": {
-            "type": "integer",
-            "title": "Offset"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "OffsetPage[RegistrationRequestItem]"
       },
       "OffsetPage_StudentListItem_": {
         "properties": {
@@ -9220,71 +9659,11 @@
         "title": "RegistrationCreate",
         "description": "A self-registration request (``POST /api/v1/auth/registrations``)."
       },
-      "RegistrationRequestItem": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "username": {
-            "type": "string",
-            "title": "Username"
-          },
-          "display_name": {
-            "type": "string",
-            "title": "Display Name"
-          },
-          "requested_role": {
-            "$ref": "#/components/schemas/RegistrationRole"
-          },
-          "status": {
-            "$ref": "#/components/schemas/RegistrationStatus"
-          },
-          "submitted_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Submitted At"
-          },
-          "decided_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "username",
-          "display_name",
-          "requested_role",
-          "status",
-          "submitted_at",
-          "decided_at"
-        ],
-        "title": "RegistrationRequestItem",
-        "description": "One registration request in the review list. Holds no password data."
-      },
       "RegistrationRole": {
         "type": "string",
         "enum": [
           "guardian",
           "student"
-        ]
-      },
-      "RegistrationStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "approved",
-          "rejected"
         ]
       },
       "RegistrationSubmitted": {

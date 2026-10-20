@@ -440,69 +440,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/registration-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Registration Requests
-         * @description The registration requests with ``status`` (default ``pending``),
-         *     oldest first. Holds no password data.
-         */
-        get: operations["list_registration_requests_api_v1_registration_requests_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/registration-requests/{request_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Approve Registration
-         * @description Approve a pending request: the account becomes active with the
-         *     requested role. Confirm the person's identity first, out of band.
-         */
-        post: operations["approve_registration_api_v1_registration_requests__request_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/registration-requests/{request_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reject Registration
-         * @description Reject a pending request: the account is archived and can never sign
-         *     in; its username can't be used again.
-         */
-        post: operations["reject_registration_api_v1_registration_requests__request_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -681,6 +618,111 @@ export interface paths {
         get: operations["list_events_api_v1_audit_events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Approval Requests
+         * @description The approval requests of the types the caller may review, by priority
+         *     (high first), then oldest first. Empty for a caller who reviews none.
+         */
+        get: operations["list_approval_requests_api_v1_approval_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Approval Request
+         * @description One approval request the caller may review.
+         */
+        get: operations["get_approval_request_api_v1_approval_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Approval Request
+         * @description Approve a pending request; the type's handler applies the approval in
+         *     the same transaction (a registration: the account becomes active with the
+         *     requested role; confirm the person's identity first, out of band).
+         */
+        post: operations["approve_approval_request_api_v1_approval_requests__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Approval Request
+         * @description Reject an open request, with a reason when the type requires one (a
+         *     registration: the account is archived and can never sign in).
+         */
+        post: operations["reject_approval_request_api_v1_approval_requests__request_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}/request-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Changes Approval Request
+         * @description Send a pending request back to its requester with a reason, when the
+         *     type supports it.
+         */
+        post: operations["request_changes_approval_request_api_v1_approval_requests__request_id__request_changes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1412,6 +1454,88 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /**
+         * AccountName
+         * @description A user named in an approval request: the id and the display name only.
+         */
+        AccountName: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** @enum {string} */
+        ApprovalAction: "approve" | "reject" | "request_changes";
+        /** @enum {string} */
+        ApprovalAssigneeFilter: "any" | "me" | "unassigned";
+        /** @enum {string} */
+        ApprovalPriority: "low" | "normal" | "high";
+        /**
+         * ApprovalRejectBody
+         * @description ``POST …/reject``: the reason, required only by some types (at most
+         *     1000 characters once trimmed).
+         */
+        ApprovalRejectBody: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ApprovalRequestChangesBody
+         * @description ``POST …/request-changes``: what the requester must change (required;
+         *     at most 1000 characters once trimmed). A missing reason is a ``422`` on
+         *     ``reason`` after the ``404`` and ``409`` checks.
+         */
+        ApprovalRequestChangesBody: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ApprovalRequestItem
+         * @description One approval request as a reviewer sees it.
+         *
+         *     ``subject`` is the type's own display data (for ``identity.registration``:
+         *     ``username``, ``display_name`` and ``requested_role``); never a secret.
+         *     ``allowed_actions`` are the decisions the request takes now (from its
+         *     status and its type).
+         */
+        ApprovalRequestItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Request Type */
+            request_type: string;
+            status: components["schemas"]["ApprovalStatus"];
+            priority: components["schemas"]["ApprovalPriority"];
+            requester: components["schemas"]["AccountName"] | null;
+            assignee: components["schemas"]["AccountName"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            resolved_by: components["schemas"]["AccountName"] | null;
+            /** Reason */
+            reason: string | null;
+            /** Subject */
+            subject: {
+                [key: string]: unknown;
+            };
+            /** Allowed Actions */
+            allowed_actions: components["schemas"]["ApprovalAction"][];
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        ApprovalStatus: "pending" | "approved" | "rejected" | "changes_requested" | "cancelled";
+        /** @enum {string} */
+        ApprovalStatusFilter: "open" | "pending" | "approved" | "rejected" | "changes_requested" | "cancelled" | "all";
         /**
          * AuditChange
          * @description One column's value before and after the change (null when there is none).
@@ -2430,6 +2554,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[ApprovalRequestItem] */
+        OffsetPage_ApprovalRequestItem_: {
+            /** Items */
+            items: components["schemas"]["ApprovalRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[ClassroomDetail] */
         OffsetPage_ClassroomDetail_: {
             /** Items */
@@ -2489,17 +2624,6 @@ export interface components {
         OffsetPage_InvitationListItem_: {
             /** Items */
             items: components["schemas"]["InvitationListItem"][];
-            /** Total */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-        };
-        /** OffsetPage[RegistrationRequestItem] */
-        OffsetPage_RegistrationRequestItem_: {
-            /** Items */
-            items: components["schemas"]["RegistrationRequestItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -2764,34 +2888,8 @@ export interface components {
             password: string;
             role: components["schemas"]["RegistrationRole"];
         };
-        /**
-         * RegistrationRequestItem
-         * @description One registration request in the review list. Holds no password data.
-         */
-        RegistrationRequestItem: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Username */
-            username: string;
-            /** Display Name */
-            display_name: string;
-            requested_role: components["schemas"]["RegistrationRole"];
-            status: components["schemas"]["RegistrationStatus"];
-            /**
-             * Submitted At
-             * Format: date-time
-             */
-            submitted_at: string;
-            /** Decided At */
-            decided_at: string | null;
-        };
         /** @enum {string} */
         RegistrationRole: "guardian" | "student";
-        /** @enum {string} */
-        RegistrationStatus: "pending" | "approved" | "rejected";
         /**
          * RegistrationSubmitted
          * @description The answer to a registration request (``202``). Holds no id.
@@ -4328,191 +4426,6 @@ export interface operations {
             };
         };
     };
-    list_registration_requests_api_v1_registration_requests_get: {
-        parameters: {
-            query?: {
-                status?: components["schemas"]["RegistrationStatus"];
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OffsetPage_RegistrationRequestItem_"];
-                };
-            };
-            /** @description Authentication required. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
-    approve_registration_api_v1_registration_requests__request_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegistrationRequestItem"];
-                };
-            };
-            /** @description Authentication required. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description No such registration request (not_found). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
-    reject_registration_api_v1_registration_requests__request_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegistrationRequestItem"];
-                };
-            };
-            /** @description Authentication required. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description No such registration request (not_found). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description The request was already approved or rejected, or its account is no longer pending (registration_already_decided). Approval only: The account holds the student role and isn't linked to a student profile (student_profile_required), or its student is a minor without a valid consent from a linked, active guardian (guardian_consent_required); nothing changes. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
     list_users_api_v1_users_get: {
         parameters: {
             query?: {
@@ -5101,6 +5014,329 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_approval_requests_api_v1_approval_requests_get: {
+        parameters: {
+            query?: {
+                /** @description open (the default: pending and changes_requested), one status, or all. */
+                status?: components["schemas"]["ApprovalStatusFilter"];
+                /** @description any (the default), me or unassigned. */
+                assignee?: components["schemas"]["ApprovalAssigneeFilter"];
+                limit?: number;
+                offset?: number;
+                /** @description One registered type, for example identity.registration. */
+                request_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ApprovalRequestItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_approval_request_api_v1_approval_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    approve_approval_request_api_v1_approval_requests__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reject_approval_request_api_v1_approval_requests__request_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApprovalRejectBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    request_changes_approval_request_api_v1_approval_requests__request_id__request_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApprovalRequestChangesBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

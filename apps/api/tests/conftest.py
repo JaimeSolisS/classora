@@ -26,6 +26,7 @@ from app.core import clock as app_clock
 from app.core.config import env_var_names, get_settings
 from app.modules.families import service as families_service
 from app.modules.identity.service import register_student_login_gate
+from app.wiring import register_approval_wiring
 from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.factories.base import reseed
 
@@ -77,6 +78,15 @@ def student_login_gate() -> Iterator[None]:
     register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
     yield
     register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+
+
+@pytest.fixture(autouse=True)
+def approval_wiring() -> None:
+    """Register the approval types and the account-reference resolver for
+    every test (#40 D3), as the composition roots do: a registration submitted
+    outside an app (``in_uow``) raises its approval request too. Tests that
+    register a fake type unregister it themselves."""
+    register_approval_wiring()
 
 
 @pytest.fixture

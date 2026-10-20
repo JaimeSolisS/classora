@@ -190,12 +190,17 @@ def test_approving_a_minors_student_request_needs_a_consent(
     row = request_row(module_seeded_url, username)
     student = linked_profile(client, staff, row.user_id, MINOR)
 
-    assert code_of(approve(client, staff, row.id)) == CONSENT_REQUIRED
+    assert code_of(approve(client, staff, row.approval_id)) == CONSENT_REQUIRED
     after = request_row(module_seeded_url, username)
-    assert (after.state, after.status) == ("pending", "pending")
+    # D4: the handler's error comes back and the approval stays pending.
+    assert (after.state, after.status, after.approval_status) == (
+        "pending",
+        "pending",
+        "pending",
+    )
 
     consenting_guardian(client, staff, student["id"])
-    assert code_of(approve(client, staff, row.id)) == (200, None)
+    assert code_of(approve(client, staff, row.approval_id)) == (200, None)
     assert user_state(module_seeded_url, row.user_id) == "active"
     assert signed_in(client, username, REQUEST_PASSWORD)
 
@@ -207,8 +212,9 @@ def test_approving_a_student_request_without_a_profile_is_refused(
     assert code_of(register(client, username=username, role=STUDENT))[0] == 202
     row = request_row(module_seeded_url, username)
 
-    assert code_of(approve(client, staff, row.id)) == PROFILE_REQUIRED
-    assert request_row(module_seeded_url, username).status == "pending"
+    assert code_of(approve(client, staff, row.approval_id)) == PROFILE_REQUIRED
+    after = request_row(module_seeded_url, username)
+    assert (after.status, after.approval_status) == ("pending", "pending")
 
 
 # --- #31 reactivation ----------------------------------------------------------------

@@ -6,41 +6,22 @@ Public route (``public()``; ``Origin`` check only, #24; ``rate_limit(
 - ``POST /api/v1/auth/registrations``: a pending user without a role and a
   pending request (``202``).
 
-Staff routes (``require("registration.review")``; Owner and Administrator):
-
-- ``GET /api/v1/registration-requests``: the requests with one status.
-- ``POST /api/v1/registration-requests/{request_id}/approve``.
-- ``POST /api/v1/registration-requests/{request_id}/reject``.
-
-No reauthentication: approval grants only Parent/Guardian or Student, like a
-non-staff invitation (ADR-0007 D10).
+Staff review the requests in the approval inbox (#40): approval requests of
+type ``identity.registration`` under ``/api/v1/approval-requests``
+(``registration.review``; Owner and Administrator). The former
+``/api/v1/registration-requests`` routes are gone. No reauthentication:
+approval grants only Parent/Guardian or Student, like a non-staff invitation
+(ADR-0007 D10).
 """
 
-import uuid
-from typing import Annotated, Any
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Query
-
-from app.core.authz import (
-    CSRF_RESPONSES,
-    PERMISSION_RESPONSES,
-    Principal,
-    public,
-    require,
-)
+from app.core.authz import CSRF_RESPONSES, public
 from app.core.errors import problem_response_doc
-from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.ratelimit import RATE_LIMIT_RESPONSES, rate_limit
 from app.core.uow import UnitOfWorkDep
 from app.modules.identity import registrations
-from app.modules.identity.errors import STUDENT_LOGIN_GATE_DOC
-from app.modules.identity.permissions import REGISTRATION_REVIEW
-from app.modules.identity.schemas import (
-    RegistrationCreate,
-    RegistrationRequestItem,
-    RegistrationStatus,
-    RegistrationSubmitted,
-)
+from app.modules.identity.schemas import RegistrationCreate, RegistrationSubmitted
 
 router = APIRouter(tags=["registrations"])
 
@@ -48,16 +29,6 @@ REGISTRATION_PUBLIC_REASON = (
     "The person has no account yet; the request stays pending until staff"
     " approve it. CSRF protection is the Origin check plus SameSite (#24)"
 )
-
-DECISION_RESPONSES: dict[int | str, dict[str, Any]] = {
-    **PERMISSION_RESPONSES,
-    404: problem_response_doc("No such registration request (not_found)."),
-    409: problem_response_doc(
-        "The request was already approved or rejected, or its account is no"
-        " longer pending (registration_already_decided). Approval only: "
-        + STUDENT_LOGIN_GATE_DOC
-    ),
-}
 
 
 @router.post(
@@ -96,49 +67,3 @@ async def submit_registration(
         role=body.role,
     )
     return RegistrationSubmitted(status="pending")
-
-
-@router.get("/api/v1/registration-requests", responses=PERMISSION_RESPONSES)
-async def list_registration_requests(
-    principal: Annotated[Principal, require(REGISTRATION_REVIEW)],
-    page: OffsetPagination,
-    uow: UnitOfWorkDep,
-    status: Annotated[RegistrationStatus, Query()] = "pending",
-) -> OffsetPage[RegistrationRequestItem]:
-    """The registration requests with ``status`` (default ``pending``),
-    oldest first. Holds no password data."""
-    return await registrations.list_registration_requests(
-        uow.session, status=status, page=page
-    )
-
-
-@router.post(
-    "/api/v1/registration-requests/{request_id}/approve",
-    responses=DECISION_RESPONSES,
-)
-async def approve_registration(
-    principal: Annotated[Principal, require(REGISTRATION_REVIEW)],
-    request_id: uuid.UUID,
-    uow: UnitOfWorkDep,
-) -> RegistrationRequestItem:
-    """Approve a pending request: the account becomes active with the
-    requested role. Confirm the person's identity first, out of band."""
-    return await registrations.approve_registration(
-        uow.session, principal=principal, request_id=request_id
-    )
-
-
-@router.post(
-    "/api/v1/registration-requests/{request_id}/reject",
-    responses=DECISION_RESPONSES,
-)
-async def reject_registration(
-    principal: Annotated[Principal, require(REGISTRATION_REVIEW)],
-    request_id: uuid.UUID,
-    uow: UnitOfWorkDep,
-) -> RegistrationRequestItem:
-    """Reject a pending request: the account is archived and can never sign
-    in; its username can't be used again."""
-    return await registrations.reject_registration(
-        uow.session, principal=principal, request_id=request_id
-    )
