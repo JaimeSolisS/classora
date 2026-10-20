@@ -45,7 +45,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # subjects, M2-14), then families (students and their emergency
     # contacts, M2-15; guardians and student_guardians, M2-16; families,
     # family_students and family_guardians, M2-16b; privacy_notice_versions
-    # and privacy_notice_acceptances, M2-17b; consent_records, M2-17);
+    # and privacy_notice_acceptances, M2-17b; consent_records, M2-17;
+    # user_preferences, M2-18);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -74,6 +75,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "privacy_notice_versions",
         "privacy_notice_acceptances",
         "consent_records",
+        "user_preferences",
     }
 
 

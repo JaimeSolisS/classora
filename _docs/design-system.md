@@ -81,8 +81,13 @@ from `tokens.css` and checks them in both themes:
 - Fallback rules: no stored value, an unknown value or a `localStorage` that
   throws all resolve to `system`, with no error. If the browser has no
   `matchMedia`, `system` resolves to light.
-- M2-18 moves the preference to the user's profile in the database; the local
-  `classora.theme` value is what it migrates.
+- Signed in, the choice is also saved to the user's account (#36): at
+  sign-in the account's stored theme wins and replaces the local value (an
+  account that never stored one is filled from it), and a switcher choice is
+  applied at once, stored locally and saved. Signed out (the login and other
+  public pages) the choice is local only. If a save fails, the choice still
+  applies on this device and an alert with "Try again" shows below the
+  switchers (`features/preferences`).
 - Code: `apps/web/src/theme/` (`theme.ts`, `ThemeProvider.tsx`, `use-theme.ts`,
   `ThemeSwitcher.tsx`). The switcher labels come from the translation
   catalogs (see "Text, dates and money").
@@ -118,8 +123,10 @@ Rules for every user-visible string, date and amount in `apps/web`
   entry whose primary subtag is `es` or `en`, else `es`. Unknown stored
   values and a throwing `localStorage` fall back the same way. It is applied
   in `main.tsx` before the first render; switching updates the text in place
-  with no reload or remount. M2-18 migrates `classora.language` to the user's
-  profile.
+  with no reload or remount. Signed in, the language is also saved to the
+  user's account (#36), the same way as the theme (see "Theming"): the
+  account's language wins at sign-in, and signed out it is local only.
+  Applying the account's values at sign-in never moves focus.
 - `<html lang>` always matches the active language (`index.html` ships
   `lang="es"`). The language switcher shows the endonyms "Español" and
   "English", each with its own `lang` attribute.

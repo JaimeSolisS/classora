@@ -805,5 +805,8 @@
     "accepted": "Accepted on {{date}}",
     "changed": "The notice changed. Please read the new version.",
     "menu": "Privacy notice"
+  },
+  "preferences": {
+    "saveFailed": "Your preference couldn't be saved to your account. For now it applies only on this device."
   }
 }

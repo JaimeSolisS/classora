@@ -114,6 +114,8 @@ DEMO_OWNER_USERNAME = "demo.owner"
 DEMO_OWNER_DISPLAY_NAME = "Demo Owner"
 DEMO_OWNER_PASSWORD = "classora-demo-owner"
 DEMO_OWNER_APP_ENVS = frozenset({"local"})
+DEMO_OWNER_LANGUAGE = "es"
+DEMO_OWNER_THEME = "system"
 
 
 def _settings_app_env() -> str:
@@ -123,8 +125,10 @@ def _settings_app_env() -> str:
 class DemoOwnerGenerator:
     """``identity.demo_owner``: one ``active`` Owner for local sign-in.
 
-    Writes nothing outside ``APP_ENV=local`` (skipped), and nothing when the
-    user already exists (0 rows), so a second ``make seed-demo`` passes.
+    Also stores its preferences (#36 E3): :data:`DEMO_OWNER_LANGUAGE` and
+    :data:`DEMO_OWNER_THEME`. Writes nothing outside ``APP_ENV=local``
+    (skipped), and nothing when the user already exists (0 rows), so a second
+    ``make seed-demo`` passes.
     The password is hashed with ``hash_password`` (the current parameters).
     """
 
@@ -155,4 +159,12 @@ class DemoOwnerGenerator:
         await session.flush()
         session.add(UserRole(user_id=user.id, role_id=owner_role_id))
         await session.flush()
+        # Stored preferences (#36 E3), so the shared E2E account never takes
+        # a spec's local language or theme at sign-in.
+        await identity_service.update_user_preferences(
+            session,
+            user.id,
+            language=DEMO_OWNER_LANGUAGE,
+            theme=DEMO_OWNER_THEME,
+        )
         return 1

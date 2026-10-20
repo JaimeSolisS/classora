@@ -7,6 +7,7 @@ import { canAccess } from '@/features/auth/access';
 import { UserMenu } from '@/features/auth/UserMenu';
 import { PRIVACY_NOTICE_PATH } from '@/features/auth/session';
 import { useSession } from '@/features/auth/useSession';
+import { PreferenceSaveAlert } from '@/features/preferences/PreferenceSaveAlert';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/ui';
 import { NAV_ITEMS, type NavItem } from '../navigation';
@@ -41,6 +42,8 @@ interface AppLayoutProps {
 // shown are the ones the user may open (UX only, #28 F4). The privacy-notice
 // page, and every page while the notice is still to accept, show no
 // navigation items (#174 G1): only the brand, the switchers and the user menu.
+// A switcher choice that couldn't be saved to the account shows an alert
+// below the switchers, inside the collapsible menu (#36 F5).
 export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
   const { t } = useTranslation();
   const navOpen = useUiStore((state) => state.navOpen);
@@ -85,7 +88,7 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
           <div
             id={HEADER_MENU_ID}
             className={cn(
-              'w-full flex-col gap-4 lg:flex lg:w-auto lg:flex-1 lg:flex-row lg:items-center',
+              'w-full flex-col gap-4 lg:flex lg:w-auto lg:flex-1 lg:flex-row lg:flex-wrap lg:items-center',
               navOpen ? 'flex' : 'hidden',
             )}
           >
@@ -114,6 +117,8 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
               <HeaderLanguageSwitcher />
               <UserMenu />
             </div>
+            {/* #36 F5: a preference that couldn't be saved to the account. */}
+            <PreferenceSaveAlert className="lg:ml-auto lg:basis-full" />
           </div>
         </div>
       </header>

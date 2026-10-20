@@ -221,6 +221,7 @@ def test_login_me_logout_me(seeded_url, client):
         "permissions",
         "csrf_token",
         "privacy_notice_required",
+        "preferences",
     }
 
     client.cookies.clear()

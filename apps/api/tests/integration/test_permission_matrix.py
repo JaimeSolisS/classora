@@ -493,6 +493,7 @@ def test_real_app_notice_cases_cover_every_protected_entry():
     assert {c.actor for c in REAL_NOTICE_CASES} == {NOTICE_PENDING_OWNER}
     assert {c.entry.key for c in REAL_NOTICE_CASES if c.entry.is_notice_exempt} == {
         ("GET", "/api/v1/auth/me"),
+        ("PATCH", "/api/v1/auth/me/preferences"),
         ("POST", "/api/v1/auth/logout"),
         ("GET", "/api/v1/privacy-notice"),
         ("POST", "/api/v1/privacy-notice/acceptance"),

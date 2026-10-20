@@ -54,6 +54,7 @@
 #                          must match the route's AccessRule. Only for
 #                          access = "authenticated" (require() has no
 #                          exemption). Today exactly GET /auth/me,
+#                          PATCH /auth/me/preferences (#36),
 #                          POST /auth/logout and the two /privacy-notice
 #                          routes; adding one is a reviewed change.
 #   The runtime check adds a `notice:pending` case per authenticated or
@@ -118,6 +119,14 @@ method = "GET"
 path = "/api/v1/auth/me"
 access = "authenticated"
 notice_exempt = true
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/auth/me/preferences"
+access = "authenticated"
+notice_exempt = true
+# A valid body: every role stores its own theme (#36; the same value each time).
+json = {theme = "system"}
 
 [[route]]
 method = "POST"

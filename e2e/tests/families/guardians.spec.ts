@@ -8,7 +8,7 @@ import {
 } from '../support/auth';
 import { common, fill, signedInAs } from '../support/catalog';
 import { createStudentViaApi } from '../support/students';
-import { createActiveUser } from '../support/users';
+import { createApprovedAccount } from '../support/consent';
 
 // Guardian profiles and student links (#34 K1). The demo Owner's shared
 // session (no login) adds a guardian profile linked to a new guardian
@@ -20,10 +20,11 @@ import { createActiveUser } from '../support/users';
 //
 // Names carry a unique per-test suffix, and every search includes it.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (1 by
-// createActiveUser, 1 for the guardian) and 1 redemption call
-// (createActiveUser). Every `make e2e` starts from an empty database, so the
-// username `e2e.guardians.parent` is unique per run.
+// Budgets (#27, ADR-0008; see support/auth.ts): 1 login (the guardian) and 1
+// self-registration (createApprovedAccount: the Owner's shared session
+// approves it; no token redemption, #36 rebalance). Every `make e2e` starts
+// from an empty database, so the username `e2e.guardians.parent` is unique
+// per run.
 
 const PARENT = 'e2e.guardians.parent';
 const PARENT_NAME = 'E2E Guardians Parent';
@@ -85,16 +86,17 @@ test('linking a guardian to a student, and unlinking revokes access', async ({
   const consoleErrors = recordConsoleErrors(page);
   const main = page.getByRole('main');
 
-  // Setup through the API: the guardian account (login 1, redemption 1) and
-  // two minor students.
-  await createActiveUser(playwright.request, baseURL!, {
-    username: PARENT,
-    role: 'guardian',
-    password: PASSWORD,
-    displayName: PARENT_NAME,
-  });
+  // Setup through the API, from the app origin with the Owner's shared
+  // session: the guardian account (a self-registration the Owner approves:
+  // no login, no redemption) and two minor students.
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await createApprovedAccount(page, playwright.request, baseURL!, {
+    username: PARENT,
+    displayName: PARENT_NAME,
+    password: PASSWORD,
+    role: 'guardian',
+  });
   const ownId = await createStudentViaApi(page, {
     givenNames: 'Ana',
     familyNames: `Ñúñez ${sfx}`,

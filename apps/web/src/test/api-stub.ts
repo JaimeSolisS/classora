@@ -15,6 +15,9 @@ export const TEST_USER: SessionUserBody = {
   permissions: ['user.view', 'audit.view'],
   csrf_token: 'csrf-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   privacy_notice_required: false,
+  // Never stored (#36): the app sends the local values once (F3); the PATCH
+  // stays pending unless a test answers it.
+  preferences: { language: null, theme: null },
 };
 
 export const OTHER_USER: SessionUserBody = {
@@ -25,6 +28,7 @@ export const OTHER_USER: SessionUserBody = {
   permissions: [],
   csrf_token: 'csrf-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   privacy_notice_required: false,
+  preferences: { language: null, theme: null },
 };
 
 export function problem(

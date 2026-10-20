@@ -144,14 +144,14 @@ for (const theme of THEMES) {
       if (!route.signedIn) {
         test.use({ storageState: SIGNED_OUT_STATE });
       }
+      // The theme through colour-scheme emulation, not a stored local choice:
+      // signed in, the account's value wins (#36), and demo.owner's stored
+      // `system` follows the emulated scheme. Signed out, the local default
+      // (`system`) does too.
+      test.use({ colorScheme: theme });
       test(`${route.name} has no axe violations in ${theme}`, async ({
         page,
       }, testInfo) => {
-        // The stored theme choice, applied before the app's first render.
-        await page.addInitScript((choice) => {
-          window.localStorage.setItem('classora.theme', choice);
-        }, theme);
-
         let path = route.path;
         if (route.createsStudent || route.createsGuardian) {
           // The app origin first, so the API call carries the session.
@@ -234,8 +234,10 @@ for (const theme of THEMES) {
 }
 
 // #174 I3: the privacy notice as a new user sees it (to accept), in both
-// themes, from one sign-in. Budgets (see support/auth.ts): 2 logins (1 by
-// createActiveUser, 1 through the form) and 1 redemption.
+// themes, from one sign-in. Budgets (see support/auth.ts): 1 login (through
+// the form; createActiveUser uses the shared Owner session) and 1
+// redemption. The first sign-in stores the local default theme (`system`) in
+// the account (#36), so colour-scheme emulation switches the theme.
 test('privacy-notice (to accept) has no axe violations in light and dark', async ({
   browser,
   playwright,
@@ -279,11 +281,9 @@ test('privacy-notice (to accept) has no axe violations in light and dark', async
     await expect(page).toHaveURL(/\/privacy-notice\?next=/);
 
     for (const theme of THEMES) {
-      // The stored theme choice; a reload applies it (the session cookie
-      // stays, no new login).
-      await page.evaluate((choice) => {
-        window.localStorage.setItem('classora.theme', choice);
-      }, theme);
+      // The emulated colour scheme; a reload starts from it (the session
+      // cookie stays, no new login).
+      await page.emulateMedia({ colorScheme: theme });
       await page.reload();
       await expect(
         page

@@ -805,5 +805,8 @@
     "accepted": "Aceptado el {{date}}",
     "changed": "El aviso cambió. Lee la nueva versión.",
     "menu": "Aviso de privacidad"
+  },
+  "preferences": {
+    "saveFailed": "No se pudo guardar tu preferencia en tu cuenta. Por ahora solo se aplica en este dispositivo."
   }
 }

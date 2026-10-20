@@ -1,7 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect } from 'storybook/test';
+import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import type { Session } from '@/features/auth/session';
+import {
+  PreferencesContext,
+  type PreferencesContextValue,
+} from '@/features/preferences/usePreferences';
 import { resetUiStore } from '@/stores/ui';
 import { StoryAuth } from '@/test/StoryAuth';
 import { StoryRouter } from '@/test/StoryRouter';
@@ -21,6 +26,7 @@ const signedIn: Session = {
     roles: ['administrator'],
     permissions: ['user.view'],
     privacy_notice_required: false,
+    preferences: { language: 'es', theme: 'system' },
   },
 };
 
@@ -38,6 +44,30 @@ function renderLayout(session: Session, navItems?: readonly NavItem[]) {
         ]}
       />
     </StoryAuth>
+  );
+}
+
+// #36 F5: a theme choice that couldn't be saved to the account (a fixed
+// preferences context: no request).
+const saveFailed: PreferencesContextValue = {
+  changeLanguage: () => {},
+  changeTheme: () => {},
+  failure: {
+    error: new ApiError({
+      code: 'internal_error',
+      status: 500,
+      requestId: 'req-preferences-0001',
+    }),
+    fields: ['theme'],
+  },
+  retry: () => {},
+};
+
+function renderSaveFailed() {
+  return (
+    <PreferencesContext value={saveFailed}>
+      {renderLayout(signedIn)}
+    </PreferencesContext>
   );
 }
 
@@ -153,5 +183,40 @@ export const Narrow: Story = {
 
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  },
+};
+
+// #36 F5, lg and up: the alert below the switchers, with the request
+// reference and "Try again".
+export const PreferenceSaveFailed: Story = {
+  render: renderSaveFailed,
+  play: async ({ canvas }) => {
+    const alert = canvas.getByRole('alert');
+    await expect(alert).toBeVisible();
+    await expect(alert).toHaveTextContent(i18n.t('preferences.saveFailed'));
+    await expect(alert).toHaveTextContent('req-preferences-0001');
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('feedback.retry') }),
+    ).toBeVisible();
+  },
+};
+
+// #36 F5 at 320 px: the alert sits in the collapsed header menu, below the
+// switchers, and nothing overflows.
+export const PreferenceSaveFailedNarrow: Story = {
+  render: renderSaveFailed,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvas, userEvent }) => {
+    await expect(canvas.queryByRole('alert')).toBeNull();
+    await userEvent.click(
+      canvas.getByRole('button', { name: i18n.t('nav.toggle') }),
+    );
+    const alert = canvas.getByRole('alert');
+    await expect(alert).toBeVisible();
+    await expect(alert).toHaveTextContent(i18n.t('preferences.saveFailed'));
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('feedback.retry') }),
+    ).toBeVisible();
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
   },
 };

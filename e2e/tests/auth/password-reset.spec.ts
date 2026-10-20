@@ -21,8 +21,8 @@ import { createActiveUser } from '../support/users';
 // Every context is fresh (SIGNED_OUT_STATE): a test that needs the dialog
 // signs in on its own, and logins never touch the shared session (#28 H2).
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 8 logins (2 of them by
-// createActiveUser), 5 redemption calls (2 of them by createActiveUser, one
+// Budgets (#27, ADR-0008; see support/auth.ts): 6 logins (createActiveUser
+// uses the shared Owner session, #36), 5 redemption calls (2 of them by createActiveUser, one
 // each) and one wrong current password (reauth.user). No
 // setting that disables limits is used. Usernames are unique per run:
 // every `make e2e` starts from an empty database.

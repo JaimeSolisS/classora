@@ -112,7 +112,12 @@ describe('route and navigation (G1)', () => {
       (a) => a.textContent,
     );
     expect(nav).toEqual(['Home', 'Account requests']);
-    const url = new URL(api.fetch.mock.calls.at(-1)![0].url);
+    // The last list request (the #36 preference migration may come later).
+    const lists = api.fetch.mock.calls.filter(
+      ([request]) =>
+        new URL(request.url).pathname === '/api/v1/registration-requests',
+    );
+    const url = new URL(lists.at(-1)![0].url);
     expect(url.pathname).toBe('/api/v1/registration-requests');
     expect(url.searchParams.get('status')).toBe('pending');
   });

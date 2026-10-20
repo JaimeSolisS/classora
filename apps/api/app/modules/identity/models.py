@@ -29,6 +29,10 @@
   trigger rejects ``UPDATE`` and ``DELETE``.
 - ``privacy_notice_acceptances``: which user accepted which version, and when
   (#174). One row per user and version.
+- ``user_preferences``: a user's UI language and theme (#36; spec §12
+  ``Preference``). At most one row per user, written on the first save;
+  ``NULL`` means never stored. A separate table, so a theme click never bumps
+  ``users.version`` or writes a ``users`` audit event.
 
 No foreign key cascades: archived users keep their history (spec §2, §16).
 
@@ -45,7 +49,9 @@ events of ``app.modules.identity.registrations``.
 ``privacy_notice_versions`` is not audited: a row is publication data written
 once by a migration, and its trigger keeps it as published.
 ``privacy_notice_acceptances`` is audited (each acceptance is a ``create``
-event).
+event). ``user_preferences`` is not audited and has no ``version``: only the
+user changes their own preferences, and the last write wins
+(``app.modules.identity.preferences``).
 """
 
 import uuid
@@ -72,6 +78,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
 from app.modules.identity.permissions import USER_STATES
+from app.modules.identity.preferences import LANGUAGES, THEMES
 
 USERNAME_PATTERN = "^[a-z0-9._-]{3,64}$"
 
@@ -378,3 +385,28 @@ class PrivacyNoticeAcceptance(Audited, Model):
         ),
     )
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+def _one_of(column: str, values: tuple[str, ...]) -> str:
+    return "{} IN ({})".format(column, ", ".join(f"'{v}'" for v in values))
+
+
+class UserPreference(Model):
+    """A user's stored UI language and theme (#36). Not audited, no version.
+
+    ``user_id`` is unique: one row per user, created by the first save
+    (``preferences.update_user_preferences``, an upsert on it). ``NULL`` in
+    ``language`` or ``theme`` means the user never stored that value.
+    """
+
+    __tablename__ = "user_preferences"
+    __table_args__ = (
+        CheckConstraint(_one_of("language", LANGUAGES), name="language_valid"),
+        CheckConstraint(_one_of("theme", THEMES), name="theme_valid"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
+    )
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    theme: Mapped[str | None] = mapped_column(Text, nullable=True)

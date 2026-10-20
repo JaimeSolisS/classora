@@ -207,6 +207,68 @@
         }
       }
     },
+    "/api/v1/auth/me/preferences": {
+      "patch": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Update Preferences",
+        "description": "Store the signed-in user's UI language, theme or both (#36).\n\nOnly the fields sent change; the last write wins (no ``version``). A\nstored value can't be cleared: ``null``, an empty body, an unknown value\nor another field is ``422``. Changes only the caller's own preferences.\nWorks before the privacy notice is accepted (#174): the notice page has\nthe language switcher. Needs the app's ``Origin`` and the session's\n``X-CSRF-Token``. Returns both values after the save.",
+        "operationId": "update_preferences_api_v1_auth_me_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPreferencesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/reauthenticate": {
       "post": {
         "tags": [
@@ -6505,6 +6567,13 @@
         "title": "InvitationTokenRequest",
         "description": "The token from an invitation link (``POST …/invitation/lookup``)."
       },
+      "Language": {
+        "type": "string",
+        "enum": [
+          "es",
+          "en"
+        ]
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -7280,7 +7349,11 @@
           "privacy_notice_required": {
             "type": "boolean",
             "title": "Privacy Notice Required",
-            "description": "True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout and the privacy-notice routes answers 403 privacy_notice_required."
+            "description": "True until the user accepts the current privacy-notice version (#174). Meanwhile every route except /auth/me, /auth/logout, /auth/me/preferences and the privacy-notice routes answers 403 privacy_notice_required."
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/UserPreferences",
+            "description": "The user's stored UI language and theme (#36); null when never stored. The web app applies them at sign-in."
           }
         },
         "type": "object",
@@ -7291,10 +7364,11 @@
           "roles",
           "permissions",
           "csrf_token",
-          "privacy_notice_required"
+          "privacy_notice_required",
+          "preferences"
         ],
         "title": "SessionUser",
-        "description": "The signed-in user (``POST /auth/login`` and ``GET /auth/me``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
+        "description": "The signed-in user (``POST /auth/login``, ``GET /auth/me`` and\n``POST /auth/password``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
       },
       "StudentAccountUpdate": {
         "properties": {
@@ -8044,6 +8118,14 @@
         "title": "SubjectUpdate",
         "description": "A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with\nthe ``version`` the caller loaded. The level can't be changed."
       },
+      "Theme": {
+        "type": "string",
+        "enum": [
+          "light",
+          "dark",
+          "system"
+        ]
+      },
       "UserAllowedActions": {
         "properties": {
           "edit": {
@@ -8259,6 +8341,55 @@
         ],
         "title": "UserListItem",
         "description": "One user in the list. No contact fields, password data or delegations\n(spec §16: minimal exposure)."
+      },
+      "UserPreferences": {
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Language"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The UI language, or null when never stored."
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Theme"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The theme choice, or null when never stored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "language",
+          "theme"
+        ],
+        "title": "UserPreferences",
+        "description": "The signed-in user's stored preferences (``SessionUser.preferences``).\n\n``null`` means the user has never stored the value."
+      },
+      "UserPreferencesUpdate": {
+        "properties": {
+          "language": {
+            "$ref": "#/components/schemas/Language",
+            "description": "The new UI language."
+          },
+          "theme": {
+            "$ref": "#/components/schemas/Theme",
+            "description": "The new theme choice."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UserPreferencesUpdate",
+        "description": "``PATCH /api/v1/auth/me/preferences``: one or both values.\n\nA field that is not sent stays as it is. ``null`` is refused (a stored\nvalue can't be cleared), so is an empty body and any other field."
       },
       "UserRolesUpdate": {
         "properties": {

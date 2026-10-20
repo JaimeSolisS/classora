@@ -3,7 +3,13 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useNavigate, type NavigateFunction } from 'react-router';
 import {
   api,
@@ -12,7 +18,20 @@ import {
   setAuthHandler,
   type AuthHandler,
 } from '@/app/api';
+import { savePreferences } from '@/features/preferences/api';
+import {
+  createPreferencesController,
+  type PreferencesController,
+  type SaveFailure,
+} from '@/features/preferences/controller';
+import {
+  PreferencesContext,
+  type PreferencesContextValue,
+} from '@/features/preferences/usePreferences';
+import { applyLanguage, i18n } from '@/i18n';
+import { toLanguage, writeStoredLanguage } from '@/i18n/language';
 import { resetUiStore } from '@/stores/ui';
+import { useTheme } from '@/theme/use-theme';
 import { clearCsrfToken } from './csrf';
 import type { LoginNoticeState } from './loginNotice';
 import { ReauthDialog } from './ReauthDialog';
@@ -32,6 +51,9 @@ import { AuthContext, type AuthContextValue } from './useSession';
 // session that ends, a CSRF failure or a reauthentication request from any
 // API call (the AuthHandler of src/app/api.ts), login, logout and the
 // password dialog. Rendered by the root route, inside the router.
+// It also applies the account's language and theme when the session resolves
+// to a user, fills the ones the account never stored, and saves the header
+// switchers' choices while signed in (#36, features/preferences).
 
 interface ControllerDeps {
   queryClient: QueryClient;
@@ -39,13 +61,7 @@ interface ControllerDeps {
   /** Re-renders the provider after the cache was cleared (see replaceSession). */
   rerender: () => void;
   setReauthOpen: (open: boolean) => void;
-}
-
-function sessionQueryOptions() {
-  return {
-    queryKey: SESSION_QUERY_KEY,
-    queryFn: ({ signal }: { signal: AbortSignal }) => fetchSession(signal),
-  };
+  preferences: PreferencesController;
 }
 
 /**
@@ -58,7 +74,27 @@ function createAuthController({
   navigate,
   rerender,
   setReauthOpen,
+  preferences,
 }: ControllerDeps) {
+  /**
+   * The session query. A signed-in response applies the account's
+   * preferences before it reaches the cache (#36 F2), so the page's first
+   * render already uses them.
+   */
+  function sessionQueryOptions() {
+    return {
+      queryKey: SESSION_QUERY_KEY,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const before = preferences.snapshot();
+        const data = await fetchSession(signal);
+        if (data.user) {
+          preferences.fromServer(data.user, before);
+        }
+        return data;
+      },
+    };
+  }
+
   /** The id of the signed-in user the app shows, or null. */
   let signedInId: string | null = null;
   /** Set once a session end is handled, so it happens once (C1). */
@@ -76,6 +112,10 @@ function createAuthController({
    * provider re-renders so its session observer moves to the new query.
    */
   function replaceSession(data: SessionData): void {
+    if (data.user === null) {
+      // The language, theme and local values stay as they are (#36 F6).
+      preferences.signedOut();
+    }
     queryClient.clear();
     queryClient.setQueryData<SessionData>(SESSION_QUERY_KEY, data);
     signedInId = data.user?.id ?? null;
@@ -194,6 +234,7 @@ function createAuthController({
 
   return {
     handler,
+    sessionQueryOptions,
 
     /** Reacts to every new value of the session query (bootstrap, focus). */
     observe: (data: SessionData): void => {
@@ -210,10 +251,15 @@ function createAuthController({
       }
       signedInId = data.user.id;
       ending = false;
+      // F3: values the account never stored take the browser's (once).
+      void preferences.migrate(data.user);
     },
 
     signIn: (body: SessionUserBody): void => {
       const user = acceptSessionUser(body);
+      // Before the session data: the next page renders in the account's
+      // language and theme (#36 F2).
+      preferences.fromServer(user);
       ending = false;
       finishReauth(false);
       replaceSession({ user });
@@ -281,18 +327,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [, setEpoch] = useState(0);
   const [reauthOpen, setReauthOpen] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<SaveFailure | null>(null);
+  const theme = useTheme();
+  const [preferences] = useState(() =>
+    createPreferencesController({
+      applyLanguage: (language) => {
+        writeStoredLanguage(language);
+        applyLanguage(language);
+      },
+      currentLanguage: () => toLanguage(i18n.resolvedLanguage),
+      save: savePreferences,
+      storeSaved: (userId, saved) => {
+        queryClient.setQueryData<SessionData>(SESSION_QUERY_KEY, (old) =>
+          old?.user && old.user.id === userId
+            ? { user: { ...old.user, preferences: saved } }
+            : old,
+        );
+      },
+      onFailureChange: setSaveFailure,
+    }),
+  );
+  // Before any session response can apply a theme (layout effects run
+  // before the query's first result).
+  useLayoutEffect(() => {
+    preferences.bindTheme(theme);
+  }, [preferences, theme]);
   const [controller] = useState(() =>
     createAuthController({
       queryClient,
       navigate,
       rerender: () => setEpoch((epoch) => epoch + 1),
       setReauthOpen,
+      preferences,
     }),
   );
 
   // A2: no refetchInterval (no polling); refetch on focus once stale.
   const query = useQuery({
-    ...sessionQueryOptions(),
+    ...controller.sessionQueryOptions(),
     staleTime: SESSION_STALE_TIME_MS,
   });
 
@@ -309,8 +381,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [controller, query.data]);
 
   const { refetch } = query;
+  const session = toSession(query);
+  const signedInUserId = session.status === 'signedIn' ? session.user.id : null;
+  const preferencesValue = useMemo<PreferencesContextValue>(
+    () => ({
+      changeLanguage: (language) =>
+        void preferences.change('language', language, signedInUserId),
+      changeTheme: (choice) =>
+        void preferences.change('theme', choice, signedInUserId),
+      failure: saveFailure,
+      retry: () => void preferences.retry(),
+    }),
+    [preferences, signedInUserId, saveFailure],
+  );
   const value: AuthContextValue = {
-    session: toSession(query),
+    session,
     refetchSession: () => void refetch(),
     signIn: controller.signIn,
     signOut: controller.signOut,
@@ -319,12 +404,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext value={value}>
-      {children}
-      <ReauthDialog
-        open={reauthOpen}
-        onConfirm={controller.confirmReauth}
-        onCancel={controller.cancelReauth}
-      />
+      <PreferencesContext value={preferencesValue}>
+        {children}
+        <ReauthDialog
+          open={reauthOpen}
+          onConfirm={controller.confirmReauth}
+          onCancel={controller.cancelReauth}
+        />
+      </PreferencesContext>
     </AuthContext>
   );
 }

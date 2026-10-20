@@ -348,7 +348,10 @@ Implemented by M2-17b (#174; spec §9, §16) in the identity module
 - **Exempt routes** (`authenticated(notice_exempt=True)`, recorded on the
   route's `AccessRule` and as `notice_exempt = true` in the permission
   matrix): exactly `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`,
-  `GET /api/v1/privacy-notice` and `POST /api/v1/privacy-notice/acceptance`.
+  `PATCH /api/v1/auth/me/preferences` (#36: the notice page has the language
+  switcher, and the first sign-in fills the account's preferences before the
+  notice is accepted), `GET /api/v1/privacy-notice` and
+  `POST /api/v1/privacy-notice/acceptance`.
   `require()` has no exemption; the self-service password change and
   reauthentication are not exempt (the user accepts first). Adding an
   exemption is a reviewed matrix change.
@@ -372,6 +375,43 @@ Implemented by M2-17b (#174; spec §9, §16) in the identity module
 - **Web:** while `privacy_notice_required` is true the route guard sends every
   page to `/privacy-notice?next=<page>` (no navigation items there); any
   `403 privacy_notice_required` from `apiCall` refetches `/auth/me` once.
+
+### Preferences
+
+Implemented by M2-18 (#36; spec §10, §12 `Preference`) in the identity module
+(`preferences.py`, the auth router).
+
+- **Stored per account** in `user_preferences` (one row per user): the UI
+  `language` (`es` | `en`) and the `theme` (`light` | `dark` | `system`).
+  `null`, or no row, means the user never stored the value; a row is written
+  on the first save (no backfill). Not audited: a UI preference isn't an
+  important record, and saving never touches `users` (no `version` bump, no
+  audit event).
+- `SessionUser.preferences` (login, `/auth/me`, the password change) →
+  `{language, theme}`, each `null` when never stored. Read with one statement
+  in the single `SessionUser` builder.
+- `PATCH /api/v1/auth/me/preferences`, `authenticated(notice_exempt=True)`:
+  body `{language?, theme?}` with at least one field → `200 {language,
+  theme}` (both values after the save). Only the fields sent change; the last
+  write wins (no `version`, see Versions). `{}`, `null` (a stored value can't
+  be cleared), an unknown value or another field is `422 validation_error`
+  and writes nothing. Order: `401` → `403 csrf_failed` → `422`; never `403
+  privacy_notice_required` (notice-exempt). It changes only the caller's own
+  preferences: there is no user id in the path or body. No reauthentication,
+  rate limit or permission. Concurrent first saves of one user end with one
+  row (`INSERT … ON CONFLICT (user_id) DO UPDATE`).
+- **Other modules** read a user's values with
+  `identity.service.get_user_preferences()` (each may be `None`).
+- **Web client rule:** when the session resolves to a user (login, bootstrap
+  `/auth/me`, the password change, a changed user), the account's non-null
+  values win over the browser's local ones and are applied before the page
+  renders, without a request. A `null` value is filled from what the browser
+  shows (one `PATCH` for both, once per user per page load; a failure is
+  silent). Later `/auth/me` responses apply only changed values, never while
+  a save of that field is pending. A switcher choice while signed in applies
+  at once, is stored locally and is saved with only that field; saves run one
+  at a time. Signed out, the switchers are local only, and signing out keeps
+  the applied language and theme.
 
 ### Rate limits
 
@@ -1077,7 +1117,9 @@ M1-09 in `apps/api/app/core/pagination.py`.
    nothing. Approved (architecture ISSUE-D5), implemented by M2-13 (`users`:
    `PATCH /api/v1/users/{user_id}` and the state routes) and M2-14
    (`education_levels`, `subjects`: their `PATCH` routes). The
-   `version_conflict` error exists since M1-09.
+   `version_conflict` error exists since M1-09. Exception:
+   `user_preferences` (#36) has no `version`; only the user changes their own
+   preferences, the two fields are independent and the last write wins.
 
 ## Idempotency
 

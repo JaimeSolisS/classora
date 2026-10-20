@@ -358,8 +358,14 @@ follows these rules.
     may use the name.
   - `e2e.guardians.parent`: the Parent/Guardian account the demo Owner links
     to a guardian profile in `e2e/tests/families/guardians.spec.ts` (#34);
-    it sees the linked student until the Owner unlinks it. The same rules:
+    it sees the linked student until the Owner unlinks it. It is a
+    self-registration the Owner's shared session approves
+    (`createApprovedAccount`, #36: no login, no redemption). The same rules:
     created by that test in every run, no other test may use the name.
+  - `e2e.prefs.tutor`: the Tutor whose language and theme follow the account
+    across two fresh contexts in `e2e/tests/preferences/preferences.spec.ts`
+    (#36). The same rules: created by that test in every run, no other test
+    may use the name.
   - `e2e.families.parent`: the Parent/Guardian account in
     `e2e/tests/families/families.spec.ts` (#172), invited by the shared demo
     Owner session and redeemed without a login
@@ -387,19 +393,30 @@ follows these rules.
   students. There are no demo students. Guardian profiles a spec creates
   (#34) and families (#172, `Familia Ñúñez <suffix>`) follow the same rule;
   there are no demo guardians or families.
-- **Never change `demo.owner` in a spec** (its profile, state, roles or
-  password): every test shares its signed-in session (`storageState`). A test
-  that needs an Owner to act signs `demo.owner` in in its own fresh context
-  and changes only the users it created.
+- **Never change `demo.owner` in a spec** (its profile, state, roles,
+  password or preferences): every test shares its signed-in session
+  (`storageState`). A test that needs an Owner to act signs `demo.owner` in
+  in its own fresh context and changes only the users it created.
+- **Preferences (#36):** `demo.owner` has stored preferences (`es`,
+  `system`, from the demo generator), so no spec's local language or theme
+  is ever saved onto the shared account, and no spec switches the language
+  or theme while signed in as `demo.owner`. After sign-in the account's
+  values win over `classora.language` and `classora.theme`: a signed-in
+  theme scan uses colour-scheme emulation (`test.use({ colorScheme })` or
+  `page.emulateMedia`), never `classora.theme` (the account's `system`
+  follows it). Local values for a "device" go in the context's
+  `storageState.origins`, not an init script, so a reload keeps them.
 - **`createActiveUser(playwright.request, baseURL, { username, role,
   password })`** (`e2e/tests/support/users.ts`, #30) creates an active user
-  through the API in its own fresh API context: the demo Owner signs in and
-  invites the user, then the invitation is redeemed (no lookup call, #34). For a
-  staff role (`administrator`, `academic_coordinator`, `finance_staff`;
-  #170) the helper first reauthenticates the demo Owner in that same API
-  context (`POST /api/v1/auth/reauthenticate`); Tutor and Parent/Guardian
-  need no reauthentication. It costs one login and one redemption call;
-  count them in the budgets below.
+  through the API: the demo Owner invites the user, then a signed-out API
+  context redeems the invitation (no lookup call, #34). For a Tutor or a
+  Parent/Guardian the invitation is sent with the shared demo Owner session
+  (an API context on `storageState`; no login, #36). For a staff role
+  (`administrator`, `academic_coordinator`, `finance_staff`; #170) the demo
+  Owner signs in in the helper's own API context and reauthenticates there
+  (`POST /api/v1/auth/reauthenticate`), so the shared session is never
+  reauthenticated. It costs one redemption call, plus one login for a staff
+  role; count them in the budgets below.
 - **Privacy notice (#174):** every new user must accept the notice before any
   other page. `e2e/global-setup.ts` accepts it for `demo.owner` through the
   API, so the shared state and every `demo.owner` login start past it. After

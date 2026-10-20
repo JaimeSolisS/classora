@@ -164,6 +164,7 @@ def test_success_returns_the_session_user(seeded_url, client):
         "permissions": ["consent.record", "guardian.view", "student.view"],
         "csrf_token": csrf_for(only_set_cookie(response)),
         "privacy_notice_required": False,
+        "preferences": {"language": None, "theme": None},
     }
     cookie = only_set_cookie(response)
     assert cookie.value not in response.text
@@ -481,4 +482,5 @@ def test_login_documents_401_403_and_422_as_problem_details(client):
         "permissions",
         "csrf_token",
         "privacy_notice_required",
+        "preferences",
     }
