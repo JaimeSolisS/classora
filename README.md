@@ -174,17 +174,29 @@ It is safe to repeat; a second run changes nothing.
 `make seed-demo` runs on the host (with the API's development dependencies, via
 `uv`) and needs `.env`. It applies the reference data and then generates
 synthetic Spanish (Mexico) demo data. It never uses real personal data, and it
-refuses to run unless `APP_ENV` is `local` or `dev`. Running it again adds more
-demo data; to start over, run `docker compose down -v`, then `make dev`,
-`make migrate` and `make seed-demo`.
+refuses to run unless `APP_ENV` is `local` or `dev`. Running it again leaves
+the demo accounts and families as they are; to start over, run
+`docker compose down -v`, then `make dev`, `make migrate` and `make seed-demo`.
 
 The reference data currently consists of the user roles and their
-permissions. The demo data currently consists of one demo Owner account,
-`demo.owner` with the password `classora-demo-owner`. This password is a
-development placeholder: the account is created only when `APP_ENV` is `local`
-(a `dev` run skips it), and a second run leaves it as it is.
-`make bootstrap-owner` (below) is refused once any Owner exists, so locally use
-either the demo Owner or `make bootstrap-owner`, not both.
+permissions. The demo data consists of one demo account per role:
+
+| Username | Password | Role |
+|---|---|---|
+| `demo.owner` | `classora-demo-owner` | Owner |
+| `demo.admin` | `classora-demo-admin` | Administrator |
+| `demo.coordinator` | `classora-demo-coordinator` | Academic coordinator |
+| `demo.finance` | `classora-demo-finance` | Finance staff |
+| `demo.tutor` | `classora-demo-tutor` | Tutor |
+| `demo.student` | `classora-demo-student` | Student |
+| `demo.guardian` | `classora-demo-guardian` | Parent/Guardian |
+
+These passwords are development placeholders: the accounts and families exist
+only when `APP_ENV` is `local` (a `dev` run skips them). There are also three
+demo families; `demo.student` is a minor in `demo.guardian`'s family, with a
+recorded guardian consent, and `demo.tutor` sees no students until classes
+exist. `make bootstrap-owner` (below) is refused once any Owner exists, so
+locally use either the demo Owner or `make bootstrap-owner`, not both.
 
 ### First Owner account
 
@@ -210,9 +222,10 @@ account ends when the new password is set.
 
 ### Logging in locally
 
-Open the web app at <http://127.0.0.1:5173> and sign in with the demo Owner
-(`demo.owner` / `classora-demo-owner`, from `make seed-demo`) or with the
-account from `make bootstrap-owner`. The first time an account signs in, the
+Open the web app at <http://127.0.0.1:5173> and sign in with any demo account
+from the table in [Seed data](#seed-data) (for example `demo.owner` /
+`classora-demo-owner`, from `make seed-demo`) or with the account from
+`make bootstrap-owner`. The first time an account signs in, the
 app shows the privacy notice; accept it to continue. To call the API directly,
 log in against it and keep the session cookie, for example with the demo
 Owner:

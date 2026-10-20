@@ -18,6 +18,7 @@ Amended 2026-10-18: D9 token derivation instead of a stored hash (issue #24, own
 
 - 2026-10-18, GitHub issue #29 (M2-11), owner decision: invitation and reset tokens are shown as a link only. No QR code is generated, so no QR library is added.
 - 2026-10-18, GitHub issue #31 (M2-13), owner decision E2 (a): managing an account needs authority to assign every role it holds, and nobody suspends or archives themselves (D4).
+- 2026-10-19, GitHub issue #195, owner request: the local demo seed has one demo account per role with documented development passwords (APP_ENV=local only), plus demo families.
 
 ## Context
 
@@ -124,7 +125,7 @@ Resolves architecture §10 **ISSUE-G2** (§10.1, "Session" names two entities) a
 - **Bootstrap:** `python -m app.cli bootstrap-owner --username …`, wrapped as a `make` target, creates the first Owner. It works only when no Owner exists, reads the password from an interactive prompt or stdin, and hashes it as above.
 - **Owner reset:** `reset-owner-password`, run only from the host shell, issues a reset token for an existing Owner and prints it. In AWS the host shell is reached through SSM, so access to it already proves operator control.
 - **Audit:** both commands write audit events.
-- **Demo seed:** the local demo seed has a demo Owner with a documented development password, and the seed refuses to run outside the local environment.
+- **Demo seed:** the local demo seed has a demo account per role with a documented development password, and the seed refuses to run outside the local environment.
 
 ### Self-registration (D13 (a))
 

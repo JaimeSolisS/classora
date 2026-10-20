@@ -112,6 +112,13 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "identity.role_permissions: 43 inserted, 0 updated",
         "catalog.education_levels: 4 inserted, 0 updated",
         "identity.demo_owner: 1 rows",
+        "identity.demo_admin: 1 rows",
+        "identity.demo_coordinator: 1 rows",
+        "identity.demo_finance: 1 rows",
+        "identity.demo_tutor: 1 rows",
+        "identity.demo_student: 1 rows",
+        "identity.demo_guardian: 1 rows",
+        "families.demo_families: 34 rows",
     ]
 
 
