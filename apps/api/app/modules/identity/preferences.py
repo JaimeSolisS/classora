@@ -87,6 +87,9 @@ class _Unset(enum.Enum):
 UNSET: Final = _Unset.UNSET
 """The default of :func:`update_user_preferences`' fields: leave unchanged."""
 
+Unset = _Unset
+"""The type of :data:`UNSET`, for other functions' signatures (#43)."""
+
 
 def _checked(name: str, value: object, allowed: tuple[str, ...]) -> str | None:
     """``value`` when it is one of ``allowed``; ``None`` for :data:`UNSET`."""

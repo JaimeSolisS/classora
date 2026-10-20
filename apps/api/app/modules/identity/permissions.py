@@ -76,6 +76,10 @@ CONSENT_RECORD = "consent.record"
 PAYROLL_FINALIZE = "payroll.finalize"
 SCHEDULE_OVERRIDE = "schedule.override"
 FINANCE_REFUND_APPROVE = "finance.refund.approve"
+# Tutor profiles (#43, owner decision E1 (a)): the record policy limits a
+# tutor to their own profile (staff/permissions.py).
+TUTOR_VIEW = "tutor.view"
+TUTOR_MANAGE = "tutor.manage"
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,8 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(GUARDIAN_VIEW),
     PermissionDef(FAMILY_MANAGE),
     PermissionDef(CONSENT_RECORD),
+    PermissionDef(TUTOR_VIEW),
+    PermissionDef(TUTOR_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -136,13 +142,18 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 GUARDIAN_VIEW,
                 FAMILY_MANAGE,
                 CONSENT_RECORD,
+                TUTOR_VIEW,
+                TUTOR_MANAGE,
             }
         ),
-        ACADEMIC_COORDINATOR: frozenset({STUDENT_VIEW, STUDENT_MANAGE, GUARDIAN_VIEW}),
+        ACADEMIC_COORDINATOR: frozenset(
+            {STUDENT_VIEW, STUDENT_MANAGE, GUARDIAN_VIEW, TUTOR_VIEW}
+        ),
         FINANCE_STAFF: frozenset({STUDENT_VIEW, GUARDIAN_VIEW}),
         # Record policies limit these to assigned students, self and linked
-        # children (#21, #33-#35).
-        TUTOR: frozenset({STUDENT_VIEW}),
+        # children (#21, #33-#35), and tutor.view to the tutor's own profile
+        # (#43).
+        TUTOR: frozenset({STUDENT_VIEW, TUTOR_VIEW}),
         STUDENT: frozenset({STUDENT_VIEW, CONSENT_RECORD}),
         GUARDIAN: frozenset({STUDENT_VIEW, GUARDIAN_VIEW, CONSENT_RECORD}),
     }

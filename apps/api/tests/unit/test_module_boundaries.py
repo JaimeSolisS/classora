@@ -184,6 +184,25 @@ def test_catalog_imports_only_core_and_the_administration_service():
     assert not {t for t in catalog if not t.startswith(allowed)}
 
 
+def test_staff_imports_only_core_and_the_identity_and_catalog_public_api():
+    # #43 A1: staff (tutor profiles) uses app.core, its own files,
+    # identity.service / identity.schemas and (from #44) catalog.service
+    # only; nothing imports staff yet.
+    allowed = (
+        "app.core.",
+        "app.modules.staff.",
+        "app.modules.identity.service",
+        "app.modules.identity.schemas",
+        "app.modules.catalog.service",
+        "app.modules.catalog.schemas",
+    )
+    staff = targets("staff")
+    assert "app.modules.identity.service" in staff  # the scan found imports
+    assert not {t for t in staff if not t.startswith(allowed)}
+    for module in ("identity", "catalog", "administration", "families"):
+        assert not {t for t in targets(module) if "staff" in t}, module
+
+
 # --- The checker on a synthetic tree (B5) ----------------------------------------
 
 FORBIDDEN_SOURCE = """\

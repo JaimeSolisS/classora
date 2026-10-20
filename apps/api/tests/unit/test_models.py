@@ -49,7 +49,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # user_preferences, M2-18), then administration (business_settings and
     # operating_hours, M3-01; academic_periods and closures in catalog, M3-02;
     # classrooms and classroom_availability_windows in catalog, M3-03;
-    # approval_requests, M3-04; notifications, M3-05);
+    # approval_requests, M3-04; notifications, M3-05; tutor_profiles in
+    # staff, M3-07);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -62,6 +63,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "closures",
         "classrooms",
         "classroom_availability_windows",
+        "tutor_profiles",
         "users",
         "roles",
         "permissions",

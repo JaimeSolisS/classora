@@ -662,6 +662,33 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/tutors"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# Owner decision #43 E1 (a). The record policy filters the list: a tutor
+# sees only themselves.
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# The placeholder id is no tutor: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# A valid body for the placeholder id, which is no tutor: 404 for every
+# allowed role (nothing changes). tutor.manage is checked in the service.
+json = { version = 0 }
+
+[[route]]
+method = "GET"
 path = "/api/v1/users"
 access = "permission"
 permission = "user.view"
