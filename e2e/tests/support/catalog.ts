@@ -23,6 +23,7 @@ type Common = {
     students: string;
     guardians: string;
     families: string;
+    tutors: string;
   };
   roles: Record<string, string>;
   delegations: Record<string, { label: string; description: string }>;
@@ -97,6 +98,17 @@ type Common = {
     delegations: { title: string; save: string; saved: string };
   };
   userStates: Record<'pending' | 'active' | 'suspended' | 'archived', string>;
+  tutors: {
+    title: string;
+    list: { search: string };
+    profile: {
+      displayName: string;
+      experience: string;
+      edit: string;
+      saved: string;
+    };
+    form: { phone: string; experience: string; save: string };
+  };
   catalog: {
     title: string;
     levels: {

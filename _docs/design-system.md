@@ -308,6 +308,13 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   picker and the student's "Link guardian" dialog; no combobox dependency.
 - **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
   account" as a text badge.
+- **`TutorsTable` / `TutorDetailView` / `TutorForm`** (`features/tutors`,
+  #43): the tutor list (name link, username, `StateBadge`, email, phone) and
+  the tutor profile page. The profile shows as text with "Edit" only when
+  the server's `editable_fields` isn't empty; the form then shows only those
+  fields (a tutor never sees a name input), Save and Cancel, with
+  `version_conflict` and "Reload" in its alert. Focus returns to "Edit"
+  after Save or Cancel, and "Changes saved." is a status message.
 - **`SettingsForm`** (`features/settings`, #37): the business settings in
   three fieldsets of one form. Each operating-hours row has an "Open"
   checkbox and two `type="time"` inputs (15-minute step) that are disabled
