@@ -1,5 +1,6 @@
-"""Tutor profile bodies (#43 C1-C3), tutor qualifications (#44 B3, D1) and
-tutor availability (#45 C).
+"""Tutor profile bodies (#43 C1-C3), tutor qualifications (#44 B3, D1),
+tutor availability (#45 C) and the teaching limits and preferred classrooms
+(#197 B).
 
 The contact fields are the account's (``users.email``/``phone``, #31) with
 the #31 formats; ``display_name`` is the account's too. Only
@@ -26,6 +27,7 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 from app.modules.catalog.schemas import (
     WINDOW_OVERLAP_MESSAGE,
     AvailabilityWindow,
+    ClassroomReference,
     LocalDate,
     LocalTime,
     range_error,
@@ -39,9 +41,16 @@ from app.modules.identity.schemas import (
 )
 from app.modules.staff.models import (
     AVAILABILITY_WINDOWS_MAX,
+    BREAK_MAX,
+    BREAK_MIN,
+    DAILY_LIMIT_MAX,
+    DAILY_LIMIT_MIN,
     EXCEPTION_MAX_SPAN_DAYS,
     EXCEPTION_NOTE_MAX_LENGTH,
     EXPERIENCE_MAX_LENGTH,
+    PREFERRED_CLASSROOMS_MAX,
+    WEEKLY_LIMIT_MAX,
+    WEEKLY_LIMIT_MIN,
 )
 from app.modules.staff.permissions import TutorField
 
@@ -304,8 +313,19 @@ class AvailabilityExceptionItem(BaseModel):
     created_at: datetime
 
 
+class TeachingLimitsDetail(BaseModel):
+    """A tutor's teaching limits (#197), in minutes; null is no limit (no
+    break). Exceeding them is a warning when scheduling (M4-05), never a
+    block."""
+
+    daily_limit_minutes: int | None
+    weekly_limit_minutes: int | None
+    required_break_minutes: int | None
+
+
 class TutorAvailabilityDetail(BaseModel):
-    """A tutor's availability in the center's local wall-clock time."""
+    """A tutor's availability in the center's local wall-clock time, with
+    the teaching limits and preferred classrooms (#197)."""
 
     weekly: list[AvailabilityWindow] = Field(
         description="The weekly windows by weekday, then start."
@@ -313,9 +333,83 @@ class TutorAvailabilityDetail(BaseModel):
     exceptions: list[AvailabilityExceptionItem] = Field(
         description="By starts_on, then starts_at (whole days first)."
     )
-    version: int = Field(
-        description=("The weekly availability's version; 0 while it was never changed.")
+    limits: TeachingLimitsDetail
+    preferred_classrooms: list[ClassroomReference] = Field(
+        description=(
+            "By name. A room deactivated after it was chosen stays, with"
+            " is_active false."
+        )
     )
+    version: int = Field(
+        description=(
+            "The version of the weekly windows, limits and preferred"
+            " classrooms together; 0 while they were never changed."
+        )
+    )
+
+
+def _weekly_not_below_daily(value: int | None, info: ValidationInfo) -> int | None:
+    daily = info.data.get("daily_limit_minutes")
+    if value is not None and daily is not None and value < daily:
+        raise PydanticCustomError(
+            "weekly_below_daily",
+            "The weekly limit cannot be below the daily limit.",
+        )
+    return value
+
+
+def _no_duplicate_ids(value: list[uuid.UUID] | None) -> list[uuid.UUID]:
+    if value is None:
+        raise ValueError("This field cannot be null.")
+    if len(set(value)) != len(value):
+        raise PydanticCustomError(
+            "duplicate_classroom", "Choose each classroom only once."
+        )
+    return value
+
+
+class AvailabilitySettingsUpdate(BaseModel):
+    """A change to the tutor's teaching limits and preferred classrooms
+    (``PATCH /api/v1/tutors/{user_id}/availability/settings``) with the
+    availability ``version`` the caller loaded. Fields not sent stay
+    unchanged; a limit sent as null is cleared."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(
+        ge=0,
+        description="The availability version the caller loaded (0: never changed).",
+    )
+    daily_limit_minutes: int | None = Field(
+        default=None,
+        ge=DAILY_LIMIT_MIN,
+        le=DAILY_LIMIT_MAX,
+        description="Minutes a day, 15-1440; null: no limit.",
+    )
+    weekly_limit_minutes: int | None = Field(
+        default=None,
+        ge=WEEKLY_LIMIT_MIN,
+        le=WEEKLY_LIMIT_MAX,
+        description=(
+            "Minutes a week, 15-10080, not below the daily limit; null: no limit."
+        ),
+    )
+    required_break_minutes: int | None = Field(
+        default=None,
+        ge=BREAK_MIN,
+        le=BREAK_MAX,
+        description="Minutes between two sessions, 0-240; null: no break.",
+    )
+    preferred_classroom_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        max_length=PREFERRED_CLASSROOMS_MAX,
+        description=(
+            "Replaces the list: at most 10 active classrooms, each once; [] clears it."
+        ),
+    )
+
+    _weekly = field_validator("weekly_limit_minutes")(_weekly_not_below_daily)
+    _rooms = field_validator("preferred_classroom_ids")(_no_duplicate_ids)
 
 
 class AvailabilityCheck(BaseModel):

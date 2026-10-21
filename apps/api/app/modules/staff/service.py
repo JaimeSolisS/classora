@@ -13,7 +13,10 @@ Tutor availability (#45, implemented in
 (local date and times) and :func:`is_tutor_available_at` (instants, in the
 center zone) answer an :class:`~app.modules.staff.availability.AvailabilityResult`
 with the reasons ``center_closed``, ``time_off`` and
-``outside_weekly_availability``.
+``outside_weekly_availability``. The teaching limits and preferred
+classrooms (#197): :func:`teaching_limits` (a :class:`TeachingLimits`, for
+the M4-05 workload warnings) and :func:`preferred_classroom_ids` (M4-05,
+M4-06 suggestions).
 
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
 through ``identity.service`` (:func:`identity.list_role_members`,
@@ -81,6 +84,9 @@ from app.modules.staff.qualifications import (
 from app.modules.staff.qualifications import teaching_subjects, visible_tutor
 from app.modules.staff.schemas import TutorDetail, TutorListItem, TutorUpdate
 from app.modules.staff.tutor_availability import (
+    TeachingLimits as TeachingLimits,
+)
+from app.modules.staff.tutor_availability import (
     check_availability as check_availability,
 )
 from app.modules.staff.tutor_availability import (
@@ -99,12 +105,22 @@ from app.modules.staff.tutor_availability import (
     is_tutor_available_at as is_tutor_available_at,
 )
 from app.modules.staff.tutor_availability import (
+    preferred_classroom_ids as preferred_classroom_ids,
+)
+from app.modules.staff.tutor_availability import (
     replace_weekly_availability as replace_weekly_availability,
+)
+from app.modules.staff.tutor_availability import (
+    teaching_limits as teaching_limits,
+)
+from app.modules.staff.tutor_availability import (
+    update_availability_settings as update_availability_settings,
 )
 
 __all__ = [
     "QUALIFICATION_APPROVAL_HANDLER",
     "AvailabilityResult",
+    "TeachingLimits",
     "approved_subject_ids",
     "cancel_qualification",
     "check_availability",
@@ -117,10 +133,13 @@ __all__ = [
     "is_tutor_available_at",
     "list_qualifications",
     "list_tutors",
+    "preferred_classroom_ids",
     "qualified_tutor_ids",
     "register_qualification_notifications",
     "replace_weekly_availability",
     "request_qualification",
+    "teaching_limits",
+    "update_availability_settings",
     "update_tutor",
 ]
 

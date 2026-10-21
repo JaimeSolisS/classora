@@ -1582,7 +1582,7 @@ export interface paths {
         /**
          * Get Availability
          * @description The tutor's weekly windows and exceptions, in the center's local
-         *     wall-clock time.
+         *     wall-clock time, with the teaching limits and preferred classrooms.
          */
         get: operations["get_availability_api_v1_tutors__user_id__availability_get"];
         put?: never;
@@ -1613,6 +1613,29 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Availability Settings
+         * @description Change the tutor's teaching limits (minutes; null clears one) and
+         *     preferred classrooms (the list sent replaces the stored one). Limits only
+         *     produce warnings when scheduling. ``version`` is the availability's; a
+         *     body that changes nothing keeps it.
+         */
+        patch: operations["update_availability_settings_api_v1_tutors__user_id__availability_settings_patch"];
         trace?: never;
     };
     "/api/v1/tutors/{user_id}/availability/exceptions": {
@@ -1978,6 +2001,40 @@ export interface components {
         /** @enum {string} */
         AvailabilityReason: "center_closed" | "time_off" | "outside_weekly_availability";
         /**
+         * AvailabilitySettingsUpdate
+         * @description A change to the tutor's teaching limits and preferred classrooms
+         *     (``PATCH /api/v1/tutors/{user_id}/availability/settings``) with the
+         *     availability ``version`` the caller loaded. Fields not sent stay
+         *     unchanged; a limit sent as null is cleared.
+         */
+        AvailabilitySettingsUpdate: {
+            /**
+             * Version
+             * @description The availability version the caller loaded (0: never changed).
+             */
+            version: number;
+            /**
+             * Daily Limit Minutes
+             * @description Minutes a day, 15-1440; null: no limit.
+             */
+            daily_limit_minutes?: number | null;
+            /**
+             * Weekly Limit Minutes
+             * @description Minutes a week, 15-10080, not below the daily limit; null: no limit.
+             */
+            weekly_limit_minutes?: number | null;
+            /**
+             * Required Break Minutes
+             * @description Minutes between two sessions, 0-240; null: no break.
+             */
+            required_break_minutes?: number | null;
+            /**
+             * Preferred Classroom Ids
+             * @description Replaces the list: at most 10 active classrooms, each once; [] clears it.
+             */
+            preferred_classroom_ids?: string[] | null;
+        };
+        /**
          * AvailabilityWindow
          * @description One weekly window, ``[starts_at, ends_at)`` in local time on an ISO
          *     weekday. Never crosses midnight.
@@ -2104,6 +2161,23 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ClassroomReference
+         * @description A classroom as another module's record shows it (#197 preferred
+         *     rooms): its id, current name and whether it is still active (an inactive
+         *     room stays referenced and is shown as such).
+         */
+        ClassroomReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * ClassroomUpdate
@@ -3761,6 +3835,20 @@ export interface components {
             is_active?: boolean | null;
         };
         /**
+         * TeachingLimitsDetail
+         * @description A tutor's teaching limits (#197), in minutes; null is no limit (no
+         *     break). Exceeding them is a warning when scheduling (M4-05), never a
+         *     block.
+         */
+        TeachingLimitsDetail: {
+            /** Daily Limit Minutes */
+            daily_limit_minutes: number | null;
+            /** Weekly Limit Minutes */
+            weekly_limit_minutes: number | null;
+            /** Required Break Minutes */
+            required_break_minutes: number | null;
+        };
+        /**
          * TeachingSubject
          * @description A subject the tutor holds an **approved** qualification for (#44 D1).
          *     A subject deactivated later stays, with ``subject_is_active`` false.
@@ -3787,7 +3875,8 @@ export interface components {
         Theme: "light" | "dark" | "system";
         /**
          * TutorAvailabilityDetail
-         * @description A tutor's availability in the center's local wall-clock time.
+         * @description A tutor's availability in the center's local wall-clock time, with
+         *     the teaching limits and preferred classrooms (#197).
          */
         TutorAvailabilityDetail: {
             /**
@@ -3800,9 +3889,15 @@ export interface components {
              * @description By starts_on, then starts_at (whole days first).
              */
             exceptions: components["schemas"]["AvailabilityExceptionItem"][];
+            limits: components["schemas"]["TeachingLimitsDetail"];
+            /**
+             * Preferred Classrooms
+             * @description By name. A room deactivated after it was chosen stays, with is_active false.
+             */
+            preferred_classrooms: components["schemas"]["ClassroomReference"][];
             /**
              * Version
-             * @description The weekly availability's version; 0 while it was never changed.
+             * @description The version of the weekly windows, limits and preferred classrooms together; 0 while they were never changed.
              */
             version: number;
         };
@@ -9401,6 +9496,77 @@ export interface operations {
                 };
             };
             /** @description The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_availability_settings_api_v1_tutors__user_id__availability_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilitySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorAvailabilityDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The availability changed since it was loaded, or another first change created it (version_conflict). */
             409: {
                 headers: {
                     [name: string]: unknown;

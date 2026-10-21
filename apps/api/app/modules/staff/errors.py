@@ -10,7 +10,9 @@ data, so no submitted value reaches a response. Cancelling a qualification
 that is no longer pending reuses the approval inbox's ``409
 approval_transition_invalid`` (``administration.service``).
 
-Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`.
+Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`;
+the teaching limits and preferred classrooms (#197) add two ``422`` field
+errors with the generic ``validation_error`` code.
 """
 
 from app.core.errors import AppError
@@ -71,3 +73,45 @@ class AvailabilityChangeRequiresApprovalError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class WeeklyLimitBelowDailyError(AppError):
+    """The weekly limit would be below the daily one once the sent limits
+    are combined with the stored ones (#197 B2): ``422`` on
+    ``weekly_limit_minutes``, as the body check answers when both are
+    sent."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "weekly_limit_minutes"],
+                    "code": "weekly_below_daily",
+                    "message": "The weekly limit cannot be below the daily limit.",
+                }
+            ]
+        )
+
+
+class PreferredClassroomUnavailableError(AppError):
+    """A newly chosen preferred classroom doesn't exist or is inactive
+    (#197 B2): ``422`` on ``preferred_classroom_ids``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "preferred_classroom_ids"],
+                    "code": "classroom_unavailable",
+                    "message": "Choose only existing, active classrooms.",
+                }
+            ]
+        )

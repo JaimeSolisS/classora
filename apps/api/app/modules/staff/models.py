@@ -19,8 +19,11 @@
 - ``tutor_availability_settings`` (#45): one row per tutor at most
   (``uq_tutor_availability_settings_user_id``), created lazily by the first
   weekly-availability change (``version`` 0 before). Its ``version`` covers
-  the tutor's weekly windows; M3-09b (#197) adds the teaching limits to it.
-  ``Audited``, versioned.
+  the tutor's weekly windows and, from #197, the teaching limits and the
+  preferred classrooms. #197 adds the optional teaching limits (minutes;
+  ``NULL`` = no limit or no break): ``daily_limit_minutes`` 15-1440,
+  ``weekly_limit_minutes`` 15-10080 and never below the daily one,
+  ``required_break_minutes`` 0-240. ``Audited``, versioned.
 - ``tutor_availability_windows`` (#45): the tutor's recurring weekly
   windows, the #39 shape: ISO weekday and ``[starts_at, ends_at)`` in local
   wall-clock time, whole minutes, never across midnight; windows of one
@@ -30,6 +33,11 @@
   on which the tutor is ``unavailable`` (the whole day, or hours) or
   ``available`` (always hours), with an optional note. Overlaps are allowed.
   Created and deleted, never edited. ``Audited``.
+- ``tutor_preferred_classrooms`` (#197): the classrooms a tutor prefers
+  (unique per tutor and room, at most 10 per tutor, enforced by the
+  service). They guide scheduling (M4-05, M4-06) and never restrict it.
+  Created and deleted, never edited; the settings row's ``version`` covers
+  them. ``Audited``.
 """
 
 import uuid
@@ -46,6 +54,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
@@ -170,15 +179,54 @@ WINDOW_RANGE_SQL: Final = (
 )
 
 
+DAILY_LIMIT_MIN: Final = 15
+DAILY_LIMIT_MAX: Final = 1440
+"""A day's teaching limit in minutes (24 h)."""
+WEEKLY_LIMIT_MIN: Final = 15
+WEEKLY_LIMIT_MAX: Final = 10080
+"""A week's teaching limit in minutes (7 x 24 h)."""
+BREAK_MIN: Final = 0
+BREAK_MAX: Final = 240
+"""The required break between two sessions, in minutes (4 h)."""
+PREFERRED_CLASSROOMS_MAX: Final = 10
+PREFERRED_CLASSROOM_UNIQUE: Final = "uq_tutor_preferred_classrooms_tutor_classroom"
+
+
 class TutorAvailabilitySettings(Audited, VersionedMixin, Model):
-    """The version anchor of a tutor's weekly windows: the weekly ``PUT``
-    takes and bumps it. Created by the first change (``version`` 0 = no
-    row)."""
+    """The version anchor of a tutor's weekly windows, teaching limits and
+    preferred classrooms: the weekly ``PUT`` and the settings ``PATCH`` take
+    and bump it. Created by the first change (``version`` 0 = no row). The
+    limits (#197) are minutes; ``NULL`` is no limit (no break)."""
 
     __tablename__ = "tutor_availability_settings"
+    __table_args__ = (
+        CheckConstraint(
+            f"daily_limit_minutes BETWEEN {DAILY_LIMIT_MIN} AND {DAILY_LIMIT_MAX}",
+            name="daily_limit_range",
+        ),
+        CheckConstraint(
+            f"weekly_limit_minutes BETWEEN {WEEKLY_LIMIT_MIN} AND {WEEKLY_LIMIT_MAX}",
+            name="weekly_limit_range",
+        ),
+        CheckConstraint(
+            "weekly_limit_minutes >= daily_limit_minutes",
+            name="weekly_not_below_daily",
+        ),
+        CheckConstraint(
+            f"required_break_minutes BETWEEN {BREAK_MIN} AND {BREAK_MAX}",
+            name="required_break_range",
+        ),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
+    )
+    daily_limit_minutes: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    weekly_limit_minutes: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+    required_break_minutes: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
     )
 
 
@@ -257,4 +305,27 @@ class TutorAvailabilityException(Audited, Model):
     ends_at: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
     note: Mapped[str | None] = mapped_column(
         String(EXCEPTION_NOTE_MAX_LENGTH), nullable=True
+    )
+
+
+class TutorPreferredClassroom(Audited, Model):
+    """A classroom the tutor prefers (#197). Guides scheduling, never
+    restricts it. A room deactivated later stays until the list is edited.
+    Not versioned: the settings row's ``version`` covers the list."""
+
+    __tablename__ = "tutor_preferred_classrooms"
+    __table_args__ = (
+        # Its leading column also serves the per-tutor lookups.
+        UniqueConstraint(
+            "tutor_user_id", "classroom_id", name=PREFERRED_CLASSROOM_UNIQUE
+        ),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    classroom_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("classrooms.id", ondelete="RESTRICT"),
+        index=True,
     )

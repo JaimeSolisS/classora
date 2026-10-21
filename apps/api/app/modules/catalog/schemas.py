@@ -135,6 +135,16 @@ class EducationLevelReference(BaseModel):
     is_active: bool
 
 
+class ClassroomReference(BaseModel):
+    """A classroom as another module's record shows it (#197 preferred
+    rooms): its id, current name and whether it is still active (an inactive
+    room stays referenced and is shown as such)."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+
+
 class SubjectReference(BaseModel):
     """A subject as another module's record shows it (#44): its id, current
     name and active flag, with its level's (the level follows from the

@@ -6,8 +6,8 @@ writes of both, and the closure checks other modules use
 (:func:`closures_between`, :func:`is_center_closed_on`,
 :func:`is_center_closed_at`). Classrooms (#39) are implemented in
 :mod:`app.modules.catalog.classrooms` and re-exported below, with the checks
-other modules use (:func:`get_classroom`, :func:`active_classroom_ids`,
-:func:`is_classroom_available`).
+other modules use (:func:`get_classroom`, :func:`classroom_references`,
+:func:`active_classroom_ids`, :func:`is_classroom_available`).
 
 **Reads** (every signed-in user): :func:`list_education_levels`,
 :func:`get_education_level`, :func:`list_subjects`, :func:`get_subject`. The
@@ -66,6 +66,9 @@ from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.catalog.classrooms import (
     active_classroom_ids as active_classroom_ids,
+)
+from app.modules.catalog.classrooms import (
+    classroom_references as classroom_references,
 )
 from app.modules.catalog.classrooms import (
     create_classroom as create_classroom,

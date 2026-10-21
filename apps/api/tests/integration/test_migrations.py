@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0027"
+HEAD = "0028"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -99,6 +99,7 @@ AVAILABILITY_TABLES = [
     "tutor_availability_settings",
     "tutor_availability_windows",
 ]
+PREFERRED_ROOM_TABLES = ["tutor_preferred_classrooms"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -204,6 +205,9 @@ def test_history_is_linear_with_one_head():
     availability = script.get_revision("0027")
     assert availability.down_revision == "0026"
     assert Path(availability.path).name == "0027_staff_tutor_availability.py"
+    limits = script.get_revision("0028")
+    assert limits.down_revision == "0027"
+    assert Path(limits.path).name == "0028_staff_tutor_limits_rooms.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -243,6 +247,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *STAFF_TABLES,
             *QUALIFICATION_TABLES,
             *AVAILABILITY_TABLES,
+            *PREFERRED_ROOM_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3378,12 +3383,19 @@ def test_tutor_availability_settings_columns_and_constraints(fresh_database_url)
     assert _columns(fresh_database_url, table) == {
         **STANDARD_COLUMNS,
         "user_id": ("uuid", "NO", None, None),
+        "daily_limit_minutes": ("smallint", "YES", None, None),
+        "weekly_limit_minutes": ("smallint", "YES", None, None),
+        "required_break_minutes": ("smallint", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     assert set(constraints) == {
         f"pk_{table}",
         f"fk_{table}_user_id_users",
         f"uq_{table}_user_id",
+        f"ck_{table}_daily_limit_range",
+        f"ck_{table}_weekly_limit_range",
+        f"ck_{table}_weekly_not_below_daily",
+        f"ck_{table}_required_break_range",
     }
     assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_user_id_users"]
 
@@ -3607,3 +3619,186 @@ def test_invalid_exception_rows_are_rejected(fresh_database_url, overrides, cons
         IntegrityError, match=f"ck_tutor_availability_exceptions_{constraint}"
     ):
         run_sql(fresh_database_url, *_tutor_exception(tutor, **overrides))
+
+
+# --- 0028: tutor limits and preferred classrooms (#197 A) ----------------------------
+
+
+def test_0028_adds_the_limits_and_the_preferred_rooms_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0027")
+    before = public_tables(fresh_database_url)
+    settings_columns = set(_columns(fresh_database_url, "tutor_availability_settings"))
+    tutor = _recipient(fresh_database_url)
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO tutor_availability_settings (user_id) VALUES (:id)",
+        {"id": tutor},
+    )
+
+    command.upgrade(config, "0028")
+
+    assert public_tables(fresh_database_url) - before == set(PREFERRED_ROOM_TABLES)
+    # An existing settings row has no limits (NULL: no limit, no break).
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT daily_limit_minutes, weekly_limit_minutes, required_break_minutes"
+        " FROM tutor_availability_settings",
+    )
+    assert tuple(row) == (None, None, None)
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM tutor_preferred_classrooms"
+    )
+    assert count.n == 0
+
+    command.downgrade(config, "0027")
+
+    assert version_nums(fresh_database_url) == ["0027"]
+    assert public_tables(fresh_database_url) == before
+    assert (
+        set(_columns(fresh_database_url, "tutor_availability_settings"))
+        == settings_columns
+    )
+    assert set(_constraints(fresh_database_url, "tutor_availability_settings")) == {
+        "pk_tutor_availability_settings",
+        "fk_tutor_availability_settings_user_id_users",
+        "uq_tutor_availability_settings_user_id",
+    }
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_tutor_preferred_classrooms_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_preferred_classrooms"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "classroom_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_classroom_id_classrooms",
+        "uq_tutor_preferred_classrooms_tutor_classroom",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_tutor_user_id_users"]
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_classroom_id_classrooms"]
+    assert constraints["uq_tutor_preferred_classrooms_tutor_classroom"] == (
+        "UNIQUE (tutor_user_id, classroom_id)"
+    )
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_classroom_id",
+        "uq_tutor_preferred_classrooms_tutor_classroom",
+    }
+
+
+def _limits(
+    tutor_id: Any,
+    daily: int | None = None,
+    weekly: int | None = None,
+    pause: int | None = None,
+) -> Statement:
+    return (
+        "INSERT INTO tutor_availability_settings"
+        " (user_id, daily_limit_minutes, weekly_limit_minutes,"
+        " required_break_minutes) VALUES (:id, :daily, :weekly, :pause)",
+        {"id": tutor_id, "daily": daily, "weekly": weekly, "pause": pause},
+    )
+
+
+@pytest.mark.parametrize(
+    ("daily", "weekly", "pause"),
+    [
+        (None, None, None),
+        (15, 15, 0),
+        (1440, 10080, 240),
+        (240, 240, None),
+        (None, 15, None),
+        (1440, None, None),
+    ],
+)
+def test_valid_teaching_limits_are_accepted(fresh_database_url, daily, weekly, pause):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+
+    run_sql(fresh_database_url, *_limits(tutor, daily, weekly, pause))
+
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT daily_limit_minutes AS d, weekly_limit_minutes AS w,"
+        " required_break_minutes AS b FROM tutor_availability_settings",
+    )
+    assert (row.d, row.w, row.b) == (daily, weekly, pause)
+
+
+@pytest.mark.parametrize(
+    ("daily", "weekly", "pause", "constraint"),
+    [
+        (14, None, None, "daily_limit_range"),
+        (1441, None, None, "daily_limit_range"),
+        (0, None, None, "daily_limit_range"),
+        (None, 14, None, "weekly_limit_range"),
+        (None, 10081, None, "weekly_limit_range"),
+        (240, 239, None, "weekly_not_below_daily"),
+        (None, None, -1, "required_break_range"),
+        (None, None, 241, "required_break_range"),
+    ],
+)
+def test_invalid_teaching_limits_are_rejected(
+    fresh_database_url, daily, weekly, pause, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+
+    with pytest.raises(
+        IntegrityError, match=f"ck_tutor_availability_settings_{constraint}"
+    ):
+        run_sql(fresh_database_url, *_limits(tutor, daily, weekly, pause))
+
+
+def _preferred(tutor_id: Any, classroom_id: Any) -> Statement:
+    return (
+        "INSERT INTO tutor_preferred_classrooms (tutor_user_id, classroom_id)"
+        " VALUES (:tutor, :room)",
+        {"tutor": tutor_id, "room": classroom_id},
+    )
+
+
+def test_a_preferred_classroom_is_unique_per_tutor_and_restricts_deletes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    other = _recipient(fresh_database_url)
+    [room] = run_sql(fresh_database_url, *_classroom("Aula 1"))
+    [second] = run_sql(fresh_database_url, *_classroom("Aula 2"))
+
+    run_sql(fresh_database_url, *_preferred(tutor, room.id))
+    run_sql(fresh_database_url, *_preferred(tutor, second.id))
+    run_sql(fresh_database_url, *_preferred(other, room.id))
+
+    with pytest.raises(
+        IntegrityError, match="uq_tutor_preferred_classrooms_tutor_classroom"
+    ) as exc:
+        run_sql(fresh_database_url, *_preferred(tutor, room.id))
+    assert _sqlstate(exc.value) == "23505"
+    with pytest.raises(
+        IntegrityError, match="fk_tutor_preferred_classrooms_classroom_id"
+    ):
+        run_sql(
+            fresh_database_url, "DELETE FROM classrooms WHERE id = :id", {"id": room.id}
+        )
+    with pytest.raises(
+        IntegrityError, match="fk_tutor_preferred_classrooms_tutor_user_id"
+    ):
+        run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": other})

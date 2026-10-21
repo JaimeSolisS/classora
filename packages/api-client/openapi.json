@@ -7304,7 +7304,7 @@
           "tutors"
         ],
         "summary": "Get Availability",
-        "description": "The tutor's weekly windows and exceptions, in the center's local\nwall-clock time.",
+        "description": "The tutor's weekly windows and exceptions, in the center's local\nwall-clock time, with the teaching limits and preferred classrooms.",
         "operationId": "get_availability_api_v1_tutors__user_id__availability_get",
         "parameters": [
           {
@@ -7445,6 +7445,100 @@
           },
           "409": {
             "description": "The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/settings": {
+      "patch": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Update Availability Settings",
+        "description": "Change the tutor's teaching limits (minutes; null clears one) and\npreferred classrooms (the list sent replaces the stored one). Limits only\nproduce warnings when scheduling. ``version`` is the availability's; a\nbody that changes nothing keeps it.",
+        "operationId": "update_availability_settings_api_v1_tutors__user_id__availability_settings_patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvailabilitySettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorAvailabilityDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The availability changed since it was loaded, or another first change created it (version_conflict).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8430,6 +8524,82 @@
           "outside_weekly_availability"
         ]
       },
+      "AvailabilitySettingsUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version",
+            "description": "The availability version the caller loaded (0: never changed)."
+          },
+          "daily_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Minutes",
+            "description": "Minutes a day, 15-1440; null: no limit."
+          },
+          "weekly_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10080.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Limit Minutes",
+            "description": "Minutes a week, 15-10080, not below the daily limit; null: no limit."
+          },
+          "required_break_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 240.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Break Minutes",
+            "description": "Minutes between two sessions, 0-240; null: no break."
+          },
+          "preferred_classroom_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Classroom Ids",
+            "description": "Replaces the list: at most 10 active classrooms, each once; [] clears it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "AvailabilitySettingsUpdate",
+        "description": "A change to the tutor's teaching limits and preferred classrooms\n(``PATCH /api/v1/tutors/{user_id}/availability/settings``) with the\navailability ``version`` the caller loaded. Fields not sent stay\nunchanged; a limit sent as null is cleared."
+      },
       "AvailabilityWindow": {
         "properties": {
           "weekday": {
@@ -8727,6 +8897,31 @@
         ],
         "title": "ClassroomDetail",
         "description": "One classroom. ``availability`` is ordered by weekday, then start;\nempty means no time restriction."
+      },
+      "ClassroomReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active"
+        ],
+        "title": "ClassroomReference",
+        "description": "A classroom as another module's record shows it (#197 preferred\nrooms): its id, current name and whether it is still active (an inactive\nroom stays referenced and is shown as such)."
       },
       "ClassroomUpdate": {
         "properties": {
@@ -12388,6 +12583,51 @@
         "title": "SubjectUpdate",
         "description": "A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with\nthe ``version`` the caller loaded. The level can't be changed."
       },
+      "TeachingLimitsDetail": {
+        "properties": {
+          "daily_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Minutes"
+          },
+          "weekly_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Limit Minutes"
+          },
+          "required_break_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Break Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "daily_limit_minutes",
+          "weekly_limit_minutes",
+          "required_break_minutes"
+        ],
+        "title": "TeachingLimitsDetail",
+        "description": "A tutor's teaching limits (#197), in minutes; null is no limit (no\nbreak). Exceeding them is a warning when scheduling (M4-05), never a\nblock."
+      },
       "TeachingSubject": {
         "properties": {
           "subject_id": {
@@ -12450,20 +12690,33 @@
             "title": "Exceptions",
             "description": "By starts_on, then starts_at (whole days first)."
           },
+          "limits": {
+            "$ref": "#/components/schemas/TeachingLimitsDetail"
+          },
+          "preferred_classrooms": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomReference"
+            },
+            "type": "array",
+            "title": "Preferred Classrooms",
+            "description": "By name. A room deactivated after it was chosen stays, with is_active false."
+          },
           "version": {
             "type": "integer",
             "title": "Version",
-            "description": "The weekly availability's version; 0 while it was never changed."
+            "description": "The version of the weekly windows, limits and preferred classrooms together; 0 while they were never changed."
           }
         },
         "type": "object",
         "required": [
           "weekly",
           "exceptions",
+          "limits",
+          "preferred_classrooms",
           "version"
         ],
         "title": "TutorAvailabilityDetail",
-        "description": "A tutor's availability in the center's local wall-clock time."
+        "description": "A tutor's availability in the center's local wall-clock time, with\nthe teaching limits and preferred classrooms (#197)."
       },
       "TutorDetail": {
         "properties": {
