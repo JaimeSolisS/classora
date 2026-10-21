@@ -81,12 +81,16 @@ jobs:
       - name: make lint-api
         run: make lint-api
 
-  api-test:
-    name: api-test
+  # API tests run as parallel jobs (#217): unit, migration checks, and the
+  # rest of the integration layer in shards. Each test runs in exactly one of
+  # them. Integration and migration tests use the runner's Docker through
+  # Testcontainers (one PostgreSQL container per job); no Compose stack, no .env.
+  api-unit:
+    name: api-unit
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       UV_LOCKED: "1"
     steps:
@@ -101,16 +105,62 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
 
-      # Integration tests use the runner's Docker through Testcontainers; no
-      # Compose stack, no .env.
       - name: make test-unit
         run: make test-unit
+
+  api-migrations:
+    name: api-migrations
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
 
       - name: make test-migrations
         run: make test-migrations
 
-      - name: make test-integration
-        run: make test-integration
+  # `make test-integration` leaves out the migration checks (api-migrations).
+  # The test files are dealt round-robin by path over the shards
+  # (apps/api/tests/sharding.py); the matrix and the /4 in SHARD must match.
+  api-integration:
+    name: api-integration (${{ matrix.shard }}/4)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      UV_LOCKED: "1"
+      SHARD: ${{ matrix.shard }}/4
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: make test-integration SHARD=K/4
+        run: make test-integration SHARD="$SHARD"
 
   web:
     name: web
@@ -426,7 +476,7 @@ jobs:
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-test, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-unit, api-migrations, api-integration, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -438,7 +488,10 @@ jobs:
           RUN_CLIENT: ${{ needs.changes.outputs.client }}
           RUN_E2E: ${{ needs.changes.outputs.e2e }}
           API_LINT: ${{ needs.api-lint.result }}
-          API_TEST: ${{ needs.api-test.result }}
+          API_UNIT: ${{ needs.api-unit.result }}
+          API_MIGRATIONS: ${{ needs.api-migrations.result }}
+          # A matrix job's result is "failure" when any shard failed.
+          API_INTEGRATION: ${{ needs.api-integration.result }}
           WEB: ${{ needs.web.result }}
           WEB_STORYBOOK: ${{ needs.web-storybook.result }}
           API_CLIENT: ${{ needs.api-client.result }}
@@ -475,7 +528,9 @@ jobs:
             esac
           }
           check api-lint "$API_LINT" "$RUN_API"
-          check api-test "$API_TEST" "$RUN_API"
+          check api-unit "$API_UNIT" "$RUN_API"
+          check api-migrations "$API_MIGRATIONS" "$RUN_API"
+          check api-integration "$API_INTEGRATION" "$RUN_API"
           check web "$WEB" "$RUN_WEB"
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
           check api-client "$API_CLIENT" "$RUN_CLIENT"
