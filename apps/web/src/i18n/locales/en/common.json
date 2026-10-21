@@ -1373,7 +1373,7 @@
     },
     "severity": {
       "hard": "Not allowed",
-      "soft": "Needs an override (coming soon)"
+      "soft": "Can be overridden"
     },
     "reasons": {
       "time_off": "time off",
@@ -1489,6 +1489,36 @@
         "label": "Tutor no longer qualified",
         "explanation": "The tutor no longer holds an approved qualification for this subject. The session was not changed: assign another tutor or cancel it."
       }
+    },
+    "rules": {
+      "tutor_overlap": "Tutor overlap",
+      "room_overlap": "Classroom overlap",
+      "student_overlap": "Student overlap",
+      "room_capacity_exceeded": "Classroom capacity",
+      "tutor_unavailable": "Tutor availability",
+      "room_unavailable": "Classroom availability",
+      "center_closed": "Center closure",
+      "outside_operating_hours": "Opening hours",
+      "tutor_not_qualified": "Tutor qualification",
+      "group_capacity_exceeded": "Group capacity",
+      "notice_window": "Booking notice"
+    },
+    "override": {
+      "action": "Override and schedule",
+      "fixHardFirst": "Fix the conflicts that aren’t allowed first.",
+      "notAllowed": "Only an Owner, or an Administrator with the override permission, can override these conflicts.",
+      "title": "Override and schedule",
+      "description": "The session is scheduled despite these rules. The reason is saved in the audit log.",
+      "rules": "Rules to override",
+      "reason": "Reason",
+      "counter": "{{length}} of {{max}} characters",
+      "reasonRequired": "Give a reason for the override.",
+      "reasonTooLong": "The reason can have at most 1000 characters.",
+      "cancel": "Cancel",
+      "submit": "Override and schedule",
+      "submitting": "Scheduling…",
+      "scheduledWith": "Scheduled with an override",
+      "overriddenRules": "Overridden rules: {{rules}}."
     }
   },
   "courses": {

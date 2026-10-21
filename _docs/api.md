@@ -108,7 +108,7 @@ Codes in use today:
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
-| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. Soft conflicts block too until overrides exist (M4-04). See Class sessions. |
+| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). See Class sessions. |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1837,24 +1837,25 @@ the time-zone change guard (#37).
 Implemented by M4-03 (#48; spec §3, §15 W1.1–W1.2; ADR-0005 D1, D2, D7,
 D9) in `apps/api/app/modules/scheduling/` (`booking.py`: create and read;
 `conflicts.py`: the codes and pure rules; `locks.py`: the student lock).
-Only one-off **individual** sessions so far; groups, courses, recurrence,
-overrides and offers come with later M4 issues. The calendar's range read
-and tutor options (M4-12, #57) are in `calendar_read.py` and `markers.py`.
+Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
+Only one-off **individual** sessions so far; groups, courses, recurrence
+and offers come with later M4 issues. The calendar's range read and tutor
+options (M4-12, #57) are in `calendar_read.py` and `markers.py`.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator) | Body below. `201` with `ClassSessionDetail` plus `warnings` (always `[]` until M4-05). |
+| `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `ClassSessionDetail` plus `warnings` (always `[]` until M4-05). |
 | `GET /api/v1/class-sessions?from=…&to=…` | `require("schedule.view")` (same four roles) | The calendar's range read (#57), below. |
-| `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session (no record policy for staff). At most 6 statements. |
+| `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements. |
 | `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
 
-**Body** (unknown fields are `422`, an `override` member included until
-M4-04):
+**Body** (unknown fields are `422`):
 
 ```json
 {"kind": "individual", "student_id": "…", "subject_id": "…",
  "tutor_user_id": "…" | null, "classroom_id": "…" | null,
- "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00"}
+ "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00",
+ "override": {"codes": ["outside_operating_hours"], "reason": "…"} | null}
 ```
 
 `starts_at`/`ends_at` are instants with an offset; responses give them in
@@ -1862,32 +1863,42 @@ UTC (`Z`). `ClassSessionDetail` is `{id, kind, state, subject {id, name,
 education_level_name, is_active}, tutor {id, display_name} | null,
 classroom {id, name, is_active} | null, participants [{student_id,
 display_name, is_active}], starts_at, ends_at, scheduled_minutes, version,
-created_at, updated_at}`; a subject is shown inactive when it or its level
-is.
+created_at, updated_at, overrides [{id, codes, reason, actor {id,
+display_name}, created_at}]}` (overrides oldest first, `[]` when none); a
+subject is shown inactive when it or its level is.
 
 **Order of the create:**
 
-1. `401`/`403`, then `422` for the schema;
-2. the per-student advisory lock (below);
-3. the center time zone, read `FOR SHARE` (a zone change waits);
-4. `422` for the bounds (#47), as a field error on `ends_at`, except
+1. `401`/`403`, then `422` for the schema (the `override` rules below
+   included);
+2. `403 permission_denied` when `override` is sent and the user lacks
+   `schedule.override`, even if the request would have no conflict; nothing
+   is read or locked. The effective permissions count (roles plus active
+   delegations), so a just granted or revoked delegation applies to the next
+   request;
+3. the per-student advisory lock (below);
+4. the center time zone, read `FOR SHARE` (a zone change waits);
+5. `422` for the bounds (#47), as a field error on `ends_at`, except
    `naive_datetime` and `not_whole_minutes`, which go on the field at fault:
    `naive_datetime`, `not_whole_minutes`, `ends_before_start`,
    `duration_out_of_range` (15–480 elapsed minutes), `crosses_local_date`
    (start and end on different local dates in the center zone; an end at
    the next midnight is allowed);
-5. `422` for the references, every one in one response: `student_unknown`,
+6. `422` for the references, every one in one response: `student_unknown`,
    `student_inactive` (`student_id`); `subject_unknown`, `subject_inactive`
    (the subject or its level; `subject_id`); `tutor_unknown` (no such user,
    or not a tutor), `tutor_inactive` (any state but `active`, a pending
    invitee included; `tutor_user_id`); `classroom_unknown`,
    `classroom_inactive` (`classroom_id`);
-6. every conflict check below, then `409 scheduling_conflict` with **all**
-   of them, hard first, then in this table's order;
-7. the session and its participant are stored. A concurrent create that
+7. every conflict check below, then the override decision (below): `409
+   scheduling_conflict` with **all** of them, hard first, then in this
+   table's order, unless there is none or the override covers them;
+8. the session and its participant are stored. A concurrent create that
    wins the tutor or room `EXCLUDE` constraint first makes this one `409
    scheduling_conflict` with that single hard conflict (its
-   `class_session_ids` is `[]`).
+   `class_session_ids` is `[]`);
+9. with overridden conflicts, the override row and its audit event, in the
+   same transaction.
 
 **Conflicts.** The tutor checks run only with a tutor, the room checks
 only with a room. Local values are in the center zone; a local end at
@@ -1920,8 +1931,43 @@ student, in ascending id order (`scheduling.locks.lock_students`). Every
 writer that adds a participant or moves a session in time must take it
 first, so two concurrent bookings of one student can never both succeed.
 
-**Audit:** only the automatic `create` events of `class_sessions` and
-`class_session_participants`, with the actor and the request ID.
+**Overrides** (M4-04, ADR-0005 "Conflict wire format and overrides"). A
+caller with `schedule.override` (the Owner by role; an Administrator only
+while an Owner's delegation is active) resends the same create with
+`override: {codes, reason}`:
+
+- `codes`: 1–7 soft codes, no duplicates. `422 validation_error` field
+  errors: `codes_required` (missing or empty) and `duplicate_code` on
+  `override.codes`; `code_not_overridable` (a hard code) and `code_unknown`
+  (a warning code or any other string) on `override.codes[i]`;
+- `reason`: trimmed, 1–1000 characters: `reason_required` (missing, empty or
+  whitespace only) and `reason_too_long` on `override.reason`.
+
+The server **recomputes** every conflict in the create's transaction, under
+the student lock, so an override never covers a conflict the client hasn't
+seen. Then:
+
+- any hard conflict → `409` with the complete list (hard and soft); the
+  override changes nothing;
+- a soft conflict whose code isn't listed → `409` with the complete list;
+- every conflict soft and listed → created. The overridden conflicts are the
+  computed ones (code and details), not the client's list;
+- listed codes that don't occur are ignored: never stored or audited;
+- no conflict at all → created as without an override: no override row and
+  no override event.
+
+The `409` body is the same as without an override (it doesn't echo the
+override). Each override is one append-only `class_session_overrides` row
+(`codes` in rule order, `conflicts [{code, details}]`, the trimmed `reason`,
+`actor_user_id`; `UPDATE` and `DELETE` are refused, SQLSTATE 42501). No
+notification is sent.
+
+**Audit:** the automatic `create` events of `class_sessions` and
+`class_session_participants`, with the actor and the request ID. With an
+override, also the named event `scheduling.session_override` on the session
+(`record_type` `class_sessions`), `details {override_id, codes, conflicts,
+reason}`, same actor and request ID; `GET /api/v1/audit-events` filtered by
+the session shows it to holders of `audit.view`.
 
 **Range read** (`GET /api/v1/class-sessions`, #57). Query (unknown
 parameters, a malformed id or an unknown `kind` are `422

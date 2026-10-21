@@ -1373,7 +1373,7 @@
     },
     "severity": {
       "hard": "No permitido",
-      "soft": "Requiere una excepción (próximamente)"
+      "soft": "Admite una excepción"
     },
     "reasons": {
       "time_off": "tiempo libre",
@@ -1491,6 +1491,36 @@
         "label": "Tutor ya no calificado",
         "explanation": "El tutor ya no tiene una calificación aprobada para esta materia. La sesión no se cambió: asigna otro tutor o cancélala."
       }
+    },
+    "rules": {
+      "tutor_overlap": "Traslape del tutor",
+      "room_overlap": "Traslape del aula",
+      "student_overlap": "Traslape del estudiante",
+      "room_capacity_exceeded": "Capacidad del aula",
+      "tutor_unavailable": "Disponibilidad del tutor",
+      "room_unavailable": "Disponibilidad del aula",
+      "center_closed": "Cierre del centro",
+      "outside_operating_hours": "Horario de atención",
+      "tutor_not_qualified": "Calificación del tutor",
+      "group_capacity_exceeded": "Capacidad del grupo",
+      "notice_window": "Anticipación de reserva"
+    },
+    "override": {
+      "action": "Programar con excepción",
+      "fixHardFirst": "Primero corrige los conflictos que no están permitidos.",
+      "notAllowed": "Solo un Dueño, o un Administrador con el permiso de excepciones, puede hacer una excepción a estos conflictos.",
+      "title": "Programar con excepción",
+      "description": "La sesión se programa a pesar de estas reglas. El motivo se guarda en la bitácora de auditoría.",
+      "rules": "Reglas exceptuadas",
+      "reason": "Motivo",
+      "counter": "{{length}} de {{max}} caracteres",
+      "reasonRequired": "Escribe el motivo de la excepción.",
+      "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres.",
+      "cancel": "Cancelar",
+      "submit": "Programar con excepción",
+      "submitting": "Programando…",
+      "scheduledWith": "Programada con una excepción",
+      "overriddenRules": "Reglas exceptuadas: {{rules}}."
     }
   },
   "courses": {

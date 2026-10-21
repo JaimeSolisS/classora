@@ -152,11 +152,13 @@ unless a bullet says otherwise.
   center closure or its tutor is no longer qualified for the subject.
 - Staff schedule one-off individual sessions from the calendar's "Schedule a
   session" page (one student, a subject, an optional tutor and classroom, a
-  date and times in the center's time zone). Before anything is saved the server checks
-  student, tutor and classroom overlaps, tutor availability and
+  date and times in the center's time zone). Before anything is saved the
+  server checks student, tutor and classroom overlaps, tutor availability and
   qualification, classroom availability, center closures, operating hours
-  and booking notice, and lists every conflict. Soft conflicts can't be
-  overridden yet.
+  and booking notice, and lists every conflict. An Owner, or an
+  Administrator with the delegated override permission, can override soft
+  conflicts with a reason, which is audited; overlaps and room capacity are
+  never overridable.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned (tutors can't accept offers yet).
 

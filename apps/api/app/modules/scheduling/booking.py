@@ -22,21 +22,29 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    codes and their data sources); the tutor checks run only with a tutor, the
    room checks only with a room. Local values are taken in the center zone;
    a local end at the next midnight is ``time.max`` for the window checks;
-6. ``409 scheduling_conflict`` with **every** conflict, sorted
-   (:func:`~app.modules.scheduling.conflicts.sort_conflicts`). Soft
-   conflicts block too until overrides exist (#49);
+6. the override decision (#49,
+   :func:`~app.modules.scheduling.overrides.evaluate_override`) on the
+   conflicts just computed: ``409 scheduling_conflict`` with **every**
+   conflict, sorted (:func:`~app.modules.scheduling.conflicts.sort_conflicts`),
+   unless there is none, or the body's ``override`` lists every one and all
+   are soft;
 7. the session (``offered`` with the tutor, or ``unassigned`` without one,
    D2 / E1) and its one participant, flushed through
    ``flush_class_sessions``: an ``EXCLUDE`` race becomes ``409
    scheduling_conflict`` with that one hard conflict (its
-   ``class_session_ids`` is ``[]``: the other row is not known).
+   ``class_session_ids`` is ``[]``: the other row is not known);
+8. with overridden conflicts, the override row and its
+   ``scheduling.session_override`` event
+   (:func:`~app.modules.scheduling.overrides.record_session_override`).
 
-No offer row, notification or inbox item is created (#52). Audit: the
-automatic ``create`` events of both tables only.
+The ``403`` for an ``override`` without ``schedule.override`` comes before
+step 1 (the route). No offer row, notification or inbox item is created
+(#52). Audit: the automatic ``create`` events of both tables, plus the
+override event when something was overridden.
 
 **Read** (:func:`get_class_session`): every holder of ``schedule.view``
-sees every session (no record policy for staff, D9); at most six
-statements; ``404`` for an unknown id.
+sees every session and its overrides (no record policy for staff, D9); at
+most seven statements; ``404`` for an unknown id.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -81,12 +89,19 @@ from app.modules.scheduling.errors import (
     SessionValidationError,
 )
 from app.modules.scheduling.locks import lock_students
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    ClassSession,
+    ClassSessionOverride,
+    ClassSessionParticipant,
+)
+from app.modules.scheduling.overrides import evaluate_override, record_session_override
 from app.modules.scheduling.schemas import (
     ClassSessionCreate,
     ClassSessionCreated,
     ClassSessionDetail,
+    OverrideActor,
     SessionClassroom,
+    SessionOverrideItem,
     SessionParticipant,
     SessionSubject,
     SessionTutor,
@@ -463,6 +478,7 @@ def _detail(
     tutor: SessionTutor | None,
     classroom: SessionClassroom | None,
     participants: list[SessionParticipant],
+    overrides: list[SessionOverrideItem],
 ) -> ClassSessionDetail:
     return ClassSessionDetail(
         id=row.id,
@@ -481,19 +497,36 @@ def _detail(
         version=row.version,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        overrides=overrides,
+    )
+
+
+def _override_item(
+    row: ClassSessionOverride, actors: dict[uuid.UUID, Any]
+) -> SessionOverrideItem:
+    actor = actors[row.actor_user_id]
+    return SessionOverrideItem(
+        id=row.id,
+        codes=list(row.codes),
+        reason=row.reason,
+        actor=OverrideActor(id=actor.id, display_name=actor.display_name),
+        created_at=row.created_at,
     )
 
 
 async def create_class_session(
-    session: AsyncSession, body: ClassSessionCreate
+    session: AsyncSession, body: ClassSessionCreate, *, actor_id: uuid.UUID
 ) -> ClassSessionCreated:
-    """``POST /api/v1/class-sessions``: see the module docstring for the order."""
+    """``POST /api/v1/class-sessions``: see the module docstring for the
+    order. ``actor_id`` is the signed-in user (the override's actor); the
+    route has already checked ``schedule.override`` for an ``override``."""
     await lock_students(session, [body.student_id])
     zone = await administration.get_center_time_zone(session, for_share=True)
     _validate_bounds(body, zone)
     references = await _references(session, body)
     conflicts = await find_conflicts(session, body, zone)
-    if conflicts:
+    decision = evaluate_override(conflicts, body.override)
+    if not decision.allowed:
         raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])
 
     state = (
@@ -520,12 +553,26 @@ async def create_class_session(
         ClassSessionParticipant(class_session_id=row.id, student_id=body.student_id)
     )
     await flush_class_sessions(session)
+    overrides: list[SessionOverrideItem] = []
+    if decision.overridden:
+        # Only an allowed override reaches here, so body.override is set.
+        assert body.override is not None  # noqa: S101
+        stored = await record_session_override(
+            session,
+            row.id,
+            decision.overridden,
+            body.override.reason,
+            actor_id=actor_id,
+        )
+        actors = await identity.get_account_references(session, [actor_id])
+        overrides.append(_override_item(stored, actors))
     detail = _detail(
         row,
         subject=references.subject,
         tutor=references.tutor,
         classroom=references.classroom,
         participants=[references.student],
+        overrides=overrides,
     )
     return ClassSessionCreated(**detail.model_dump(), warnings=[])
 
@@ -533,7 +580,8 @@ async def create_class_session(
 async def get_class_session(
     session: AsyncSession, class_session_id: uuid.UUID
 ) -> ClassSessionDetail:
-    """``GET /api/v1/class-sessions/{id}``: at most six statements."""
+    """``GET /api/v1/class-sessions/{id}``: at most seven statements (the
+    tutor and the override actors are read together)."""
     row = await session.get(ClassSession, class_session_id)
     if row is None:
         raise RecordNotFoundError()
@@ -548,11 +596,20 @@ async def get_class_session(
     subject = (await catalog.subject_references(session, [row.subject_id]))[
         row.subject_id
     ]
+    override_rows = list(
+        await session.scalars(
+            select(ClassSessionOverride)
+            .where(ClassSessionOverride.class_session_id == row.id)
+            .order_by(ClassSessionOverride.created_at, ClassSessionOverride.id)
+        )
+    )
+    account_ids = {override.actor_user_id for override in override_rows}
+    if row.tutor_user_id is not None:
+        account_ids.add(row.tutor_user_id)
+    accounts = await identity.get_account_references(session, account_ids)
     tutor = None
     if row.tutor_user_id is not None:
-        account = (await identity.get_account_references(session, [row.tutor_user_id]))[
-            row.tutor_user_id
-        ]
+        account = accounts[row.tutor_user_id]
         tutor = SessionTutor(id=account.id, display_name=account.display_name)
     classroom = None
     if row.classroom_id is not None:
@@ -580,4 +637,5 @@ async def get_class_session(
             )
             for student in students.values()
         ],
+        overrides=[_override_item(override, accounts) for override in override_rows],
     )
