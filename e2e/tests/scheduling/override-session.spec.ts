@@ -17,8 +17,9 @@ import { createSubjectViaApi } from '../support/tutors';
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (two API creates with the shared Owner session). It never
 // changes the zone, the opening hours or the scheduling policy. The time is
-// after 13:00 on purpose: settings.spec.ts briefly opens Sunday 10:00–13:00
-// on another worker, and the slot must be outside the hours either way.
+// at or after 09:00 on purpose: settings.spec.ts briefly opens Sunday
+// 07:00–08:00 on another worker, and no spec schedules Sunday before 09:00
+// (_docs/testing-guidelines.md, E2E data rules).
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
