@@ -18,7 +18,7 @@
 - **Modular monolith.** One FastAPI codebase (`apps/api`) organized by business domain. It ships as two runtime processes from the same image: the **API** and the **Procrastinate worker**.
 - **Single-page web client.** React + TypeScript + Vite (`apps/web`). It talks to the API only through the **generated typed client** (`packages/api-client`).
 - **PostgreSQL is the only stateful backend service.** It holds business data, server sessions, the job queue (Procrastinate), notifications and the LISTEN/NOTIFY fan-out. **No Redis and no Celery.**
-- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata.
+- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata. *(Deferred to a later version, owner decision 2026-10-21: no uploads for now. Until then the app uses no object storage; the only S3 bucket is the backup bucket. See §7.3.)*
 - **Three deployed environments on AWS:** DEV, PROD and a monitoring host. Each one is a single EC2 instance running Docker Compose. There is also a local Compose environment.
 
 ## 2. System context
@@ -43,8 +43,8 @@ flowchart LR
     API -. LISTEN/NOTIFY .- PG
   end
 
-  API -->|presigned URLs| S3[(S3 bucket)]
-  WORKER --> S3
+  API -.->|presigned URLs, deferred| S3[("S3 uploads bucket (deferred)")]
+  WORKER -.-> S3
   PG -->|pgBackRest WAL + backups| S3B[(S3 backup bucket)]
 
   subgraph EC2_MON["EC2 monitoring"]
@@ -58,6 +58,7 @@ flowchart LR
 
 Notes:
 
+- The uploads bucket and its presigned URLs (dashed) are deferred to a later version (§7.3).
 - PgBouncer placement and which processes bypass it: → ISSUE-D1.
 - How the web container is built and served: → ISSUE-I4.
 - How CloudFront authenticates to the origin: → ISSUE-I2.
@@ -98,7 +99,7 @@ The candidate modules mirror the spec §12 domain inventory:
 | `billing` | Price catalog, charges, payments, allocations, packages and credits, discounts, refunds, tuition plans, receipts |
 | `payroll` | Compensation rates, teaching hours, payroll periods and lines, adjustments, payments, payslips |
 | `finance` | Expenses, categories, vendors, recurring expense templates |
-| `documents` | Files, folders, access grants, tags, quotas, recycle bin |
+| `documents` | Files, folders, access grants, tags, quotas, recycle bin — *deferred to a later version (§7.3)* |
 | `administration` | Approval inbox, notifications, audit events, business settings, imports |
 
 Reporting and analytics code lives in a read-only `reporting` module (ISSUE-A2, accepted in [ADR-0002](adr/0002-module-boundaries-and-reporting.md)).
@@ -166,7 +167,7 @@ Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic
 
 - Server-side sessions stored in PostgreSQL and referenced by an HTTP-only secure cookie. CSRF protection. Expiration and revocation.
 - Password reauthentication for sensitive actions.
-- Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links.
+- Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links (presigned links are deferred with §7.3).
 - User states: `pending`, `active`, `suspended`, `archived`.
 
 Accepted details (ISSUE-G2, S1, S2, S4, S5, S6, S7): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Rate limits (ISSUE-S3): see [ADR-0008](adr/0008-rate-limiting-without-redis.md).
@@ -179,6 +180,8 @@ Accepted details (ISSUE-G2, S1, S2, S4, S5, S6, S7): see [ADR-0007](adr/0007-aut
 Open point: → ISSUE-N1.
 
 ### 7.3 Files (approved)
+
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). This covers uploads, object storage, malware scanning, downloads and previews, presigned URLs, quotas, the recycle bin, the shared academic library and attachments (issues #68–#75, milestone "Next version — Files and documents (deferred)"). The text is kept for that version. In this version, generated PDFs are streamed on request and never stored, export results live in a PostgreSQL table with a short expiry behind an authorized endpoint, imports are sent in the request body, and there is no uploads bucket.
 
 - The browser uploads to and downloads from S3 directly through presigned URLs.
 - File metadata lives in PostgreSQL. A file stays unreleased until malware scanning passes.
@@ -380,7 +383,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Problem:** The spec does not choose a PostgreSQL text-search configuration for mixed Spanish and English content.
 - **Resolution — names part ACCEPTED** (human decision on GitHub issue #33, M2-15, 2026-10-18, owner JaimeSolisS; no ADR); `btree_gist` part ACCEPTED (ADR-0005, 2026-10-19); the library-documents part stays PROPOSED:
   - **Names and short fields — ACCEPTED:** `pg_trgm` + `unaccent` with the `simple` behaviour (no language stemming), enabled by the migration of their first consumer (M2-15, revision `0014`). Accent folding goes through an `IMMUTABLE` wrapper `public.f_unaccent(text)` (`SELECT public.unaccent('public.unaccent'::regdictionary, $1)`), because `unaccent()` itself is only `STABLE` and can't be used in an index; its `EXECUTE` stays granted to `PUBLIC`, so a least-privilege runtime role (#165) can call it. Search uses a GIN trigram **expression index** on `public.f_unaccent(lower(...))` of the searched text, never a stored search column (audit diffs carry no derived value). First use: student name search (`apps/api/app/modules/families/`).
-  - Library documents — PROPOSED until M5: a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
+  - Library documents — PROPOSED, deferred to a later version with the shared library (§7.3): a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
   - `btree_gist` — ACCEPTED (decided in [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md), 2026-10-19, with ISSUE-D4). Enabled by #38 (M3-02, revision `0021`, owner-delegated decision #38 E1 (a)) for the academic-period exclusion constraint `ex_academic_periods_no_overlap`; ISSUE-D4 / M4-02 reuses it (`CREATE EXTENSION IF NOT EXISTS` or nothing).
 
 #### ISSUE-D7 — Version pins (M)
@@ -581,6 +584,8 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ### 10.9 Files
 
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). ISSUE-FL1 to FL3 stay PROPOSED for that version (see §7.3).
+
 #### ISSUE-FL1 — Malware scanning on a micro instance (C/M; spec §18.5 open)
 - **Problem:**
   - The spec requires scanning but names no scanner.
@@ -742,7 +747,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-L1 — Import pipeline (M)
 - **Spec:** §9 CSV/Excel imports with validation.
 - **Resolution — PROPOSED:**
-  - Upload the file (as in ISSUE-FL2), then create an `ImportJob`.
+  - Upload the file (as in ISSUE-FL2), then create an `ImportJob`. *(In this version the file goes directly in the request body and is parsed into staging, not stored; FL2 is deferred, §7.3.)*
   - A worker parses the rows into a staging table and produces a per-row validation report.
   - An admin reviews the report and **commits** it. The commit runs as one transaction per batch, with natural-key deduplication.
   - Financial imports post as ordinary ledger entries with an import reference.
@@ -769,7 +774,7 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
 | [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
 | [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
-| 0009 | File scanning, release and previews | FL1–FL3 |
+| 0009 | File scanning, release and previews — *deferred to a later version* | FL1–FL3 |
 | 0010 | Edge: CloudFront origin auth, TLS, SPA serving | I2–I4 |
 | 0011 | Release promotion and single-host deployment | I5, I6, I10 |
 | 0012 | Secrets delivery | I1 |
