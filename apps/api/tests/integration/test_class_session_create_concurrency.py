@@ -135,7 +135,8 @@ def create(
     )
 
     async def _create(session: AsyncSession) -> None:
-        await scheduling.create_class_session(session, body)
+        # No override, so the actor (#49) is never stored.
+        await scheduling.create_class_session(session, body, actor_id=refs["tutor"])
 
     return _create
 

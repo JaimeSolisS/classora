@@ -5,12 +5,13 @@ import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
+  problem,
   stubApi,
   TEST_USER,
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, typeInto } from '@/test/dom';
+import { click, fieldByLabel, openDialog, typeInto } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -23,19 +24,28 @@ import {
   CLASSROOMS,
   CONFLICTS,
   CREATED,
+  OVERRIDDEN,
+  SOFT_CONFLICTS,
   SUBJECTS,
   TUTORS,
 } from './fixtures';
 import {
   EMPTY_SCHEDULE,
+  overrideAction,
+  overrideCodes,
+  overrideReasonError,
   scheduleBody,
   serverErrors,
+  sessionOverride,
+  validateOverrideReason,
   validateSchedule,
 } from './rules';
 
 // #48 F1-F4: the route behind schedule.manage and its nav entry, the client
 // rules, the instant conversion in the center zone, the 409 conflict panel
-// (order, severity labels, focus) and the 422 field errors.
+// (order, severity labels, focus) and the 422 field errors. #49 F2-F5: the
+// override action's branches, the reason rules, the body sent and the
+// outcomes of the resend.
 
 const CREATE = 'POST /api/v1/class-sessions';
 
@@ -104,7 +114,10 @@ function stub(
   });
 }
 
-function conflictResponse(): Response {
+function conflictResponse(
+  // Soft first on purpose: the panel still lists the hard one first.
+  conflicts: unknown[] = [CONFLICTS[1], CONFLICTS[2], CONFLICTS[0]],
+): Response {
   return new Response(
     JSON.stringify({
       type: 'about:blank',
@@ -113,8 +126,7 @@ function conflictResponse(): Response {
       code: 'scheduling_conflict',
       request_id: 'req-409',
       detail: 'Server detail that must never reach the UI',
-      // Soft first on purpose: the panel still lists the hard one first.
-      conflicts: [CONFLICTS[1], CONFLICTS[2], CONFLICTS[0]],
+      conflicts,
     }),
     { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
   );
@@ -337,7 +349,7 @@ describe('the page (F1, F3)', () => {
   });
 
   it('lists the conflicts hard first, with severity labels, and keeps the form', async () => {
-    stub(SCHEDULER, { [CREATE]: conflictResponse });
+    stub(SCHEDULER, { [CREATE]: () => conflictResponse() });
     app = await renderApp('/schedule/new');
     await fillForm();
 
@@ -347,8 +359,8 @@ describe('the page (F1, F3)', () => {
     const items = [...panel.querySelectorAll('li')].map((li) => li.textContent);
     expect(items).toEqual([
       'Not allowedThe student already has a class at this time.',
-      'Needs an override (coming soon)The tutor is not available at this time (time off).',
-      'Needs an override (coming soon)The time is outside the opening hours of Jan 11, 2031 (09:00 to 14:00).',
+      'Can be overriddenThe tutor is not available at this time (time off).',
+      'Can be overriddenThe time is outside the opening hours of Jan 11, 2031 (09:00 to 14:00).',
     ]);
     expect(document.activeElement).toBe(panel.querySelector('h2'));
     expect(panel.textContent).not.toContain('Server detail');
@@ -371,5 +383,238 @@ describe('the page (F1, F3)', () => {
       "This tutor's account is not active. Choose another tutor.",
     );
     expect(main().querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
+const OVERRIDER: SessionUserBody = {
+  ...SCHEDULER,
+  permissions: ['schedule.manage', 'schedule.override', 'student.view'],
+};
+
+function typeReason(value: string) {
+  const dialog = openDialog()!;
+  const label = [...dialog.querySelectorAll('label')].find(
+    (l) => l.textContent === 'Reason',
+  )!;
+  const area = document.getElementById(label.htmlFor) as HTMLTextAreaElement;
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  act(() => {
+    setter?.call(area, value);
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  return area;
+}
+
+function reasonError(): Response {
+  return new Response(
+    JSON.stringify({
+      type: 'about:blank',
+      title: 'Unprocessable Content',
+      status: 422,
+      code: 'validation_error',
+      request_id: 'req-422',
+      errors: [
+        {
+          path: ['body', 'override', 'reason'],
+          code: 'reason_too_long',
+          message: 'x',
+        },
+      ],
+    }),
+    { status: 422, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+}
+
+describe('override rules (#49 F2, F3)', () => {
+  it('offers the button only to holders, and only without hard conflicts', () => {
+    expect(overrideAction(SOFT_CONFLICTS, true)).toBe('override');
+    expect(overrideAction(CONFLICTS, true)).toBe('fixHardFirst');
+    expect(overrideAction(SOFT_CONFLICTS, false)).toBe('notAllowed');
+    expect(overrideAction(CONFLICTS, false)).toBe('notAllowed');
+  });
+
+  it('overrides every soft code shown, once, with the trimmed reason', () => {
+    expect(overrideCodes(CONFLICTS)).toEqual([
+      'tutor_unavailable',
+      'outside_operating_hours',
+    ]);
+    expect(
+      overrideCodes([...SOFT_CONFLICTS, { ...SOFT_CONFLICTS[0]! }]),
+    ).toEqual(['outside_operating_hours', 'tutor_not_qualified']);
+    expect(sessionOverride(SOFT_CONFLICTS, '  Acordado  ')).toEqual({
+      codes: ['outside_operating_hours', 'tutor_not_qualified'],
+      reason: 'Acordado',
+    });
+  });
+
+  it('wants a reason of 1-1000 characters once trimmed', () => {
+    expect(validateOverrideReason('')).toBe(
+      'scheduling.override.reasonRequired',
+    );
+    expect(validateOverrideReason('   ')).toBe(
+      'scheduling.override.reasonRequired',
+    );
+    expect(validateOverrideReason(` ${'a'.repeat(1000)} `)).toBeUndefined();
+    expect(validateOverrideReason('a'.repeat(1001))).toBe(
+      'scheduling.override.reasonTooLong',
+    );
+  });
+
+  it('maps the 422 on the override to the reason', () => {
+    const at = (path: (string | number)[], code: string) => ({
+      path,
+      code,
+      message: '',
+    });
+    expect(
+      overrideReasonError([
+        at(['body', 'override', 'reason'], 'reason_required'),
+      ]),
+    ).toBe('scheduling.override.reasonRequired');
+    expect(
+      overrideReasonError([
+        at(['body', 'override', 'reason'], 'reason_too_long'),
+      ]),
+    ).toBe('scheduling.override.reasonTooLong');
+    expect(
+      overrideReasonError([
+        at(['body', 'override', 'codes', 0], 'code_unknown'),
+      ]),
+    ).toBe('errors:validation_error');
+    expect(
+      overrideReasonError([at(['body', 'ends_at'], 'crosses_local_date')]),
+    ).toBeNull();
+  });
+});
+
+describe('overriding on the page (#49 F2-F4)', () => {
+  it('tells a non-holder who can override, without a button', async () => {
+    stub(SCHEDULER, { [CREATE]: () => conflictResponse(SOFT_CONFLICTS) });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    expect(main().textContent).toContain(
+      'Only an Owner, or an Administrator with the override permission, can override these conflicts.',
+    );
+    expect(
+      [...main().querySelectorAll('button')].some(
+        (b) => b.textContent === 'Override and schedule',
+      ),
+    ).toBe(false);
+  });
+
+  it('asks a holder to fix the hard conflicts first', async () => {
+    stub(OVERRIDER, { [CREATE]: () => conflictResponse() });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    expect(main().textContent).toContain(
+      'Fix the conflicts that aren’t allowed first.',
+    );
+    expect(
+      [...main().querySelectorAll('button')].some(
+        (b) => b.textContent === 'Override and schedule',
+      ),
+    ).toBe(false);
+  });
+
+  it('resends the same body with every soft code and the reason', async () => {
+    const api = stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_CONFLICTS),
+        () => jsonResponse(201, OVERRIDDEN),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    await click(buttonNamed(main(), 'Override and schedule'));
+    const dialog = openDialog()!;
+    expect(
+      [...dialog.querySelectorAll('li')].map((li) => li.textContent),
+    ).toEqual([
+      'The center is closed on that day of the week (Jan 12, 2031).',
+      'The tutor is not qualified for this subject.',
+    ]);
+    // An empty reason never reaches the server.
+    await click(buttonNamed(dialog, 'Override and schedule'));
+    expect(api.calls(CREATE)).toHaveLength(1);
+    expect(dialog.textContent).toContain('Give a reason for the override.');
+
+    const area = typeReason('  La familia lo pidió  ');
+    expect(area.getAttribute('aria-invalid')).toBe('true');
+    await click(buttonNamed(openDialog()!, 'Override and schedule'));
+
+    const [first, second] = api.calls(CREATE);
+    expect(second!.body).toEqual({
+      ...(first!.body as object),
+      override: {
+        codes: ['outside_operating_hours', 'tutor_not_qualified'],
+        reason: 'La familia lo pidió',
+      },
+    });
+    expect(openDialog()).toBeNull();
+    expect(main().textContent).toContain('Session scheduled');
+    expect(main().textContent).toContain('Scheduled with an override');
+    expect(main().textContent).toContain(
+      'Overridden rules: Opening hours, Tutor qualification.',
+    );
+  });
+
+  it('closes the dialog on a new 409 and shows the new list', async () => {
+    stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_CONFLICTS),
+        () => conflictResponse(CONFLICTS),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    await click(buttonNamed(main(), 'Override and schedule'));
+
+    typeReason('Acordado');
+    await click(buttonNamed(openDialog()!, 'Override and schedule'));
+
+    expect(openDialog()).toBeNull();
+    const panel = main().querySelector('[role="alert"]')!;
+    expect(panel.querySelectorAll('li')).toHaveLength(3);
+    expect(panel.textContent).toContain('Not allowed');
+    expect(document.activeElement).toBe(panel.querySelector('h2'));
+  });
+
+  it('shows a 403 in the dialog and a 422 on the reason', async () => {
+    stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_CONFLICTS),
+        () => problem(403, 'permission_denied'),
+        reasonError,
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    await click(buttonNamed(main(), 'Override and schedule'));
+
+    typeReason('Acordado');
+    await click(buttonNamed(openDialog()!, 'Override and schedule'));
+    expect(openDialog()!.querySelector('[role="alert"]')).not.toBeNull();
+
+    await click(buttonNamed(openDialog()!, 'Override and schedule'));
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain(
+      'The reason can have at most 1000 characters.',
+    );
+    const area = dialog.querySelector('textarea')!;
+    expect(area.getAttribute('aria-invalid')).toBe('true');
   });
 });

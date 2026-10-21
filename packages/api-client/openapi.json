@@ -8140,7 +8140,7 @@
           "class-sessions"
         ],
         "summary": "Create Class Session",
-        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, without one `unassigned`. Every rule is checked\nfirst; `warnings` is always empty for now.",
+        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, without one `unassigned`. Every rule is checked\nfirst; with an `override` the listed soft conflicts are allowed, stored\nwith the reason and audited. `warnings` is always empty for now.",
         "operationId": "create_class_session_api_v1_class_sessions_post",
         "requestBody": {
           "content": {
@@ -8174,7 +8174,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8184,7 +8184,7 @@
             }
           },
           "409": {
-            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. Nothing is created.",
+            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9293,6 +9293,17 @@
             "format": "date-time",
             "title": "Ends At",
             "description": "An instant with an offset (RFC 3339)."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks."
           }
         },
         "additionalProperties": false,
@@ -9305,7 +9316,7 @@
           "ends_at"
         ],
         "title": "ClassSessionCreate",
-        "description": "A one-off individual session (``POST /api/v1/class-sessions``).\n\nGroups and courses (#56, #65) extend ``kind``; overrides (#49) add an\n``override`` member, which is an unknown field until then."
+        "description": "A one-off individual session (``POST /api/v1/class-sessions``).\n\nGroups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs\n``schedule.override``."
       },
       "ClassSessionCreated": {
         "properties": {
@@ -9379,6 +9390,14 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/SessionOverrideItem"
+            },
+            "type": "array",
+            "title": "Overrides",
+            "description": "The overrides of its soft conflicts, oldest first."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -9402,6 +9421,7 @@
           "version",
           "created_at",
           "updated_at",
+          "overrides",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -9478,6 +9498,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/SessionOverrideItem"
+            },
+            "type": "array",
+            "title": "Overrides",
+            "description": "The overrides of its soft conflicts, oldest first."
           }
         },
         "type": "object",
@@ -9494,7 +9522,8 @@
           "scheduled_minutes",
           "version",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "overrides"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -11923,6 +11952,26 @@
         "title": "OperatingHoursItem",
         "description": "The opening interval of one weekday, in the center's local time."
       },
+      "OverrideActor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "OverrideActor",
+        "description": "Who overrode the rules."
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -12789,6 +12838,71 @@
           "group",
           "course"
         ]
+      },
+      "SessionOverride": {
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Codes",
+            "description": "The soft conflict codes to override, 1-7, no duplicates; never a hard code."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the rules are overridden: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "codes",
+          "reason"
+        ],
+        "title": "SessionOverride",
+        "description": "The soft conflicts to override and why (#49 B1; ADR-0005). The server\nrecomputes every conflict: a hard one is never overridden, and every soft\none must be listed; listed codes that don't occur are ignored."
+      },
+      "SessionOverrideItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Codes",
+            "description": "The overridden soft codes, in rule order."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/OverrideActor"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codes",
+          "reason",
+          "actor",
+          "created_at"
+        ],
+        "title": "SessionOverrideItem",
+        "description": "One override of a session's soft conflicts (#49 E1)."
       },
       "SessionParticipant": {
         "properties": {

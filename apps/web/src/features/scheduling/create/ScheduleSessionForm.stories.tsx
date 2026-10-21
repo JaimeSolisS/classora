@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, screen, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
@@ -9,15 +9,22 @@ import {
   CONFLICTS,
   CREATED,
   FILLED,
+  OVERRIDDEN,
+  OVERRIDE_REASON,
+  SOFT_CONFLICTS,
   SUBJECTS,
   TUTORS,
   UNASSIGNED,
 } from './fixtures';
+import type { SessionOverride } from './rules';
 import { ScheduleSessionForm } from './ScheduleSessionForm';
 
-// "Schedule a session" (#48 F4): empty, filled, submitting, the conflict
-// panel (one hard, two soft), the success panel and the 422 field errors.
-// No request: `onSubmit` and the student search are stubs.
+// "Schedule a session" (#48 F4, #49 F5): empty, filled, submitting, the
+// conflict panel (one hard, two soft), the success panel and the 422 field
+// errors; the override action (soft only with the button, mixed without it,
+// the non-holder message), the override dialog (empty, a reason error,
+// submitting) and the success panel with an override. No request:
+// `onSubmit` and the student search are stubs.
 
 const meta = {
   title: 'Scheduling/ScheduleSessionForm',
@@ -30,6 +37,7 @@ const meta = {
     timeZone: 'America/Mexico_City',
     labelledBy: 'schedule-title',
     onSubmit: fn(() => Promise.resolve(CREATED)),
+    canOverride: true,
   },
   render: (args) => (
     <StoryQueryClient>
@@ -47,6 +55,31 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const submitName = () => i18n.t('scheduling.submit');
+
+function conflictError(conflicts = CONFLICTS): ApiError {
+  return new ApiError({
+    code: 'scheduling_conflict',
+    status: 409,
+    requestId: 'req-story-409',
+    problem: {
+      type: 'about:blank',
+      title: 'Conflict',
+      status: 409,
+      code: 'scheduling_conflict',
+      request_id: 'req-story-409',
+      conflicts,
+    },
+  });
+}
+
+/** 409 with the soft conflicts, then `withOverride` once an override is sent. */
+function softThen(withOverride: () => Promise<typeof OVERRIDDEN>) {
+  return fn((_values: unknown, override?: SessionOverride) =>
+    override ? withOverride() : Promise.reject(conflictError(SOFT_CONFLICTS)),
+  );
+}
+
+const overrideName = () => i18n.t('scheduling.override.action');
 
 export const Empty: Story = {
   play: async ({ canvas }) => {
@@ -172,5 +205,157 @@ export const FieldErrors: Story = {
     await expect(
       canvas.getByLabelText(i18n.t('scheduling.fields.end')),
     ).toHaveAttribute('aria-invalid', 'true');
+  },
+};
+
+export const SoftConflictsCanOverride: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: softThen(() => Promise.resolve(OVERRIDDEN)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const alert = await canvas.findByRole('alert');
+    await expect(alert).toHaveTextContent(i18n.t('scheduling.severity.soft'));
+    await expect(
+      canvas.getByRole('button', { name: overrideName() }),
+    ).toBeVisible();
+  },
+};
+
+export const MixedConflictsNoOverride: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: fn(() => Promise.reject(conflictError())),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.override.fixHardFirst')),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole('button', { name: overrideName() }),
+    ).toBeNull();
+  },
+};
+
+export const NotAllowedToOverride: Story = {
+  args: {
+    initialValues: FILLED,
+    canOverride: false,
+    onSubmit: softThen(() => Promise.resolve(OVERRIDDEN)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.override.notAllowed')),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole('button', { name: overrideName() }),
+    ).toBeNull();
+  },
+};
+
+export const OverrideDialog: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: softThen(() => Promise.resolve(OVERRIDDEN)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await userEvent.click(
+      await canvas.findByRole('button', { name: overrideName() }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    await expect(dialog.getAllByRole('listitem')).toHaveLength(2);
+    await expect(
+      dialog.getByLabelText(i18n.t('scheduling.override.reason')),
+    ).toHaveValue('');
+  },
+};
+
+export const OverrideReasonError: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: softThen(() => Promise.resolve(OVERRIDDEN)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await userEvent.click(
+      await canvas.findByRole('button', { name: overrideName() }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    const reason = dialog.getByLabelText(i18n.t('scheduling.override.reason'));
+    await userEvent.type(reason, '   ');
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('scheduling.override.submit'),
+      }),
+    );
+    await expect(reason).toHaveAttribute('aria-invalid', 'true');
+    await expect(reason).toHaveAccessibleDescription(
+      expect.stringContaining(i18n.t('scheduling.override.reasonRequired')),
+    );
+  },
+};
+
+export const OverrideSubmitting: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: softThen(() => new Promise<never>(() => {})),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await userEvent.click(
+      await canvas.findByRole('button', { name: overrideName() }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.type(
+      dialog.getByLabelText(i18n.t('scheduling.override.reason')),
+      OVERRIDE_REASON,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('scheduling.override.submit'),
+      }),
+    );
+    await expect(
+      await dialog.findByRole('button', {
+        name: i18n.t('scheduling.override.submitting'),
+      }),
+    ).toBeDisabled();
+  },
+};
+
+export const SuccessWithOverride: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: softThen(() => Promise.resolve(OVERRIDDEN)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await userEvent.click(
+      await canvas.findByRole('button', { name: overrideName() }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.type(
+      dialog.getByLabelText(i18n.t('scheduling.override.reason')),
+      OVERRIDE_REASON,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('scheduling.override.submit'),
+      }),
+    );
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.override.scheduledWith')),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        canvas.getByRole('heading', {
+          name: i18n.t('scheduling.success.heading'),
+        }),
+      ).toHaveFocus(),
+    );
   },
 };
