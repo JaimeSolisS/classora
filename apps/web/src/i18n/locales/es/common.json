@@ -1371,7 +1371,8 @@
       "scheduling_offer_expired": "La oferta de {{subject_name}}, {{starts_at}} a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor.",
       "scheduling_offer_received_series": "Serie semanal ofrecida: {{subject_name}}, desde el {{from_date}}. Responde antes del {{respond_by}}.",
       "scheduling_offer_declined_series": "{{tutor_name}} rechazó la serie semanal de {{subject_name}} desde el {{from_date}}. Ofrécela a otro tutor.",
-      "scheduling_offer_expired_series": "La serie semanal de {{subject_name}} desde el {{from_date}} ofrecida a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor."
+      "scheduling_offer_expired_series": "La serie semanal de {{subject_name}} desde el {{from_date}} ofrecida a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor.",
+      "scheduling_occurrence_skipped_closure": "La clase del {{starts_at}} no se imparte porque el centro está cerrado."
     }
   },
   "scheduling": {

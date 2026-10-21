@@ -141,6 +141,9 @@ from app.modules.catalog.periods import (
 from app.modules.catalog.periods import (
     update_closure as update_closure,
 )
+from app.modules.catalog.periods import (
+    update_closure_reporting as update_closure_reporting,
+)
 from app.modules.catalog.schemas import (
     CatalogStatus,
     EducationLevelCreate,

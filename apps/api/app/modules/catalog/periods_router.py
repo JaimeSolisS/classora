@@ -12,14 +12,23 @@ Check order of a ``PATCH``: ``401`` → ``csrf_failed`` → ``permission_denied`
 → ``422`` → ``404`` → ``409 version_conflict`` → ``422`` (one sent date makes
 the stored range invalid) → ``409 name_taken`` → ``409 period_overlap``
 (periods only).
+
+**Series reconciliation** (#232 B1): after a closure ``POST``, or a ``PATCH``
+that changed the dates or ``is_active``, has **committed**, the route queues
+``scheduling:materialize_series`` (a background task, which runs after the
+response, so after the Unit of Work's commit). The job skips or restores
+the affected series occurrences. A failed deferral never changes the
+response (``app.core.jobs.defer_series_materialization``); the nightly run
+catches up. The responses are unchanged.
 """
 
 import uuid
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.exceptions import RequestValidationError
+from procrastinate import App
 
 from app.core.authz import (
     AUTH_RESPONSES,
@@ -29,6 +38,7 @@ from app.core.authz import (
     require,
 )
 from app.core.errors import problem_response_doc
+from app.core.jobs import defer_series_materialization, get_job_app
 from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.catalog import service
@@ -72,6 +82,8 @@ PERIOD_OVERLAP = (
     "Another active period of the same type shares at least one day with"
     " these dates (period_overlap)."
 )
+
+JobAppDep = Annotated[App, Depends(get_job_app)]
 
 StatusQuery = Annotated[
     CatalogStatus,
@@ -238,10 +250,16 @@ async def create_closure(
     principal: Annotated[Principal, require(CATALOG_MANAGE)],
     body: ClosureCreate,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClosureDetail:
     """Add an active closure (whole local days, inclusive, at most 366 days
-    apart). Closures may overlap each other."""
-    return await service.create_closure(uow.session, body)
+    apart). Closures may overlap each other. After the commit, the series
+    occurrences on its dates are reconciled by a queued job."""
+    created = await service.create_closure(uow.session, body)
+    # Runs after the response, so after the Unit of Work committed.
+    background.add_task(defer_series_materialization, job_app)
+    return created
 
 
 # Declared before /closures/{closure_id}, so "check" is never read as an id.
@@ -297,7 +315,17 @@ async def update_closure(
     closure_id: uuid.UUID,
     body: ClosureUpdate,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClosureDetail:
     """Rename, retype, change the dates, deactivate or reactivate a closure.
-    Fields not sent stay unchanged."""
-    return await service.update_closure(uow.session, closure_id, body)
+    Fields not sent stay unchanged. A change of the dates or of
+    ``is_active`` reconciles the series occurrences (a queued job, after the
+    commit)."""
+    updated, dates_changed = await service.update_closure_reporting(
+        uow.session, closure_id, body
+    )
+    if dates_changed:
+        # Runs after the response, so after the Unit of Work committed.
+        background.add_task(defer_series_materialization, job_app)
+    return updated

@@ -39,20 +39,30 @@ Two connector setups:
   engine.
 
 Pool sizes are small fixed defaults; sizing for the hosts is M10-04.
+
+**Cross-module triggers** (#232 B1): a task that another module defers has
+its name here, so the deferring module never imports the owner's ``tasks``
+or ``service`` (ADR-0002). :func:`defer_series_materialization` is the
+closure writes' after-commit trigger of ``scheduling:materialize_series``.
 """
 
 import functools
 import inspect
+import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Final, get_type_hints
 
 from fastapi import Request
 from procrastinate import App, PsycopgConnector
+from procrastinate.exceptions import AlreadyEnqueued
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import AppEnv, Settings
 from app.core.db import async_direct_database_url, create_direct_engine
+
+logger = logging.getLogger(__name__)
 
 # Task parameters may only have these types (ISSUE-J3): identifiers, and the
 # ``timestamp: int`` Procrastinate passes to periodic tasks.
@@ -67,6 +77,13 @@ WORKER_HEALTHCHECK_APPLICATION_NAME = "classora-worker-healthcheck"
 
 # psycopg connect timeout (seconds), so an unreachable database fails fast.
 CONNECT_TIMEOUT_SECONDS = 2
+
+MATERIALIZE_SERIES_TASK: Final = "scheduling:materialize_series"
+"""The nightly series materialization (#53 F3), also deferred after a
+closure write (#232 B1)."""
+MATERIALIZE_SERIES_QUEUEING_LOCK: Final = "scheduling-materialize-series"
+"""At most one queued ``scheduling:materialize_series`` job (the periodic
+tick shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).
@@ -227,3 +244,28 @@ def get_job_app(request: Request) -> App:
     """FastAPI dependency: the job app opened by the API lifespan."""
     job_app: App = request.app.state.job_app
     return job_app
+
+
+async def defer_series_materialization(job_app: App) -> None:
+    """Queue one ``scheduling:materialize_series`` run now (#232 B1-B3).
+
+    Call it only **after** the Unit of Work has committed (a closure route
+    adds it as a background task, which runs after the response). A run
+    already queued makes this a no-op (``queueing_lock``: Procrastinate's
+    ``AlreadyEnqueued`` is ignored). Any other failure (the database is
+    unreachable) is logged and swallowed: the write already succeeded, and
+    the nightly run catches up (no outbox).
+    """
+    try:
+        await job_app.configure_task(
+            MATERIALIZE_SERIES_TASK,
+            allow_unknown=False,
+            queueing_lock=MATERIALIZE_SERIES_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the series materialization failed",
+            extra={"task_name": MATERIALIZE_SERIES_TASK, "error": type(exc).__name__},
+        )

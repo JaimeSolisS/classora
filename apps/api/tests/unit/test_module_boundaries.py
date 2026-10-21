@@ -184,6 +184,14 @@ def test_catalog_imports_only_core_and_the_administration_service():
     assert not {t for t in catalog if not t.startswith(allowed)}
 
 
+def test_catalog_never_imports_scheduling():
+    # #232 B1: the closure routes queue scheduling:materialize_series by its
+    # name in app.core.jobs, never through the scheduling module.
+    catalog = targets("catalog")
+    assert "app.core.jobs.defer_series_materialization" in catalog
+    assert not {t for t in catalog if t.startswith("app.modules.scheduling")}
+
+
 def test_staff_imports_only_core_and_public_apis():
     # #43 A1: staff (tutor profiles) uses app.core, its own files,
     # identity.service / identity.schemas and (#44) catalog.service /

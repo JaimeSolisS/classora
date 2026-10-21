@@ -1369,7 +1369,8 @@
       "scheduling_offer_expired": "The offer of {{subject_name}}, {{starts_at}} to {{tutor_name}} expired without an answer. Offer it to another tutor.",
       "scheduling_offer_received_series": "Weekly series offered: {{subject_name}}, from {{from_date}}. Answer by {{respond_by}}.",
       "scheduling_offer_declined_series": "{{tutor_name}} declined the weekly series {{subject_name}} from {{from_date}}. Offer it to another tutor.",
-      "scheduling_offer_expired_series": "The weekly series {{subject_name}} from {{from_date}} offered to {{tutor_name}} expired without an answer. Offer it to another tutor."
+      "scheduling_offer_expired_series": "The weekly series {{subject_name}} from {{from_date}} offered to {{tutor_name}} expired without an answer. Offer it to another tutor.",
+      "scheduling_occurrence_skipped_closure": "A class on {{starts_at}} is not held because the center is closed."
     }
   },
   "scheduling": {

@@ -51,6 +51,11 @@ contact events (the version bump changes no audited column).
 student's id, display name and active flag, without any access check (the
 caller's own permission decides, e.g. ``schedule.view``).
 
+**Notification recipients** (#232 C2): :func:`student_notification_recipients`
+gives other modules, per student, the login user of the student and those
+of its linked guardians (no access check; the caller decides what the
+family may be told).
+
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
 ``administration.service.center_today(session)`` (the center's time zone
 setting, #37); #35 uses both.
@@ -90,7 +95,12 @@ from app.modules.families.errors import (
     EmergencyContactUnknownError,
 )
 from app.modules.families.facts import load_access_facts
-from app.modules.families.models import Student, StudentEmergencyContact
+from app.modules.families.models import (
+    Guardian,
+    Student,
+    StudentEmergencyContact,
+    StudentGuardian,
+)
 from app.modules.families.permissions import (
     FAMILY_MANAGE,
     AccessLevel,
@@ -139,6 +149,7 @@ __all__ = [
     "remove_family_student",
     "revoke_consent",
     "set_student_account",
+    "student_notification_recipients",
     "student_references",
     "unlink_guardian",
     "update_family",
@@ -197,6 +208,37 @@ async def student_references(
         )
         for row in rows
     }
+
+
+async def student_notification_recipients(
+    session: AsyncSession, student_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """Per student id, the users a family notification about the student
+    goes to: the student's own login (``students.user_id``) and the
+    accounts of the guardians linked to the student (#34), each once, by
+    id. Students without any are left out. Two statements (none for an
+    empty collection), whatever the number of students."""
+    wanted = set(student_ids)
+    if not wanted:
+        return {}
+    found: dict[uuid.UUID, set[uuid.UUID]] = {}
+    own = await session.execute(
+        select(Student.id, Student.user_id).where(
+            Student.id.in_(wanted), Student.user_id.is_not(None)
+        )
+    )
+    for student_id, user_id in own:
+        if user_id is not None:
+            found.setdefault(student_id, set()).add(user_id)
+    guardians = await session.execute(
+        select(StudentGuardian.student_id, Guardian.user_id)
+        .join(Guardian, Guardian.id == StudentGuardian.guardian_id)
+        .where(StudentGuardian.student_id.in_(wanted), Guardian.user_id.is_not(None))
+    )
+    for student_id, user_id in guardians:
+        if user_id is not None:
+            found.setdefault(student_id, set()).add(user_id)
+    return {student_id: sorted(users) for student_id, users in found.items()}
 
 
 # --- Search expressions ----------------------------------------------------------
