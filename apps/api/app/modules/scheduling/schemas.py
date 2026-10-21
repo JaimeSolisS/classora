@@ -262,6 +262,114 @@ class ClassSessionCreated(ClassSessionDetail):
     )
 
 
+# --- The calendar range read (#57 A) ----------------------------------------------
+
+
+class ClassSessionRangeQuery(BaseModel):
+    """The query of ``GET /api/v1/class-sessions`` (#57 A1). ``from`` and
+    ``to`` are instants with an offset; a session matches when it overlaps
+    ``[from, to)``. Unknown parameters are ``422``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_: datetime = Field(
+        alias="from", description="An instant with an offset (RFC 3339)."
+    )
+    to: datetime = Field(
+        description=(
+            "An instant with an offset (RFC 3339), after `from` and at most"
+            " 45 days later."
+        )
+    )
+    tutor_user_id: uuid.UUID | None = Field(
+        default=None, description="Only the sessions of this tutor."
+    )
+    student_id: uuid.UUID | None = Field(
+        default=None, description="Only the sessions this student takes part in."
+    )
+    classroom_id: uuid.UUID | None = Field(
+        default=None, description="Only the sessions in this classroom."
+    )
+    kind: SessionKindCode | None = Field(
+        default=None, description="Only the sessions of this kind."
+    )
+    include_cancelled: bool = Field(
+        default=False, description="Also return `cancelled` sessions."
+    )
+
+
+type MarkerCode = Literal["center_closed", "tutor_not_qualified"]
+
+
+class CalendarSubject(BaseModel):
+    """The session's subject with its level's name."""
+
+    id: uuid.UUID
+    name: str
+    education_level_name: str
+
+
+class CalendarClassroom(BaseModel):
+    """The session's classroom."""
+
+    id: uuid.UUID
+    name: str
+
+
+class CalendarParticipant(BaseModel):
+    """A student of the session."""
+
+    student_id: uuid.UUID
+    display_name: str
+
+
+class ClassSessionCalendarItem(BaseModel):
+    """One session on the calendar (#57 A4). ``markers`` are computed on
+    read, in a fixed order (``center_closed``, ``tutor_not_qualified``)."""
+
+    id: uuid.UUID
+    kind: SessionKindCode
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    subject: CalendarSubject
+    tutor: SessionTutor | None
+    classroom: CalendarClassroom | None
+    participants: list[CalendarParticipant] = Field(
+        description="The students, by display name."
+    )
+    markers: list[MarkerCode]
+
+
+class ClassSessionCalendar(BaseModel):
+    """The sessions overlapping the range, by ``starts_at`` then ``id``; at
+    most 1000, with ``truncated`` true when more match."""
+
+    items: list[ClassSessionCalendarItem]
+    truncated: bool
+
+
+# --- Tutor filter options (#57 B) ---------------------------------------------------
+
+
+type TutorOptionState = Literal["pending", "active", "suspended", "archived"]
+
+
+class TutorOption(BaseModel):
+    """A user holding the tutor role, for the calendar's tutor filter. No
+    contact data."""
+
+    id: uuid.UUID
+    display_name: str
+    state: TutorOptionState
+
+
+class TutorOptions(BaseModel):
+    """The matching tutors, in the user list order."""
+
+    items: list[TutorOption]
+
+
 # --- Slot suggestions (#50 B) -----------------------------------------------------
 
 

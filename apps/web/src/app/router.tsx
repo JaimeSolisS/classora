@@ -235,6 +235,16 @@ export const routes: RouteObject[] = [
             element: <TutorDetailPage />,
             handle: { permission: 'tutor.view' },
           },
+          // The calendar (#57 D1, C4): code-split, so FullCalendar and the
+          // Temporal polyfill are not in the entry chunk.
+          {
+            path: 'schedule',
+            lazy: async () => ({
+              Component: (await import('@/features/calendar/CalendarPage'))
+                .CalendarPage,
+            }),
+            handle: { permission: 'schedule.view' },
+          },
           {
             path: 'schedule/new',
             element: <ScheduleSessionPage />,

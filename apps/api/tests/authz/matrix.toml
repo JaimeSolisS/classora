@@ -258,6 +258,16 @@ reauth = "settings.payment_methods_or_time_zone"
 reauth_conditional = true
 
 [[route]]
+method = "GET"
+path = "/api/v1/class-sessions"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #57: the matrix sends no query parameters: the missing from/to gets 422 for
+# every allowed role ("not denied"). The 200 cases are tested in
+# tests/integration/test_class_session_calendar.py.
+
+[[route]]
 method = "POST"
 path = "/api/v1/class-sessions"
 access = "permission"
@@ -640,6 +650,15 @@ access = "authenticated"
 notice_exempt = true
 # An empty body gets 422, so no case accepts the notice.
 json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/schedule/tutor-options"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #57 E2: the calendar's tutor filter; Finance holds schedule.view but not
+# tutor.view. 200 for every allowed role.
 
 [[route]]
 method = "GET"

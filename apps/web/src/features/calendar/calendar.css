@@ -1,0 +1,181 @@
+/*
+ * The calendar's theme (#57 C3, ADR-0005 D8): FullCalendar's skeleton.css
+ * and the stock classic theme.css, with every --fc-classic-* variable mapped
+ * to a Classora token (tokens.css) instead of the theme's palette.css. The
+ * tokens switch with the `dark` class, so one mapping serves both themes.
+ * No colour value is written here: only tokens and mixes of them.
+ */
+.cl-calendar {
+  --fc-classic-button: var(--secondary);
+  --fc-classic-button-border: var(--border);
+  --fc-classic-button-strong: var(--accent);
+  --fc-classic-button-strong-border: var(--input);
+  --fc-classic-button-outline: var(--ring);
+  --fc-classic-button-foreground: var(--secondary-foreground);
+  --fc-classic-primary: var(--primary);
+  --fc-classic-primary-foreground: var(--primary-foreground);
+  --fc-classic-event: var(--card);
+  --fc-classic-event-contrast: var(--card-foreground);
+  --fc-classic-background-event: var(--muted);
+  --fc-classic-highlight: color-mix(in srgb, var(--primary) 15%, transparent);
+  --fc-classic-today: color-mix(in srgb, var(--primary) 8%, transparent);
+  --fc-classic-now: var(--destructive);
+  --fc-classic-background: var(--background);
+  --fc-classic-faint: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --fc-classic-muted: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --fc-classic-strong: color-mix(in srgb, var(--foreground) 14%, transparent);
+  --fc-classic-foreground: var(--foreground);
+  /* Text on non-current days keeps 4.5:1: the muted text token. */
+  --fc-classic-faint-foreground: var(--muted-foreground);
+  --fc-classic-muted-foreground: var(--muted-foreground);
+  --fc-classic-border: var(--border);
+  --fc-classic-strong-border: var(--input);
+
+  color: var(--foreground);
+  background-color: var(--background);
+  font-size: var(--text-sm);
+}
+
+/* --- Events: the state is a border style AND an icon with its text. --- */
+
+.cl-calendar .cl-event {
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background-color: var(--card);
+  color: var(--card-foreground);
+  overflow: hidden;
+}
+
+.cl-calendar .cl-event:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.cl-calendar .cl-event--unassigned {
+  border-style: dashed;
+  border-color: var(--input);
+}
+
+.cl-calendar .cl-event--offered {
+  border-style: dotted;
+  border-color: var(--primary);
+}
+
+.cl-calendar .cl-event--confirmed {
+  border-style: solid;
+  border-inline-start-width: 6px;
+  border-color: var(--primary);
+  background-color: var(--secondary);
+}
+
+.cl-calendar .cl-event--completed {
+  border-style: solid;
+  border-color: var(--muted-foreground);
+  background-color: var(--muted);
+}
+
+/* De-emphasised, with 4.5:1 text (muted-foreground on muted). */
+.cl-calendar .cl-event--cancelled {
+  border-style: double;
+  border-width: 3px;
+  border-color: var(--muted-foreground);
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.cl-calendar .cl-event--cancelled .cl-event-title {
+  text-decoration: line-through;
+}
+
+.cl-calendar .cl-event--skipped_closure {
+  border-style: dashed;
+  border-color: var(--muted-foreground);
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.cl-calendar .cl-event--conflict {
+  border-style: double;
+  border-width: 4px;
+  border-color: var(--destructive);
+}
+
+/* --- Event content. --- */
+
+.cl-calendar .cl-event-content {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  padding: calc(var(--spacing) * 0.5) var(--spacing);
+}
+
+.cl-calendar .cl-event-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 0.5);
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cl-calendar .cl-event-title {
+  font-weight: 600;
+}
+
+.cl-calendar .cl-event-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing);
+}
+
+.cl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing);
+}
+
+.cl-badge--marker {
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+.cl-calendar .cl-event-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: calc(var(--spacing) * 2);
+}
+
+/* Compact (short time-grid) events: the first line is the state and the
+   markers as icons; it never wraps, so it stays visible on 15 minutes. */
+.cl-calendar .cl-event-status {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.cl-calendar .cl-event-status .cl-badge:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-calendar .cl-event-status .cl-badge--marker {
+  flex-shrink: 0;
+}
+
+/* Content starts at the event's top edge, so the first line (state and
+   markers) is the part that stays visible when an event is short. */
+.cl-calendar .cl-event,
+.cl-calendar .cl-event > * {
+  justify-content: flex-start;
+}
+
+.cl-calendar .cl-event-content {
+  align-self: flex-start;
+}

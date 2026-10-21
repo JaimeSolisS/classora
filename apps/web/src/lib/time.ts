@@ -323,3 +323,47 @@ export function localDayBounds(
     end: localDateTimeToInstant(addDays(localDate, 1), '00:00', timeZone),
   };
 }
+
+// ------------------------------------------------------ calendar helpers
+
+/**
+ * Calendar arithmetic on a LocalDate by whole months (no zone involved). The
+ * day is clamped to the target month's last day (2026-01-31 + 1 → 2026-02-28).
+ */
+export function addMonths(
+  localDate: LocalDate | string,
+  months: number,
+): LocalDate {
+  const [year, month, day] = parseLocalDate(localDate)
+    .split('-')
+    .map(Number) as [number, number, number];
+  const index = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(index / 12);
+  const targetMonth = index - targetYear * 12;
+  const lastDay = new Date(
+    Date.UTC(targetYear, targetMonth + 1, 0),
+  ).getUTCDate();
+  const target = new Date(
+    Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)),
+  );
+  return target.toISOString().slice(0, 10) as LocalDate;
+}
+
+/** The UTC offset of `timeZone` at an instant, as text ("UTC−07:00"). */
+export function formatUtcOffset(instant: Instant, timeZone: string): string {
+  assertTimeZone(timeZone);
+  const text = formatInTimeZone(parseInstant(instant), timeZone, 'xxx');
+  return `UTC${text.replace('-', '−')}`;
+}
+
+/**
+ * Whether the zone's UTC offset changes during the local day (a DST
+ * transition day: its length is not 24 hours).
+ */
+export function hasOffsetChange(
+  localDate: LocalDate | string,
+  timeZone: string,
+): boolean {
+  const { start, end } = localDayBounds(localDate, timeZone);
+  return Date.parse(end) - Date.parse(start) !== DAY_MS;
+}

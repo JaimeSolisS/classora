@@ -1831,7 +1831,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Class Sessions
+         * @description The sessions overlapping `[from, to)` (`starts_at < to` and `ends_at >
+         *     from`), by start then id, at most 1000 (`truncated` when more match).
+         *     Filters combine with AND; an unknown id matches nothing. `cancelled`
+         *     sessions only with `include_cancelled`. `markers` are computed on read:
+         *     `center_closed` (an unassigned, offered or confirmed session on a
+         *     closure's local date) and `tutor_not_qualified` (a future offered or
+         *     confirmed session whose tutor holds no approved qualification).
+         */
+        get: operations["list_class_sessions_api_v1_class_sessions_get"];
         put?: never;
         /**
          * Create Class Session
@@ -1885,6 +1895,28 @@ export interface paths {
          * @description One class session with its subject, tutor, classroom and students.
          */
         get: operations["get_class_session_api_v1_class_sessions__class_session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule/tutor-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tutor Options
+         * @description The users holding the tutor role whose username or display name
+         *     contains `q` (not case-sensitive), by display name; inactive tutors are
+         *     included with their `state`. No contact data.
+         */
+        get: operations["list_tutor_options_api_v1_schedule_tutor_options_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2304,8 +2336,94 @@ export interface components {
             /** Operating Hours */
             operating_hours?: components["schemas"]["OperatingHoursItem"][] | null;
         };
+        /**
+         * CalendarClassroom
+         * @description The session's classroom.
+         */
+        CalendarClassroom: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CalendarParticipant
+         * @description A student of the session.
+         */
+        CalendarParticipant: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * CalendarSubject
+         * @description The session's subject with its level's name.
+         */
+        CalendarSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * ClassSessionCalendar
+         * @description The sessions overlapping the range, by ``starts_at`` then ``id``; at
+         *     most 1000, with ``truncated`` true when more match.
+         */
+        ClassSessionCalendar: {
+            /** Items */
+            items: components["schemas"]["ClassSessionCalendarItem"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * ClassSessionCalendarItem
+         * @description One session on the calendar (#57 A4). ``markers`` are computed on
+         *     read, in a fixed order (``center_closed``, ``tutor_not_qualified``).
+         */
+        ClassSessionCalendarItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["CalendarSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["CalendarClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["CalendarParticipant"][];
+            /** Markers */
+            markers: components["schemas"]["MarkerCode"][];
+        };
         /**
          * ClassSessionCreate
          * @description A one-off individual session (``POST /api/v1/class-sessions``).
@@ -3642,6 +3760,8 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** @enum {string} */
+        MarkerCode: "center_closed" | "tutor_not_qualified";
         /**
          * NotificationItem
          * @description One of the caller's notifications. The client renders the message from
@@ -5010,6 +5130,31 @@ export interface components {
             email: string | null;
             /** Phone */
             phone: string | null;
+        };
+        /**
+         * TutorOption
+         * @description A user holding the tutor role, for the calendar's tutor filter. No
+         *     contact data.
+         */
+        TutorOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["TutorOptionState"];
+        };
+        /** @enum {string} */
+        TutorOptionState: "pending" | "active" | "suspended" | "archived";
+        /**
+         * TutorOptions
+         * @description The matching tutors, in the user list order.
+         */
+        TutorOptions: {
+            /** Items */
+            items: components["schemas"]["TutorOption"][];
         };
         /**
          * TutorUpdate
@@ -11376,6 +11521,68 @@ export interface operations {
             };
         };
     };
+    list_class_sessions_api_v1_class_sessions_get: {
+        parameters: {
+            query: {
+                /** @description An instant with an offset (RFC 3339). */
+                from: string;
+                /** @description An instant with an offset (RFC 3339), after `from` and at most 45 days later. */
+                to: string;
+                /** @description Only the sessions of this tutor. */
+                tutor_user_id?: string | null;
+                /** @description Only the sessions this student takes part in. */
+                student_id?: string | null;
+                /** @description Only the sessions in this classroom. */
+                classroom_id?: string | null;
+                /** @description Only the sessions of this kind. */
+                kind?: components["schemas"]["SessionKindCode"] | null;
+                /** @description Also return `cancelled` sessions. */
+                include_cancelled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionCalendar"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     create_class_session_api_v1_class_sessions_post: {
         parameters: {
             query?: never;
@@ -11527,6 +11734,56 @@ export interface operations {
             };
             /** @description No such class session (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_tutor_options_api_v1_schedule_tutor_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorOptions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

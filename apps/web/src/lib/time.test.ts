@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addMonths,
   DEFAULT_CENTER_TIME_ZONE,
+  formatUtcOffset,
+  hasOffsetChange,
   formatInstant,
   formatLocalDate,
   localDateTimeToInstant,
@@ -279,5 +282,33 @@ describe('strict parsing', () => {
     expect(() =>
       localDateTimeToInstant('2026-10-17', '10:00', 'Mars/Base'),
     ).toThrow(RangeError);
+  });
+});
+
+describe('calendar helpers (#57)', () => {
+  it('adds months, clamping the day to the month', () => {
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+    expect(addMonths('2028-01-31', 1)).toBe('2028-02-29');
+    expect(addMonths('2026-11-15', 2)).toBe('2027-01-15');
+    expect(addMonths('2026-01-15', -1)).toBe('2025-12-15');
+  });
+
+  it('formats the zone offset at an instant', () => {
+    expect(formatUtcOffset('2026-11-01T08:30:00Z', 'America/Tijuana')).toBe(
+      'UTC−07:00',
+    );
+    expect(formatUtcOffset('2026-11-01T09:30:00Z', 'America/Tijuana')).toBe(
+      'UTC−08:00',
+    );
+    expect(formatUtcOffset('2026-11-01T09:30:00Z', 'Asia/Kolkata')).toBe(
+      'UTC+05:30',
+    );
+  });
+
+  it('tells the DST transition days', () => {
+    expect(hasOffsetChange('2026-11-01', 'America/Tijuana')).toBe(true);
+    expect(hasOffsetChange('2026-03-08', 'America/Tijuana')).toBe(true);
+    expect(hasOffsetChange('2026-11-02', 'America/Tijuana')).toBe(false);
+    expect(hasOffsetChange('2026-11-01', 'America/Mexico_City')).toBe(false);
   });
 });

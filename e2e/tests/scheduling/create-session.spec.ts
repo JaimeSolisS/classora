@@ -7,7 +7,7 @@ import { createSubjectViaApi } from '../support/tutors';
 
 // Scheduling a one-off session (#48 G6). The demo Owner (the shared state;
 // schedule.manage) creates a student and a subject through the API, opens
-// "Schedule" and schedules that student, without tutor or classroom, on the
+// "Schedule" (the calendar, #57), then "Schedule a session", and schedules that student, without tutor or classroom, on the
 // first weekday at least 14 days ahead, 10:00–11:00: the success panel says
 // "Unassigned". "Schedule another" with the same student, 10:30–11:30: the
 // conflict panel lists the student overlap, and "Suggested times" (#50 D7)
@@ -92,10 +92,18 @@ test('an Owner schedules a session and meets a student overlap', async ({
   await createStudentViaApi(page, { givenNames: 'Lucía', familyNames });
   await createSubjectViaApi(page, 'Primaria', subjectName);
 
-  // 1. "Schedule" opens the form.
+  // 1. "Schedule" opens the calendar (#57), whose "Schedule a session" link
+  // opens the form.
   await page
     .getByRole('link', { name: common.nav.schedule, exact: true })
     .first()
+    .click();
+  await expect(page).toHaveURL(/\/schedule$/);
+  await main
+    .getByRole('link', {
+      name: common.scheduling.calendar.scheduleSession,
+      exact: true,
+    })
     .click();
   await expect(page).toHaveURL(/\/schedule\/new$/);
   await expect(

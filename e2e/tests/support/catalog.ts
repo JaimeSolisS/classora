@@ -46,6 +46,14 @@ type Common = {
       submit: string;
       scheduledWith: string;
     };
+    calendar: {
+      title: string;
+      regionLabel: string;
+      scheduleSession: string;
+      views: Record<'day' | 'week' | 'month' | 'list', string>;
+      filters: { student: string };
+    };
+    states: Record<string, string>;
   };
   delegations: Record<string, { label: string; description: string }>;
   auth: {

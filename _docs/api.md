@@ -1840,14 +1840,18 @@ D9) in `apps/api/app/modules/scheduling/` (`booking.py`: create and read;
 Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
 Workload warnings and suggested times: M4-05 (#50; spec §3), `workload.py`
 and `suggestions.py` (pure rules), `workload_sessions.py` and
-`slot_search.py` (the reads). Only one-off **individual** sessions so far; groups, courses, recurrence,
-offers and the calendar come with later M4 issues.
+`slot_search.py` (the reads). Only one-off **individual** sessions so far;
+groups, courses, recurrence and offers come with later M4 issues. The
+calendar's range read and tutor options (M4-12, #57) are in
+`calendar_read.py` and `markers.py`.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `ClassSessionDetail` plus `warnings` (the workload warnings below; `[]` without a tutor). |
 | `POST /api/v1/class-sessions/suggestions` | `require("schedule.manage")` (Owner, Administrator) | Read-only: free times for the same session (below). `200` with `SlotSuggestions`. A `GET` on the path is `405`. |
+| `GET /api/v1/class-sessions?from=…&to=…` | `require("schedule.view")` (same four roles) | The calendar's range read (#57), below. |
 | `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements. |
+| `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
 
 **Body** (unknown fields are `422`):
 
@@ -2034,6 +2038,45 @@ override, also the named event `scheduling.session_override` on the session
 (`record_type` `class_sessions`), `details {override_id, codes, conflicts,
 reason}`, same actor and request ID; `GET /api/v1/audit-events` filtered by
 the session shows it to holders of `audit.view`.
+
+**Range read** (`GET /api/v1/class-sessions`, #57). Query (unknown
+parameters, a malformed id or an unknown `kind` are `422
+validation_error`):
+
+| Parameter | Notes |
+| --------- | ----- |
+| `from`, `to` | Required instants with an offset. A naive value is `naive_datetime` on its field; `to` must be after `from` (`range_invalid` on `to`) and at most 45 days later (`range_too_long` on `to`). |
+| `tutor_user_id`, `student_id`, `classroom_id` | Optional, one id each: the current tutor, a participant, the room. An unknown id matches nothing (`200`, no items). |
+| `kind` | Optional: `individual`, `group` or `course`. |
+| `include_cancelled` | Optional, default `false`: `cancelled` sessions only when `true`. Every other state is always returned (`skipped_closure` and `conflict` included). |
+
+A session matches when it overlaps the half-open range: `starts_at < to`
+and `ends_at > from` (a session ending exactly at `from` or starting exactly
+at `to` is left out). Filters combine with AND. The response is
+`{"items": [ClassSessionCalendarItem, …], "truncated": false}`, by
+`starts_at` then `id`, at most 1000 items; `truncated` is `true` when more
+matched (narrow the range or the filters; there is no cursor).
+`ClassSessionCalendarItem` is `{id, kind, state, starts_at, ends_at,
+subject {id, name, education_level_name}, tutor {id, display_name} | null,
+classroom {id, name} | null, participants [{student_id, display_name}],
+markers}`. The read takes at most 10 statements whatever the item count, and
+writes nothing (no lock, no audit event). Tutors, students and guardians get
+`403` (their own calendars come with M4-22).
+
+`markers` are computed on every read (never stored), in this order:
+
+| Marker | When |
+| ------ | ---- |
+| `center_closed` | The session is `unassigned`, `offered` or `confirmed` and its local date (center zone) is in an active closure. A one-off session is only marked, never changed (ADR-0005 D6). |
+| `tutor_not_qualified` | The session is `offered` or `confirmed`, has a tutor, starts now or later, and the tutor holds no approved qualification for its subject (#198). Past and `completed` sessions never get it. |
+
+**Tutor options** (`GET /api/v1/schedule/tutor-options`, #57): `q`
+(optional, 1–100 characters, trimmed) and `limit` (1–50, default 20). Returns
+`{"items": [{id, display_name, state}]}`: the users holding the `tutor` role
+whose username or display name contains `q` (not case-sensitive), by display
+name, inactive ones included (the UI labels them). No contact data, so
+Finance staff, who don't hold `tutor.view`, can filter the calendar by
+tutor. At most 3 statements.
 
 ### Course templates
 

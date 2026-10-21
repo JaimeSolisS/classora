@@ -39,7 +39,7 @@
     "guardians": "Padres y tutores",
     "families": "Familias",
     "tutors": "Tutores",
-    "schedule": "Programar",
+    "schedule": "Agenda",
     "courses": "Cursos"
   },
   "notFound": {
@@ -1398,6 +1398,99 @@
       "tutor_not_qualified": "El tutor no está calificado para esta materia.",
       "group_capacity_exceeded": "El grupo está lleno.",
       "notice_window": "La sesión empieza muy pronto: necesita {{hours}} horas de anticipación."
+    },
+    "calendar": {
+      "title": "Agenda",
+      "regionLabel": "Calendario de sesiones",
+      "zone": "Horas en {{zone}}",
+      "toolbar": "Controles del calendario",
+      "viewsLabel": "Vista",
+      "views": {
+        "day": "Día",
+        "week": "Semana",
+        "month": "Mes",
+        "list": "Lista"
+      },
+      "today": "Hoy",
+      "previous": {
+        "day": "Día anterior",
+        "week": "Semana anterior",
+        "month": "Mes anterior",
+        "list": "Semana anterior"
+      },
+      "next": {
+        "day": "Día siguiente",
+        "week": "Semana siguiente",
+        "month": "Mes siguiente",
+        "list": "Semana siguiente"
+      },
+      "scheduleSession": "Programar una sesión",
+      "loading": "Cargando sesiones…",
+      "empty": "No hay sesiones en este periodo.",
+      "count_one": "{{count}} sesión en este periodo.",
+      "count_many": "{{count}} sesiones en este periodo.",
+      "count_other": "{{count}} sesiones en este periodo.",
+      "truncated": "Se muestran las primeras 1000 sesiones. Acota las fechas o los filtros.",
+      "noTutor": "Sin tutor",
+      "noStudents": "Sin estudiantes",
+      "listAlternative": "La vista Lista muestra las mismas sesiones como texto.",
+      "filters": {
+        "label": "Filtros",
+        "tutor": "Tutor",
+        "tutorHelp": "Busca un tutor por nombre y elígelo.",
+        "student": "Estudiante",
+        "studentHelp": "Busca un estudiante por nombre y elígelo.",
+        "room": "Aula",
+        "allRooms": "Todas las aulas",
+        "kind": "Tipo de clase",
+        "kinds": {
+          "all": "Todas",
+          "individual": "Individual",
+          "group": "Grupal",
+          "course": "Curso"
+        },
+        "cancelled": "Mostrar canceladas",
+        "clear": "Quitar filtros",
+        "active": "Filtros activos",
+        "remove": "Quitar filtro: {{filter}} {{value}}",
+        "inactive": "{{name}} (inactivo)",
+        "selected": "Elegido",
+        "roomsFailed": "No se pudieron cargar las aulas."
+      },
+      "dialog": {
+        "description": "Detalles de la sesión. Aún no se puede cambiar nada aquí.",
+        "subject": "Materia",
+        "subjectValue": "{{subject}} ({{level}})",
+        "kind": "Tipo de clase",
+        "students": "Estudiantes",
+        "tutor": "Tutor",
+        "room": "Aula",
+        "noRoom": "Sin aula",
+        "date": "Fecha",
+        "time": "Horario",
+        "timeValue": "{{time}} ({{zone}})",
+        "state": "Estado",
+        "markers": "Avisos"
+      }
+    },
+    "states": {
+      "unassigned": "Sin asignar",
+      "offered": "Ofrecida",
+      "confirmed": "Confirmada",
+      "completed": "Impartida",
+      "cancelled": "Cancelada",
+      "skipped_closure": "Omitida (cierre)",
+      "conflict": "En conflicto"
+    },
+    "markers": {
+      "center_closed": {
+        "label": "Centro cerrado",
+        "explanation": "El centro está cerrado en esta fecha. La sesión no se cambió: reprográmala o cancélala."
+      },
+      "tutor_not_qualified": {
+        "label": "Tutor ya no calificado",
+        "explanation": "El tutor ya no tiene una calificación aprobada para esta materia. La sesión no se cambió: asigna otro tutor o cancélala."
+      }
     },
     "rules": {
       "tutor_overlap": "Traslape del tutor",

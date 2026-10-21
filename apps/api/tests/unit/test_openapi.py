@@ -92,6 +92,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/class-sessions",
         "/api/v1/class-sessions/suggestions",
         "/api/v1/class-sessions/{class_session_id}",
+        "/api/v1/schedule/tutor-options",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",
@@ -357,3 +358,21 @@ def test_build_app_needs_no_settings(no_configuration):
 
     assert response.status_code == 200
     assert response.text == '{"status":"ok"}'
+
+
+def test_the_calendar_range_read_documents_its_query():
+    """#57 A1: the query model's fields are the documented parameters."""
+    operation = build_app().openapi()["paths"]["/api/v1/class-sessions"]["get"]
+    parameters = {p["name"]: p for p in operation["parameters"]}
+
+    assert set(parameters) == {
+        "from",
+        "to",
+        "tutor_user_id",
+        "student_id",
+        "classroom_id",
+        "kind",
+        "include_cancelled",
+    }
+    assert all(p["in"] == "query" for p in parameters.values())
+    assert {name for name, p in parameters.items() if p["required"]} == {"from", "to"}
