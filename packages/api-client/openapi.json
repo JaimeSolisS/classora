@@ -8559,14 +8559,14 @@
         "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, without one `unassigned`. Every rule is checked\nfirst; with an `override` the listed soft conflicts are allowed, stored\nwith the reason and audited. `warnings` is always empty for now.",
         "operationId": "create_class_session_api_v1_class_sessions_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ClassSessionCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -8601,6 +8601,169 @@
           },
           "409": {
             "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Class Sessions",
+        "description": "The sessions overlapping `[from, to)` (`starts_at < to` and `ends_at >\nfrom`), by start then id, at most 1000 (`truncated` when more match).\nFilters combine with AND; an unknown id matches nothing. `cancelled`\nsessions only with `include_cancelled`. `markers` are computed on read:\n`center_closed` (an unassigned, offered or confirmed session on a\nclosure's local date) and `tutor_not_qualified` (a future offered or\nconfirmed session whose tutor holds no approved qualification).",
+        "operationId": "list_class_sessions_api_v1_class_sessions_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "From"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later.",
+              "title": "To"
+            },
+            "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later."
+          },
+          {
+            "name": "tutor_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the sessions of this tutor.",
+              "title": "Tutor User Id"
+            },
+            "description": "Only the sessions of this tutor."
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the sessions this student takes part in.",
+              "title": "Student Id"
+            },
+            "description": "Only the sessions this student takes part in."
+          },
+          {
+            "name": "classroom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the sessions in this classroom.",
+              "title": "Classroom Id"
+            },
+            "description": "Only the sessions in this classroom."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionKindCode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the sessions of this kind.",
+              "title": "Kind"
+            },
+            "description": "Only the sessions of this kind."
+          },
+          {
+            "name": "include_cancelled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return `cancelled` sessions.",
+              "default": false,
+              "title": "Include Cancelled"
+            },
+            "description": "Also return `cancelled` sessions."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionCalendar"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8675,6 +8838,90 @@
           },
           "404": {
             "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedule/tutor-options": {
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Tutor Options",
+        "description": "The users holding the tutor role whose username or display name\ncontains `q` (not case-sensitive), by display name; inactive tutors are\nincluded with their `state`. No contact data.",
+        "operationId": "list_tutor_options_api_v1_schedule_tutor_options_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorOptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9647,6 +9894,71 @@
         "title": "BusinessSettingsUpdate",
         "description": "A change to the settings (``PATCH /api/v1/business-settings``) with the\n``version`` the caller loaded. Fields not sent stay unchanged; ``null``\n(or an empty string) clears a contact field; ``null`` is ``422`` for\n``center_name``, ``time_zone`` and ``operating_hours``.\n``operating_hours``, when sent, replaces the whole week (0 to 7 entries,\none per weekday)."
       },
+      "CalendarClassroom": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CalendarClassroom",
+        "description": "The session's classroom."
+      },
+      "CalendarParticipant": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name"
+        ],
+        "title": "CalendarParticipant",
+        "description": "A student of the session."
+      },
+      "CalendarSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name"
+        ],
+        "title": "CalendarSubject",
+        "description": "The session's subject with its level's name."
+      },
       "CatalogStatus": {
         "type": "string",
         "enum": [
@@ -9654,6 +9966,106 @@
           "inactive",
           "all"
         ]
+      },
+      "ClassSessionCalendar": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClassSessionCalendarItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "title": "ClassSessionCalendar",
+        "description": "The sessions overlapping the range, by ``starts_at`` then ``id``; at\nmost 1000, with ``truncated`` true when more match."
+      },
+      "ClassSessionCalendarItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/CalendarSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "markers": {
+            "items": {
+              "$ref": "#/components/schemas/MarkerCode"
+            },
+            "type": "array",
+            "title": "Markers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "starts_at",
+          "ends_at",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "markers"
+        ],
+        "title": "ClassSessionCalendarItem",
+        "description": "One session on the calendar (#57 A4). ``markers`` are computed on\nread, in a fixed order (``center_closed``, ``tutor_not_qualified``)."
       },
       "ClassSessionCreate": {
         "properties": {
@@ -12586,6 +12998,13 @@
         "title": "LoginRequest",
         "description": "Username and password. The bounds do not depend on any account."
       },
+      "MarkerCode": {
+        "type": "string",
+        "enum": [
+          "center_closed",
+          "tutor_not_qualified"
+        ]
+      },
       "NotificationItem": {
         "properties": {
           "id": {
@@ -15269,6 +15688,56 @@
         ],
         "title": "TutorListItem",
         "description": "One tutor: a user holding the ``tutor`` role, with the account's\ncontact fields."
+      },
+      "TutorOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TutorOptionState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "state"
+        ],
+        "title": "TutorOption",
+        "description": "A user holding the tutor role, for the calendar's tutor filter. No\ncontact data."
+      },
+      "TutorOptionState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "active",
+          "suspended",
+          "archived"
+        ]
+      },
+      "TutorOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TutorOption"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "TutorOptions",
+        "description": "The matching tutors, in the user list order."
       },
       "TutorUpdate": {
         "properties": {

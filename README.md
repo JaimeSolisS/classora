@@ -15,9 +15,10 @@ PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate) and a React + TypeScript + Vite web
 app. The web app has a routed shell (layout with navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
-generated from the API's OpenAPI document, and a design system foundation
+generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in
-Storybook). Its home page only shows whether the API is live.
+Storybook) and FullCalendar for the staff calendar. Its home page only shows
+whether the API is live.
 
 No email is sent: invitations and password resets produce a one-time link
 that staff hand over in person or by phone. The privacy notice text is a
@@ -145,10 +146,15 @@ unless a bullet says otherwise.
 
 **Scheduling**
 
-- Staff schedule one-off individual sessions on the Schedule page (one
-  student, a subject, an optional tutor and classroom, a date and times in
-  the center's time zone). Before anything is saved the server checks
-  student, tutor and classroom overlaps, tutor availability and
+- Staff (including academic coordinators and finance staff) see every class
+  session on the Schedule calendar (FullCalendar), by day, week, month or as
+  a list, in the center's time zone, filtered by tutor, student, room and
+  class type. Each session shows its state, and is marked when it falls on a
+  center closure or its tutor is no longer qualified for the subject.
+- Staff schedule one-off individual sessions from the calendar's "Schedule a
+  session" page (one student, a subject, an optional tutor and classroom, a
+  date and times in the center's time zone). Before anything is saved the
+  server checks student, tutor and classroom overlaps, tutor availability and
   qualification, classroom availability, center closures, operating hours
   and booking notice, and lists every conflict. An Owner, or an
   Administrator with the delegated override permission, can override soft
@@ -202,8 +208,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** recurring and group scheduling, the calendar and
-course cohorts, attendance, academic records
+**Not built yet:** recurring and group scheduling, rescheduling from the
+calendar, course cohorts, attendance, academic records
 and documents, billing and payments, payroll, reporting and analytics, and
 deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

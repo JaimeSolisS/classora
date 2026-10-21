@@ -45,7 +45,7 @@ import uuid
 from collections.abc import Iterable, Sequence
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -309,6 +309,27 @@ async def is_qualified(
         .limit(1)
     )
     return found is not None
+
+
+async def qualified_pairs(
+    session: AsyncSession, pairs: Iterable[tuple[uuid.UUID, uuid.UUID]]
+) -> frozenset[tuple[uuid.UUID, uuid.UUID]]:
+    """The ``(tutor_user_id, subject_id)`` pairs of ``pairs`` that hold an
+    approved qualification: the batch twin of :func:`is_qualified` (#57, the
+    calendar's read-time marker). One statement; none for an empty input."""
+    wanted = set(pairs)
+    if not wanted:
+        return frozenset()
+    rows = await session.execute(
+        select(TutorQualification.tutor_user_id, TutorQualification.subject_id)
+        .where(
+            tuple_(TutorQualification.tutor_user_id, TutorQualification.subject_id).in_(
+                sorted(wanted)
+            )
+        )
+        .where(TutorQualification.status == APPROVED)
+    )
+    return frozenset((row.tutor_user_id, row.subject_id) for row in rows)
 
 
 async def qualified_tutor_ids(

@@ -51,7 +51,7 @@ const CREATE = 'POST /api/v1/class-sessions';
 
 const SCHEDULER: SessionUserBody = {
   ...TEST_USER,
-  permissions: ['schedule.manage', 'student.view'],
+  permissions: ['schedule.view', 'schedule.manage', 'student.view'],
 };
 
 function page<T>(items: T[]): Responder {
@@ -305,7 +305,8 @@ describe('the page (F1, F3)', () => {
     const link = [...app.container.querySelectorAll('nav a')].find(
       (a) => a.textContent === 'Schedule',
     );
-    expect(link?.getAttribute('href')).toBe('/schedule/new');
+    // The entry opens the calendar (#57 D1), which links to this page.
+    expect(link?.getAttribute('href')).toBe('/schedule');
     expect(main().textContent).toContain(
       'Times in the center time zone (America/Mexico_City).',
     );

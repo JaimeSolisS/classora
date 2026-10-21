@@ -91,5 +91,7 @@
   "duration_out_of_range": "A session lasts from 15 minutes to 8 hours.",
   "crosses_local_date": "A session must start and end on the same day.",
   "invalid_effective_from": "A new policy must take effect now or later, and after every upcoming change. Choose a later date.",
-  "policy_version_in_effect": "This policy is already in effect, so it can't be deleted. Reload the page."
+  "policy_version_in_effect": "This policy is already in effect, so it can't be deleted. Reload the page.",
+  "range_invalid": "The end of the range must be after its start.",
+  "range_too_long": "Choose a range of at most 45 days."
 }

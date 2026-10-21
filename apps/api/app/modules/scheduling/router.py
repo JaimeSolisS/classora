@@ -9,6 +9,11 @@
   ``schedule.override`` (the Owner, or an Administrator while an Owner's
   delegation is active): ``403`` right after the body's ``422``, before
   anything is read or locked.
+- ``GET /api/v1/class-sessions?from=…&to=…`` (#57 A): the calendar's range
+  read, ``require("schedule.view")``; the sessions overlapping ``[from,
+  to)`` (at most 45 days) with their markers, at most 1000.
+- ``GET /api/v1/schedule/tutor-options`` (#57 B): the tutor filter's
+  options, ``require("schedule.view")`` (Finance holds no ``tutor.view``).
 - ``GET /api/v1/class-sessions/{class_session_id}``:
   ``require("schedule.view")`` (Owners, Administrators, Academic
   Coordinators and Finance staff); every holder sees every session.
@@ -17,7 +22,7 @@
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.authz import (
     PERMISSION_RESPONSES,
@@ -29,9 +34,12 @@ from app.core.errors import problem_response_doc
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
 from app.modules.scheduling.schemas import (
+    ClassSessionCalendar,
     ClassSessionCreate,
     ClassSessionCreated,
     ClassSessionDetail,
+    ClassSessionRangeQuery,
+    TutorOptions,
 )
 
 SCHEDULE_VIEW: Final = "schedule.view"
@@ -39,6 +47,10 @@ SCHEDULE_MANAGE: Final = "schedule.manage"
 SCHEDULE_OVERRIDE: Final = "schedule.override"
 
 router = APIRouter(prefix="/api/v1/class-sessions", tags=["class-sessions"])
+options_router = APIRouter(prefix="/api/v1/schedule", tags=["class-sessions"])
+
+TUTOR_OPTIONS_DEFAULT_LIMIT: Final = 20
+TUTOR_OPTIONS_MAX_LIMIT: Final = 50
 
 
 @router.post(
@@ -88,6 +100,33 @@ async def create_class_session(
 
 
 @router.get(
+    "",
+    responses={
+        **PERMISSION_RESPONSES,
+        422: problem_response_doc(
+            "The query is not valid (validation_error): a missing, malformed"
+            " or naive `from`/`to` (naive_datetime), `to` not after `from`"
+            " (range_invalid), more than 45 days (range_too_long), an unknown"
+            " parameter, a malformed id or an unknown kind."
+        ),
+    },
+)
+async def list_class_sessions(
+    principal: Annotated[Principal, require(SCHEDULE_VIEW)],
+    query: Annotated[ClassSessionRangeQuery, Query()],
+    uow: UnitOfWorkDep,
+) -> ClassSessionCalendar:
+    """The sessions overlapping `[from, to)` (`starts_at < to` and `ends_at >
+    from`), by start then id, at most 1000 (`truncated` when more match).
+    Filters combine with AND; an unknown id matches nothing. `cancelled`
+    sessions only with `include_cancelled`. `markers` are computed on read:
+    `center_closed` (an unassigned, offered or confirmed session on a
+    closure's local date) and `tutor_not_qualified` (a future offered or
+    confirmed session whose tutor holds no approved qualification)."""
+    return await service.list_calendar_sessions(uow.session, query)
+
+
+@router.get(
     "/{class_session_id}",
     responses={
         **PERMISSION_RESPONSES,
@@ -101,3 +140,29 @@ async def get_class_session(
 ) -> ClassSessionDetail:
     """One class session with its subject, tutor, classroom and students."""
     return await service.get_class_session(uow.session, class_session_id)
+
+
+@options_router.get(
+    "/tutor-options",
+    responses={
+        **PERMISSION_RESPONSES,
+        422: problem_response_doc(
+            "q empty or longer than 100 characters, or limit outside 1-50"
+            " (validation_error)."
+        ),
+    },
+)
+async def list_tutor_options(
+    principal: Annotated[Principal, require(SCHEDULE_VIEW)],
+    uow: UnitOfWorkDep,
+    q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    limit: Annotated[
+        int, Query(ge=1, le=TUTOR_OPTIONS_MAX_LIMIT)
+    ] = TUTOR_OPTIONS_DEFAULT_LIMIT,
+) -> TutorOptions:
+    """The users holding the tutor role whose username or display name
+    contains `q` (not case-sensitive), by display name; inactive tutors are
+    included with their `state`. No contact data."""
+    return await service.list_tutor_options(
+        uow.session, q=(q or "").strip() or None, limit=limit
+    )
