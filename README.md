@@ -8,119 +8,173 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 
 ## Status
 
-**Pre-alpha.** Only the local development foundation exists so far: a FastAPI
-API with liveness and readiness health checks, backed by a local PostgreSQL
-container (reached through PgBouncer) whose schema is managed with Alembic
-migrations, a background worker for queued and periodic jobs (Procrastinate),
-and a React +
-TypeScript + Vite web app. The web app has a routed shell (a layout with
-navigation, a 404 page and central error handling) and a TanStack Query data
-layer; its home page shows whether the API is live,
-calling it through a typed client generated from the API's OpenAPI document.
-It also has its design system foundation (central design tokens, Tailwind CSS,
-shadcn/ui components catalogued in Storybook), a light/dark/system theme
-switch, and Spanish and English UI text with a language switch. Signed-in
-users' language and theme are saved to their account and applied when they
-sign in on any device. The API has
-username and password login with server-side sessions (an HTTP-only session
-cookie) that expire after a period of inactivity or a maximum lifetime, with
-rate limits on login, password confirmation, one-time links and account
-requests. The web app
-has a sign-in page and sign-out, keeps users signed in with that session, and
-shows only the pages and navigation a user's role allows. Owners and
-administrators can invite people from the Invitations page: the app shows a
-one-time link (no email is sent) to hand over in person or by phone, and the
-invited person opens it to set their own password and then signs in. In the
-same way, they can create a one-time password reset link from the Password
-resets page, and every signed-in user can change their own password.
-Parents, guardians and students can request an account from the sign-in page;
-the account works only after an Owner or administrator confirms their
-identity and approves it on the Approvals page (or rejects it). Approvals is
-the shared list of requests waiting for a decision, filtered by status, type
-and assignee; account requests are its first type. Approving a request never
-enrolls anyone.
-On the Users page, Owners and administrators can search and filter every
-account, edit a person's name and optional contact details (never used to
-sign in), create a password reset link for them, and suspend, archive or
-reactivate their account; suspending or archiving asks for the password again
-and ends that person's sessions, and the last active Owner can never be
-suspended or archived.
-On the same page, Owners and administrators can change a person's roles
-(after confirming their password; the person is signed out and signs in with
-the new roles), and Owners can delegate selected permissions to
-administrators, which take effect without signing them out.
-On the Catalog page, Owners and administrators maintain the education levels
-and the subjects taught at each level; records are deactivated instead of
-deleted, and four example levels (Primaria, Secundaria, Preparatoria,
-Universidad) are created by the reference seed.
-In the same Catalog, they also define academic periods (school years,
-semesters and terms; active periods of one type can't overlap) and center
-closures (holidays, closures and vacations), which later features use to
-know whether the center is closed on a given day.
-They also keep the classroom catalog: each room's name, capacity and
-optional weekly availability windows (a room without windows can be used at
-any time).
-On the Settings page, Owners and administrators maintain the business
-settings: the center name and contact details, the weekly operating hours and
-the center time zone (Mexico City by default), which the app uses for every
-date and time it shows. Changing the time zone asks for the password again,
-and it will be refused once classes are scheduled.
-On the Students page, Owners, administrators and academic coordinators keep a
-profile for every student (with or without a login): personal and school
-details, an optional education level and one to five emergency contacts.
-Profiles are deactivated instead of deleted, and the list has an accent- and
-typo-tolerant name search. Finance staff see profiles without personal or
-contact details; tutors see only their assigned students (assignments arrive
-with scheduling, so for now they see none).
-On the Guardians page, Owners and administrators keep a profile for every
-parent or guardian (with or without a login), link it to the guardian's
-account, and link guardians to students with a relationship (a child may
-have several guardians, and a guardian several children). A signed-in
-guardian sees only their linked children (minors in full; an adult
-student's personal details only with that student's consent), never the
-child's other guardians, and
-unlinking takes effect on their next request.
-A student profile can have an optional login. A minor's login works only
-while a linked guardian has consented (in the app, or recorded by staff on
-paper or in person, stamped with the privacy-notice version); withdrawing
-the last consent suspends the login. Adult students choose, guardian by
-guardian, who sees their records. A signed-in student sees only their own
-record.
-On the Families page, Owners and administrators group students and guardians
-into families (each student and each guardian belongs to at most one
-family), the grouping that family billing will build on. A signed-in
-guardian sees only their own family; belonging to a family doesn't show a
-child's records, which still follow the guardian's links.
-On the Tutors page, Owners, administrators and academic coordinators see
-every tutor's profile: the account's contact details and their professional
-experience. Owners and administrators edit it; a signed-in tutor sees and
-edits only their own contact details and experience.
-Tutors request qualifications to teach a subject (its education level
-follows from it) on their profile; Owners and administrators approve or
-reject them, with a reason, on the Approvals page, and the tutor is notified
-of the decision. They can later revoke an approved qualification, with a
-reason the tutor sees. Only approved qualifications count as the tutor's
-teaching subjects.
-Tutors publish their weekly availability and exceptions (time off and extra
-availability on given dates) in the center's local time on their profile;
-Owners and administrators can edit it too, and academic coordinators view
-it. The API answers whether a tutor is available at a given time, taking
-center closures into account. The same section holds each tutor's daily
-and weekly teaching limits, the required break between classes (limits
-will only produce warnings when scheduling) and preferred classrooms.
-Every user must accept a versioned privacy notice before using the app, and
-again whenever a new version is published; the current text is a draft
-pending legal review.
-Signed-in users have in-app notifications: a bell in the header shows how
-many are unread and opens a panel where they read them and mark one or all
-as read. New notifications arrive live over Server-Sent Events; when the
-live connection isn't available the bell checks every 30 seconds instead.
-Today they tell tutors about qualification decisions and revocations; in
-local and dev, signed-in users can create a test notification for
-themselves.
-Requests that change data are protected by an `Origin` check and a CSRF
-token, and the web app is served with a Content Security Policy and other
-security headers. No other product features are implemented yet.
+**Pre-alpha.** The features below run on a local development stack only;
+there is no deployed environment yet. The stack is a FastAPI API with
+liveness and readiness health checks, a PostgreSQL database reached through
+PgBouncer (schema managed with Alembic migrations), a background worker for
+queued and periodic jobs (Procrastinate) and a React + TypeScript + Vite web
+app. The web app has a routed shell (layout with navigation, a 404 page and
+central error handling), a TanStack Query data layer, a typed API client
+generated from the API's OpenAPI document, and a design system foundation
+(central design tokens, Tailwind CSS, shadcn/ui components catalogued in
+Storybook). Its home page only shows whether the API is live.
+
+No email is sent: invitations and password resets produce a one-time link
+that staff hand over in person or by phone. The privacy notice text is a
+draft pending legal review.
+
+## Features
+
+Roles: Owner, Administrator, Academic coordinator, Finance staff, Tutor,
+Student and Parent/Guardian. "Staff" below means Owners and administrators
+unless a bullet says otherwise.
+
+**Accounts and sign-in**
+
+- Everyone signs in with a username and password and signs out from the
+  header. Sessions use an HTTP-only cookie and end after a period of
+  inactivity or a maximum lifetime.
+- Staff invite people from the Invitations page; the invited person opens the
+  one-time link, sets their own password and signs in.
+- Staff create one-time password reset links from the Password resets page
+  (or from a user's page); every signed-in user can change their own password.
+- Parents, guardians and students can request an account from the sign-in
+  page; it works only after staff confirm their identity and approve it.
+- Login, password confirmation, one-time links and account requests are
+  rate-limited.
+- Every user must accept the versioned privacy notice before using the app,
+  and again whenever a new version is published.
+
+**Roles and permissions**
+
+- Each user sees only the pages and navigation their role allows; the API
+  checks every request.
+- Staff change a person's roles after confirming their password; the person
+  is signed out and signs in with the new roles.
+- Owners delegate selected permissions to administrators; these take effect
+  without signing them out.
+
+**Users**
+
+- On the Users page, staff search and filter every account and edit a
+  person's name and optional contact details (never used to sign in).
+- Staff suspend, archive or reactivate accounts. Suspending or archiving asks
+  for the password again and ends that person's sessions; the last active
+  Owner can never be suspended or archived.
+
+**Students, guardians and families**
+
+- On the Students page, staff and academic coordinators keep a profile for
+  every student (with or without a login): personal and school details, an
+  optional education level and one to five emergency contacts. Profiles are
+  deactivated instead of deleted, and the name search tolerates accents and
+  typos.
+- Finance staff see student profiles without personal or contact details.
+  Tutors see only their assigned students (assignments arrive with
+  scheduling, so for now they see none).
+- On the Guardians page, staff keep a profile for every parent or guardian
+  (with or without a login), link it to the guardian's account and link
+  guardians to students with a relationship (a child may have several
+  guardians, and a guardian several children).
+- A signed-in guardian sees only their linked children (minors in full; an
+  adult student's personal details only with that student's consent), never
+  the child's other guardians; unlinking takes effect on their next request.
+- Staff can give a student profile a login. A minor's login works only while
+  a linked guardian has consented (in the app, or recorded by staff on paper
+  or in person, stamped with the privacy-notice version); withdrawing the
+  last consent suspends the login.
+- Adult students choose, guardian by guardian, who sees their records. A
+  signed-in student sees only their own record.
+- On the Families page, staff group students and guardians into families
+  (each student and each guardian in at most one family), the grouping that
+  family billing will build on. A signed-in guardian sees only their own
+  family; being in a family doesn't show a child's records, which still
+  follow the guardian's links.
+
+**Catalog and academic calendar**
+
+- On the Catalog page, staff maintain the education levels and the subjects
+  taught at each level. Records are deactivated instead of deleted; the
+  reference seed creates four example levels (Primaria, Secundaria,
+  Preparatoria, Universidad).
+- Staff define academic periods (school years, semesters and terms; active
+  periods of one type can't overlap) and center closures (holidays, closures
+  and vacations), which tell later features whether the center is closed on a
+  given day.
+
+**Classrooms**
+
+- In the Catalog, staff keep the classroom list: each room's name, capacity
+  and optional weekly availability windows (a room without windows can be
+  used at any time).
+
+**Business settings**
+
+- On the Settings page, staff maintain the center name and contact details,
+  the weekly operating hours and the center time zone (Mexico City by
+  default), which the app uses for every date and time it shows.
+- Changing the time zone asks for the password again; it will be refused
+  once classes are scheduled.
+
+**Tutors**
+
+- On the Tutors page, staff and academic coordinators see every tutor's
+  profile: the account's contact details and professional experience. Staff
+  edit it; a signed-in tutor sees and edits only their own contact details
+  and experience.
+- Qualifications: tutors request to teach a subject (its education level
+  follows from it) and can withdraw a pending request; staff approve or
+  reject it, with a reason, on the Approvals page, and can later revoke an
+  approved qualification with a reason the tutor sees. Only approved
+  qualifications count as the tutor's teaching subjects.
+- Availability: tutors publish their weekly availability and exceptions (time
+  off and extra availability on given dates) in the center's local time;
+  staff can edit it too, and academic coordinators view it. The API answers
+  whether a tutor is available at a given time, taking center closures into
+  account.
+- Limits and preferences: each tutor's daily and weekly teaching limits, the
+  required break between classes (limits will only produce warnings when
+  scheduling) and preferred classrooms, edited by the tutor or staff.
+
+**Approvals**
+
+- The Approvals page is the shared list of requests waiting for a decision,
+  filtered by status, type and assignee. It holds account requests and tutor
+  qualification requests; staff approve or reject them. Approving an account
+  request never enrolls anyone.
+
+**Notifications**
+
+- A bell in the header shows how many notifications are unread and opens a
+  panel to read them and mark one or all as read.
+- New notifications arrive live (Server-Sent Events); when the live
+  connection isn't available, the bell checks every 30 seconds instead.
+- Today they tell tutors about qualification decisions and revocations. In
+  local and dev, signed-in users can create a test notification for
+  themselves.
+
+**Audit and security**
+
+- Changes to records and security events (sign-ins, passwords,
+  invitations) are recorded in an audit log, which staff can read through
+  the API (there is no page for it yet).
+- Requests that change data are protected by an `Origin` check and a CSRF
+  token, and the web app is served with a Content Security Policy and other
+  security headers.
+
+**App experience**
+
+- Spanish and English UI text with a language switch, and a light, dark or
+  system theme. Signed-in users' language and theme are saved to their
+  account and applied when they sign in on any device.
+- Pages and components are checked automatically for accessibility (axe) in
+  light and dark themes.
+
+**Not built yet:** class scheduling and courses, attendance, academic records
+and documents, billing and payments, payroll, reporting and analytics, and
+deployment. See the
+[milestones](https://github.com/JaimeSolisS/classora/milestones) and
+[`_docs/tasks.md`](_docs/tasks.md).
 
 ## Prerequisites
 
