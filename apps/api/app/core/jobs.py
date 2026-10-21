@@ -194,8 +194,8 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     """A Procrastinate ``App`` on ``connector`` with every task registered.
 
     Core and module tasks (the hourly purges of rate-limit counters, #27, and
-    of sessions, #25; the five-minute offer expiry, #52) are registered in
-    every environment. The demo tasks
+    of sessions, #25; the five-minute offer expiry, #52; the nightly series
+    materialization, #53) are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """

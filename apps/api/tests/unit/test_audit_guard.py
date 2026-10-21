@@ -56,6 +56,8 @@ from app.modules.identity.models import (
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
+    ClassSeries,
+    ClassSeriesParticipant,
     ClassSession,
     ClassSessionParticipant,
 )
@@ -101,6 +103,8 @@ def test_the_guard_scans_the_real_audited_models():
         AssignmentOffer,
         AssignmentOfferSession,
         BusinessSettings,
+        ClassSeries,
+        ClassSeriesParticipant,
         ClassSession,
         ClassSessionParticipant,
         Classroom,
@@ -169,6 +173,8 @@ def test_the_guard_scans_the_real_audited_models():
         TutorPreferredClassroom,
         ClassSession,
         ClassSessionParticipant,
+        ClassSeries,
+        ClassSeriesParticipant,
         CourseTemplate,
         CourseTemplateSubject,
         CourseTemplateModule,

@@ -77,10 +77,8 @@ from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.identity import service as identity
-from app.modules.scheduling.booking import (
-    find_offer_conflicts,
-    respond_by_error,
-)
+from app.modules.scheduling.booking import respond_by_error
+from app.modules.scheduling.checks import find_offer_conflicts
 from app.modules.scheduling.conflicts import TUTOR_OVERLAP, Conflict
 from app.modules.scheduling.errors import (
     ClassSessionNotOfferableError,

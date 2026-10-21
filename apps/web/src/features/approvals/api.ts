@@ -37,6 +37,8 @@ export const APPROVAL_TYPE_LABELS: Readonly<
   'staff.qualification': 'approvals.types.staff_qualification',
   'scheduling.offer_reassignment':
     'approvals.types.scheduling_offer_reassignment',
+  'scheduling.occurrence_conflict':
+    'approvals.types.scheduling_occurrence_conflict',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
@@ -141,6 +143,7 @@ export function decideApproval(
 export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
   'staff.qualification',
   'scheduling.offer_reassignment',
+  'scheduling.occurrence_conflict',
 ]);
 
 /** Whether `action` on an item of `type` needs a reason (UX only; the API

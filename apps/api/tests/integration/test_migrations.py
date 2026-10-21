@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0034"
+HEAD = "0035"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -114,6 +114,14 @@ COURSE_TABLES = [
 ]
 OVERRIDE_TABLES = ["class_session_overrides"]
 OFFER_TABLES = ["assignment_offer_sessions", "assignment_offers"]
+SERIES_TABLES = ["class_series", "class_series_participants"]
+SERIES_SESSION_COLUMNS = [
+    "series_id",
+    "original_start",
+    "is_exception",
+    "conflict_codes",
+]
+"""The class_sessions columns revision 0035 adds (#53 B4)."""
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -240,6 +248,9 @@ def test_history_is_linear_with_one_head():
     offers = script.get_revision("0034")
     assert offers.down_revision == "0033"
     assert Path(offers.path).name == "0034_scheduling_assignment_offers.py"
+    series = script.get_revision("0035")
+    assert series.down_revision == "0034"
+    assert Path(series.path).name == "0035_scheduling_class_series.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -285,6 +296,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *COURSE_TABLES,
             *OVERRIDE_TABLES,
             *OFFER_TABLES,
+            *SERIES_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4024,13 +4036,20 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
     # Only the tables of later revisions (0031 scheduling_policies, 0032 the
-    # course tables, 0033 class_session_overrides, 0034 the offer tables)
-    # differ.
+    # course tables, 0033 class_session_overrides, 0034 the offer tables,
+    # 0035 the series tables and the class_sessions occurrence columns) differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
         if not _of_later_revision(
-            diff, [*POLICY_TABLES, *COURSE_TABLES, *OVERRIDE_TABLES, *OFFER_TABLES]
+            diff,
+            [
+                *POLICY_TABLES,
+                *COURSE_TABLES,
+                *OVERRIDE_TABLES,
+                *OFFER_TABLES,
+                *SERIES_TABLES,
+            ],
         )
     ] == []
 
@@ -4050,11 +4069,20 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
 
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
-    revision adds."""
+    revision adds; with the 0034 tables, also 0034's class_sessions columns,
+    their foreign key and unique constraint."""
     if diff[0] == "add_table":
         return diff[1].name in tables
     if diff[0] == "add_index":
         return diff[1].table.name in tables
+    if "class_series" not in tables:
+        return False
+    if diff[0] == "add_column":
+        return diff[2] == "class_sessions" and diff[3].name in SERIES_SESSION_COLUMNS
+    if diff[0] == "add_fk":
+        return diff[1].name == "fk_class_sessions_series_id_class_series"
+    if diff[0] == "add_constraint":
+        return diff[1].name == "uq_class_sessions_series_original_start"
     return False
 
 
@@ -4075,11 +4103,18 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         "actual_minutes": ("smallint", "YES", None, None),
         "cancelled_at": ("timestamp with time zone", "YES", None, None),
         "cancellation_reason": ("character varying", "YES", 1000, None),
+        # 0034 (#53 B4)
+        "series_id": ("uuid", "YES", None, None),
+        "original_start": ("timestamp with time zone", "YES", None, None),
+        "is_exception": ("boolean", "NO", None, "false"),
+        "conflict_codes": ("ARRAY", "NO", None, "'{}'::character varying[]"),
     }
     constraints = _constraints(fresh_database_url, table)
     checks = {
         f"ck_{table}_{name}"
         for name in (
+            "series_original_start_together",
+            "exception_needs_series",
             "kind_valid",
             "state_valid",
             "starts_before_ends",
@@ -4097,6 +4132,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_subject_id_subjects",
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_classroom_id_classrooms",
+        f"fk_{table}_series_id_class_series",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -4104,6 +4140,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         *foreign_keys,
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
+        "uq_class_sessions_series_original_start",
     }
     for name in foreign_keys:
         assert "ON DELETE RESTRICT" in constraints[name]
@@ -4115,6 +4152,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_starts_at",
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
+        "uq_class_sessions_series_original_start",
     }
 
 
@@ -4360,11 +4398,13 @@ def test_0032_adds_exactly_the_course_tables_and_downgrade_drops_them(
 
     assert public_tables(fresh_database_url) - before == set(COURSE_TABLES)
     # Only the tables of later revisions (0033 class_session_overrides, 0034
-    # the offer tables) differ.
+    # the offer tables, 0035 the series) differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
-        if not _of_later_revision(diff, [*OVERRIDE_TABLES, *OFFER_TABLES])
+        if not _of_later_revision(
+            diff, [*OVERRIDE_TABLES, *OFFER_TABLES, *SERIES_TABLES]
+        )
     ] == []
     [trigger] = run_sql(
         fresh_database_url,
@@ -4601,11 +4641,12 @@ def test_0033_adds_exactly_the_override_table_and_downgrade_drops_it(
     command.upgrade(config, "0033")
 
     assert public_tables(fresh_database_url) - before == set(OVERRIDE_TABLES)
-    # Only the tables of a later revision (0034 the offer tables) differ.
+    # Only the objects of later revisions (0034 the offers, 0035 the series)
+    # differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
-        if not _of_later_revision(diff, OFFER_TABLES)
+        if not _of_later_revision(diff, [*OFFER_TABLES, *SERIES_TABLES])
     ] == []
     assert [r.tgname for r in run_sql(fresh_database_url, OVERRIDES_TRIGGER)] == [
         "class_session_overrides_immutable"
@@ -4666,7 +4707,12 @@ def test_0034_adds_exactly_the_offer_tables_and_downgrade_drops_them(
     command.upgrade(config, "0034")
 
     assert public_tables(fresh_database_url) - before == set(OFFER_TABLES)
-    assert metadata_diff(fresh_database_url) == []
+    # Only the objects of a later revision (0035 the series) differ.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not _of_later_revision(diff, SERIES_TABLES)
+    ] == []
 
     command.downgrade(config, "0033")
 
@@ -4838,3 +4884,261 @@ def test_assignment_offer_valid_rows_and_a_duplicate_session_row(fresh_database_
         IntegrityError, match="uq_assignment_offer_sessions_offer_session"
     ):
         run_sql(fresh_database_url, insert, {"o": pending, "s": session_id})
+
+
+# --- 0035: class series (#53 B) -------------------------------------------------------
+
+SERIES_INSERT = (
+    "INSERT INTO class_series (kind, subject_id, starts_on, start_time,"
+    " duration_minutes, time_zone, weekdays, interval, until_on, count, rrule)"
+    " VALUES (:kind, :subject_id, :starts_on, :start_time, :duration_minutes,"
+    " :time_zone, :weekdays, :interval, :until_on, :count, :rrule) RETURNING id"
+)
+
+
+def _subject_row(dsn: str) -> uuid.UUID:
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order) VALUES (:n, 1) RETURNING id",
+        {"n": f"Nivel {uuid.uuid4().hex[:8]}"},
+    )
+    [subject] = run_sql(
+        dsn,
+        "INSERT INTO subjects (education_level_id, name) VALUES (:l, 'Materia')"
+        " RETURNING id",
+        {"l": level.id},
+    )
+    return uuid.UUID(str(subject.id))
+
+
+def _series(dsn: str, subject_id: uuid.UUID, **values: Any) -> uuid.UUID:
+    columns: dict[str, Any] = {
+        "kind": "individual",
+        "subject_id": subject_id,
+        "starts_on": date(2031, 1, 6),
+        "start_time": time(16),
+        "duration_minutes": 60,
+        "time_zone": "America/Mexico_City",
+        "weekdays": [1, 3],
+        "interval": 1,
+        "until_on": None,
+        "count": None,
+        "rrule": "FREQ=WEEKLY;INTERVAL=1;WKST=MO;BYDAY=MO,WE",
+        **values,
+    }
+    [row] = run_sql(dsn, SERIES_INSERT, columns)
+    return uuid.UUID(str(row.id))
+
+
+def _session(dsn: str, subject_id: uuid.UUID, **values: Any) -> None:
+    starts_at = datetime(2031, 1, 6, 22, tzinfo=UTC)
+    columns: dict[str, Any] = {
+        "subject_id": subject_id,
+        "starts_at": starts_at,
+        "ends_at": starts_at + timedelta(hours=1),
+        "series_id": None,
+        "original_start": None,
+        "is_exception": False,
+        **values,
+    }
+    run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes, series_id, original_start, is_exception) VALUES"
+        " ('individual', 'unassigned', :subject_id, :starts_at, :ends_at, 60,"
+        " :series_id, :original_start, :is_exception)",
+        columns,
+    )
+
+
+def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0034")
+    before = public_tables(fresh_database_url)
+    columns_before = set(_columns(fresh_database_url, "class_sessions"))
+    # An existing session gets the defaults.
+    subject = _subject_row(fresh_database_url)
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes) VALUES ('individual', 'unassigned', :s,"
+        " '2031-01-06T22:00:00Z', '2031-01-06T23:00:00Z', 60)",
+        {"s": subject},
+    )
+
+    command.upgrade(config, "0035")
+
+    assert public_tables(fresh_database_url) - before == set(SERIES_TABLES)
+    assert set(_columns(fresh_database_url, "class_sessions")) - columns_before == set(
+        SERIES_SESSION_COLUMNS
+    )
+    assert metadata_diff(fresh_database_url) == []
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT series_id, original_start, is_exception, conflict_codes"
+        " FROM class_sessions",
+    )
+    assert (row.series_id, row.original_start, row.is_exception) == (
+        None,
+        None,
+        False,
+    )
+    assert list(row.conflict_codes) == []
+
+    command.downgrade(config, "0034")
+
+    assert version_nums(fresh_database_url) == ["0034"]
+    assert public_tables(fresh_database_url) == before
+    assert set(_columns(fresh_database_url, "class_sessions")) == columns_before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_class_series_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "class_series"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "kind": ("character varying", "NO", 20, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "tutor_user_id": ("uuid", "YES", None, None),
+        "classroom_id": ("uuid", "YES", None, None),
+        "starts_on": ("date", "NO", None, None),
+        "start_time": ("time without time zone", "NO", None, None),
+        "duration_minutes": ("smallint", "NO", None, None),
+        "time_zone": ("character varying", "NO", 64, None),
+        "weekdays": ("ARRAY", "NO", None, None),
+        "interval": ("smallint", "NO", None, None),
+        "until_on": ("date", "YES", None, None),
+        "count": ("smallint", "YES", None, None),
+        "rrule": ("text", "NO", None, None),
+        "last_occurrence_on": ("date", "YES", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    foreign_keys = {
+        f"fk_{table}_subject_id_subjects",
+        f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_classroom_id_classrooms",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        *foreign_keys,
+        *(
+            f"ck_{table}_{name}"
+            for name in (
+                "kind_valid",
+                "start_time_whole_minutes",
+                "duration_range",
+                "weekdays_valid",
+                "interval_range",
+                "count_range",
+                "until_or_count",
+            )
+        ),
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_subject_id",
+        f"ix_{table}_tutor_user_id",
+        f"ix_{table}_classroom_id",
+    }
+
+    participants = "class_series_participants"
+    assert _columns(fresh_database_url, participants) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "class_series_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, participants)
+    assert set(constraints) == {
+        f"pk_{participants}",
+        f"fk_{participants}_class_series_id_class_series",
+        f"fk_{participants}_student_id_students",
+        "uq_class_series_participants_series_student",
+    }
+    assert constraints["uq_class_series_participants_series_student"] == (
+        "UNIQUE (class_series_id, student_id)"
+    )
+    assert set(_indexes(fresh_database_url, participants)) == {
+        f"pk_{participants}",
+        f"ix_{participants}_student_id",
+        "uq_class_series_participants_series_student",
+    }
+
+
+@pytest.mark.parametrize(
+    ("values", "constraint"),
+    [
+        ({"kind": "other"}, "ck_class_series_kind_valid"),
+        ({"start_time": time(16, 0, 30)}, "ck_class_series_start_time_whole_minutes"),
+        ({"duration_minutes": 14}, "ck_class_series_duration_range"),
+        ({"duration_minutes": 481}, "ck_class_series_duration_range"),
+        ({"weekdays": []}, "ck_class_series_weekdays_valid"),
+        ({"weekdays": [0]}, "ck_class_series_weekdays_valid"),
+        ({"weekdays": [8]}, "ck_class_series_weekdays_valid"),
+        ({"interval": 0}, "ck_class_series_interval_range"),
+        ({"interval": 5}, "ck_class_series_interval_range"),
+        ({"count": 0}, "ck_class_series_count_range"),
+        ({"count": 201}, "ck_class_series_count_range"),
+        (
+            {"count": 3, "until_on": date(2031, 2, 1)},
+            "ck_class_series_until_or_count",
+        ),
+    ],
+)
+def test_invalid_class_series_rows_are_rejected(fresh_database_url, values, constraint):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = _subject_row(fresh_database_url)
+
+    with pytest.raises(IntegrityError, match=constraint):
+        _series(fresh_database_url, subject, **values)
+
+
+def test_valid_class_series_bounds_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = _subject_row(fresh_database_url)
+
+    _series(fresh_database_url, subject, duration_minutes=15, interval=4, count=1)
+    _series(
+        fresh_database_url,
+        subject,
+        duration_minutes=480,
+        weekdays=[1, 2, 3, 4, 5, 6, 7],
+        count=200,
+    )
+    _series(fresh_database_url, subject, until_on=date(2031, 6, 30))
+
+
+def test_the_occurrence_columns_are_checked(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = _subject_row(fresh_database_url)
+    series = _series(fresh_database_url, subject)
+    start = datetime(2031, 1, 6, 22, tzinfo=UTC)
+
+    with pytest.raises(IntegrityError, match="series_original_start_together"):
+        _session(fresh_database_url, subject, series_id=series)
+    with pytest.raises(IntegrityError, match="series_original_start_together"):
+        _session(fresh_database_url, subject, original_start=start)
+    with pytest.raises(IntegrityError, match="exception_needs_series"):
+        _session(fresh_database_url, subject, is_exception=True)
+    _session(fresh_database_url, subject, series_id=series, original_start=start)
+    with pytest.raises(
+        IntegrityError, match="uq_class_sessions_series_original_start"
+    ) as exc:
+        _session(fresh_database_url, subject, series_id=series, original_start=start)
+    assert _sqlstate(exc.value) == "23505"
+    # An exception of a series is fine.
+    _session(
+        fresh_database_url,
+        subject,
+        series_id=series,
+        original_start=start + timedelta(days=2),
+        is_exception=True,
+    )

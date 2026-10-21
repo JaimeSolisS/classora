@@ -50,6 +50,25 @@ database agree (the integration drift test reads them back). See
   (SQLSTATE 42501). Not ``Audited``: the named event
   ``scheduling.session_override`` is its audit record.
 
+- ``class_series`` (#53 B2): a recurring series (``kind`` ``individual``
+  here; ``group`` / ``course`` by #56 / #65) of one subject, with an
+  optional tutor and classroom. Its weekly rule is stored as structured
+  fields (``weekdays`` ISO 1-7, ``interval`` 1-4, an inclusive local
+  ``until_on`` **or** a ``count`` 1-200) plus the derived, normalized
+  ``rrule`` text, the local ``starts_on`` date, the local wall-clock
+  ``start_time`` (whole minutes), ``duration_minutes`` (15-480) and the
+  ``time_zone`` it was created in (ADR-0004, ADR-0005 D4).
+  ``last_occurrence_on`` is the local date of a finite series' last
+  occurrence (``NULL``: open-ended). ``Audited``, versioned.
+- ``class_series_participants``: the students of a series (the #47
+  participants pattern); the series ``version`` covers them. ``Audited``.
+- ``class_sessions`` occurrence columns (#53 B4): ``series_id`` and
+  ``original_start`` (both set, or both ``NULL`` for a one-off session),
+  ``is_exception`` (set by #54 only) and ``conflict_codes`` (the codes that
+  put a generated occurrence in ``conflict``; informational, kept after it
+  leaves ``conflict``). ``uq_class_sessions_series_original_start`` makes
+  materialization idempotent (ADR-0005 D4).
+
 - ``assignment_offers`` (#52 A1; ADR-0005 D3): one offer of sessions to a
   tutor. ``scope`` (``session`` only; M4-07b adds ``series``), ``status``
   (``pending`` → ``accepted`` | ``declined`` | ``expired`` |
@@ -64,22 +83,24 @@ database agree (the integration drift test reads them back). See
 The rules (the "``offered`` iff exactly one pending offer" invariant and the
 lock order) are in :mod:`~app.modules.scheduling.offers`.
 
-Series, groups and cohorts add their own columns and tables (#53, #56,
-#65); #53 adds a ``series_id`` to the overrides.
+Groups and cohorts add their own columns and tables (#56, #65).
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any, Final
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
     and_,
     text,
@@ -105,6 +126,11 @@ ACTUAL_MINUTES_MAX: Final = 1440
 TUTOR_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_tutor_overlap"
 ROOM_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_room_overlap"
 PARTICIPANT_UNIQUE: Final = "uq_class_session_participants_session_student"
+SERIES_ORIGINAL_START_UNIQUE: Final = "uq_class_sessions_series_original_start"
+SERIES_PARTICIPANT_UNIQUE: Final = "uq_class_series_participants_series_student"
+CONFLICT_CODE_MAX_LENGTH: Final = 40
+SERIES_DURATION_MIN: Final = 15
+SERIES_DURATION_MAX: Final = 480
 OVERRIDES_IMMUTABLE_TRIGGER: Final = "class_session_overrides_immutable"
 OVERRIDE_REASON_MAX_LENGTH: Final = 1000
 SOFT_CODES_IN_ORDER: Final = tuple(code for code in CODE_ORDER if code in SOFT)
@@ -190,6 +216,17 @@ class ClassSession(Audited, VersionedMixin, Model):
             using="gist",
             where=_occupying("classroom_id", ROOM_OCCUPYING_STATES),
         ),
+        CheckConstraint(
+            "(series_id IS NULL) = (original_start IS NULL)",
+            name="series_original_start_together",
+        ),
+        CheckConstraint(
+            "series_id IS NOT NULL OR NOT is_exception",
+            name="exception_needs_series",
+        ),
+        UniqueConstraint(
+            "series_id", "original_start", name=SERIES_ORIGINAL_START_UNIQUE
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -218,6 +255,22 @@ class ClassSession(Audited, VersionedMixin, Model):
     )
     cancellation_reason: Mapped[str | None] = mapped_column(
         String(CANCELLATION_REASON_MAX_LENGTH), nullable=True
+    )
+    series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_series.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    original_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_exception: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    conflict_codes: Mapped[list[str]] = mapped_column(
+        ARRAY(String(CONFLICT_CODE_MAX_LENGTH)),
+        server_default=text("'{}'"),
+        default=list,
     )
 
 
@@ -268,6 +321,75 @@ class ClassSessionOverride(Model):
     reason: Mapped[str] = mapped_column(Text)
     actor_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+
+class ClassSeries(Audited, VersionedMixin, Model):
+    """A recurring series (#53 B2; ADR-0005 D4). See the module docstring."""
+
+    __tablename__ = "class_series"
+    __table_args__ = (
+        CheckConstraint(f"kind IN ({_quoted(_KINDS)})", name="kind_valid"),
+        CheckConstraint(
+            "EXTRACT(SECOND FROM start_time) = 0", name="start_time_whole_minutes"
+        ),
+        CheckConstraint(
+            f"duration_minutes BETWEEN {SERIES_DURATION_MIN} AND {SERIES_DURATION_MAX}",
+            name="duration_range",
+        ),
+        CheckConstraint(
+            "cardinality(weekdays) >= 1 AND weekdays <@ '{1,2,3,4,5,6,7}'::smallint[]",
+            name="weekdays_valid",
+        ),
+        CheckConstraint('"interval" BETWEEN 1 AND 4', name="interval_range"),
+        CheckConstraint('"count" BETWEEN 1 AND 200', name="count_range"),
+        CheckConstraint('until_on IS NULL OR "count" IS NULL', name="until_or_count"),
+    )
+
+    kind: Mapped[str] = mapped_column(String(20))
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), index=True
+    )
+    tutor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    classroom_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("classrooms.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    starts_on: Mapped[date] = mapped_column(Date)
+    start_time: Mapped[time] = mapped_column(Time)
+    duration_minutes: Mapped[int] = mapped_column(SmallInteger)
+    time_zone: Mapped[str] = mapped_column(String(64))
+    weekdays: Mapped[list[int]] = mapped_column(ARRAY(SmallInteger))
+    interval: Mapped[int] = mapped_column(SmallInteger)
+    until_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    count: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    rrule: Mapped[str] = mapped_column(Text)
+    last_occurrence_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class ClassSeriesParticipant(Audited, Model):
+    """A student of a class series. Not versioned: the series ``version``
+    covers its participants."""
+
+    __tablename__ = "class_series_participants"
+    __table_args__ = (
+        UniqueConstraint(
+            "class_series_id", "student_id", name=SERIES_PARTICIPANT_UNIQUE
+        ),
+    )
+
+    class_series_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("class_series.id", ondelete="RESTRICT")
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), index=True
     )
 
 

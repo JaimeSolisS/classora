@@ -220,6 +220,7 @@ MODULE_TASKS = {
     "identity:purge_auth_sessions",
     "ratelimit:purge_counters",
     "scheduling:expire_offers",
+    "scheduling:materialize_series",
 }
 
 
@@ -253,6 +254,23 @@ def test_prod_registers_no_demo_task_and_schedules_only_module_tasks():
 
     assert app_tasks(app) == MODULE_TASKS
     assert periodic_tasks(app) == MODULE_TASKS
+
+
+def test_the_series_materialization_runs_nightly_at_08_utc():
+    # #53 F4: Procrastinate evaluates the cron on UTC timestamps.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "scheduling:materialize_series"
+    ]
+    assert periodic.cron == "0 8 * * *"
+    assert periodic.periodic_id == "scheduling-materialize-series"
+    assert periodic.configure_kwargs["queueing_lock"] == "scheduling-materialize-series"
+    assert jobs.task_parameter_types(app)["scheduling:materialize_series"] == {
+        "timestamp": int
+    }
 
 
 def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():

@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 import type { RoleCode } from '@/features/auth/session';
+import { isConflictCode } from '@/features/scheduling/create/rules';
 import { roleNameKey } from '@/features/users/roles';
 import {
   APPROVAL_TYPE_LABELS,
@@ -20,6 +21,71 @@ interface QualificationSubject {
   tutor_display_name: string;
   subject_name: string;
   education_level_name: string;
+}
+
+interface OccurrenceConflictSubject {
+  class_session_id: string;
+  series_id: string | null;
+  starts_at: string;
+  subject_name: string | null;
+  student_display_names: string[];
+  tutor_display_name: string | null;
+  conflict_codes: string[];
+}
+
+// The data-validity codes a generated occurrence can also carry (#53 D3).
+const REFERENCE_CODES = [
+  'student_unknown',
+  'student_inactive',
+  'subject_unknown',
+  'subject_inactive',
+  'tutor_unknown',
+  'tutor_inactive',
+  'classroom_unknown',
+  'classroom_inactive',
+  'crosses_local_date',
+] as const;
+
+type ReferenceCode = (typeof REFERENCE_CODES)[number];
+
+function isReferenceCode(code: string): code is ReferenceCode {
+  return (REFERENCE_CODES as readonly string[]).includes(code);
+}
+
+function isOccurrenceConflict(
+  subject: unknown,
+): subject is OccurrenceConflictSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  return (
+    typeof value.starts_at === 'string' &&
+    Array.isArray(value.student_display_names) &&
+    Array.isArray(value.conflict_codes)
+  );
+}
+
+/** The series-occurrence conflict subject of `item` (#53), or null. */
+export function occurrenceConflictSubject(
+  item: ApprovalRequestItem,
+): OccurrenceConflictSubject | null {
+  return item.request_type === 'scheduling.occurrence_conflict' &&
+    isOccurrenceConflict(item.subject)
+    ? item.subject
+    : null;
+}
+
+/** A short translated name of a conflict or data-validity code; an unknown
+ * code is shown as it is. */
+export function occurrenceCodeName(code: string, t: TFunction): string {
+  if (isConflictCode(code)) {
+    return t(`scheduling.rules.${code}`);
+  }
+  if (isReferenceCode(code)) {
+    return t(`approvals.occurrenceCodes.${code}`);
+  }
+  return code;
 }
 
 function isQualification(subject: unknown): subject is QualificationSubject {
@@ -162,7 +228,9 @@ export function registrationSubject(
  * One line naming what the request is about: for a registration "display
  * name (username) · requested role"; for a tutor qualification "tutor —
  * subject (level)"; for an offer reassignment (#52) "Declined by tutor ·
- * subject · date time" (or "Expired …"); for an unknown type the type code.
+ * subject · date time" (or "Expired …"); for a series occurrence in conflict
+ * (#53) "Series occurrence <date, time> — <students> · <subject>: <codes>";
+ * for an unknown type the type code.
  */
 export function approvalSummary(
   item: ApprovalRequestItem,
@@ -197,6 +265,17 @@ export function approvalSummary(
         when: formatInstant(reassignment.starts_at),
       },
     );
+  }
+  const occurrence = occurrenceConflictSubject(item);
+  if (occurrence) {
+    return t('approvals.summary.occurrenceConflict', {
+      when: formatInstant(occurrence.starts_at),
+      students: occurrence.student_display_names.join(', '),
+      subject: occurrence.subject_name ?? '',
+      codes: occurrence.conflict_codes
+        .map((code) => occurrenceCodeName(code, t))
+        .join(', '),
+    });
   }
   return item.request_type;
 }

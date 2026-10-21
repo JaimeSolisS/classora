@@ -20,7 +20,10 @@ from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
     get_account_references,
 )
-from app.modules.scheduling.service import OFFER_REASSIGNMENT_HANDLER
+from app.modules.scheduling.service import (
+    OCCURRENCE_CONFLICT_HANDLER,
+    OFFER_REASSIGNMENT_HANDLER,
+)
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
 
 ALLOWED = {
@@ -137,6 +140,7 @@ def test_a_bad_review_permission_is_refused():
 REGISTERED_TYPES = {
     "identity.registration",
     "staff.qualification",
+    "scheduling.occurrence_conflict",
     "scheduling.offer_reassignment",
 }
 
@@ -158,6 +162,11 @@ def test_build_app_registers_exactly_the_real_types():
     assert qualification.review_permission == "qualification.review"
     assert qualification.supports_request_changes is False
     assert qualification.reason_required_on_reject is True
+    occurrence = OCCURRENCE_CONFLICT_HANDLER
+    assert occurrence.request_type == "scheduling.occurrence_conflict"
+    assert occurrence.review_permission == "schedule.manage"
+    assert occurrence.supports_request_changes is False
+    assert occurrence.reason_required_on_reject is True
     # #52 E2: the reassignment item of a declined or expired offer.
     reassignment = OFFER_REASSIGNMENT_HANDLER
     assert reassignment.request_type == "scheduling.offer_reassignment"

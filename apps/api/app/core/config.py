@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # aborting them. Capped at 30 so Compose's stop_grace_period (40 s) never
     # kills the worker before Procrastinate's own timeout ends.
     worker_shutdown_timeout_seconds: int = Field(default=20, ge=1, le=30)
+    # Scheduling (#53, ADR-0005 D4): how many weeks ahead the series
+    # occurrences are generated (the create and the nightly job). An
+    # operator setting, not a business setting.
+    scheduling_horizon_weeks: int = Field(default=12, ge=4, le=26)
     # Proxies whose X-Forwarded-For the API believes (ADR-0008 D15; #27):
     # comma-separated IP addresses or CIDR networks. Empty: no proxy is
     # trusted and the client is always the TCP peer (app.core.client_ip).

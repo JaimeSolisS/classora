@@ -66,12 +66,11 @@ Every function runs in the caller's Unit of Work and never commits.
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
-from typing import Any, Final
+from datetime import UTC, datetime
+from typing import Any, Final, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute
 
 from app.core import clock
 from app.core.authz import RecordNotFoundError
@@ -80,23 +79,11 @@ from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.identity import service as identity
-from app.modules.scheduling.capacity import capacity_violations
+from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
 from app.modules.scheduling.conflicts import (
-    CENTER_CLOSED,
-    NOTICE_WINDOW,
-    OUTSIDE_OPERATING_HOURS,
     ROOM_OVERLAP,
-    ROOM_UNAVAILABLE,
-    STUDENT_OVERLAP,
-    TUTOR_NOT_QUALIFIED,
     TUTOR_OVERLAP,
-    TUTOR_UNAVAILABLE,
     Conflict,
-    LocalSlot,
-    covers_operating_hours,
-    local_slot,
-    sort_conflicts,
-    tutor_unavailable_reasons,
 )
 from app.modules.scheduling.errors import (
     ClassSessionNotOfferableError,
@@ -131,21 +118,12 @@ from app.modules.scheduling.schemas import (
     SessionTutor,
 )
 from app.modules.scheduling.sessions import flush_class_sessions
-from app.modules.scheduling.states import (
-    ROOM_OCCUPYING_STATES,
-    STUDENT_OCCUPYING_STATES,
-    TUTOR_OCCUPYING_STATES,
-    SessionKind,
-    SessionState,
-)
+from app.modules.scheduling.states import SessionKind, SessionState
 from app.modules.scheduling.times import scheduled_minutes, validate_session_bounds
 from app.modules.scheduling.workload_sessions import session_warnings
-from app.modules.staff import service as staff
 
 TUTOR_ROLE: Final = "tutor"
 ACTIVE: Final = "active"
-OVERLAP_IDS_LIMIT: Final = 10
-"""At most this many overlapping session ids in a conflict's details."""
 
 _REFERENCE_MESSAGES: Final = {
     "student_unknown": "Choose an existing student.",
@@ -193,6 +171,23 @@ def validate_bounds(body: ClassSessionSlot, zone: str) -> None:
         ) from None
 
 
+class ReferenceIds(Protocol):
+    """The references a write names (a session body, a series body, a
+    stored series)."""
+
+    @property
+    def student_id(self) -> uuid.UUID: ...
+
+    @property
+    def subject_id(self) -> uuid.UUID: ...
+
+    @property
+    def tutor_user_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def classroom_id(self) -> uuid.UUID | None: ...
+
+
 @dataclass(frozen=True)
 class _References:
     student: SessionParticipant
@@ -202,7 +197,7 @@ class _References:
 
 
 async def references(
-    session: AsyncSession, body: ClassSessionSlot, *, lock: bool = True
+    session: AsyncSession, body: ReferenceIds, *, lock: bool = True
 ) -> _References:
     """Every reference of the body, or one ``422`` with every invalid one
     (step 4; also the slot suggestions, #50, with ``lock=False``: the
@@ -280,161 +275,17 @@ async def references(
 # --- Conflict checks (D) -------------------------------------------------------------
 
 
-def _overlapping(slot: LocalSlot) -> Any:
-    return (ClassSession.starts_at < slot.ends_at) & (
-        ClassSession.ends_at > slot.starts_at
+def candidate_of(body: ClassSessionSlot) -> SlotCandidate:
+    """The checks' view of a one-off individual session body."""
+    return SlotCandidate(
+        kind=body.kind,
+        student_ids=(body.student_id,),
+        subject_id=body.subject_id,
+        tutor_user_id=body.tutor_user_id,
+        classroom_id=body.classroom_id,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
     )
-
-
-async def _overlap_ids(
-    session: AsyncSession,
-    slot: LocalSlot,
-    states: frozenset[SessionState],
-    column: InstrumentedAttribute[Any],
-    value: uuid.UUID,
-) -> list[str]:
-    query = select(ClassSession.id).where(
-        column == value,
-        ClassSession.state.in_(sorted(state.value for state in states)),
-        _overlapping(slot),
-    )
-    if column is ClassSessionParticipant.student_id:
-        query = query.join(
-            ClassSessionParticipant,
-            ClassSessionParticipant.class_session_id == ClassSession.id,
-        )
-    rows = await session.scalars(
-        query.order_by(ClassSession.starts_at, ClassSession.id).limit(OVERLAP_IDS_LIMIT)
-    )
-    return [str(row) for row in rows]
-
-
-async def _overlap_conflicts(
-    session: AsyncSession, body: ClassSessionSlot, slot: LocalSlot
-) -> list[Conflict]:
-    conflicts: list[Conflict] = []
-    students = await _overlap_ids(
-        session,
-        slot,
-        STUDENT_OCCUPYING_STATES,
-        ClassSessionParticipant.student_id,
-        body.student_id,
-    )
-    if students:
-        conflicts.append(
-            Conflict(
-                STUDENT_OVERLAP,
-                {"student_id": str(body.student_id), "class_session_ids": students},
-            )
-        )
-    if body.tutor_user_id is not None:
-        tutors = await _overlap_ids(
-            session,
-            slot,
-            TUTOR_OCCUPYING_STATES,
-            ClassSession.tutor_user_id,
-            body.tutor_user_id,
-        )
-        if tutors:
-            conflicts.append(Conflict(TUTOR_OVERLAP, {"class_session_ids": tutors}))
-    if body.classroom_id is not None:
-        rooms = await _overlap_ids(
-            session,
-            slot,
-            ROOM_OCCUPYING_STATES,
-            ClassSession.classroom_id,
-            body.classroom_id,
-        )
-        if rooms:
-            conflicts.append(
-                Conflict(
-                    ROOM_OVERLAP,
-                    {
-                        "classroom_id": str(body.classroom_id),
-                        "class_session_ids": rooms,
-                    },
-                )
-            )
-    return conflicts
-
-
-async def _capacity_conflicts(
-    session: AsyncSession, body: ClassSessionSlot
-) -> list[Conflict]:
-    """D4 / ADR-0005 D7: one path for every kind. An individual session never
-    exceeds a room (a room holds at least 1, #39), so nothing comes back
-    here; #56 / #65 make it reachable."""
-    room_capacity = None
-    if body.classroom_id is not None:
-        room_capacity = (
-            await catalog.get_classroom(session, body.classroom_id)
-        ).capacity
-    return [
-        Conflict(code, {"participants": 1, "room_capacity": room_capacity})
-        for code in capacity_violations(
-            body.kind, 1, group_max=None, room_capacity=room_capacity
-        )
-    ]
-
-
-async def _tutor_conflicts(
-    session: AsyncSession, subject_id: uuid.UUID, slot: LocalSlot, tutor: uuid.UUID
-) -> list[Conflict]:
-    conflicts: list[Conflict] = []
-    availability = await staff.is_tutor_available_at(
-        session, tutor, slot.starts_at, slot.ends_at
-    )
-    reasons = tutor_unavailable_reasons(availability.reasons)
-    if reasons:
-        conflicts.append(Conflict(TUTOR_UNAVAILABLE, {"reasons": reasons}))
-    if not await staff.is_qualified(session, tutor, subject_id):
-        conflicts.append(Conflict(TUTOR_NOT_QUALIFIED, {"subject_id": str(subject_id)}))
-    return conflicts
-
-
-def _hours_of(item: Any) -> tuple[int, time, time]:
-    return (
-        item.weekday,
-        time.fromisoformat(item.opens_at),
-        time.fromisoformat(item.closes_at),
-    )
-
-
-async def _center_conflicts(session: AsyncSession, slot: LocalSlot) -> list[Conflict]:
-    conflicts: list[Conflict] = []
-    if await catalog.is_center_closed_on(session, slot.local_date):
-        conflicts.append(Conflict(CENTER_CLOSED, {"date": slot.local_date.isoformat()}))
-    settings = await administration.get_business_settings(session)
-    hours = settings.operating_hours
-    if not covers_operating_hours(
-        [_hours_of(item) for item in hours], slot.weekday, slot.start, slot.end
-    ):
-        day = next((item for item in hours if item.weekday == slot.weekday), None)
-        conflicts.append(
-            Conflict(
-                OUTSIDE_OPERATING_HOURS,
-                {
-                    "date": slot.local_date.isoformat(),
-                    "opens_at": None if day is None else day.opens_at,
-                    "closes_at": None if day is None else day.closes_at,
-                },
-            )
-        )
-    return conflicts
-
-
-async def _notice_conflicts(session: AsyncSession, slot: LocalSlot) -> list[Conflict]:
-    """D10: the booking notice of the policy in force now (#61); a start in
-    the past breaks it too, and exactly the notice is fine."""
-    now = clock.now()
-    policy = await administration.get_scheduling_policy(session, now)
-    if not administration.violates_booking_notice(
-        policy, starts_at=slot.starts_at, at=now
-    ):
-        return []
-    return [
-        Conflict(NOTICE_WINDOW, {"booking_notice_hours": policy.booking_notice_hours})
-    ]
 
 
 async def find_conflicts(
@@ -442,53 +293,17 @@ async def find_conflicts(
 ) -> list[Conflict]:
     """Every hard and soft conflict of the body, sorted. The caller holds the
     student locks and the zone ``FOR SHARE``, and has validated the bounds
-    and the references."""
-    slot = local_slot(body.starts_at, body.ends_at, zone)
-    conflicts = await _overlap_conflicts(session, body, slot)
-    conflicts += await _capacity_conflicts(session, body)
-    if body.tutor_user_id is not None:
-        conflicts += await _tutor_conflicts(
-            session, body.subject_id, slot, body.tutor_user_id
-        )
-    if body.classroom_id is not None and not await catalog.is_classroom_available(
-        session, body.classroom_id, slot.weekday, slot.start, slot.end
-    ):
-        conflicts.append(
-            Conflict(ROOM_UNAVAILABLE, {"classroom_id": str(body.classroom_id)})
-        )
-    conflicts += await _center_conflicts(session, slot)
-    conflicts += await _notice_conflicts(session, slot)
-    return sort_conflicts(conflicts)
-
-
-async def find_offer_conflicts(
-    session: AsyncSession, row: ClassSession, tutor_user_id: uuid.UUID, zone: str
-) -> list[Conflict]:
-    """The conflicts of offering the stored session ``row`` to a tutor later
-    (#52 C2 step 8, E2): ``tutor_overlap`` (hard), ``tutor_unavailable``,
-    ``tutor_not_qualified``, ``center_closed``, ``outside_operating_hours``
-    and ``room_unavailable`` (soft), sorted, with the same check functions as
-    the create. ``student_overlap``, ``room_overlap``, capacity and
-    ``notice_window`` are not re-run: the students, the time and the room
-    are unchanged (their writers hold the #48 locks) and the booking notice
-    was applied when the slot was booked. The caller holds the session row
-    and the zone ``FOR SHARE``."""
-    slot = local_slot(row.starts_at, row.ends_at, zone)
-    conflicts: list[Conflict] = []
-    tutors = await _overlap_ids(
-        session, slot, TUTOR_OCCUPYING_STATES, ClassSession.tutor_user_id, tutor_user_id
+    and the references. The one shared collector
+    (:func:`~app.modules.scheduling.checks.collect_conflicts`, #53 D1) with
+    the booking notice taken from now and ``center_closed`` checked (one-off
+    sessions)."""
+    return await collect_conflicts(
+        session,
+        candidate_of(body),
+        zone=zone,
+        now=clock.now(),
+        check_center_closed=True,
     )
-    if tutors:
-        conflicts.append(Conflict(TUTOR_OVERLAP, {"class_session_ids": tutors}))
-    conflicts += await _tutor_conflicts(session, row.subject_id, slot, tutor_user_id)
-    if row.classroom_id is not None and not await catalog.is_classroom_available(
-        session, row.classroom_id, slot.weekday, slot.start, slot.end
-    ):
-        conflicts.append(
-            Conflict(ROOM_UNAVAILABLE, {"classroom_id": str(row.classroom_id)})
-        )
-    conflicts += await _center_conflicts(session, slot)
-    return sort_conflicts(conflicts)
 
 
 # --- Create (C) and read (E) ---------------------------------------------------------
@@ -531,6 +346,12 @@ def _detail(
         created_at=row.created_at,
         updated_at=row.updated_at,
         overrides=overrides,
+        series_id=row.series_id,
+        original_start=(
+            None if row.original_start is None else row.original_start.astimezone(UTC)
+        ),
+        is_exception=row.is_exception,
+        conflict_codes=list(row.conflict_codes),
         pending_offer=pending_offer,
     )
 

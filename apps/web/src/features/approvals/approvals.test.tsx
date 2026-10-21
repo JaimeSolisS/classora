@@ -236,6 +236,7 @@ describe('the list (F3)', () => {
       ['identity.registration', 'Account request'],
       ['staff.qualification', 'Tutor qualification'],
       ['scheduling.offer_reassignment', 'Session to reassign'],
+      ['scheduling.occurrence_conflict', 'Series session conflict'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [

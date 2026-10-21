@@ -291,13 +291,15 @@
     "types": {
       "identity_registration": "Account request",
       "staff_qualification": "Tutor qualification",
-      "scheduling_offer_reassignment": "Session to reassign"
+      "scheduling_offer_reassignment": "Session to reassign",
+      "scheduling_occurrence_conflict": "Series session conflict"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
       "qualification": "{{tutor}} — {{subject}} ({{level}})",
       "reassignmentDeclined": "Declined by {{tutor}} · {{subject}} · {{when}}",
-      "reassignmentExpired": "Expired, offered to {{tutor}} · {{subject}} · {{when}}"
+      "reassignmentExpired": "Expired, offered to {{tutor}} · {{subject}} · {{when}}",
+      "occurrenceConflict": "Series occurrence {{when}} — {{students}} · {{subject}}: {{codes}}"
     },
     "list": {
       "title": "Requests",
@@ -356,6 +358,17 @@
       "dismissTitle": "Dismiss: {{summary}}",
       "resolveConfirm": "Mark this item resolved? The session must already have a tutor again, or no longer need one.",
       "dismissConfirm": "Dismiss this item? The session is not changed."
+    },
+    "occurrenceCodes": {
+      "student_unknown": "Unknown student",
+      "student_inactive": "Inactive student",
+      "subject_unknown": "Unknown subject",
+      "subject_inactive": "Inactive subject",
+      "tutor_unknown": "Not a tutor",
+      "tutor_inactive": "Inactive tutor",
+      "classroom_unknown": "Unknown classroom",
+      "classroom_inactive": "Inactive classroom",
+      "crosses_local_date": "Crosses midnight"
     }
   },
   "users": {

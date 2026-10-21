@@ -17,8 +17,9 @@ An ``override`` (#49 B) lists the soft codes to override and a reason. Its
 ``override.codes[i]``. The sets are :mod:`~app.modules.scheduling.conflicts`'.
 """
 
+import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any, Final, Literal
 
 from pydantic import (
@@ -250,6 +251,24 @@ class ClassSessionDetail(BaseModel):
     updated_at: datetime
     overrides: list[SessionOverrideItem] = Field(
         description="The overrides of its soft conflicts, oldest first."
+    )
+    series_id: uuid.UUID | None = Field(
+        description="The series this session is an occurrence of (#53); null: one-off."
+    )
+    original_start: datetime | None = Field(
+        description=(
+            "The occurrence's instant in its series rule (null for a one-off"
+            " session); it stays when the occurrence is moved."
+        )
+    )
+    is_exception: bool = Field(
+        description="An occurrence edited apart from its series (#54)."
+    )
+    conflict_codes: list[str] = Field(
+        description=(
+            "The codes that put a generated occurrence in `conflict`"
+            " (informational; kept after it leaves `conflict`)."
+        )
     )
     pending_offer: PendingOffer | None = Field(
         description=("The pending offer of an `offered` session (#52); null otherwise.")
@@ -678,3 +697,139 @@ class ClassSessionOffers(BaseModel):
     """A session's offer history, newest first (#52 G3)."""
 
     items: list[AssignmentOfferItem]
+
+
+# --- Class series (#53 E, I) --------------------------------------------------------
+
+_START_TIME_FORMAT: Final = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
+
+
+class SeriesRecurrence(BaseModel):
+    """A weekly rule as structured fields (ADR-0005 D4): the API never takes
+    ``RRULE`` text. The ranges are checked after the locks, as ``422`` on
+    ``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,
+    ``weekdays_duplicate``, ``interval_out_of_range``, ``until_and_count``,
+    ``count_out_of_range``, ``until_before_start``; ``no_occurrences`` on
+    ``recurrence``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    weekdays: list[int] = Field(
+        description=(
+            "ISO weekdays (1 = Monday … 7 = Sunday), at least one, no duplicates."
+        )
+    )
+    interval: int = Field(default=1, description="Every 1-4 weeks (default 1).")
+    until: date | None = Field(
+        default=None,
+        description="The last local date (inclusive); not together with `count`.",
+    )
+    count: int | None = Field(
+        default=None,
+        description=(
+            "How many occurrences in all (1-200), the ones skipped for a closure"
+            " included; not together with `until`."
+        ),
+    )
+
+
+def _check_start_time(value: Any) -> Any:
+    # Only HH:MM (JSON) or a whole-minute time (Python callers): a value with
+    # seconds, or any other shape, is refused.
+    if isinstance(value, time) and value.tzinfo is None:
+        if value.second == 0 and value.microsecond == 0:
+            return value
+    elif isinstance(value, str) and _START_TIME_FORMAT.fullmatch(value):
+        return value
+    raise PydanticCustomError("time_format", "Give the time as HH:MM.")
+
+
+class ClassSeriesCreate(BaseModel):
+    """A recurring individual series (``POST /api/v1/class-series``, #53 E1).
+
+    ``starts_on`` is the local date of the rule's start (DTSTART) and
+    ``start_time`` the local wall-clock time (``HH:MM``) in the center zone.
+    No ``override`` (#236) and no ``rrule`` text: both are ``422``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["individual"]
+    student_id: uuid.UUID
+    subject_id: uuid.UUID
+    tutor_user_id: uuid.UUID | None = Field(
+        default=None,
+        description="The tutor to offer the occurrences to; null: unassigned.",
+    )
+    classroom_id: uuid.UUID | None = Field(
+        default=None, description="The classroom; null is no room."
+    )
+    starts_on: date = Field(
+        description="The local date the rule starts on (not before today)."
+    )
+    start_time: time = Field(
+        description="The local start time, HH:MM (whole minutes, no seconds)."
+    )
+    duration_minutes: int = Field(ge=15, le=480, description="15-480 minutes.")
+    recurrence: SeriesRecurrence
+
+    _start_time = field_validator("start_time", mode="before")(_check_start_time)
+
+
+class SeriesRecurrenceDetail(BaseModel):
+    """The stored rule's structured fields."""
+
+    weekdays: list[int]
+    interval: int
+    until: date | None
+    count: int | None
+
+
+class SeriesOccurrence(BaseModel):
+    """One occurrence row of a series."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    original_start: datetime
+    is_exception: bool
+
+
+class ClassSeriesDetail(BaseModel):
+    """One class series (``GET /api/v1/class-series/{id}``). The web app
+    never parses ``rrule``: it reads ``recurrence``."""
+
+    id: uuid.UUID
+    kind: SessionKindCode
+    subject: SessionSubject
+    tutor: SessionTutor | None
+    classroom: SessionClassroom | None
+    participants: list[SessionParticipant] = Field(
+        description="The students, by display name."
+    )
+    starts_on: date
+    start_time: str = Field(description="The local start time, HH:MM.")
+    duration_minutes: int
+    time_zone: str = Field(description="The center zone the series was created in.")
+    recurrence: SeriesRecurrenceDetail
+    rrule: str = Field(description="The normalized RFC 5545 rule (derived).")
+    last_occurrence_on: date | None = Field(
+        description="The local date of the last occurrence; null: open-ended."
+    )
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    occurrences: list[SeriesOccurrence] = Field(
+        description=(
+            "The occurrence rows starting now or later, by start (rows are"
+            " generated up to the rolling horizon)."
+        )
+    )
+
+
+class ClassSeriesCreated(ClassSeriesDetail):
+    """The created series and its workload warnings."""
+
+    warnings: list[SchedulingWarning] = Field(
+        description="Always empty for a series for now."
+    )

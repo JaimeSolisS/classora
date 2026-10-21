@@ -94,6 +94,9 @@ from app.modules.scheduling.router import (
 from app.modules.scheduling.router import options_router as schedule_options_router
 from app.modules.scheduling.router import router as class_sessions_router
 from app.modules.scheduling.router import (
+    series_router as class_series_router,
+)
+from app.modules.scheduling.router import (
     suggestions_router as tutor_suggestions_router,
 )
 from app.modules.staff.router import router as tutors_router
@@ -196,6 +199,7 @@ def build_app(
     app.include_router(class_sessions_router)
     app.include_router(schedule_options_router)
     app.include_router(tutor_suggestions_router)
+    app.include_router(class_series_router)
     app.include_router(assignment_offers_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
