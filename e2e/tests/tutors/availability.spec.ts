@@ -110,7 +110,9 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
   await pause.getByLabel(settings.noBreak, { exact: true }).uncheck();
   await pause.getByLabel(settings.minutesLabel, { exact: true }).fill('15');
   await section.getByLabel(roomName, { exact: true }).check();
-  await section.getByRole('button', { name: settings.save }).click();
+  await section
+    .getByRole('button', { name: settings.save, exact: true })
+    .click();
   await expect(
     section.getByRole('status').filter({ hasText: settings.saved }),
   ).toBeVisible();
