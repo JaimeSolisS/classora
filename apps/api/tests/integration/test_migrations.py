@@ -242,6 +242,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *NOTIFICATION_TABLES,
             *STAFF_TABLES,
             *QUALIFICATION_TABLES,
+            *AVAILABILITY_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,

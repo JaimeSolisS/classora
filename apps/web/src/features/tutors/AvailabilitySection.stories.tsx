@@ -131,7 +131,7 @@ export const ExceptionDialogNeedsApproval: Story = {
     const dialog = within(await screen.findByRole('dialog'));
     // Date inputs take the whole value at once.
     for (const label of ['startsOn', 'endsOn'] as const) {
-      fireEvent.change(
+      await fireEvent.change(
         dialog.getByLabelText(i18n.t(`tutors.availability.${label}`)),
         { target: { value: '2026-12-21' } },
       );
