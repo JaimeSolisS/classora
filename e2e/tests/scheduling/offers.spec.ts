@@ -72,11 +72,19 @@ async function axeViolations(page: Page): Promise<string[]> {
   );
 }
 
-function watchConsole(page: Page): string[] {
+// Chromium logs every 4xx resource as a console error: the tutor's signed-out
+// /auth/me (401) before the login is expected.
+const SIGNED_OUT_ME =
+  /Failed to load resource: the server responded with a status of 401/;
+
+function watchConsole(page: Page, expected?: RegExp): string[] {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (
+      message.type() === 'error' &&
+      !(expected !== undefined && expected.test(message.text()))
+    ) {
       errors.push(message.text());
     }
   });
@@ -137,7 +145,7 @@ async function signInTutor(browser: Browser) {
   const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
   const page = await context.newPage();
   await recordCspViolations(page);
-  const consoleErrors = watchConsole(page);
+  const consoleErrors = watchConsole(page, SIGNED_OUT_ME);
   await page.goto('/login');
   await page
     .getByLabel(common.auth.login.username, { exact: true })
