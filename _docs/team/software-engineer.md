@@ -16,22 +16,23 @@ engineer report. They catch the mechanical CI failures before a QA round.
 - `make lint` (includes mypy and tsc).
 - `make sast`.
 - `make scan-secrets`.
-- The tests for the changed area: targeted pytest with `--no-cov` (for example
-  `cd apps/api && uv run pytest --no-cov tests/integration/test_x.py`),
-  targeted Vitest files, and the Storybook stories that were added or changed.
+- Only the tests for what changed (owner decision 2026-10-21): the test files
+  that cover the changed or added code, run with `--no-cov` (for example
+  `cd apps/api && uv run pytest --no-cov tests/integration/test_x.py`), the
+  permission-matrix cases for changed routes, targeted Vitest files, and the
+  Storybook stories that were added or changed.
 
 Also required when they apply:
 
 - An API route, schema or error code changed: `make check-api-client`.
 - A migration was added or changed: `make test-migrations`.
-- An E2E spec, the demo seed or the E2E stack changed: `make e2e` (the whole
-  suite; there is no spec filter).
 
-Full suites (`make test-unit`, `make test-integration`, `make test-web`,
-`make test-storybook`, `make e2e` beyond the case above) run locally only when
-the change is risky, for example shared fixtures, middleware or the
-authorization layer. The report says which ran and why. Otherwise CI covers
-them on the pull request.
+Do not run the full suites locally (`make test-unit`, `make test-integration`,
+`make test-web`, `make test-storybook`, `make e2e`). CI runs all of them on
+the pull request, and QA cites that run. A new or changed E2E spec is
+verified by the pull request's `e2e` job; if it fails there, QA returns the
+issue to the engineer. On the 8 GB machine, a local full-suite pass took
+longer than the coding and duplicated CI.
 
 Run heavy commands one at a time. `make sast` and `make scan-secrets` need
 Docker. On a low-memory machine (8 GB) with several agents, heavy commands
