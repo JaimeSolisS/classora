@@ -5,7 +5,8 @@ tutor qualifications (#44, implemented in
 :mod:`app.modules.staff.qualification_revocation`).
 
 For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
-:func:`is_qualified` and :func:`qualified_tutor_ids` count **approved**
+:func:`is_qualified`, :func:`qualified_pairs` (its batch twin, #57) and
+:func:`qualified_tutor_ids` count **approved**
 qualifications only (a revoked one stops counting at once).
 
 Tutor availability (#45, implemented in
@@ -79,6 +80,7 @@ from app.modules.staff.qualifications import is_qualified as is_qualified
 from app.modules.staff.qualifications import (
     list_qualifications as list_qualifications,
 )
+from app.modules.staff.qualifications import qualified_pairs as qualified_pairs
 from app.modules.staff.qualifications import (
     qualified_tutor_ids as qualified_tutor_ids,
 )
@@ -138,6 +140,7 @@ __all__ = [
     "list_qualifications",
     "list_tutors",
     "preferred_classroom_ids",
+    "qualified_pairs",
     "qualified_tutor_ids",
     "register_qualification_notifications",
     "replace_weekly_availability",

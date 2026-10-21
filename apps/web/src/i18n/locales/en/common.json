@@ -1397,6 +1397,98 @@
       "tutor_not_qualified": "The tutor is not qualified for this subject.",
       "group_capacity_exceeded": "The group is full.",
       "notice_window": "The session starts too soon: it needs {{hours}} hours of notice."
+    },
+    "calendar": {
+      "title": "Schedule",
+      "regionLabel": "Class sessions calendar",
+      "zone": "Times in {{zone}}",
+      "toolbar": "Calendar controls",
+      "viewsLabel": "View",
+      "views": {
+        "day": "Day",
+        "week": "Week",
+        "month": "Month",
+        "list": "List"
+      },
+      "today": "Today",
+      "previous": {
+        "day": "Previous day",
+        "week": "Previous week",
+        "month": "Previous month",
+        "list": "Previous week"
+      },
+      "next": {
+        "day": "Next day",
+        "week": "Next week",
+        "month": "Next month",
+        "list": "Next week"
+      },
+      "scheduleSession": "Schedule a session",
+      "loading": "Loading sessions…",
+      "empty": "No sessions in this range.",
+      "count_one": "{{count}} session in this range.",
+      "count_other": "{{count}} sessions in this range.",
+      "truncated": "Showing the first 1000 sessions. Narrow the dates or filters.",
+      "noTutor": "No tutor",
+      "noStudents": "No students",
+      "listAlternative": "The List view shows the same sessions as text.",
+      "filters": {
+        "label": "Filters",
+        "tutor": "Tutor",
+        "tutorHelp": "Search a tutor by name, then choose one.",
+        "student": "Student",
+        "studentHelp": "Search a student by name, then choose one.",
+        "room": "Room",
+        "allRooms": "All rooms",
+        "kind": "Class type",
+        "kinds": {
+          "all": "All",
+          "individual": "Individual",
+          "group": "Group",
+          "course": "Course"
+        },
+        "cancelled": "Show cancelled",
+        "clear": "Clear filters",
+        "active": "Active filters",
+        "remove": "Remove filter: {{filter}} {{value}}",
+        "inactive": "{{name}} (inactive)",
+        "selected": "Selected",
+        "roomsFailed": "The rooms could not be loaded."
+      },
+      "dialog": {
+        "description": "Session details. Nothing can be changed here yet.",
+        "subject": "Subject",
+        "subjectValue": "{{subject}} ({{level}})",
+        "kind": "Class type",
+        "students": "Students",
+        "tutor": "Tutor",
+        "room": "Room",
+        "noRoom": "No room",
+        "date": "Date",
+        "time": "Time",
+        "timeValue": "{{time}} ({{zone}})",
+        "state": "Status",
+        "markers": "Warnings"
+      }
+    },
+    "states": {
+      "unassigned": "Unassigned",
+      "offered": "Offered",
+      "confirmed": "Confirmed",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "skipped_closure": "Skipped (closure)",
+      "conflict": "Conflict"
+    },
+    "markers": {
+      "center_closed": {
+        "label": "Center closed",
+        "explanation": "The center is closed on this date. The session was not changed: reschedule or cancel it."
+      },
+      "tutor_not_qualified": {
+        "label": "Tutor no longer qualified",
+        "explanation": "The tutor no longer holds an approved qualification for this subject. The session was not changed: assign another tutor or cancel it."
+      }
     }
   },
   "courses": {

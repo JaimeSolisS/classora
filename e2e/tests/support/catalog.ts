@@ -38,6 +38,14 @@ type Common = {
     success: { heading: string; unassigned: string; another: string };
     severity: { hard: string; soft: string };
     conflicts: { student_overlap: string };
+    calendar: {
+      title: string;
+      regionLabel: string;
+      scheduleSession: string;
+      views: Record<'day' | 'week' | 'month' | 'list', string>;
+      filters: { student: string };
+    };
+    states: Record<string, string>;
   };
   delegations: Record<string, { label: string; description: string }>;
   auth: {

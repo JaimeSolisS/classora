@@ -91,5 +91,7 @@
   "duration_out_of_range": "Una sesión dura de 15 minutos a 8 horas.",
   "crosses_local_date": "Una sesión debe empezar y terminar el mismo día.",
   "invalid_effective_from": "Una política nueva debe entrar en vigor ahora o después, y después de todos los cambios próximos. Elige una fecha posterior.",
-  "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página."
+  "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página.",
+  "range_invalid": "El final del periodo debe ser posterior a su inicio.",
+  "range_too_long": "Elige un periodo de 45 días como máximo."
 }

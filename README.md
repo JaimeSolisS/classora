@@ -145,9 +145,14 @@ unless a bullet says otherwise.
 
 **Scheduling**
 
-- Staff schedule one-off individual sessions on the Schedule page (one
-  student, a subject, an optional tutor and classroom, a date and times in
-  the center's time zone). Before anything is saved the server checks
+- Staff (including academic coordinators and finance staff) see every class
+  session on the Schedule calendar (FullCalendar), by day, week, month or as
+  a list, in the center's time zone, filtered by tutor, student, room and
+  class type. Each session shows its state, and is marked when it falls on a
+  center closure or its tutor is no longer qualified for the subject.
+- Staff schedule one-off individual sessions from the calendar's "Schedule a
+  session" page (one student, a subject, an optional tutor and classroom, a
+  date and times in the center's time zone). Before anything is saved the server checks
   student, tutor and classroom overlaps, tutor availability and
   qualification, classroom availability, center closures, operating hours
   and booking notice, and lists every conflict. Soft conflicts can't be
@@ -200,8 +205,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** recurring and group scheduling, the calendar and
-course cohorts, attendance, academic records
+**Not built yet:** recurring and group scheduling, rescheduling from the
+calendar, course cohorts, attendance, academic records
 and documents, billing and payments, payroll, reporting and analytics, and
 deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

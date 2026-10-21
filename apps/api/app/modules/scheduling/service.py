@@ -21,6 +21,10 @@ source); :func:`find_conflicts` runs them for one body. The student lock
 (:func:`lock_students`, :mod:`~app.modules.scheduling.locks`) must be taken
 first by every writer that adds a participant or moves a session in time.
 
+The calendar (#57, :mod:`~app.modules.scheduling.calendar_read`):
+:func:`list_calendar_sessions` (the range read with its read-time markers,
+:mod:`~app.modules.scheduling.markers`) and :func:`list_tutor_options`.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -33,6 +37,12 @@ from app.modules.scheduling.booking import (
 from app.modules.scheduling.booking import find_conflicts as find_conflicts
 from app.modules.scheduling.booking import (
     get_class_session as get_class_session,
+)
+from app.modules.scheduling.calendar_read import (
+    list_calendar_sessions as list_calendar_sessions,
+)
+from app.modules.scheduling.calendar_read import (
+    list_tutor_options as list_tutor_options,
 )
 from app.modules.scheduling.capacity import (
     GROUP_CAPACITY_EXCEEDED as GROUP_CAPACITY_EXCEEDED,
