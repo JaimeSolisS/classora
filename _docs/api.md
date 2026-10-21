@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`. Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -114,9 +114,11 @@ Codes in use today:
 | `class_session_not_offerable` | 409 | Offering a session that is not `unassigned` (`details.state`), or one that has begun (`details.reason = "started"`; also a create with a tutor whose start is not after now). See Assignment offers. |
 | `offer_not_pending` | 409 | Accepting or declining an offer that was already answered, expired or withdrawn; `details.status` is its status (see Assignment offers). |
 | `offer_expired` | 409 | Accepting or declining an offer at or after its `respond_by`; the expiry task closes it within five minutes (see Assignment offers). |
-| `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned`; the item stays pending (see Assignment offers). |
+| `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned` (for a series offer, also while the series has no tutor); the item stays pending (see Assignment offers). |
+| `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
+| `from_date_in_past` | 422 | A series offer whose `from_date` is before the center's local today; the field error is on `["body","from_date"]` (see Assignment offers, "Series offers"). |
 | `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
-| `respond_by_requires_tutor` | 422 | `POST /api/v1/class-sessions` with `respond_by` but no `tutor_user_id`; the field error is on `["body","respond_by"]`. |
+| `respond_by_requires_tutor` | 422 | `POST /api/v1/class-sessions` or `POST /api/v1/class-series` with `respond_by` but no `tutor_user_id`; the field error is on `["body","respond_by"]`. |
 | `decline_note_too_long` | 422 | A decline note over 500 characters once trimmed; the field error is on `["body","note"]` (see Assignment offers). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
@@ -2203,10 +2205,12 @@ Implemented by M4-07 (#52; spec §3, §9, §15 W1.3–W1.4; ADR-0005 D2, D3,
 D9) in `apps/api/app/modules/scheduling/`: `offers.py` (the pure rules, the
 invariant and the lock order), `offer_flow.py` (writes and reads),
 `offer_records.py` (storing offers, notifications), `offer_approval.py`
-(the inbox type) and `tasks.py` (the expiry task). One-off sessions only;
-series-assignment offers are M4-07b (#233).
+(the inbox type) and `tasks.py` (the expiry task). Series offers (M4-07b,
+#233) are described under "Series offers" below (`series_offers.py`).
 
-**Model.** `assignment_offers` (audited, versioned): `scope` (`session`),
+**Model.** `assignment_offers` (audited, versioned): `scope` (`session`, or
+`series` with `class_series_id` and the local `from_date`, both set exactly
+for a series offer; at most one `pending` series offer per series),
 `tutor_user_id`, `status` (`pending` → `accepted` | `declined` | `expired`
 | `withdrawn`; the other four are final), `offered_at`,
 `offered_by_user_id`, `respond_by` (after `offered_at`), `responded_at`
@@ -2214,9 +2218,10 @@ series-assignment offers are M4-07b (#233).
 500 characters). `assignment_offer_sessions` (audited): the covered
 sessions, one row per offer and session (a session offer has exactly one).
 **Invariant:** a session is `offered` iff exactly one `pending` offer
-covers it, made to the session's tutor. **Lock order:** every offer writer
-locks the covered sessions `FOR UPDATE` (ascending id), then the offer
-`FOR UPDATE`.
+covers it, made to the session's tutor (both scopes). **Lock order:** every
+offer writer locks the covered sessions `FOR UPDATE` (ascending id), then
+the offer `FOR UPDATE`; a series-scope writer takes the series row `FOR
+UPDATE` before them (see "Series offers").
 
 **Deadline.** `respond_by` defaults to the scheduling policy's
 `response_hours` (48 by default) after `offered_at`, but never after the
@@ -2231,15 +2236,21 @@ from `respond_by` on (`now >= respond_by`).
 | `POST /api/v1/class-sessions` (extended) | `schedule.manage` | With a tutor: the session is created `offered` with its pending offer (optional `respond_by`) and the tutor is notified. |
 | `POST /api/v1/class-sessions/{class_session_id}/offers` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator); an `override` also needs `schedule.override` | Offer an `unassigned` session; `201` with `{offer: AssignmentOfferItem, warnings}`. |
 | `GET /api/v1/class-sessions/{class_session_id}/offers` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `{items: [AssignmentOfferItem]}`, newest first, decline notes included; `404` for an unknown session. |
-| `GET /api/v1/assignment-offers?status=pending\|answered\|all&limit&offset` | `authenticated()`; only the caller's own offers | Default `pending` (by `respond_by`); `answered` (the four final statuses) and `all` newest first. `limit` 1–100 (default 20), `offset`; `{items, total, limit, offset}`. Anyone without offers gets an empty page. At most 6 statements. |
+| `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | Offer a series without a tutor from a date (M4-07b); `201` with `{offer: AssignmentOfferItem, warnings: []}`. See "Series offers". |
+| `GET /api/v1/assignment-offers?status=pending\|answered\|all&limit&offset` | `authenticated()`; only the caller's own offers | Default `pending` (by `respond_by`); `answered` (the four final statuses) and `all` newest first. `limit` 1–100 (default 20), `offset`; `{items, total, limit, offset}`. Anyone without offers gets an empty page. At most 7 statements whatever the page size. |
 | `POST /api/v1/assignment-offers/{offer_id}/accept` | `authenticated()`; only the offered tutor | `200` with the `AssignmentOfferItem`. |
 | `POST /api/v1/assignment-offers/{offer_id}/decline` | `authenticated()`; only the offered tutor | Optional body `{note}` (trimmed, empty is none, at most 500: `422 decline_note_too_long`). `200` with the item. |
 
 `AssignmentOfferItem`: `{id, scope, status, tutor {id, display_name},
 offered_at, offered_by {id, display_name}, respond_by, responded_at,
-decline_note, sessions [{id, state, starts_at, ends_at, subject {name,
-education_level_name}, classroom {name} | null, participants
-[{display_name}]}]}`.
+decline_note, series, session_count, sessions [{id, state, starts_at,
+ends_at, subject {name, education_level_name}, classroom {name} | null,
+participants [{display_name}]}], sessions_truncated}`. `series` is `null`
+for a session offer, else `{id, kind, subject {name,
+education_level_name}, weekdays, interval, start_time (HH:MM, local),
+duration_minutes, time_zone, from_date, until, count, last_occurrence_on}`;
+`session_count` is the number of covered sessions; a series offer lists
+its first 10 by start (`sessions_truncated` when there are more).
 
 **Offering an `unassigned` session** (body `{tutor_user_id, version,
 respond_by?, override?}`, unknown fields `422`). Order: `401`/`403`
@@ -2294,11 +2305,16 @@ reason). One per declined or expired offer (the subject is the offer),
 requester `null`, priority `high` when the first covered session starts
 within 24 hours, otherwise `normal`. Summary: `{class_session_id,
 subject_name, starts_at, tutor_name, outcome (declined | expired),
-decline_note, session_state}`. **Approve** ("Mark resolved") is `409
-reassignment_still_needed` while a covered session is still `unassigned`;
+decline_note, session_state, class_series_id, from_date, occurrence_count}`
+(the last three `null` for a session offer; for a series offer that
+covered no session, `class_session_id`, `starts_at` and `session_state` are
+`null`). **Approve** ("Mark resolved") is `409
+reassignment_still_needed` while a covered session is still `unassigned`
+(for a series offer, also while the series has no tutor);
 **Reject** ("Dismiss") closes it and leaves the session as it is. Offering
 the session again cancels the open item of its latest declined or expired
-offer (resolved by the offering user).
+**session** offer (resolved by the offering user); the items of series
+offers are closed by offering the series again.
 
 **Notifications** (in-app): `scheduling.offer_received` to the tutor
 `{offer_id, subject_name, starts_at, respond_by}`;
@@ -2306,13 +2322,94 @@ offer (resolved by the offering user).
 holder of `schedule.assign` (role grants plus delegations;
 `identity.service.active_user_ids_with_permission`) `{offer_id,
 class_session_id, subject_name, starts_at, tutor_name}`. Instants are RFC
-3339 in UTC. The decline note is never a param.
+3339 in UTC. The decline note is never a param. For a series offer the
+same three types add `class_series_id`, `from_date` (local date) and
+`occurrence_count` (the covered sessions at the time); `class_session_id`
+of a declined or expired series offer is its first covered session, or
+`null` when none was covered. A session offer's params don't carry these
+keys.
 
-**Withdraw seam.** `scheduling.service.withdraw_pending_offers(session,
-class_session_ids, by_user_id=…)` marks the covering pending offers
-`withdrawn` (no item, no notification) for the later paths that cancel or
-substitute an `offered` session (M4-10, M4-13, M4-07b); the caller holds
-the session locks and moves the sessions. No route.
+**Withdraw seams.** `scheduling.service.withdraw_pending_offers(session,
+class_session_ids, by_user_id=…)` marks the covering pending
+**session-scope** offers `withdrawn` (no item, no notification) for the
+later paths that cancel or substitute an `offered` session (M4-10, M4-13);
+the caller holds the session locks and moves the sessions. Series offers
+are left alone: `scheduling.service.withdraw_series_offer(session,
+class_series_id, by_user_id=…)` (M4-09, M4-10) withdraws a series' pending
+series offer from the series row on, returns its still-`offered` sessions
+to `unassigned` and clears the series' tutor. No route.
+
+#### Series offers
+
+Implemented by M4-07b (#233; ADR-0005 D3) in `series_offers.py`,
+`offer_flow.py` and `materialize.py`. One offer covers every
+not-yet-started occurrence of a series from a local `from_date` onward.
+The series row holds the assignment: `class_series.assignment_status`
+(`pending` | `accepted`) and `assignment_from` (a local date), both set
+exactly when the series has a tutor. **Occurrence state**
+(`occurrence_initial_state(series, local_date)`): `unassigned` (no tutor)
+without a tutor or before `assignment_from`; `offered` while the series
+offer is pending (and attached to it, so the invariant holds); `confirmed`
+once it is accepted, with no further offer. The offer's `respond_by` never
+moves when later occurrences join it.
+
+**Deadline:** as above, with the first covered session's start, or the
+rule's next occurrence on or after `from_date` when no session is covered
+yet (a series beyond the horizon gets an offer with no covered session).
+
+**At creation.** `POST /api/v1/class-series` with a tutor makes the
+pending series offer from `starts_on` in the same transaction over every
+`offered` occurrence (`skipped_closure` ones are not covered) and notifies
+the tutor (see Class series).
+
+**Later** (`POST /api/v1/class-series/{class_series_id}/offers`, body
+`{tutor_user_id, version, from_date?, respond_by?}`; `version` is the
+series' version; unknown fields `422`, an `override` included: a series
+offer never overrides, M4-09c adds that). Only for a series **without a
+tutor** (created without one, or after a series decline or expiry).
+Order: `401`/`403` → `422` schema → the series (`404 not_found`) → the
+locks (the series' students, the zone `FOR SHARE`, the series row `FOR
+UPDATE`) → `409 version_conflict` → `409 series_not_offerable`
+(`details.reason`: `assigned` when it has a tutor, `ended` when
+`from_date` is after `last_occurrence_on` or no occurrence from it is still
+to come) → `422 from_date_in_past` (the default `from_date` is the later of
+`starts_on` and the local today) → the **covered sessions**: the series'
+`unassigned` sessions whose rule instant is on a local date on or after
+`from_date` and that start after now, locked by id (`offered`,
+`confirmed`, `conflict`, `skipped_closure` and `cancelled` ones are not
+covered) → `422` for the tutor (`tutor_unknown`, `tutor_inactive`) and
+`respond_by` (`respond_by_invalid`) in one response → the session-offer
+checks on every covered session with the new tutor, `center_closed` off
+(`tutor_overlap` hard; `tutor_unavailable`, `tutor_not_qualified`,
+`outside_operating_hours`, `room_unavailable` soft; `notice_window`, the
+student and room overlaps and capacity are not re-run) → any conflict is
+`409 scheduling_conflict` listing every conflict of every covered session
+(`details.occurrence_start`, `details.date`); nothing is written → every
+covered session `unassigned → offered` (an `EXCLUDE` race → `409` with one
+`tutor_overlap`), the series assignment (`pending` from `from_date`; its
+version is bumped), the offer, the tutor's notification, and the open
+reassignment items of the series' earlier declined or expired series
+offers are cancelled → `201` with `warnings: []`. Offering one session of
+a tutorless series through the session route stays possible; it changes
+neither the series nor its items.
+
+**Answering a series offer** (the order above; the series row is locked
+before the sessions and the offer). **Accept:** every covered session still
+`offered` becomes `confirmed` (others, cancelled meanwhile, are skipped);
+the series becomes `accepted` (version bumped); later occurrences are
+created `confirmed`. **Decline / expiry:** every covered session still
+`offered` goes back to `unassigned`, the series loses its tutor and
+assignment (version bumped; later occurrences are `unassigned`), and one
+reassignment item plus the staff notifications are made, even when no
+session was covered.
+
+**Lock order** (series-scope writers): the series' students and the zone
+`FOR SHARE` (only the paths that create rows or check slots: the series
+offer route and materialization) → the series row `FOR UPDATE` → the
+covered sessions by id → the offer. The answers, the expiry, the withdraw
+seam, "Mark resolved" and the `scheduling.occurrence_conflict` approve take
+the series row before the sessions, so they serialize with the nightly job
+and can't deadlock.
 
 **Family visibility.** `scheduling.states.FAMILY_VISIBLE_STATES` =
 `{confirmed, completed}` (`is_family_visible`): students and guardians see a
@@ -2326,14 +2423,15 @@ ADR-0004) in `apps/api/app/modules/scheduling/` (`recurrence.py`: the pure
 weekly rule; `series.py`: create and read; `materialize.py`: the rolling
 materialization; `tasks.py`: the nightly job; `occurrence_approval.py`: the
 inbox item). Only **individual** series so far; groups and courses (M4-11,
-M4-20), editing (M4-09), series offers (M4-07b), series overrides (M4-09c),
+M4-20), editing (M4-09), series overrides (M4-09c),
 closures added or removed after occurrences exist (M4-08b) and the web form
 (M4-09b) come later.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `POST /api/v1/class-series` | `require("schedule.manage")` (Owner, Administrator) | Body below. `201` with `ClassSeriesDetail` plus `warnings` (always `[]` for now). |
-| `GET /api/v1/class-series/{class_series_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSeriesDetail`; `404 not_found` for an unknown id. Every holder sees every series. At most 7 statements. |
+| `GET /api/v1/class-series/{class_series_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSeriesDetail`; `404 not_found` for an unknown id. Every holder sees every series. At most 8 statements. |
+| `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` | Offer a series without a tutor (see Assignment offers, "Series offers"). |
 
 **Body** (unknown fields are `422`, `override` and `rrule` included: the
 API never takes rule text):
@@ -2342,8 +2440,15 @@ API never takes rule text):
 {"kind": "individual", "student_id": "…", "subject_id": "…",
  "tutor_user_id": "…" | null, "classroom_id": "…" | null,
  "starts_on": "2026-11-09", "start_time": "16:00", "duration_minutes": 60,
- "recurrence": {"weekdays": [1, 3], "interval": 1, "until": "2026-12-18" | null, "count": null}}
+ "recurrence": {"weekdays": [1, 3], "interval": 1, "until": "2026-12-18" | null, "count": null},
+ "respond_by": "…" | null}
 ```
+
+- `respond_by` (M4-07b; only with a tutor, else `422
+  respond_by_requires_tutor`): an earlier deadline for the series offer,
+  checked after the references against the rule's first occurrence (`422
+  respond_by_invalid`). With a tutor, a series with no occurrence still to
+  come is `409 series_not_offerable` (`ended`).
 
 - `starts_on` is the local date the rule starts on (the first occurrence is
   the first matching weekday on or after it); `start_time` the local
@@ -2389,7 +2494,8 @@ occurrence (`null` for an open-ended one).
    (the local date). Nothing is created; overrides for series come later
    (M4-09c);
 10. the series, its participant and every occurrence (with its
-    participant) are stored; `201`.
+    participant) are stored; with a tutor, the pending series offer over
+    every `offered` occurrence and the tutor's notification (M4-07b); `201`.
 
 A series that starts after the horizon is created with no occurrence: the
 nightly job creates and checks them when they enter the window.
@@ -2401,11 +2507,12 @@ forward by the gap. The end is the start plus the duration in elapsed
 minutes, so `scheduled_minutes` always equals `duration_minutes`.
 
 **Occurrences.** Each is a class session (`kind` `individual`, the series'
-subject, tutor and room, one participant, `series_id` and `original_start`
-set). A clean one is `offered` with a tutor and `unassigned` without one
-(`scheduling.materialize.occurrence_initial_state`, the seam the series
-offers extend). No offer row is made yet for these `offered` occurrences:
-the series offer and its rows are M4-07b (#233). A `skipped_closure` one keeps the tutor, room and
+subject, room, one participant, `series_id` and `original_start` set, and
+the series' tutor when its assignment covers the date). A clean one takes
+`scheduling.materialize.occurrence_initial_state` for its local date
+(M4-07b): `offered` (attached to the pending series offer) while the
+series offer is pending, `confirmed` once it is accepted, `unassigned`
+without a tutor or before the assignment's from-date. A `skipped_closure` one keeps the tutor, room and
 participant and holds nothing (no overlap, never billable, no makeup,
 ADR-0005 D6). Audit: only the automatic `create` events of the series, its
 participant and each session and session participant.
@@ -2413,8 +2520,11 @@ participant and each session and session participant.
 `ClassSeriesDetail` is `{id, kind, subject {…}, tutor {…} | null,
 classroom {…} | null, participants [...], starts_on, start_time (HH:MM),
 duration_minutes, time_zone, recurrence {weekdays, interval, until, count},
-rrule, last_occurrence_on, version, created_at, updated_at, occurrences
-[{id, state, starts_at, ends_at, original_start, is_exception}]}`; the
+rrule, last_occurrence_on, assignment, version, created_at, updated_at,
+occurrences [{id, state, starts_at, ends_at, original_start,
+is_exception}]}`. `assignment` (M4-07b) is `null` without a tutor, else
+`{status (pending | accepted), tutor {id, display_name}, from_date,
+offer_id, respond_by}` (`respond_by` only while `pending`); the
 occurrences are the series' rows starting now or later, by start. The web
 app never parses `rrule`.
 
@@ -2447,12 +2557,14 @@ reason). Its summary is `{class_session_id, series_id, starts_at,
 subject_name, student_display_names, tutor_display_name, conflict_codes}`.
 
 - **Approve = re-check and schedule:** the student locks, the zone `FOR
-  SHARE`, the session `FOR UPDATE`. A session no longer in `conflict` is
-  `409 approval_transition_invalid`; invalid references are `422` (the
-  create's codes); the checks run again now (`center_closed` off): still
-  failing is `409 scheduling_conflict` and the request stays `pending`;
-  clean moves the session to `offered` (with the series' tutor) or
-  `unassigned`. A start already in the past fails `notice_window`: reject
+  SHARE`, the series row `FOR UPDATE` (M4-07b), the session `FOR UPDATE`.
+  A session no longer in `conflict` is `409 approval_transition_invalid`;
+  invalid references are `422` (the create's codes); the checks run again
+  now with the tutor the series assigns on that date (`center_closed`
+  off): still failing is `409 scheduling_conflict` and the request stays
+  `pending`; clean moves the session to the occurrence state of its date
+  (`offered` and attached to the pending series offer, `confirmed`, or
+  `unassigned`). A start already in the past fails `notice_window`: reject
   it instead.
 - **Reject = cancel the occurrence** with the reviewer's reason.
 

@@ -53,7 +53,9 @@ def series_create(refs: dict[str, uuid.UUID], student: str = "student") -> Chang
     )
 
     async def _create(session: AsyncSession) -> None:
-        await scheduling.create_class_series(session, body, horizon_weeks=HORIZON)
+        await scheduling.create_class_series(
+            session, body, horizon_weeks=HORIZON, actor_id=refs["tutor"]
+        )
 
     return _create
 

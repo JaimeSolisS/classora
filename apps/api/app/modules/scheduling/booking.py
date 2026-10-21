@@ -491,7 +491,10 @@ async def create_class_session(
             session, offer, subject_name=refs.subject.name, starts_at=row.starts_at
         )
         pending_offer = PendingOffer(
-            id=offer.id, tutor=refs.tutor, respond_by=offer.respond_by.astimezone(UTC)
+            id=offer.id,
+            scope="session",
+            tutor=refs.tutor,
+            respond_by=offer.respond_by.astimezone(UTC),
         )
     detail = _detail(
         row,
@@ -515,6 +518,7 @@ async def get_class_session(
         select(
             AssignmentOfferSession.class_session_id,
             AssignmentOffer.id,
+            AssignmentOffer.scope,
             AssignmentOffer.respond_by,
         )
         .join(AssignmentOffer, AssignmentOffer.id == AssignmentOfferSession.offer_id)
@@ -523,14 +527,14 @@ async def get_class_session(
     )
     found = (
         await session.execute(
-            select(ClassSession, pending.c.id, pending.c.respond_by)
+            select(ClassSession, pending.c.id, pending.c.scope, pending.c.respond_by)
             .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
             .where(ClassSession.id == class_session_id)
         )
     ).first()
     if found is None:
         raise RecordNotFoundError()
-    row, offer_id, offer_respond_by = found
+    row, offer_id, offer_scope, offer_respond_by = found
     student_ids = list(
         await session.scalars(
             select(ClassSessionParticipant.student_id).where(
@@ -588,7 +592,10 @@ async def get_class_session(
             None
             if offer_id is None or tutor is None
             else PendingOffer(
-                id=offer_id, tutor=tutor, respond_by=offer_respond_by.astimezone(UTC)
+                id=offer_id,
+                scope=offer_scope,
+                tutor=tutor,
+                respond_by=offer_respond_by.astimezone(UTC),
             )
         ),
     )

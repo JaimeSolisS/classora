@@ -29,8 +29,18 @@ and the body's ``422``:
 A series that starts after the horizon is created with no occurrence row:
 the nightly job creates and checks them later (D4). Audit: the automatic
 ``create`` events of the series, its participant and each session and
-session participant. No offer, notification or inbox item (#233 adds the
-series offer).
+session participant.
+
+**With a tutor** (#233 C1): the series is stored with ``assignment_status =
+'pending'`` from ``starts_on``, so its clean occurrences are ``offered``;
+after the expansion the same transaction makes the pending series offer
+over every ``offered`` row (:func:`~app.modules.scheduling.series_offers.
+offer_new_series`) and notifies the tutor. ``respond_by`` (optional, only
+with a tutor: ``422 respond_by_requires_tutor``) is checked after the
+references, before the expansion, against the rule's next occurrence
+(``422 respond_by_invalid``); a series with no occurrence still to come is
+``409 series_not_offerable`` (``ended``). A series with no row inside the
+horizon still gets its offer, with no covered session.
 
 **Read** (:func:`get_class_series`): every holder of ``schedule.view``;
 at most seven statements; ``404`` for an unknown id.
@@ -55,6 +65,11 @@ from app.modules.scheduling.errors import SessionValidationError
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.materialize import materialize_series
 from app.modules.scheduling.models import (
+    OFFER_ACCEPTED,
+    OFFER_PENDING,
+    OFFER_SCOPE_SERIES,
+    SERIES_ASSIGNMENT_PENDING,
+    AssignmentOffer,
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
@@ -70,12 +85,17 @@ from app.modules.scheduling.schemas import (
     ClassSeriesCreate,
     ClassSeriesCreated,
     ClassSeriesDetail,
+    SeriesAssignment,
     SeriesOccurrence,
     SeriesRecurrenceDetail,
     SessionClassroom,
     SessionParticipant,
     SessionSubject,
     SessionTutor,
+)
+from app.modules.scheduling.series_offers import (
+    offer_new_series,
+    validate_create_respond_by,
 )
 from app.modules.scheduling.states import SessionKind, SessionState
 
@@ -139,8 +159,20 @@ def _check_times(body: ClassSeriesCreate, zone: str) -> None:
         )
 
 
+def _respond_by_without_tutor() -> SessionValidationError:
+    return _error(
+        ["body", "respond_by"],
+        "respond_by_requires_tutor",
+        "A deadline needs a tutor to answer it.",
+    )
+
+
 async def create_class_series(
-    session: AsyncSession, body: ClassSeriesCreate, *, horizon_weeks: int
+    session: AsyncSession,
+    body: ClassSeriesCreate,
+    *,
+    horizon_weeks: int,
+    actor_id: uuid.UUID,
 ) -> ClassSeriesCreated:
     """``POST /api/v1/class-series``: see the module docstring."""
     await lock_students(session, [body.student_id])
@@ -148,7 +180,10 @@ async def create_class_series(
     fields = _fields(body)
     _check_recurrence(fields, body)
     _check_times(body, zone)
+    if body.tutor_user_id is None and body.respond_by is not None:
+        raise _respond_by_without_tutor()
     await references(session, body)
+    offered_at = clock.now()
 
     series = ClassSeries(
         kind=SessionKind.INDIVIDUAL.value,
@@ -165,7 +200,16 @@ async def create_class_series(
         count=fields.count,
         rrule=build_rrule(fields),
         last_occurrence_on=last_occurrence_on(fields, body.starts_on),
+        # #233 C1: a tutor is offered the whole series from its start.
+        assignment_status=(
+            None if body.tutor_user_id is None else SERIES_ASSIGNMENT_PENDING
+        ),
+        assignment_from=None if body.tutor_user_id is None else body.starts_on,
     )
+    if body.tutor_user_id is not None:
+        await validate_create_respond_by(
+            session, series, offered_at=offered_at, requested=body.respond_by
+        )
     session.add(series)
     await session.flush()
     session.add(
@@ -175,10 +219,18 @@ async def create_class_series(
     await materialize_series(
         session,
         series.id,
-        now=clock.now(),
+        now=offered_at,
         horizon_weeks=horizon_weeks,
         mode="create",
     )
+    if body.tutor_user_id is not None:
+        await offer_new_series(
+            session,
+            series,
+            offered_at=offered_at,
+            requested_respond_by=body.respond_by,
+            actor_id=actor_id,
+        )
     detail = await get_class_series(session, series.id)
     return ClassSeriesCreated(**detail.model_dump(), warnings=[])
 
@@ -199,8 +251,9 @@ def _occurrence(row: ClassSession) -> SeriesOccurrence:
 async def get_class_series(
     session: AsyncSession, class_series_id: uuid.UUID
 ) -> ClassSeriesDetail:
-    """``GET /api/v1/class-series/{id}``: the series, its references and its
-    occurrence rows starting now or later. At most seven statements."""
+    """``GET /api/v1/class-series/{id}``: the series, its references, its
+    tutor assignment (#233 F2) and its occurrence rows starting now or
+    later. At most eight statements."""
     series = await session.get(ClassSeries, class_series_id)
     if series is None:
         raise RecordNotFoundError()
@@ -248,6 +301,31 @@ async def get_class_series(
         ),
         key=lambda p: (p.display_name.casefold(), str(p.student_id)),
     )
+    assignment = None
+    if tutor is not None and series.assignment_status is not None:
+        assert series.assignment_from is not None  # noqa: S101 - a CHECK
+        offer = await session.scalar(
+            select(AssignmentOffer)
+            .where(
+                AssignmentOffer.class_series_id == series.id,
+                AssignmentOffer.scope == OFFER_SCOPE_SERIES,
+                AssignmentOffer.status.in_((OFFER_PENDING, OFFER_ACCEPTED)),
+                AssignmentOffer.tutor_user_id == series.tutor_user_id,
+            )
+            .order_by(AssignmentOffer.offered_at.desc(), AssignmentOffer.id.desc())
+            .limit(1)
+        )
+        assignment = SeriesAssignment(
+            status=series.assignment_status,  # type: ignore[arg-type]
+            tutor=tutor,
+            from_date=series.assignment_from,
+            offer_id=None if offer is None else offer.id,
+            respond_by=(
+                offer.respond_by.astimezone(UTC)
+                if offer is not None and offer.status == OFFER_PENDING
+                else None
+            ),
+        )
     return ClassSeriesDetail(
         id=series.id,
         kind=SessionKind(series.kind).value,
@@ -272,6 +350,7 @@ async def get_class_series(
         ),
         rrule=series.rrule,
         last_occurrence_on=series.last_occurrence_on,
+        assignment=assignment,
         version=series.version,
         created_at=series.created_at,
         updated_at=series.updated_at,

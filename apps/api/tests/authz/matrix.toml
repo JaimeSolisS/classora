@@ -300,6 +300,17 @@ allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
 # 404 for every allowed role.
 
 [[route]]
+method = "POST"
+path = "/api/v1/class-series/{class_series_id}/offers"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #233 I5: a valid body; the placeholder id is no series: 404 for every
+# allowed role ("not denied"). The 201 and 409 cases are tested in
+# tests/integration/test_series_offers.py.
+json = { tutor_user_id = "00000000-0000-4000-8000-000000000233", version = 1 }
+
+[[route]]
 method = "GET"
 path = "/api/v1/class-sessions"
 access = "permission"

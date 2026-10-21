@@ -274,7 +274,12 @@ async def collect_conflicts(
 
 
 async def find_offer_conflicts(
-    session: AsyncSession, row: ClassSession, tutor_user_id: uuid.UUID, zone: str
+    session: AsyncSession,
+    row: ClassSession,
+    tutor_user_id: uuid.UUID,
+    zone: str,
+    *,
+    check_center_closed: bool = True,
 ) -> list[Conflict]:
     """The conflicts of offering the stored session ``row`` to a tutor later
     (#52 C2 step 8, E2): ``tutor_overlap`` (hard), ``tutor_unavailable``,
@@ -283,8 +288,9 @@ async def find_offer_conflicts(
     :func:`collect_conflicts`. ``student_overlap``, ``room_overlap``, capacity and
     ``notice_window`` are not re-run: the students, the time and the room
     are unchanged (their writers hold the #48 locks) and the booking notice
-    was applied when the slot was booked. The caller holds the session row
-    and the zone ``FOR SHARE``."""
+    was applied when the slot was booked. A series offer (#233 C2) passes
+    ``check_center_closed=False``, as every series occurrence (#53 D2). The
+    caller holds the session row and the zone ``FOR SHARE``."""
     slot = local_slot(row.starts_at, row.ends_at, zone)
     conflicts: list[Conflict] = []
     tutors = await _overlap_ids(
@@ -299,5 +305,7 @@ async def find_offer_conflicts(
         conflicts.append(
             Conflict(ROOM_UNAVAILABLE, {"classroom_id": str(row.classroom_id)})
         )
-    conflicts += await _center_conflicts(session, slot, check_center_closed=True)
+    conflicts += await _center_conflicts(
+        session, slot, check_center_closed=check_center_closed
+    )
     return sort_conflicts(conflicts)

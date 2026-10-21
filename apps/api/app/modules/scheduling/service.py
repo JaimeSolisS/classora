@@ -68,9 +68,12 @@ create path makes the offer of a session created with a tutor;
 :func:`answer_offer` (accept / decline, the offered tutor only),
 :func:`expire_offer` (the periodic ``scheduling:expire_offers`` task,
 :mod:`~app.modules.scheduling.tasks`), :func:`withdraw_pending_offers` (the
-seam for #55 / #58 / M4-07b), :func:`list_my_offers` and
-:func:`list_session_offers`. A declined or expired offer becomes a
-``scheduling.offer_reassignment`` inbox item
+seam for #55 / #58; session scope only), :func:`list_my_offers` and
+:func:`list_session_offers`. Series offers (#233,
+:mod:`~app.modules.scheduling.series_offers`): a series created with a tutor
+gets one; :func:`offer_class_series` offers a series without a tutor from a
+date; :func:`withdraw_series_offer` is the seam for #54 / #55. A declined
+or expired offer becomes a ``scheduling.offer_reassignment`` inbox item
 (:data:`OFFER_REASSIGNMENT_HANDLER`) and notifies the ``schedule.assign``
 holders; ``app.wiring`` registers the handler and the three notification
 types (:func:`register_offer_notifications`). Family visibility:
@@ -181,6 +184,9 @@ from app.modules.scheduling.offer_flow import (
 from app.modules.scheduling.offer_flow import (
     withdraw_pending_offers as withdraw_pending_offers,
 )
+from app.modules.scheduling.offer_flow import (
+    withdraw_series_offer as withdraw_series_offer,
+)
 from app.modules.scheduling.offer_records import (
     register_offer_notifications as register_offer_notifications,
 )
@@ -208,6 +214,9 @@ from app.modules.scheduling.series import (
 )
 from app.modules.scheduling.series import get_class_series as get_class_series
 from app.modules.scheduling.series import has_class_series as has_class_series
+from app.modules.scheduling.series_offers import (
+    offer_class_series as offer_class_series,
+)
 from app.modules.scheduling.sessions import (
     TIME_ZONE_DEPENDENCY as TIME_ZONE_DEPENDENCY,
 )

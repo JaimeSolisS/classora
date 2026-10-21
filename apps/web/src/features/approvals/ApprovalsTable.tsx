@@ -167,9 +167,12 @@ function Badge({ children }: { children: string }) {
 /** The summary, with the session link of a reassignment item (#52 H3). */
 function RequestSummary({ item }: { item: ApprovalRequestItem }) {
   const { t } = useTranslation();
-  const { formatInstant } = useFormatters();
-  const summary = approvalSummary(item, t, (instant) =>
-    formatInstant(instant, 'dateTime'),
+  const { formatInstant, formatLocalDate } = useFormatters();
+  const summary = approvalSummary(
+    item,
+    t,
+    (instant) => formatInstant(instant, 'dateTime'),
+    (localDate) => formatLocalDate(localDate),
   );
   const link = reassignmentLink(item);
   if (!link) {
@@ -202,9 +205,12 @@ function ActionButtons({
   onDecide: (item: ApprovalRequestItem, action: ApprovalAction) => void;
 }) {
   const { t } = useTranslation();
-  const { formatInstant } = useFormatters();
-  const name = itemName(item, t, (instant) =>
-    formatInstant(instant, 'dateTime'),
+  const { formatInstant, formatLocalDate } = useFormatters();
+  const name = itemName(
+    item,
+    t,
+    (instant) => formatInstant(instant, 'dateTime'),
+    (localDate) => formatLocalDate(localDate),
   );
   return (
     <div className="flex flex-wrap gap-2">

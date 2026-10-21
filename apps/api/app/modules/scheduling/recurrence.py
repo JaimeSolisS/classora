@@ -195,3 +195,26 @@ def last_occurrence_on(fields: RecurrenceFields, starts_on: date) -> date | None
 def horizon_end(now: datetime, weeks: int) -> datetime:
     """The end of the rolling materialization window ``[now, horizon_end)``."""
     return now + timedelta(weeks=weeks)
+
+
+def first_covered_start(
+    series_rule: str,
+    *,
+    starts_on: date,
+    start_time: time,
+    zone: str,
+    from_date: date,
+    now: datetime,
+) -> datetime | None:
+    """The first rule occurrence a series offer from ``from_date`` covers
+    (#233 B4): the earliest instant whose local date is on or after
+    ``from_date`` and that starts after ``now``, whatever the horizon.
+    ``None`` when the rule has no such occurrence (a finite rule, ``UNTIL``
+    or ``COUNT``, that ends before). Instants follow the DST rule of the
+    module docstring."""
+    rule = _rule(series_rule, starts_on, start_time)
+    for local in rule.xafter(datetime.combine(from_date, time.min), inc=True):
+        instant = to_instant(local, zone)
+        if instant > now:
+            return instant
+    return None

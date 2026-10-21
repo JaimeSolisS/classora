@@ -34,8 +34,10 @@ import {
   type OfferErrors,
   type OfferField,
   type OfferMessage,
+  type OfferScope,
   type OfferValues,
 } from './rules';
+import { SeriesConflictList } from './SeriesConflictList';
 
 // "Offer to a tutor" (#52 H2) on the session page, for holders of
 // schedule.assign while the session is unassigned. Without any API call:
@@ -48,6 +50,12 @@ import {
 // override dialog ("Override and offer"); a 422 goes on the fields; any
 // other error (version_conflict, class_session_not_offerable) is an
 // ErrorAlert.
+//
+// For an unassigned occurrence of a series without a tutor (#233 G2) the
+// page passes `series`: the panel then offers "This session only" (the
+// route above) or "This and following sessions" (the series from this
+// occurrence's date). The series choice never has an override (E3): its 409
+// lists the conflicts grouped by local date.
 
 export interface OfferPanelProps {
   tutors: readonly Option[];
@@ -60,9 +68,15 @@ export interface OfferPanelProps {
   ) => Promise<AssignmentOfferCreated>;
   /** After a 201 (the page refreshes the session). */
   onOffered: (created: AssignmentOfferCreated) => void;
+  /** The series choice (#233 G2), for an occurrence of a tutorless series. */
+  series?: {
+    onSubmit: (values: OfferValues) => Promise<AssignmentOfferCreated>;
+  };
   /** Stories. */
   initialValues?: OfferValues;
   initialConflicts?: SchedulingConflict[];
+  initialScope?: OfferScope;
+  initialSeriesConflicts?: SchedulingConflict[];
 }
 
 export function OfferPanel({
@@ -72,8 +86,11 @@ export function OfferPanel({
   onSuggest,
   onSubmit,
   onOffered,
+  series,
   initialValues = EMPTY_OFFER,
   initialConflicts,
+  initialScope = 'session',
+  initialSeriesConflicts,
 }: OfferPanelProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
@@ -85,6 +102,12 @@ export function OfferPanel({
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
   );
+  const [scope, setScope] = useState<OfferScope>(
+    series ? initialScope : 'session',
+  );
+  const [seriesConflicts, setSeriesConflicts] = useState<
+    SchedulingConflict[] | null
+  >(initialSeriesConflicts ?? null);
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
   const [overriding, setOverriding] = useState(false);
@@ -143,10 +166,14 @@ export function OfferPanel({
     );
   }
 
-  function handleFailure(caught: unknown) {
+  function handleFailure(caught: unknown, forSeries = false) {
     const list = conflictsOf(caught);
     if (list) {
-      setConflicts(list);
+      if (forSeries) {
+        setSeriesConflicts(list);
+      } else {
+        setConflicts(list);
+      }
       return;
     }
     if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
@@ -169,6 +196,7 @@ export function OfferPanel({
 
   async function submit() {
     setConflicts(null);
+    setSeriesConflicts(null);
     setFailure(null);
     setAnnouncement('');
     const found = validateOffer(values);
@@ -178,10 +206,11 @@ export function OfferPanel({
       return;
     }
     setSubmitting(true);
+    const forSeries = scope === 'series' && series !== undefined;
     try {
-      onOffered(await onSubmit(values));
+      onOffered(await (forSeries ? series.onSubmit(values) : onSubmit(values)));
     } catch (caught) {
-      handleFailure(caught);
+      handleFailure(caught, forSeries);
     } finally {
       setSubmitting(false);
     }
@@ -258,6 +287,9 @@ export function OfferPanel({
       <p className="text-sm text-muted-foreground">
         {t('scheduling.offer.intro')}
       </p>
+      {seriesConflicts ? (
+        <SeriesConflictList conflicts={seriesConflicts} />
+      ) : null}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
           <ConflictPanel conflicts={conflicts} />
@@ -304,6 +336,39 @@ export function OfferPanel({
         onSubmit={onFormSubmit}
         className="flex flex-col gap-4"
       >
+        {series ? (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">
+              {t('scheduling.offer.series.scope')}
+            </legend>
+            {(['session', 'series'] as const).map((value) => (
+              <label
+                key={value}
+                className="flex min-h-9 items-center gap-2 text-sm"
+              >
+                <input
+                  type="radio"
+                  name={`${id}-scope`}
+                  value={value}
+                  checked={scope === value}
+                  onChange={() => {
+                    setScope(value);
+                    setConflicts(null);
+                    setSeriesConflicts(null);
+                    setFailure(null);
+                  }}
+                  className="size-4 accent-foreground"
+                />
+                {t(`scheduling.offer.series.${value}`)}
+              </label>
+            ))}
+            {scope === 'series' ? (
+              <p className="text-sm text-muted-foreground">
+                {t('scheduling.offer.series.help')}
+              </p>
+            ) : null}
+          </fieldset>
+        ) : null}
         <div className="flex flex-col gap-2">
           <label htmlFor={fieldId('tutor')} className="text-sm font-medium">
             {t('scheduling.fields.tutor')}

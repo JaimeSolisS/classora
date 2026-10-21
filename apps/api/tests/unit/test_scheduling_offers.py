@@ -1,15 +1,21 @@
 """Pure assignment offer rules (#52 B1-B4, E1, D3 schema; I4)."""
 
+import re
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from itertools import product
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from app.core import jobs
 from app.modules.administration.service import SchedulingPolicyValues
-from app.modules.scheduling.models import OFFER_STATUSES
+from app.modules.scheduling.materialize import (
+    assigned_tutor,
+    occurrence_initial_state,
+)
+from app.modules.scheduling.models import OFFER_STATUSES, ClassSeries
 from app.modules.scheduling.offers import (
     ANSWERED_STATUSES,
     RespondByInvalidError,
@@ -21,8 +27,10 @@ from app.modules.scheduling.offers import (
 from app.modules.scheduling.schemas import (
     AssignmentOfferCreate,
     AssignmentOfferDecline,
+    ClassSeriesOfferCreate,
     ClassSessionCreate,
 )
+from app.modules.scheduling.series_offers import default_from_date
 from app.modules.scheduling.states import (
     FAMILY_VISIBLE_STATES,
     SessionState,
@@ -236,3 +244,83 @@ def test_the_expiry_task_is_periodic_with_a_queueing_lock():
     assert app.tasks["scheduling:expire_offers"].queueing_lock == (
         "scheduling-expire-offers"
     )
+
+
+# --- Series offers (#233 B1, B2, C2; I4) ---------------------------------------------
+
+
+def _series(
+    *, tutor: bool, status: str | None, assignment_from: date | None
+) -> ClassSeries:
+    return ClassSeries(
+        tutor_user_id=uuid.uuid4() if tutor else None,
+        assignment_status=status,
+        assignment_from=assignment_from,
+    )
+
+
+FROM = date(2031, 1, 13)
+
+
+@pytest.mark.parametrize(
+    ("tutor", "status", "local_date", "expected"),
+    [
+        (False, None, FROM, SessionState.UNASSIGNED),
+        (True, "pending", FROM - timedelta(days=1), SessionState.UNASSIGNED),
+        (True, "accepted", FROM - timedelta(days=1), SessionState.UNASSIGNED),
+        # The boundary: assignment_from itself is covered.
+        (True, "pending", FROM, SessionState.OFFERED),
+        (True, "accepted", FROM, SessionState.CONFIRMED),
+        (True, "pending", FROM + timedelta(days=30), SessionState.OFFERED),
+        (True, "accepted", FROM + timedelta(days=30), SessionState.CONFIRMED),
+    ],
+)
+def test_occurrence_initial_state(tutor, status, local_date, expected):
+    series = _series(
+        tutor=tutor, status=status, assignment_from=FROM if tutor else None
+    )
+
+    assert occurrence_initial_state(series, local_date) == expected
+    assert (assigned_tutor(series, local_date) is not None) is (
+        expected != SessionState.UNASSIGNED
+    )
+
+
+def test_the_default_from_date_is_the_later_of_the_start_and_today():
+    assert default_from_date(date(2031, 1, 6), date(2031, 1, 1)) == date(2031, 1, 6)
+    assert default_from_date(date(2031, 1, 6), date(2031, 2, 1)) == date(2031, 2, 1)
+    assert default_from_date(date(2031, 1, 6), date(2031, 1, 6)) == date(2031, 1, 6)
+
+
+def test_a_series_offer_body_takes_no_override():
+    with pytest.raises(ValidationError) as caught:
+        ClassSeriesOfferCreate.model_validate(
+            {
+                "tutor_user_id": str(uuid.uuid4()),
+                "version": 1,
+                "override": {"codes": ["tutor_unavailable"], "reason": "Sí"},
+            }
+        )
+    assert [e["type"] for e in caught.value.errors()] == ["extra_forbidden"]
+
+
+SCHEDULING = Path(__file__).parents[2] / "app" / "modules" / "scheduling"
+
+
+def test_every_caller_of_occurrence_initial_state_attaches_offered_rows():
+    """B2: a module that creates rows through occurrence_initial_state also
+    attaches the offered ones to the pending series offer."""
+    callers = [
+        path
+        for path in sorted(SCHEDULING.glob("*.py"))
+        if path.name not in {"materialize.py", "service.py"}
+        and re.search(r"\boccurrence_initial_state\(", path.read_text())
+    ]
+    materialize = (SCHEDULING / "materialize.py").read_text()
+    body = materialize.split("async def materialize_series(", 1)[1]
+
+    assert callers  # the conflict approve at least
+    assert "occurrence_initial_state(" in body
+    assert "attach_to_pending_series_offer(" in body
+    for path in callers:
+        assert "attach_to_pending_series_offer(" in path.read_text(), path.name

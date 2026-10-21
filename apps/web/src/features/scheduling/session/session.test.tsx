@@ -23,15 +23,24 @@ import {
   TUTORS,
 } from '../create/fixtures';
 import {
+  ACCEPTED_SERIES,
   DECLINED,
   NEW_OFFER,
+  NEW_SERIES_OFFER,
   OFFERED_SESSION,
+  PENDING_SERIES,
+  SERIES,
+  SERIES_CONFLICTS,
+  SERIES_ID,
+  SERIES_ROW,
   UNASSIGNED_SESSION,
 } from './fixtures';
 import {
+  conflictsByDate,
   offerBody,
   offerServerErrors,
   respondByInstant,
+  seriesOfferBody,
   validateOffer,
 } from './rules';
 
@@ -44,6 +53,8 @@ const DETAIL = `GET /api/v1/class-sessions/${ID}`;
 const OFFERS = `GET /api/v1/class-sessions/${ID}/offers`;
 const OFFER = `POST /api/v1/class-sessions/${ID}/offers`;
 const REPLACEMENTS = `GET /api/v1/class-sessions/${ID}/replacement-tutors`;
+const SERIES_DETAIL = `GET /api/v1/class-series/${SERIES_ID}`;
+const SERIES_OFFER = `POST /api/v1/class-series/${SERIES_ID}/offers`;
 
 const ASSIGNER: SessionUserBody = {
   ...TEST_USER,
@@ -178,6 +189,33 @@ describe('offer rules', () => {
     ).toEqual({});
   });
 
+  it('builds the series body with the series version and the from-date', () => {
+    expect(
+      seriesOfferBody(
+        { tutorId: 'tutor-1', deadlineDate: '', deadlineTime: '' },
+        5,
+        '2031-01-06',
+        'America/Mexico_City',
+      ),
+    ).toEqual({
+      tutor_user_id: 'tutor-1',
+      version: 5,
+      from_date: '2031-01-06',
+    });
+  });
+
+  it('groups series conflicts by local date', () => {
+    expect(
+      conflictsByDate(SERIES_CONFLICTS).map((group) => [
+        group.date,
+        group.conflicts.map((c) => c.code),
+      ]),
+    ).toEqual([
+      ['2031-01-13', ['tutor_unavailable', 'tutor_not_qualified']],
+      ['2031-01-15', ['tutor_overlap']],
+    ]);
+  });
+
   it('maps the server field errors onto the fields', () => {
     expect(
       offerServerErrors([
@@ -302,5 +340,108 @@ describe('/schedule/sessions/:id', () => {
       ...new Set(SOFT_CONFLICTS.map((c) => c.code)),
     ]);
     expect(main().textContent).toContain('Offered to Diego Torres.');
+  });
+
+  it('a series occurrence offers this session only or the series from it', async () => {
+    const api = stub(OWNER, {
+      [DETAIL]: () => jsonResponse(200, SERIES_ROW),
+      [SERIES_DETAIL]: () => jsonResponse(200, SERIES),
+      [OFFER]: () => jsonResponse(201, NEW_OFFER),
+      [SERIES_OFFER]: () => jsonResponse(201, NEW_SERIES_OFFER),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    expect(main().textContent).toContain('Part of a weekly series · no tutor');
+    const radios = [
+      ...main().querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+    ];
+    expect(radios.map((r) => r.parentElement?.textContent)).toEqual([
+      'This session only',
+      'This and following sessions',
+    ]);
+    expect(radios[0]!.checked).toBe(true);
+
+    await click(radios[1]!);
+    choose(
+      main().querySelector<HTMLSelectElement>('form select')!,
+      TUTORS[1]!.id,
+    );
+    await click(buttonByText(main(), 'Offer the session')!);
+
+    expect(api.calls(OFFER)).toHaveLength(0);
+    expect(api.calls(SERIES_OFFER)[0]!.body).toEqual({
+      tutor_user_id: TUTORS[1]!.id,
+      version: 5,
+      from_date: '2031-01-06',
+    });
+    expect(main().textContent).toContain(
+      'Weekly series offered to Diego Torres.',
+    );
+  });
+
+  it('a series 409 lists the conflicts by date, with no override', async () => {
+    const conflict = () =>
+      new Response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'Conflict',
+          status: 409,
+          code: 'scheduling_conflict',
+          request_id: 'req-1',
+          conflicts: SERIES_CONFLICTS,
+        }),
+        {
+          status: 409,
+          headers: { 'Content-Type': 'application/problem+json' },
+        },
+      );
+    stub(OWNER, {
+      [DETAIL]: () => jsonResponse(200, SERIES_ROW),
+      [SERIES_DETAIL]: () => jsonResponse(200, SERIES),
+      [SERIES_OFFER]: conflict,
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    await click(
+      main().querySelectorAll<HTMLInputElement>('input[type="radio"]')[1]!,
+    );
+    choose(
+      main().querySelector<HTMLSelectElement>('form select')!,
+      TUTORS[1]!.id,
+    );
+    await click(buttonByText(main(), 'Offer the session')!);
+
+    const alert = main().querySelector('[role="alert"]')!;
+    expect(alert.textContent).toContain(
+      'The series can’t be offered: 3 conflicts',
+    );
+    expect([...alert.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(
+      ['Jan 13, 2031', 'Jan 15, 2031'],
+    );
+    expect(buttonByText(main(), 'Override and offer')).toBeUndefined();
+  });
+
+  it('no series choice once the series has a tutor; its assignment is shown', async () => {
+    stub(ASSIGNER, {
+      [DETAIL]: () => jsonResponse(200, SERIES_ROW),
+      [SERIES_DETAIL]: () => jsonResponse(200, ACCEPTED_SERIES),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    expect(main().textContent).toContain(
+      'Part of a weekly series · Diego Torres from Jan 6, 2031',
+    );
+    expect(main().textContent).toContain('Offer to a tutor');
+    expect(main().querySelector('input[type="radio"]')).toBeNull();
+    app.unmount();
+
+    stub(ASSIGNER, {
+      [DETAIL]: () => jsonResponse(200, SERIES_ROW),
+      [SERIES_DETAIL]: () => jsonResponse(200, PENDING_SERIES),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    expect(main().textContent).toContain(
+      'Part of a weekly series · offered to Diego Torres, answer by Jan 4, 2031, 3:00 AM',
+    );
   });
 });

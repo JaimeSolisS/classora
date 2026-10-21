@@ -19,13 +19,22 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import type { AssignmentOfferItem } from './api';
-import { DECLINED_OFFER, NOW, PENDING_OFFER } from './fixtures';
 import {
+  DECLINED_OFFER,
+  NOW,
+  PENDING_OFFER,
+  SERIES_OFFER,
+  SHORT_SERIES_OFFER,
+} from './fixtures';
+import {
+  addMinutesToTime,
   deadlineText,
   isDueSoon,
+  localTimeText,
   noteTooLong,
   sessionTimes,
   staleAnswer,
+  weekdayList,
 } from './rules';
 
 // #52 H1, H4: the tutor's "My offers" page: the role requirement, the
@@ -118,6 +127,19 @@ describe('rules', () => {
   it('limits the note to 500 characters once trimmed', () => {
     expect(noteTooLong(`  ${'a'.repeat(500)}  `)).toBe(false);
     expect(noteTooLong('a'.repeat(501))).toBe(true);
+  });
+
+  it('formats a series rule: local times, end time and weekday lists', () => {
+    expect(addMinutesToTime('16:00', 90)).toBe('17:30');
+    expect(addMinutesToTime('23:00', 60)).toBe('24:00');
+    expect(localTimeText('16:00', 'es')).toBe('16:00');
+    expect(localTimeText('16:00', 'en')).toBe('4:00 PM');
+    expect(localTimeText('00:30', 'en')).toBe('12:30 AM');
+    expect(localTimeText('12:00', 'en')).toBe('12:00 PM');
+    const names = ['', 'lunes', 'martes', 'miércoles'];
+    expect(weekdayList([3, 1], (day) => names[day]!, 'es')).toBe(
+      'lunes y miércoles',
+    );
   });
 
   it('treats only offer_not_pending and offer_expired as stale answers', () => {
@@ -247,6 +269,100 @@ describe('/offers', () => {
     expect(text).toContain('Declined');
     expect(text).toContain('Note: Tengo otra clase a esa hora.');
     expect(buttonByText(main(), 'Accept')).toBeUndefined();
+  });
+
+  it('shows a series card: rule, zone, from-date, count and the first sessions', async () => {
+    stub({ [LIST]: () => page([SERIES_OFFER]) });
+    app = await renderApp('/offers');
+
+    const text = main().textContent ?? '';
+    expect(text).toContain('Weekly series: Álgebra (Secundaria)');
+    expect(text).toContain(
+      'Every Monday and Wednesday, 10:00 AM–11:00 AM (America/Mexico_City)',
+    );
+    expect(text).toContain('From Jan 6, 2031 · No end date');
+    expect(text).toContain(
+      '24 sessions scheduled so far; later sessions are added automatically.',
+    );
+    expect(
+      main().querySelectorAll('ul[aria-label="Scheduled sessions"] li'),
+    ).toHaveLength(11);
+    expect(text).toContain('and 14 more');
+    expect(text).toContain('Aula 1');
+    expect(text).toContain('Ana López');
+    expect(text).toContain('Answer by Jan 5, 2031, 4:00 AM');
+  });
+
+  it('a short series lists every session and its count, without "more"', async () => {
+    stub({ [LIST]: () => page([SHORT_SERIES_OFFER]) });
+    app = await renderApp('/offers');
+
+    const text = main().textContent ?? '';
+    expect(text).toContain('From Jan 6, 2031 · 4 sessions in all');
+    expect(text).not.toContain('more');
+  });
+
+  it('a series card in Tijuana keeps its local time across the DST change', async () => {
+    // Clocks fall back on Sunday 2026-11-01: 16:00 is UTC-7 before (23:00Z)
+    // and UTC-8 after (00:00Z the next day).
+    const sessions = [
+      ['2026-10-28T23:00:00Z', '2026-10-29T00:00:00Z'],
+      ['2026-11-03T00:00:00Z', '2026-11-03T01:00:00Z'],
+    ].map(([starts_at, ends_at], index) => ({
+      ...SERIES_OFFER.sessions[0]!,
+      id: `00000000-0000-4000-8000-0000000009${index}0`,
+      starts_at: starts_at!,
+      ends_at: ends_at!,
+    }));
+    const offer: AssignmentOfferItem = {
+      ...SERIES_OFFER,
+      series: {
+        ...SERIES_OFFER.series!,
+        start_time: '16:00',
+        time_zone: 'America/Tijuana',
+        from_date: '2026-10-26',
+      },
+      respond_by: '2026-10-26T22:00:00Z',
+      session_count: 2,
+      sessions,
+      sessions_truncated: false,
+    };
+    stub({
+      'GET /api/v1/auth/me': meAs({
+        ...OTHER_USER,
+        center_time_zone: 'America/Tijuana',
+      }),
+      [LIST]: () => page([offer]),
+    });
+    app = await renderApp('/offers');
+
+    const text = main().textContent ?? '';
+    expect(text).toContain('Every Monday and Wednesday, 4:00 PM–5:00 PM');
+    expect(text).toContain('Oct 28, 2026, 4:00 PM–5:00 PM');
+    expect(text).toContain('Nov 2, 2026, 4:00 PM–5:00 PM');
+  });
+
+  it('accepting a series confirms all current and future sessions', async () => {
+    const accept = `POST /api/v1/assignment-offers/${SERIES_OFFER.id}/accept`;
+    const api = stub({
+      [LIST]: () => page([SERIES_OFFER]),
+      [accept]: () =>
+        jsonResponse(200, { ...SERIES_OFFER, status: 'accepted' }),
+    });
+    app = await renderApp('/offers');
+
+    await click(buttonByText(main(), 'Accept'));
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain('Accept this weekly series?');
+    expect(dialog.textContent).toContain(
+      'You will teach the weekly series Álgebra from Jan 6, 2031. All its current and future sessions from that date are confirmed once you accept.',
+    );
+    await click(buttonNamed(dialog, 'Accept'));
+
+    expect(api.calls(accept)).toHaveLength(1);
+    expect(main().querySelector('[role="status"]')?.textContent).toContain(
+      'Accepted: weekly series Álgebra from Jan 6, 2031',
+    );
   });
 
   it('pins "now" for the due-soon badge in the fixtures', () => {

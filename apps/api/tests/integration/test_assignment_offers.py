@@ -294,6 +294,7 @@ def test_create_with_a_tutor_makes_a_pending_offer_and_notifies_the_tutor(
 
     assert created["pending_offer"] == {
         "id": offer_id,
+        "scope": "session",
         "tutor": {
             "id": str(setup.tutor.id),
             "display_name": created["tutor"]["display_name"],
@@ -546,6 +547,9 @@ def test_decline_returns_the_session_and_asks_staff_to_reassign_it(
         "outcome": "declined",
         "decline_note": "Viajo ese día",
         "session_state": "unassigned",
+        "class_series_id": None,
+        "from_date": None,
+        "occurrence_count": None,
     }
     assert_invariant(module_seeded_url)
 

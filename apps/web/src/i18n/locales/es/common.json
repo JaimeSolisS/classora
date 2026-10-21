@@ -299,7 +299,13 @@
       "qualification": "{{tutor}} — {{subject}} ({{level}})",
       "reassignmentDeclined": "Rechazada por {{tutor}} · {{subject}} · {{when}}",
       "reassignmentExpired": "Vencida, ofrecida a {{tutor}} · {{subject}} · {{when}}",
-      "occurrenceConflict": "Sesión de serie {{when}} — {{students}} · {{subject}}: {{codes}}"
+      "occurrenceConflict": "Sesión de serie {{when}} — {{students}} · {{subject}}: {{codes}}",
+      "seriesReassignmentDeclined_one": "Rechazada por {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesión)",
+      "seriesReassignmentDeclined_many": "Rechazada por {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
+      "seriesReassignmentDeclined_other": "Rechazada por {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
+      "seriesReassignmentExpired_one": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesión)",
+      "seriesReassignmentExpired_many": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
+      "seriesReassignmentExpired_other": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)"
     },
     "list": {
       "title": "Solicitudes",
@@ -1362,7 +1368,10 @@
       "staff_qualification_revoked": "Se revocó tu calificación para {{subject_name}} ({{education_level_name}}). Consulta el motivo en tus calificaciones.",
       "scheduling_offer_received": "Tienes una nueva oferta de sesión: {{subject_name}}, {{starts_at}}. Responde antes del {{respond_by}}.",
       "scheduling_offer_declined": "{{tutor_name}} rechazó {{subject_name}}, {{starts_at}}. Ofrécela a otro tutor.",
-      "scheduling_offer_expired": "La oferta de {{subject_name}}, {{starts_at}} a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor."
+      "scheduling_offer_expired": "La oferta de {{subject_name}}, {{starts_at}} a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor.",
+      "scheduling_offer_received_series": "Serie semanal ofrecida: {{subject_name}}, desde el {{from_date}}. Responde antes del {{respond_by}}.",
+      "scheduling_offer_declined_series": "{{tutor_name}} rechazó la serie semanal de {{subject_name}} desde el {{from_date}}. Ofrécela a otro tutor.",
+      "scheduling_offer_expired_series": "La serie semanal de {{subject_name}} desde el {{from_date}} ofrecida a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor."
     }
   },
   "scheduling": {
@@ -1609,6 +1618,17 @@
       "validation": {
         "tutorRequired": "Elige un tutor.",
         "deadlineIncomplete": "Indica una fecha y una hora, o deja ambas vacías."
+      },
+      "series": {
+        "scope": "Ofrecer",
+        "session": "Solo esta sesión",
+        "series": "Esta y las siguientes sesiones",
+        "help": "Ofrece la serie semanal desde la fecha de esta sesión: cada sesión sin asignar a partir de entonces y las que se agreguen después. Una oferta de serie no puede omitir reglas.",
+        "conflictsHeading_one": "No se puede ofrecer la serie: 1 conflicto",
+        "conflictsHeading_many": "No se puede ofrecer la serie: {{count}} conflictos",
+        "conflictsHeading_other": "No se puede ofrecer la serie: {{count}} conflictos",
+        "noDate": "Otros",
+        "noOverride": "Una oferta de serie no puede omitir reglas. Elige otro tutor, ofrece desde una fecha posterior u ofrece solo esta sesión."
       }
     },
     "session": {
@@ -1625,7 +1645,15 @@
       "noOffers": "Aún no hay ofertas.",
       "offeredBy": "Ofrecida por {{name}} el {{when}}",
       "respondedAt": "Respondida el {{when}}",
-      "respondBy": "Responder antes del {{when}}"
+      "respondBy": "Responder antes del {{when}}",
+      "seriesOfferedTo": "Serie semanal ofrecida a {{tutor}}.",
+      "pendingSeriesOfferText": "{{tutor}}, con la serie semanal; responde antes del {{when}}",
+      "series": "Serie",
+      "partOfSeries": "Parte de una serie semanal",
+      "seriesNoTutor": "sin tutor",
+      "seriesPending": "ofrecida a {{tutor}}, responde antes del {{when}}",
+      "seriesPendingNoDeadline": "ofrecida a {{tutor}}",
+      "seriesAccepted": "{{tutor}} desde el {{date}}"
     }
   },
   "courses": {
@@ -1813,6 +1841,29 @@
       "submit": "Rechazar",
       "action": "Rechazar",
       "for": "Rechazar {{offer}}"
+    },
+    "series": {
+      "label": "serie semanal de {{subject}} desde el {{date}}",
+      "heading": "Serie semanal: {{subject}} ({{level}})",
+      "every": "Cada {{days}}, {{start}}–{{end}}",
+      "everyWeeks_one": "Cada {{count}} semana los {{days}}, {{start}}–{{end}}",
+      "everyWeeks_many": "Cada {{count}} semanas los {{days}}, {{start}}–{{end}}",
+      "everyWeeks_other": "Cada {{count}} semanas los {{days}}, {{start}}–{{end}}",
+      "from": "Desde el {{date}}",
+      "until": "hasta el {{date}}",
+      "count_one": "{{count}} sesión en total",
+      "count_many": "{{count}} sesiones en total",
+      "count_other": "{{count}} sesiones en total",
+      "noEnd": "Sin fecha de fin",
+      "scheduled_one": "{{count}} sesión programada por ahora; las siguientes se agregan automáticamente.",
+      "scheduled_many": "{{count}} sesiones programadas por ahora; las siguientes se agregan automáticamente.",
+      "scheduled_other": "{{count}} sesiones programadas por ahora; las siguientes se agregan automáticamente.",
+      "sessions": "Sesiones programadas",
+      "more_one": "y {{count}} más",
+      "more_many": "y {{count}} más",
+      "more_other": "y {{count}} más",
+      "acceptTitle": "¿Aceptar esta serie semanal?",
+      "acceptDescription": "Impartirás la {{offer}}. Todas sus sesiones actuales y futuras desde esa fecha quedan confirmadas en cuanto la aceptas."
     }
   }
 }

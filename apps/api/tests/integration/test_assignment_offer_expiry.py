@@ -1,12 +1,13 @@
-"""The offer expiry task (#52 E3, I2): ``scheduling.tasks.run_expire_offers``
-with a frozen clock, on a database of its own per test (the run scans every
-offer).
+"""The offer expiry task (#52 E3, I2; series offers #233 I2):
+``scheduling.tasks.run_expire_offers`` with a frozen clock, on a database of
+its own per test (the run scans every offer).
 """
 
 import asyncio
 import uuid
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.scheduling import service as scheduling
 from app.modules.scheduling import tasks
 from app.modules.scheduling.offer_flow import lock_sessions
-from app.modules.scheduling.schemas import ClassSessionCreate
+from app.modules.scheduling.schemas import (
+    ClassSeriesCreate,
+    ClassSessionCreate,
+    SeriesRecurrence,
+)
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import create_user
 from tests.integration.conftest import run_sql, settings_for
@@ -204,3 +209,81 @@ def test_several_overdue_offers_each_expire(seeded_url, refs):
 
     assert result == tasks.ExpiryResult(expired=2, skipped=0)
     assert offer_row(seeded_url, second.pending_offer.id).status == "expired"
+
+
+# --- Series offers (#233 I2) ---------------------------------------------------------
+
+SERIES_NOW = datetime(2031, 1, 3, 12, 0, tzinfo=ZoneInfo("America/Mexico_City"))
+"""A Friday: the series' first Monday (2031-01-06 16:00) is 76 hours ahead."""
+
+
+def series_offered(url: str, refs: dict[str, uuid.UUID]) -> tuple[Any, Any]:
+    """A Monday/Wednesday series offered to ``refs["tutor"]`` at
+    :data:`SERIES_NOW` (24 rows); returns ``(series id, its offer row)``."""
+    body = ClassSeriesCreate(
+        kind="individual",
+        student_id=refs["student"],
+        subject_id=refs["subject"],
+        tutor_user_id=refs["tutor"],
+        classroom_id=refs["room"],
+        starts_on=date(2031, 1, 6),
+        start_time=time(16),
+        duration_minutes=60,
+        recurrence=SeriesRecurrence(weekdays=[1, 3]),
+    )
+
+    async def _create(session: AsyncSession) -> Any:
+        return await scheduling.create_class_series(
+            session, body, horizon_weeks=12, actor_id=refs["owner"]
+        )
+
+    with frozen_clock(SERIES_NOW):
+        created = in_uow(url, _create)
+    [offer] = run_sql(
+        url,
+        "SELECT id, respond_by FROM assignment_offers WHERE class_series_id = :id",
+        {"id": created.id},
+    )
+    return created.id, offer
+
+
+def test_an_overdue_series_offer_expires_and_the_series_is_reassigned(seeded_url, refs):
+    series_id, offer = series_offered(seeded_url, refs)
+
+    with frozen_clock(offer.respond_by + timedelta(minutes=3)):
+        result = run(seeded_url)
+        again = run(seeded_url)
+
+    assert result == tasks.ExpiryResult(expired=1, skipped=0)
+    assert again == tasks.ExpiryResult(expired=0, skipped=0)
+    [row] = run_sql(
+        seeded_url,
+        "SELECT status FROM assignment_offers WHERE id = :id",
+        {"id": offer.id},
+    )
+    assert row.status == "expired"
+    sessions = run_sql(
+        seeded_url,
+        "SELECT state, tutor_user_id FROM class_sessions WHERE series_id = :id",
+        {"id": series_id},
+    )
+    assert len(sessions) == 24
+    assert {(s.state, s.tutor_user_id) for s in sessions} == {("unassigned", None)}
+    [series] = run_sql(
+        seeded_url,
+        "SELECT tutor_user_id, assignment_status, assignment_from FROM class_series"
+        " WHERE id = :id",
+        {"id": series_id},
+    )
+    assert tuple(series) == (None, None, None)
+    [item] = inbox(seeded_url, offer.id)
+    assert (item.status, item.requester_user_id) == ("pending", None)
+    assert expired_notices(seeded_url, offer.id) >= 1
+    [notice] = run_sql(
+        seeded_url,
+        "SELECT params FROM notifications WHERE recipient_user_id = :u"
+        " AND notification_type = 'scheduling.offer_expired'",
+        {"u": refs["owner"]},
+    )
+    assert notice.params["class_series_id"] == str(series_id)
+    assert notice.params["occurrence_count"] == 24

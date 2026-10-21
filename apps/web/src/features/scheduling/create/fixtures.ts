@@ -82,6 +82,7 @@ export const CREATED: ClassSessionCreated = {
   conflict_codes: [],
   pending_offer: {
     id: '00000000-0000-4000-8000-0000000005f1',
+    scope: 'session',
     tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
     respond_by: '2026-10-23T12:00:00Z',
   },

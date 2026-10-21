@@ -224,9 +224,11 @@ class SessionOverrideItem(BaseModel):
 
 
 class PendingOffer(BaseModel):
-    """The pending offer of an ``offered`` session (#52 G3)."""
+    """The pending offer of an ``offered`` session (#52 G3): its own, or the
+    series offer that covers it (#233 F2)."""
 
     id: uuid.UUID
+    scope: Literal["session", "series"]
     tutor: SessionTutor
     respond_by: datetime
 
@@ -559,7 +561,7 @@ class TutorSuggestionList(BaseModel):
 
 # --- Assignment offers (#52 C, D, G) ----------------------------------------------
 
-type OfferScopeCode = Literal["session"]
+type OfferScopeCode = Literal["session", "series"]
 type OfferStatusCode = Literal[
     "pending", "accepted", "declined", "expired", "withdrawn"
 ]
@@ -660,8 +662,26 @@ class OfferSession(BaseModel):
     )
 
 
+class OfferSeries(BaseModel):
+    """The series a series offer is for (#233 F1): its rule and the local
+    date the offer covers from. Times are local in ``time_zone``."""
+
+    id: uuid.UUID
+    kind: SessionKindCode
+    subject: OfferSessionSubject
+    weekdays: list[int] = Field(description="ISO weekdays (1 = Monday).")
+    interval: int
+    start_time: str = Field(description="The local start time, HH:MM.")
+    duration_minutes: int
+    time_zone: str
+    from_date: date = Field(description="The local date the offer covers from.")
+    until: date | None
+    count: int | None
+    last_occurrence_on: date | None
+
+
 class AssignmentOfferItem(BaseModel):
-    """One assignment offer (#52 G1)."""
+    """One assignment offer (#52 G1; a series offer, #233 F1)."""
 
     id: uuid.UUID
     scope: OfferScopeCode
@@ -672,7 +692,44 @@ class AssignmentOfferItem(BaseModel):
     respond_by: datetime
     responded_at: datetime | None
     decline_note: str | None
-    sessions: list[OfferSession] = Field(description="The covered sessions, by start.")
+    series: OfferSeries | None = Field(
+        description="The series of a series offer; null for a session offer."
+    )
+    session_count: int = Field(description="How many sessions the offer covers.")
+    sessions: list[OfferSession] = Field(
+        description=(
+            "The covered sessions, by start: every one for a session offer, the"
+            " first 10 for a series offer."
+        )
+    )
+    sessions_truncated: bool = Field(
+        description="More sessions are covered than `sessions` lists."
+    )
+
+
+class ClassSeriesOfferCreate(BaseModel):
+    """Offer a series without a tutor to one
+    (``POST /api/v1/class-series/{id}/offers``, #233 C2). No ``override``
+    (M4-09c): any conflict refuses the offer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tutor_user_id: uuid.UUID
+    version: int = Field(description="The series' version, as last read.")
+    from_date: date | None = Field(
+        default=None,
+        description=(
+            "The local date the offer covers from (not before today); default:"
+            " the later of the series' start and today."
+        ),
+    )
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "An earlier deadline for the tutor's answer, after now and no later"
+            " than the default; truncated to whole minutes."
+        ),
+    )
 
 
 class AssignmentOfferCreated(BaseModel):
@@ -771,6 +828,13 @@ class ClassSeriesCreate(BaseModel):
     )
     duration_minutes: int = Field(ge=15, le=480, description="15-480 minutes.")
     recurrence: SeriesRecurrence
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "With a tutor: an earlier deadline for the series offer, after now"
+            " and no later than the default; truncated to whole minutes."
+        ),
+    )
 
     _start_time = field_validator("start_time", mode="before")(_check_start_time)
 
@@ -795,6 +859,19 @@ class SeriesOccurrence(BaseModel):
     is_exception: bool
 
 
+class SeriesAssignment(BaseModel):
+    """The series' tutor assignment (#233 F2): ``pending`` while its series
+    offer waits for an answer (``respond_by`` set), ``accepted`` after."""
+
+    status: Literal["pending", "accepted"]
+    tutor: SessionTutor
+    from_date: date = Field(description="The local date it covers from.")
+    offer_id: uuid.UUID | None = Field(
+        description="The series offer; null for a series assigned before offers."
+    )
+    respond_by: datetime | None
+
+
 class ClassSeriesDetail(BaseModel):
     """One class series (``GET /api/v1/class-series/{id}``). The web app
     never parses ``rrule``: it reads ``recurrence``."""
@@ -815,6 +892,9 @@ class ClassSeriesDetail(BaseModel):
     rrule: str = Field(description="The normalized RFC 5545 rule (derived).")
     last_occurrence_on: date | None = Field(
         description="The local date of the last occurrence; null: open-ended."
+    )
+    assignment: SeriesAssignment | None = Field(
+        description="The tutor assignment; null when the series has no tutor."
     )
     version: int
     created_at: datetime

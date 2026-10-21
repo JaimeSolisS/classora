@@ -3,15 +3,22 @@ import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { toLanguage } from '@/i18n/language';
-import { formatInstant } from '@/lib/time';
+import { formatInstant, formatLocalDate } from '@/lib/time';
 import type { SchedulingWarning } from '../create/api';
 import { useWarningMessage } from '../create/warningMessages';
-import type { AssignmentOfferItem, ClassSessionDetail } from './api';
+import type {
+  AssignmentOfferItem,
+  ClassSeriesDetail,
+  ClassSessionDetail,
+} from './api';
 
 // The staff session page's content (#52 H2), presentational: the session
 // summary and state, its pending offer, the offer history (status, tutor,
 // dates, decline note) and, when the page passes it, the "Offer to a tutor"
 // panel. A just-made offer is announced with its workload warnings (#50).
+// An occurrence of a series (#233 G2) says so and shows the series'
+// assignment: none, pending (the tutor and the deadline) or accepted (the
+// tutor and the date it covers from).
 
 export type SessionState =
   | { status: 'loading' }
@@ -31,7 +38,10 @@ export interface SessionDetailViewProps {
   offered?: {
     tutorName: string;
     warnings: readonly SchedulingWarning[];
+    series?: boolean;
   } | null;
+  /** The session's series, once read (#233 G2). */
+  series?: ClassSeriesDetail | null;
 }
 
 const OFFER_STATUS_KEYS = {
@@ -47,6 +57,7 @@ export function SessionDetailView({
   timeZone,
   offerPanel,
   offered,
+  series,
 }: SessionDetailViewProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -64,6 +75,27 @@ export function SessionDetailView({
   const { session, offers } = state;
   const pending = session.pending_offer;
 
+  function seriesAssignmentText(detail: ClassSeriesDetail): string {
+    const assignment = detail.assignment;
+    if (!assignment) {
+      return t('scheduling.session.seriesNoTutor');
+    }
+    if (assignment.status === 'pending') {
+      return assignment.respond_by
+        ? t('scheduling.session.seriesPending', {
+            tutor: assignment.tutor.display_name,
+            when: when(assignment.respond_by),
+          })
+        : t('scheduling.session.seriesPendingNoDeadline', {
+            tutor: assignment.tutor.display_name,
+          });
+    }
+    return t('scheduling.session.seriesAccepted', {
+      tutor: assignment.tutor.display_name,
+      date: formatLocalDate(assignment.from_date, { language }),
+    });
+  }
+
   return (
     <div className="flex w-full max-w-3xl min-w-0 flex-col gap-6">
       {offered ? (
@@ -72,7 +104,13 @@ export function SessionDetailView({
           className="flex flex-col gap-1 rounded-md border border-border p-3"
         >
           <p className="font-medium">
-            {t('scheduling.session.offeredTo', { tutor: offered.tutorName })}
+            {offered.series
+              ? t('scheduling.session.seriesOfferedTo', {
+                  tutor: offered.tutorName,
+                })
+              : t('scheduling.session.offeredTo', {
+                  tutor: offered.tutorName,
+                })}
           </p>
           {offered.warnings.length > 0 ? (
             <>
@@ -134,10 +172,29 @@ export function SessionDetailView({
                 {t('scheduling.session.pendingOffer')}
               </dt>
               <dd>
-                {t('scheduling.session.pendingOfferText', {
-                  tutor: pending.tutor.display_name,
-                  when: when(pending.respond_by),
-                })}
+                {t(
+                  pending.scope === 'series'
+                    ? 'scheduling.session.pendingSeriesOfferText'
+                    : 'scheduling.session.pendingOfferText',
+                  {
+                    tutor: pending.tutor.display_name,
+                    when: when(pending.respond_by),
+                  },
+                )}
+              </dd>
+            </>
+          ) : null}
+          {session.series_id ? (
+            <>
+              <dt className="font-medium">{t('scheduling.session.series')}</dt>
+              <dd className="break-words">
+                {t('scheduling.session.partOfSeries')}
+                {series ? (
+                  <>
+                    {' · '}
+                    {seriesAssignmentText(series)}
+                  </>
+                ) : null}
               </dd>
             </>
           ) : null}

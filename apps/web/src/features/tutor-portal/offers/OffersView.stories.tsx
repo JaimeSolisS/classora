@@ -1,18 +1,22 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, screen, within } from 'storybook/test';
+import { expect, fn, screen, userEvent, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import {
   ACCEPTED_OFFER,
+  ACCEPTED_SERIES_OFFER,
   DECLINED_OFFER,
   DUE_SOON_OFFER,
   NOW,
   PENDING_OFFER,
+  SERIES_OFFER,
+  SHORT_SERIES_OFFER,
 } from './fixtures';
 import { OffersView } from './OffersView';
 
 // "My offers" (#52 H4): empty, pending, due soon, answered, and the decline
-// dialog with an error. No request: the answers are stubs. Axe runs in
+// dialog with an error; the series cards (#233 G4): pending with and
+// without truncation, answered. No request: the answers are stubs. Axe runs in
 // light and dark (the storybook projects).
 
 const meta = {
@@ -105,5 +109,57 @@ export const DeclineDialogWithError: Story = {
       within(dialog).getByText(i18n.t('offers.decline.title')),
     ).toBeInTheDocument();
     await expect(within(dialog).getByRole('alert')).toBeInTheDocument();
+  },
+};
+
+export const SeriesPending: Story = {
+  args: { state: { status: 'ready', items: [SERIES_OFFER] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('offers.series.more', { count: 14 })),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(i18n.t('offers.series.scheduled', { count: 24 })),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SeriesPendingShort: Story = {
+  args: { state: { status: 'ready', items: [SHORT_SERIES_OFFER] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.queryByText(i18n.t('offers.series.more', { count: 0 })),
+    ).not.toBeInTheDocument();
+    await expect(
+      canvas.getByText(i18n.t('offers.series.count', { count: 4 }), {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SeriesAnswered: Story = {
+  args: {
+    tab: 'answered',
+    state: { status: 'ready', items: [ACCEPTED_SERIES_OFFER] },
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByText(i18n.t('offers.status.accepted')),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SeriesAcceptConfirmation: Story = {
+  args: { state: { status: 'ready', items: [SERIES_OFFER] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByText(i18n.t('offers.accept.action')));
+    const dialog = await screen.findByRole('dialog');
+    await expect(
+      within(dialog).getByText(i18n.t('offers.series.acceptTitle')),
+    ).toBeInTheDocument();
   },
 };

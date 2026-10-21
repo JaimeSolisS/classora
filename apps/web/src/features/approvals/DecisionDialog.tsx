@@ -118,10 +118,13 @@ function DecisionDialogContent({
   // The element focused before the dialog opened (it opens without a
   // trigger), to give focus back on close.
   const returnFocus = useRef<Element | null>(null);
-  const { formatInstant } = useFormatters();
+  const { formatInstant, formatLocalDate } = useFormatters();
   const { item, action } = pending;
-  const summary = approvalSummary(item, t, (instant) =>
-    formatInstant(instant, 'dateTime'),
+  const summary = approvalSummary(
+    item,
+    t,
+    (instant) => formatInstant(instant, 'dateTime'),
+    (localDate) => formatLocalDate(localDate),
   );
   const registration = registrationSubject(item);
   const reassignment = reassignmentSubject(item);

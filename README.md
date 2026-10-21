@@ -169,9 +169,12 @@ unless a bullet says otherwise.
   chosen one.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned. Tutors accept or decline offered sessions from My offers
-  (notified in-app); declined or unanswered offers (48 h by default, set in
-  the scheduling policy) return the session for reassignment through the
-  approval inbox, and staff offer it again from the session's page.
+  (notified in-app), or a whole weekly series in one answer; later sessions
+  of an accepted series are confirmed automatically. Declined or unanswered
+  offers (48 h by default, set in the scheduling policy) return the session
+  for reassignment through the approval inbox, and staff offer it again from
+  the session's page (for a weekly series, that session and the following
+  ones).
 
 **Courses**
 

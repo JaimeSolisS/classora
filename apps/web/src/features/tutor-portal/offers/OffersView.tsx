@@ -4,12 +4,22 @@ import type { ErrorMessageKey } from '@/app/errors';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import type { WindowWeekday } from '@/components/weekly-windows/windows';
 import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
 import { toLanguage } from '@/i18n/language';
 import { cn } from '@/lib/utils';
 import type { AssignmentOfferItem, OfferTab } from './api';
 import { DeclineDialog } from './DeclineDialog';
-import { deadlineText, isDueSoon, sessionTimes, staleAnswer } from './rules';
+import {
+  addMinutesToTime,
+  deadlineText,
+  isDueSoon,
+  localTimeText,
+  sessionTimes,
+  staleAnswer,
+  weekdayList,
+} from './rules';
+import { formatLocalDate } from '@/lib/time';
 
 // "My offers" (#52 H1), presentational: the page passes the tab's list
 // state and the answers. Two tabs (Pending, Answered; ARIA tabs with the
@@ -22,6 +32,12 @@ import { deadlineText, isDueSoon, sessionTimes, staleAnswer } from './rules';
 // the page refreshes the list. A success is announced politely and the card
 // moves to Answered (the page refreshes both tabs). Cards stack on phones
 // (320 px).
+//
+// A series offer (#233 G1) has its own card: "Weekly series" with the
+// weekdays and times in the center zone, the classroom and students, the
+// from-date and the end (until, count or none), how many sessions are
+// scheduled so far, the first sessions ("and n more" when truncated) and
+// the deadline. Accepting it confirms every current and future session.
 
 export type OffersState =
   | { status: 'loading' }
@@ -86,6 +102,12 @@ export function OffersView({
   const declineOffer = items.find((offer) => offer.id === declining) ?? null;
 
   function label(offer: AssignmentOfferItem): string {
+    if (offer.series) {
+      return t('offers.series.label', {
+        subject: offer.series.subject.name,
+        date: formatLocalDate(offer.series.from_date, { language }),
+      });
+    }
     const first = offer.sessions[0];
     if (!first) {
       return '';
@@ -267,10 +289,19 @@ export function OffersView({
       </div>
       <ConfirmDialog
         open={accepting !== null}
-        title={t('offers.accept.title')}
+        title={
+          accepting?.series
+            ? t('offers.series.acceptTitle')
+            : t('offers.accept.title')
+        }
         body={
           accepting
-            ? t('offers.accept.description', { offer: label(accepting) })
+            ? t(
+                accepting.series
+                  ? 'offers.series.acceptDescription'
+                  : 'offers.accept.description',
+                { offer: label(accepting) },
+              )
             : ''
         }
         confirmLabel={t('offers.accept.submit')}
@@ -327,7 +358,15 @@ function OfferCard({
       aria-labelledby={headingId}
       className="flex min-w-0 flex-col gap-3 rounded-md border border-border p-4"
     >
-      {offer.sessions.map((session, index) => {
+      {offer.series ? (
+        <SeriesDetails
+          offer={offer}
+          series={offer.series}
+          headingId={headingId}
+          timeZone={timeZone}
+        />
+      ) : null}
+      {(offer.series ? [] : offer.sessions).map((session, index) => {
         const times = sessionTimes(session, timeZone, language);
         return (
           <div key={session.id} className="flex min-w-0 flex-col gap-1">
@@ -420,5 +459,111 @@ function OfferCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function SeriesDetails({
+  offer,
+  series,
+  headingId,
+  timeZone,
+}: {
+  offer: AssignmentOfferItem;
+  series: NonNullable<AssignmentOfferItem['series']>;
+  headingId: string;
+  timeZone: string;
+}) {
+  const { t, i18n } = useTranslation();
+  const language = toLanguage(i18n.resolvedLanguage);
+  const first = offer.sessions[0];
+  const days = weekdayList(
+    series.weekdays,
+    (day) => t(`weeklyWindows.weekdays.${day as WindowWeekday}`),
+    language,
+  );
+  const start = localTimeText(series.start_time, language);
+  const end = localTimeText(
+    addMinutesToTime(series.start_time, series.duration_minutes),
+    language,
+  );
+  let ends: string;
+  if (series.until) {
+    ends = t('offers.series.until', {
+      date: formatLocalDate(series.until, { language }),
+    });
+  } else if (series.count) {
+    ends = t('offers.series.count', { count: series.count });
+  } else {
+    ends = t('offers.series.noEnd');
+  }
+  const more = offer.session_count - offer.sessions.length;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <h2 id={headingId} className="font-semibold break-words">
+        {t('offers.series.heading', {
+          subject: series.subject.name,
+          level: series.subject.education_level_name,
+        })}
+      </h2>
+      <p className="break-words">
+        {series.interval > 1
+          ? t('offers.series.everyWeeks', {
+              count: series.interval,
+              days,
+              start,
+              end,
+            })
+          : t('offers.series.every', { days, start, end })}{' '}
+        <span className="text-muted-foreground">({timeZone})</span>
+      </p>
+      <p className="break-words">
+        {t('offers.series.from', {
+          date: formatLocalDate(series.from_date, { language }),
+        })}{' '}
+        · {ends}
+      </p>
+      <dl className="grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+        <dt className="font-medium">{t('offers.card.classroom')}</dt>
+        <dd className="break-words">
+          {first?.classroom?.name ?? t('offers.card.noClassroom')}
+        </dd>
+        {first ? (
+          <>
+            <dt className="font-medium">{t('offers.card.students')}</dt>
+            <dd className="break-words">
+              {first.participants.map((p) => p.display_name).join(', ')}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+      <p className="text-sm">
+        {t('offers.series.scheduled', { count: offer.session_count })}
+      </p>
+      {offer.sessions.length > 0 ? (
+        <ul
+          aria-label={t('offers.series.sessions')}
+          className="flex flex-col gap-1 text-sm"
+        >
+          {offer.sessions.map((session) => {
+            const times = sessionTimes(session, timeZone, language);
+            return (
+              <li key={session.id} className="break-words">
+                {t('offers.card.when', {
+                  date: times.date,
+                  start: times.start,
+                  end: times.end,
+                })}
+              </li>
+            );
+          })}
+          {offer.sessions_truncated && more > 0 ? (
+            <li className="text-muted-foreground">
+              {t('offers.series.more', { count: more })}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </div>
   );
 }
