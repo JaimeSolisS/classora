@@ -32,12 +32,22 @@ QA's local work is:
 
 - targeted tests for the changed code (pytest with `--no-cov`, Vitest files,
   stories);
-- hands-on acceptance checks against a running stack (own clone, own Compose
-  project name and ports);
+- hands-on acceptance checks against a running stack: the native local stack
+  by default (README "Native local stack": shared PostgreSQL from
+  `make db-shared`, own database from `make db-create`, own ports and own
+  worktree or clone); a Docker stack (own Compose project name and ports) only
+  for `make e2e`, `make test-migrations` when needed, or Docker-specific
+  changes;
 - authorization, IDOR and boundary checks;
 - mutation checks ([`_docs/testing-guidelines.md`](../testing-guidelines.md),
   "Mutation check"), each with the narrowest command;
 - the README gate.
+
+Hands-on time goes where the risk is: authorization role by role, error and
+boundary cases, UI flows and the README gate. The mechanics (lint, full
+suites, scans) are covered by the engineer's pre-QA checklist and CI.
+Teardown: stop the processes and `make db-drop` the own database. On a
+low-memory machine (8 GB) heavy commands run one at a time across agents.
 
 ## Red, pending or missing CI
 
