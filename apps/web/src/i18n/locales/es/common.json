@@ -286,10 +286,12 @@
       "high": "Alta"
     },
     "types": {
-      "identity_registration": "Solicitud de cuenta"
+      "identity_registration": "Solicitud de cuenta",
+      "staff_qualification": "Calificación de tutor"
     },
     "summary": {
-      "registration": "{{name}} ({{username}}) · {{role}}"
+      "registration": "{{name}} ({{username}}) · {{role}}",
+      "qualification": "{{tutor}} — {{subject}} ({{level}})"
     },
     "list": {
       "title": "Solicitudes",
@@ -480,6 +482,49 @@
       "emailInvalid": "Escribe un correo como nombre@ejemplo.com, o déjalo vacío.",
       "phoneInvalid": "Escribe un teléfono de 7 a 32 caracteres entre dígitos, espacios o ( ) . -, o déjalo vacío.",
       "experienceTooLong": "Usa como máximo 4000 caracteres."
+    },
+    "qualifications": {
+      "title": "Calificaciones",
+      "intro": "Materias que este tutor ha solicitado impartir. Solo cuentan las calificaciones aprobadas.",
+      "teachingTitle": "Materias que imparte",
+      "teachingEmpty": "Aún no hay calificaciones aprobadas.",
+      "subjectInactive": "(inactiva)",
+      "subject": "Materia",
+      "level": "Nivel",
+      "status": "Estado",
+      "requestedAt": "Solicitada",
+      "decidedAt": "Resuelta",
+      "reason": "Motivo",
+      "actions": "Acciones",
+      "empty": "Aún no hay solicitudes de calificación.",
+      "statuses": {
+        "pending": "Pendiente",
+        "approved": "Aprobada",
+        "rejected": "Rechazada",
+        "cancelled": "Cancelada"
+      },
+      "request": "Solicitar calificación",
+      "requestTitle": "Solicitar una calificación",
+      "requestDescription": "Elige el nivel educativo y la materia que quieres impartir. Un administrador revisa la solicitud.",
+      "levelLabel": "Nivel educativo",
+      "levelPlaceholder": "Elige un nivel",
+      "subjectLabel": "Materia",
+      "subjectPlaceholder": "Elige una materia",
+      "subjectNone": "Este nivel no tiene materias activas.",
+      "subjectRequired": "Elige una materia.",
+      "send": "Enviar solicitud",
+      "sending": "Enviando…",
+      "close": "Cancelar",
+      "requested": "Solicitud enviada.",
+      "cancel": "Cancelar solicitud",
+      "cancelFor": "Cancelar solicitud de {{subject}}",
+      "cancelTitle": "¿Cancelar esta solicitud?",
+      "cancelDescription": "Se retirará la solicitud de {{subject}} ({{level}}). Podrás solicitarla de nuevo más tarde.",
+      "cancelConfirm": "Cancelar solicitud",
+      "cancelKeep": "Conservar solicitud",
+      "cancelling": "Cancelando…",
+      "cancelled": "Solicitud cancelada.",
+      "loadError": "No se pudieron cargar las calificaciones."
     }
   },
   "userStates": {
@@ -1070,7 +1115,9 @@
     "read": "Leída",
     "unknown": "Tienes una notificación nueva.",
     "types": {
-      "dev_demo": "Notificación de prueba: {{label}}"
+      "dev_demo": "Notificación de prueba: {{label}}",
+      "staff_qualification_approved": "Se aprobó tu calificación para {{subject_name}} ({{education_level_name}}).",
+      "staff_qualification_rejected": "No se aprobó tu calificación para {{subject_name}} ({{education_level_name}}); consulta el motivo en tus calificaciones."
     }
   }
 }

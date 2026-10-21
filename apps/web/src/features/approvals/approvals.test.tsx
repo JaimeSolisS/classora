@@ -60,7 +60,7 @@ const ROW: ApprovalRequestItem = {
 const OTHER_TYPE: ApprovalRequestItem = {
   ...ROW,
   id: '00000000-0000-4000-8000-0000000000c2',
-  request_type: 'staff.qualification',
+  request_type: 'finance.refund',
   priority: 'high',
   status: 'changes_requested',
   requester: null,
@@ -212,8 +212,8 @@ describe('the list (F3)', () => {
     expect(buttonNamed(first!, 'Reject rosa.diaz')).toBeTruthy();
     // An unknown type shows its code; a system item has no requester.
     expect(cells(second!).slice(0, 3)).toEqual([
-      'staff.qualification',
-      'staff.qualification',
+      'finance.refund',
+      'finance.refund',
       'System',
     ]);
     expect(cells(second!).slice(4, 6)).toEqual(['High', 'Changes requested']);
@@ -234,6 +234,7 @@ describe('the list (F3)', () => {
     expect([...type!.options].map((o) => [o.value, o.textContent])).toEqual([
       ['', 'All types'],
       ['identity.registration', 'Account request'],
+      ['staff.qualification', 'Tutor qualification'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [

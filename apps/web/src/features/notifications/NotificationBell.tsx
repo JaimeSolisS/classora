@@ -117,6 +117,7 @@ export function NotificationBell() {
 }
 
 function ConnectedBell() {
+  const session = useSession();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const headingId = useId();
@@ -152,7 +153,12 @@ function ConnectedBell() {
 
   async function onActivate(item: NotificationItem) {
     setActionError(null);
-    const link = NOTIFICATION_LINKS[item.notification_type]?.(item.params);
+    const link =
+      session.status === 'signedIn'
+        ? NOTIFICATION_LINKS[item.notification_type]?.(item.params, {
+            userId: session.user.id,
+          })
+        : undefined;
     try {
       if (!item.read_at) {
         applyRead(queryClient, await markNotificationRead(item.id));

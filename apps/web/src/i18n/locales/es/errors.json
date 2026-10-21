@@ -65,5 +65,7 @@
   "client_error": "No pudimos completar la solicitud.",
   "server_error": "El servidor no pudo completar la solicitud. Inténtalo más tarde.",
   "period_overlap": "Otro periodo activo de este tipo se traslapa con estas fechas.",
-  "too_many_streams": "Hay demasiadas pestañas recibiendo notificaciones en vivo. Cierra alguna o inténtalo más tarde."
+  "too_many_streams": "Hay demasiadas pestañas recibiendo notificaciones en vivo. Cierra alguna o inténtalo más tarde.",
+  "qualification_exists": "Ya existe una calificación pendiente o aprobada para esta materia.",
+  "subject_inactive": "Esta materia o su nivel educativo está inactivo. Elige otra."
 }

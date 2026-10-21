@@ -85,6 +85,18 @@ async function ownerContext(
 }
 
 /**
+ * The demo Owner signed in in its own API context and reauthenticated (one
+ * login): for calls that need a recent reauthentication, such as a role
+ * change (#44). The caller disposes the context.
+ */
+export function reauthenticatedOwnerContext(
+  request: APIRequest,
+  baseURL: string,
+): Promise<{ context: APIRequestContext; csrf: string }> {
+  return ownerContext(request, baseURL, true);
+}
+
+/**
  * Creates an active user with `password`: the demo Owner invites the user
  * (see `ownerContext`), then a signed-out API context redeems the
  * invitation. The shared browser state is never changed.

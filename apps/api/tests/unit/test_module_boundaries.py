@@ -184,10 +184,11 @@ def test_catalog_imports_only_core_and_the_administration_service():
     assert not {t for t in catalog if not t.startswith(allowed)}
 
 
-def test_staff_imports_only_core_and_the_identity_and_catalog_public_api():
+def test_staff_imports_only_core_and_public_apis():
     # #43 A1: staff (tutor profiles) uses app.core, its own files,
-    # identity.service / identity.schemas and (from #44) catalog.service
-    # only; nothing imports staff yet.
+    # identity.service / identity.schemas and (#44) catalog.service /
+    # catalog.schemas and administration.service (the approval inbox and
+    # notifications); no module imports staff (app.wiring registers it).
     allowed = (
         "app.core.",
         "app.modules.staff.",
@@ -195,6 +196,7 @@ def test_staff_imports_only_core_and_the_identity_and_catalog_public_api():
         "app.modules.identity.schemas",
         "app.modules.catalog.service",
         "app.modules.catalog.schemas",
+        "app.modules.administration.service",
     )
     staff = targets("staff")
     assert "app.modules.identity.service" in staff  # the scan found imports

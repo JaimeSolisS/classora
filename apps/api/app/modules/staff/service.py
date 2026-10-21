@@ -1,4 +1,11 @@
-"""The staff module's public API (ADR-0002): tutor profiles (#43).
+"""The staff module's public API (ADR-0002): tutor profiles (#43) and
+tutor qualifications (#44, implemented in
+:mod:`app.modules.staff.qualifications`; the approval handler in
+:mod:`app.modules.staff.qualification_approval`).
+
+For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
+:func:`is_qualified` and :func:`qualified_tutor_ids` count **approved**
+qualifications only.
 
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
 through ``identity.service`` (:func:`identity.list_role_members`,
@@ -25,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
+from app.core.authz import PermissionDeniedError, Principal
 from app.core.models import StaleVersionError
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.identity import service as identity
@@ -35,13 +42,47 @@ from app.modules.staff.permissions import (
     ACCOUNT_FIELDS,
     TUTOR,
     TutorField,
-    can_view_tutor,
     editable_fields,
     sees_every_tutor,
 )
+from app.modules.staff.qualification_approval import (
+    QUALIFICATION_APPROVAL_HANDLER as QUALIFICATION_APPROVAL_HANDLER,
+)
+from app.modules.staff.qualification_approval import (
+    register_qualification_notifications as register_qualification_notifications,
+)
+from app.modules.staff.qualifications import (
+    approved_subject_ids as approved_subject_ids,
+)
+from app.modules.staff.qualifications import (
+    cancel_qualification as cancel_qualification,
+)
+from app.modules.staff.qualifications import is_qualified as is_qualified
+from app.modules.staff.qualifications import (
+    list_qualifications as list_qualifications,
+)
+from app.modules.staff.qualifications import (
+    qualified_tutor_ids as qualified_tutor_ids,
+)
+from app.modules.staff.qualifications import (
+    request_qualification as request_qualification,
+)
+from app.modules.staff.qualifications import teaching_subjects, visible_tutor
 from app.modules.staff.schemas import TutorDetail, TutorListItem, TutorUpdate
 
-__all__ = ["get_tutor", "list_tutors", "update_tutor"]
+__all__ = [
+    "QUALIFICATION_APPROVAL_HANDLER",
+    "approved_subject_ids",
+    "cancel_qualification",
+    "get_tutor",
+    "is_qualified",
+    "list_qualifications",
+    "list_tutors",
+    "qualified_tutor_ids",
+    "register_qualification_notifications",
+    "request_qualification",
+    "update_tutor",
+]
 
 
 def _list_item(member: RoleMember) -> TutorListItem:
@@ -83,12 +124,7 @@ async def _visible_member(
 ) -> RoleMember:
     """The tutor ``user_id``: ``404`` when unknown, without the ``tutor``
     role now, or not visible to the caller (one indistinguishable error)."""
-    if not can_view_tutor(principal, user_id):
-        raise RecordNotFoundError()
-    member = await identity.get_role_member(session, TUTOR, user_id)
-    if member is None:
-        raise RecordNotFoundError()
-    return member
+    return await visible_tutor(session, principal, user_id)
 
 
 async def _profile(session: AsyncSession, user_id: uuid.UUID) -> TutorProfile | None:
@@ -111,8 +147,11 @@ def _editable(principal: Principal, member: RoleMember) -> frozenset[TutorField]
     )
 
 
-def _detail(
-    principal: Principal, member: RoleMember, profile: TutorProfile | None
+async def _detail(
+    session: AsyncSession,
+    principal: Principal,
+    member: RoleMember,
+    profile: TutorProfile | None,
 ) -> TutorDetail:
     return TutorDetail(
         **_list_item(member).model_dump(),
@@ -121,6 +160,7 @@ def _detail(
         ),
         version=profile.version if profile is not None else 0,
         editable_fields=sorted(_editable(principal, member)),
+        teaching_subjects=await teaching_subjects(session, member.id),
     )
 
 
@@ -129,7 +169,7 @@ async def get_tutor(
 ) -> TutorDetail:
     """One tutor profile with the caller's ``editable_fields``."""
     member = await _visible_member(session, principal, user_id)
-    return _detail(principal, member, await _profile(session, user_id))
+    return await _detail(session, principal, member, await _profile(session, user_id))
 
 
 async def _flush_profile(session: AsyncSession) -> None:
@@ -170,7 +210,7 @@ async def update_tutor(
         != (profile.professional_experience if profile is not None else None)
     )
     if not account_changes and not experience_changed:
-        return _detail(principal, member, profile)
+        return await _detail(session, principal, member, profile)
 
     # The profile first: its versioned UPDATE (or the unique user_id of a
     # first INSERT) locks out a concurrent edit before the account changes.
@@ -192,4 +232,4 @@ async def update_tutor(
     if account_changes:
         await identity.update_account_contact(session, user_id, **account_changes)
         member = await _visible_member(session, principal, user_id)
-    return _detail(principal, member, profile)
+    return await _detail(session, principal, member, profile)

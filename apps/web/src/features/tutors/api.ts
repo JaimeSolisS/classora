@@ -82,3 +82,110 @@ export function updateTutor(
     }),
   );
 }
+
+// --- Tutor qualifications (#44) ---------------------------------------------
+
+export type QualificationItem = components['schemas']['QualificationItem'];
+export type QualificationStatus = components['schemas']['QualificationStatus'];
+export type TeachingSubject = components['schemas']['TeachingSubject'];
+
+/** An active level or subject offered in the request dialog. */
+export interface CatalogOption {
+  id: string;
+  name: string;
+}
+
+export function qualificationsKey(userId: string) {
+  return [...TUTORS_QUERY_KEY, 'qualifications', userId] as const;
+}
+
+/** The active levels of the request dialog (catalog queries share the
+ * `catalog` prefix, so a catalog change refreshes them). */
+export const ACTIVE_LEVEL_OPTIONS_KEY = [
+  'catalog',
+  'education-levels',
+  'qualification-options',
+] as const;
+
+export function activeSubjectOptionsKey(levelId: string) {
+  return ['catalog', 'subjects', 'qualification-options', levelId] as const;
+}
+
+export function fetchQualifications(
+  userId: string,
+  signal: AbortSignal,
+): Promise<QualificationItem[]> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/tutors/{user_id}/qualifications', {
+        params: { path: { user_id: userId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function requestQualification(
+  userId: string,
+  subjectId: string,
+): Promise<QualificationItem> {
+  return apiCall(() =>
+    api.POST('/api/v1/tutors/{user_id}/qualifications', {
+      params: { path: { user_id: userId } },
+      body: { subject_id: subjectId },
+    }),
+  );
+}
+
+export function cancelQualification(
+  userId: string,
+  qualificationId: string,
+): Promise<QualificationItem> {
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel',
+      {
+        params: {
+          path: { user_id: userId, qualification_id: qualificationId },
+        },
+      },
+    ),
+  );
+}
+
+/** The active education levels (one page of up to 100, by position). */
+export async function fetchActiveLevelOptions(
+  signal: AbortSignal,
+): Promise<CatalogOption[]> {
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/education-levels', {
+        params: { query: { status: 'active', limit: 100 } },
+        signal,
+      }),
+    { signal },
+  );
+  return page.items.map(({ id, name }) => ({ id, name }));
+}
+
+/** The active subjects of one level (up to 100, by name). */
+export async function fetchActiveSubjectOptions(
+  levelId: string,
+  signal: AbortSignal,
+): Promise<CatalogOption[]> {
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/subjects', {
+        params: {
+          query: { education_level_id: levelId, status: 'active', limit: 100 },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  // The API already filters; a stale or mixed answer never offers another
+  // level's or an inactive subject.
+  return page.items
+    .filter((item) => item.is_active && item.education_level_id === levelId)
+    .map(({ id, name }) => ({ id, name }));
+}

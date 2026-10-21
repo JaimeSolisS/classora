@@ -323,6 +323,21 @@ async def create_approval_request(
     return request
 
 
+async def approval_request_id_for_subject(
+    session: AsyncSession, *, request_type: str, subject_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The id of the request of ``request_type`` about ``subject_id`` (there
+    is at most one), or ``None``. For an owning module that acts on the
+    request through its own record (#44: a tutor cancels a qualification).
+    One statement, no lock."""
+    found: uuid.UUID | None = await session.scalar(
+        select(ApprovalRequest.id)
+        .where(ApprovalRequest.request_type == request_type)
+        .where(ApprovalRequest.subject_id == subject_id)
+    )
+    return found
+
+
 async def _locked(session: AsyncSession, request_id: uuid.UUID) -> ApprovalRequest:
     # Locked: two decisions on one request run one after the other, and the
     # second sees the first one's status.
@@ -591,6 +606,7 @@ __all__ = [
     "ApprovalRequestFilters",
     "ApprovalRequestView",
     "allowed_actions",
+    "approval_request_id_for_subject",
     "cancel_approval_request",
     "create_approval_request",
     "decide_approval_request",

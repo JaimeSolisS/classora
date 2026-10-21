@@ -703,6 +703,34 @@ json = { version = 0 }
 
 [[route]]
 method = "GET"
+path = "/api/v1/tutors/{user_id}/qualifications"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: the #43 view policy. The placeholder id is no tutor: 404 for every
+# allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: only the tutor themselves requests. A valid body for the placeholder
+# id, which is no tutor: 404 for every allowed role (nothing is created).
+json = { subject_id = "00000000-0000-7000-8000-000000000001" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: only the tutor themselves cancels. The placeholder ids are no tutor
+# and no qualification: 404 for every allowed role.
+
+[[route]]
+method = "GET"
 path = "/api/v1/users"
 access = "permission"
 permission = "user.view"

@@ -103,6 +103,8 @@ Codes in use today:
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
 | `too_many_streams` | 429 | `GET /api/v1/notifications/stream` when the caller already holds 10 open streams in this API process; `Retry-After: 30`. The web app polls meanwhile (see Live notifications). |
+| `qualification_exists` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` when the tutor already has a `pending` or `approved` qualification for the subject; also the loser of two concurrent requests (see Tutor qualifications). |
+| `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -645,11 +647,11 @@ M8-01 (#118); the web app has a basic list at `/approvals`.
 - **Audit:** the automatic `create` event when a request is raised, and an
   `update` event with `status`, `resolved_*` and `reason` on each transition
   (the actor is the reviewer). `404`, `409` and `422` write nothing.
-- **Types today:** `identity.registration` only (see Registration
-  requests).
+- **Types today:** `identity.registration` (see Registration requests) and
+  `staff.qualification` (#44, see Tutor qualifications).
 
-**Adding a type** (later issues: #44 qualifications, M4 offers, session and
-availability requests):
+**Adding a type** (later issues: M4 offers, session and availability
+requests):
 
 1. Implement `administration.service.ApprovalHandler` in the owning module:
    `request_type`, `review_permission`, `supports_request_changes`,
@@ -665,7 +667,8 @@ availability requests):
 3. Raise requests with `create_approval_request(session, request_type=…,
    subject_id=…, requester_user_id=…)` in the owning transaction. Requester
    actions use `cancel_approval_request` and `resubmit_approval_request`
-   behind the type's own routes (there is no generic requester route).
+   behind the type's own routes (there is no generic requester route);
+   `approval_request_id_for_subject` finds the request of a subject.
 4. Web: add the review permission to `APPROVAL_REVIEW_PERMISSIONS`, a label
    to `APPROVAL_TYPE_LABELS`, a summary renderer in
    `features/approvals/summary.ts` and, when a rejection needs a reason, the
@@ -1485,12 +1488,13 @@ It has no money, ledger or billing account yet.
 Implemented by M3-07 (#43; spec §4) in `apps/api/app/modules/staff/`. A
 tutor is a user who holds the `tutor` role now; their profile combines the
 account's contact fields with a `tutor_profiles` row. Teaching subjects come
-with qualifications (#44), availability with #45 and documents with M5-08.
+from approved qualifications (#44, below), availability with #45 and
+documents with M5-08.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `GET /api/v1/tutors` | `require("tutor.view")`, list filtered by record policy | Query `q` (part of the username or display name, ignoring case; accents not folded; at most 100 characters), `state` (one user state), offset pagination. Sorted by display name, then username. Items: `user_id`, `username`, `display_name`, `state`, `email`, `phone`. |
-| `GET /api/v1/tutors/{user_id}` | `require("tutor.view")` + record policy | The list item fields plus `professional_experience`, `version` and `editable_fields` (sorted). |
+| `GET /api/v1/tutors/{user_id}` | `require("tutor.view")` + record policy | The list item fields plus `professional_experience`, `version`, `editable_fields` (sorted) and `teaching_subjects` (#44). |
 | `PATCH /api/v1/tutors/{user_id}` | `require("tutor.view")` + record and field policy | Body `{version, display_name?, email?, phone?, professional_experience?}` (unknown fields are `422`). |
 
 - **Who sees what** (owner decision on #43, E1 (a)): `tutor.view` is held by
@@ -1529,6 +1533,78 @@ with qualifications (#44), availability with #45 and documents with M5-08.
   change of account fields alone increments the profile's version without a
   `tutor_profiles` event (unless it creates the row). `403`, `404`, `409`,
   `422` and a body that changes nothing write no event.
+
+### Tutor qualifications
+
+Implemented by M3-08 (#44; spec §3 "subject + education-level
+qualifications, approved by an administrator", §16) in
+`apps/api/app/modules/staff/` (`qualifications.py`,
+`qualification_approval.py`). A tutor requests to teach a **subject**; a
+subject belongs to exactly one education level (#32), so the level follows
+from it.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/tutors/{user_id}/qualifications` | `require("tutor.view")` + the tutor profile record policy | Query `status` (`all` by default, or one status). A JSON array of `QualificationItem`, ordered by the level's `sort_order`, the subject name, then the request time. |
+| `POST /api/v1/tutors/{user_id}/qualifications` | `require("tutor.view")`; only the tutor themselves | Body `{subject_id}` (unknown fields are `422`). `201` with the item. |
+| `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel` | `require("tutor.view")`; only the tutor themselves, only while `pending` | No body. `200` with the item. |
+| Approve / reject | `POST /api/v1/approval-requests/{id}/approve` and `/reject` | Holders of `qualification.review` (Owners, Administrators; not delegable). See Approval requests. |
+
+- **Model** (`tutor_qualifications`, versioned, audited): `tutor_user_id`
+  and `subject_id` (both `ON DELETE RESTRICT`), `status` (`pending`,
+  `approved`, `rejected`, `cancelled`), `decided_at` (set exactly for the
+  three final statuses), `decided_by_user_id`, `rejection_reason` (set
+  exactly for `rejected`, at most 1000 characters). The qualification keeps
+  its own status, mirrored with its approval request in one transaction, so
+  eligibility never reads the approval tables (ADR-0002).
+- **No duplicate active qualification:** the partial unique index
+  `uq_tutor_qualifications_active` on `(tutor_user_id, subject_id) WHERE
+  status IN ('pending', 'approved')`. A rejected or cancelled qualification
+  doesn't block a new request for the same subject.
+- **`QualificationItem`:** `id`, `subject_id`, `subject_name`,
+  `education_level_id`, `education_level_name`, `subject_is_active`,
+  `status`, `requested_at`, `decided_at`, `rejection_reason`, `version`.
+- **Requesting:** only the tutor themselves (holding `tutor`, active);
+  administrators don't request on a tutor's behalf. Order: `422` (body) →
+  `404` (unknown tutor, or one the caller can't see) → `403
+  permission_denied` (a caller who sees the tutor but isn't them) → `422` on
+  `["body", "subject_id"]` (unknown subject; code `validation_error`) → `409
+  subject_inactive` (the subject or its level is inactive; both rows are
+  locked `FOR SHARE`) → `409 qualification_exists` (a pre-check, plus the
+  unique index at flush, so two concurrent requests give one `201` and one
+  `409`). The `pending` row and a `staff.qualification` approval request
+  (requester: the tutor) are created in one transaction.
+- **Cancelling:** `404` (tutor) → `403` → `404` (no such qualification of
+  this tutor) → `409 approval_transition_invalid` unless `pending`. Sets
+  `cancelled` and `decided_at` and cancels the approval request.
+- **The `staff.qualification` approval type:** review permission
+  `qualification.review`; no request-changes (`409
+  approval_action_unsupported`); a rejection needs a reason (`422` without).
+  The summary is `{tutor_display_name, subject_name, education_level_name}`.
+  Approving or rejecting locks the qualification, which must still be
+  `pending` (else `409 approval_transition_invalid`), sets the status, the
+  decision fields and (on reject) the reason, and creates one notification
+  for the tutor, all in the decision's transaction: of a concurrent approve
+  and reject exactly one wins and exactly one notification exists.
+- **Notifications:** `staff.qualification_approved` and
+  `staff.qualification_rejected`, params `{subject_name,
+  education_level_name}`. The reason is not a param (the 200-character
+  param cap): the tutor reads it on their qualifications list. The web app
+  links both to the tutor's own `/tutors/<id>#qualifications`.
+- **Only approved counts:** `TutorDetail.teaching_subjects` lists the
+  approved qualifications (`subject_id`, `subject_name`,
+  `education_level_id`, `education_level_name`, `subject_is_active`) by the
+  level's order, then the subject name. For other modules
+  `staff.service` exports `approved_subject_ids(session, tutor_user_id)`,
+  `is_qualified(session, tutor_user_id, subject_id)` and
+  `qualified_tutor_ids(session, subject_id)`; pending, rejected and
+  cancelled never count. A later-deactivated subject keeps its approved
+  qualifications (shown with `subject_is_active: false`). Whether the user
+  still holds the `tutor` role is the caller's check (M4-06). Revoking an
+  approved qualification is #198.
+- **Audit:** automatic `tutor_qualifications` `create` (actor: the tutor)
+  and `update` events (actor: the tutor for a cancel, the reviewer for a
+  decision), plus the approval request's own events.
 
 ### Response headers
 

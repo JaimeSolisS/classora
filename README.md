@@ -95,15 +95,20 @@ On the Tutors page, Owners, administrators and academic coordinators see
 every tutor's profile: the account's contact details and their professional
 experience. Owners and administrators edit it; a signed-in tutor sees and
 edits only their own contact details and experience.
+Tutors request qualifications to teach a subject (its education level
+follows from it) on their profile; Owners and administrators approve or
+reject them, with a reason, on the Approvals page, and the tutor is notified
+of the decision. Only approved qualifications count as the tutor's teaching
+subjects.
 Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.
 Signed-in users have in-app notifications: a bell in the header shows how
 many are unread and opens a panel where they read them and mark one or all
 as read. New notifications arrive live over Server-Sent Events; when the
-live connection isn't available the bell checks every 30 seconds instead. No feature sends notifications yet
-(the first arrive with tutor qualifications); in local and dev, signed-in
-users can create a test notification for themselves.
+live connection isn't available the bell checks every 30 seconds instead.
+Today they tell tutors about qualification decisions; in local and dev,
+signed-in users can create a test notification for themselves.
 Requests that change data are protected by an `Origin` check and a CSRF
 token, and the web app is served with a Content Security Policy and other
 security headers. No other product features are implemented yet.
