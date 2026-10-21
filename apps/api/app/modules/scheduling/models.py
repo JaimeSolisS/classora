@@ -41,13 +41,22 @@ Their predicates are built from the Python sets, so the code and the
 database agree (the integration drift test reads them back). See
 [ADR-0005](../../../../../_docs/adr/0005-scheduling-invariants-overrides-and-recurrence.md).
 
-Series, groups, cohorts, offers and overrides add their own columns and
-tables (#53, #56, #65, #52, #49).
+- ``class_session_overrides`` (#49 D1): one override of a session's soft
+  conflicts: ``codes`` (``TEXT[]``, non-empty, each one of the seven soft
+  codes, in rule order), ``conflicts`` (``JSONB``, the overridden conflicts
+  ``[{code, details}]`` as computed), ``reason`` (1-1000 characters once
+  trimmed) and ``actor_user_id``. **Append-only:** the trigger
+  :data:`OVERRIDES_IMMUTABLE_TRIGGER` rejects ``UPDATE`` and ``DELETE``
+  (SQLSTATE 42501). Not ``Audited``: the named event
+  ``scheduling.session_override`` is its audit record.
+
+Series, groups, cohorts and offers add their own columns and tables (#53,
+#56, #65, #52); #53 adds a ``series_id`` to the overrides.
 """
 
 import uuid
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import (
     CheckConstraint,
@@ -55,17 +64,19 @@ from sqlalchemy import (
     ForeignKey,
     SmallInteger,
     String,
+    Text,
     UniqueConstraint,
     and_,
     text,
 )
 from sqlalchemy import column as sql_column
-from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
+from app.modules.scheduling.conflicts import CODE_ORDER, SOFT
 from app.modules.scheduling.states import (
     ROOM_OCCUPYING_STATES,
     TUTOR_OCCUPYING_STATES,
@@ -79,6 +90,10 @@ ACTUAL_MINUTES_MAX: Final = 1440
 TUTOR_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_tutor_overlap"
 ROOM_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_room_overlap"
 PARTICIPANT_UNIQUE: Final = "uq_class_session_participants_session_student"
+OVERRIDES_IMMUTABLE_TRIGGER: Final = "class_session_overrides_immutable"
+OVERRIDE_REASON_MAX_LENGTH: Final = 1000
+SOFT_CODES_IN_ORDER: Final = tuple(code for code in CODE_ORDER if code in SOFT)
+"""The seven soft codes in rule order: the override ``codes`` CHECK."""
 
 SESSION_RANGE_SQL: Final = "tstzrange(starts_at, ends_at, '[)')"
 
@@ -206,4 +221,36 @@ class ClassSessionParticipant(Audited, Model):
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), index=True
+    )
+
+
+class ClassSessionOverride(Model):
+    """One override of a session's soft conflicts (#49 D1). Append-only (a
+    trigger rejects ``UPDATE`` and ``DELETE``); not audited, the
+    ``scheduling.session_override`` event is its record."""
+
+    __tablename__ = "class_session_overrides"
+    __table_args__ = (
+        CheckConstraint(
+            "cardinality(codes) > 0 AND codes <@ ARRAY[{}]::text[]".format(
+                ", ".join(f"'{code}'" for code in SOFT_CODES_IN_ORDER)
+            ),
+            name="codes_soft",
+        ),
+        CheckConstraint(
+            f"char_length(btrim(reason)) BETWEEN 1 AND {OVERRIDE_REASON_MAX_LENGTH}",
+            name="reason_length",
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    codes: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    conflicts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(Text)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )

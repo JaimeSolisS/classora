@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0032"
+HEAD = "0033"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -112,6 +112,7 @@ COURSE_TABLES = [
     "course_template_subjects",
     "course_templates",
 ]
+OVERRIDE_TABLES = ["class_session_overrides"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -232,6 +233,9 @@ def test_history_is_linear_with_one_head():
     courses = script.get_revision("0032")
     assert courses.down_revision == "0031"
     assert Path(courses.path).name == "0032_courses_course_templates.py"
+    overrides = script.get_revision("0033")
+    assert overrides.down_revision == "0032"
+    assert Path(overrides.path).name == "0033_scheduling_session_overrides.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -275,6 +279,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *SESSION_TABLES,
             *POLICY_TABLES,
             *COURSE_TABLES,
+            *OVERRIDE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4014,11 +4019,13 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
     # Only the tables of later revisions (0031 scheduling_policies, 0032 the
-    # course tables) differ.
+    # course tables, 0033 class_session_overrides) differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
-        if not _of_later_revision(diff, [*POLICY_TABLES, *COURSE_TABLES])
+        if not _of_later_revision(
+            diff, [*POLICY_TABLES, *COURSE_TABLES, *OVERRIDE_TABLES]
+        )
     ] == []
 
     command.downgrade(config, "0029")
@@ -4346,7 +4353,12 @@ def test_0032_adds_exactly_the_course_tables_and_downgrade_drops_them(
     command.upgrade(config, "0032")
 
     assert public_tables(fresh_database_url) - before == set(COURSE_TABLES)
-    assert metadata_diff(fresh_database_url) == []
+    # Only the table of a later revision (0033 class_session_overrides) differs.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not _of_later_revision(diff, OVERRIDE_TABLES)
+    ] == []
     [trigger] = run_sql(
         fresh_database_url,
         "SELECT count(*) AS n FROM pg_trigger"
@@ -4560,3 +4572,71 @@ def test_a_snapshot_row_can_be_neither_updated_nor_deleted(fresh_database_url):
             " VALUES (:template_id, 1, '{}')",
             {"template_id": template_id},
         )
+
+
+# --- 0033: session overrides (#49 D1) ---------------------------------------------
+
+OVERRIDES_TRIGGER = (
+    "SELECT tgname FROM pg_trigger"
+    " WHERE tgrelid = 'class_session_overrides'::regclass AND NOT tgisinternal"
+)
+OVERRIDES_FUNCTION = (
+    "SELECT proname FROM pg_proc WHERE proname = 'class_session_overrides_immutable'"
+)
+
+
+def test_0033_adds_exactly_the_override_table_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0032")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0033")
+
+    assert public_tables(fresh_database_url) - before == set(OVERRIDE_TABLES)
+    assert metadata_diff(fresh_database_url) == []
+    assert [r.tgname for r in run_sql(fresh_database_url, OVERRIDES_TRIGGER)] == [
+        "class_session_overrides_immutable"
+    ]
+    assert len(run_sql(fresh_database_url, OVERRIDES_FUNCTION)) == 1
+
+    command.downgrade(config, "0032")
+
+    assert version_nums(fresh_database_url) == ["0032"]
+    assert public_tables(fresh_database_url) == before
+    assert run_sql(fresh_database_url, OVERRIDES_FUNCTION) == []
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_class_session_overrides_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "class_session_overrides"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "class_session_id": ("uuid", "NO", None, None),
+        "codes": ("ARRAY", "NO", None, None),
+        "conflicts": ("jsonb", "NO", None, None),
+        "reason": ("text", "NO", None, None),
+        "actor_user_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        "pk_class_session_overrides",
+        "fk_class_session_overrides_class_session_id_class_sessions",
+        "fk_class_session_overrides_actor_user_id_users",
+        "ck_class_session_overrides_codes_soft",
+        "ck_class_session_overrides_reason_length",
+    }
+    for name in (
+        "fk_class_session_overrides_class_session_id_class_sessions",
+        "fk_class_session_overrides_actor_user_id_users",
+    ):
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(fresh_database_url, table)) == {
+        "pk_class_session_overrides",
+        "ix_class_session_overrides_class_session_id",
+    }

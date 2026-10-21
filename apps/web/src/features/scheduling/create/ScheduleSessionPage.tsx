@@ -5,6 +5,7 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
+import { useCan } from '@/features/auth/useSession';
 import {
   createClassSession,
   fetchClassroomOptions,
@@ -19,12 +20,14 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // /schedule/new, "Schedule a session" (#48 F1), for schedule.manage holders:
 // loads the active subjects, tutors and classrooms, then shows the form.
 // The times are in the center zone (the session's business setting).
+// Holders of schedule.override can override soft conflicts (#49).
 
 export function ScheduleSessionPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('scheduling.title'));
   const titleId = useId();
   const timeZone = useCenterTimeZone();
+  const canOverride = useCan('schedule.override');
   const subjects = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'subjects'],
     queryFn: ({ signal }) => fetchSubjectOptions(signal),
@@ -65,8 +68,9 @@ export function ScheduleSessionPage() {
         searchStudents={searchStudents}
         timeZone={timeZone}
         labelledBy={titleId}
-        onSubmit={(values) =>
-          createClassSession(scheduleBody(values, timeZone))
+        canOverride={canOverride}
+        onSubmit={(values, override) =>
+          createClassSession(scheduleBody(values, timeZone, override))
         }
       />
     );

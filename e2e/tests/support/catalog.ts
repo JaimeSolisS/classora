@@ -38,6 +38,13 @@ type Common = {
     success: { heading: string; unassigned: string; another: string };
     severity: { hard: string; soft: string };
     conflicts: { student_overlap: string };
+    override: {
+      action: string;
+      title: string;
+      reason: string;
+      submit: string;
+      scheduledWith: string;
+    };
   };
   delegations: Record<string, { label: string; description: string }>;
   auth: {

@@ -21,6 +21,12 @@ source); :func:`find_conflicts` runs them for one body. The student lock
 (:func:`lock_students`, :mod:`~app.modules.scheduling.locks`) must be taken
 first by every writer that adds a participant or moves a session in time.
 
+Overrides of soft conflicts (#49, :mod:`~app.modules.scheduling.overrides`):
+:func:`evaluate_override` (pure: a hard conflict or an unlisted soft one
+refuses) and :func:`record_session_override` (the append-only row plus the
+``scheduling.session_override`` audit event). Every later write path that
+runs the conflict checks uses both.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -67,6 +73,15 @@ from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
+from app.modules.scheduling.overrides import (
+    OverrideDecision as OverrideDecision,
+)
+from app.modules.scheduling.overrides import (
+    evaluate_override as evaluate_override,
+)
+from app.modules.scheduling.overrides import (
+    record_session_override as record_session_override,
+)
 from app.modules.scheduling.sessions import (
     TIME_ZONE_DEPENDENCY as TIME_ZONE_DEPENDENCY,
 )

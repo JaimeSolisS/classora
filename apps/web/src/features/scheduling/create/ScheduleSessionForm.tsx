@@ -17,16 +17,22 @@ import {
   type SubjectOption,
 } from './api';
 import { ConflictPanel } from './ConflictPanel';
+import { OverrideDialog } from './OverrideDialog';
 import {
   EMPTY_SCHEDULE,
   FIELD_ORDER,
+  isConflictCode,
+  overrideAction,
+  overrideReasonError,
   serverErrors,
+  sessionOverride,
   subjectsByLevel,
   validateSchedule,
   type ScheduleErrors,
   type ScheduleField,
   type ScheduleMessage,
   type ScheduleValues,
+  type SessionOverride,
 } from './rules';
 
 // The "Schedule a session" form (#48 F2, F3), without any API call: the
@@ -36,6 +42,14 @@ import {
 // shows the success panel ("Schedule another" keeps the date); a 409
 // scheduling_conflict shows the conflict panel and keeps the form; a 422
 // puts the field errors on their fields; anything else is an ErrorAlert.
+//
+// Overrides (#49 F2-F4): under the panel, a holder of schedule.override
+// (`canOverride`) gets "Override and schedule" when every conflict is soft,
+// or "fix the conflicts that aren't allowed first"; anyone else reads who
+// can override. The dialog resends the same values with every soft code and
+// the reason: a 201 shows the success panel with the overridden rules, a new
+// 409 closes the dialog and shows the new list (focus on its heading), a
+// 422 on the reason stays in the dialog, and a 403 shows its ErrorAlert.
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -43,7 +57,13 @@ export interface ScheduleSessionFormProps {
   classrooms: readonly Option[];
   searchStudents: (q: string, signal: AbortSignal) => Promise<Option[]>;
   timeZone: string;
-  onSubmit: (values: ScheduleValues) => Promise<ClassSessionCreated>;
+  /** Creates the session (with the override when given); rejects with the error. */
+  onSubmit: (
+    values: ScheduleValues,
+    override?: SessionOverride,
+  ) => Promise<ClassSessionCreated>;
+  /** Whether the user holds schedule.override. */
+  canOverride: boolean;
   /** The values to start from (stories). */
   initialValues?: ScheduleValues;
   /** The id of the page heading that names the form. */
@@ -57,6 +77,7 @@ export function ScheduleSessionForm({
   searchStudents,
   timeZone,
   onSubmit,
+  canOverride,
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
 }: ScheduleSessionFormProps) {
@@ -70,8 +91,14 @@ export function ScheduleSessionForm({
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
   const [created, setCreated] = useState<ClassSessionCreated | null>(null);
+  const [overriding, setOverriding] = useState(false);
   const inFlight = useRef(false);
   const successHeading = useRef<HTMLHeadingElement>(null);
+  const overrideButton = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  // Where the focus goes once the dialog closes: back to its button
+  // (cancel), or to the new conflict list (a new 409) or the success heading.
+  const focusAfterDialog = useRef<'button' | 'panel'>('button');
 
   const fieldId = (field: ScheduleField) => `${id}-${field}`;
   const errorId = (field: ScheduleField) => `${id}-${field}-error`;
@@ -121,20 +148,7 @@ export function ScheduleSessionForm({
       setCreated(session);
       window.setTimeout(() => successHeading.current?.focus(), 0);
     } catch (caught) {
-      const list = conflictsOf(caught);
-      if (list) {
-        setConflicts(list);
-      } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
-        const mapped = serverErrors(caught.fieldErrors);
-        if (Object.keys(mapped).length > 0) {
-          setErrors(mapped);
-          focusFirst(mapped);
-        } else {
-          setFailure(caught);
-        }
-      } else {
-        setFailure(caught);
-      }
+      handleFailure(caught);
     } finally {
       setSubmitting(false);
     }
@@ -151,11 +165,81 @@ export function ScheduleSessionForm({
     });
   }
 
+  function handleFailure(caught: unknown) {
+    const list = conflictsOf(caught);
+    if (list) {
+      setConflicts(list);
+    } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
+      const mapped = serverErrors(caught.fieldErrors);
+      if (Object.keys(mapped).length > 0) {
+        setErrors(mapped);
+        focusFirst(mapped);
+      } else {
+        setFailure(caught);
+      }
+    } else {
+      setFailure(caught);
+    }
+  }
+
+  async function confirmOverride(reason: string) {
+    if (!conflicts) {
+      return;
+    }
+    try {
+      const session = await onSubmit(
+        values,
+        sessionOverride(conflicts, reason),
+      );
+      // The success panel replaces the form (and the dialog with it).
+      setOverriding(false);
+      setConflicts(null);
+      setCreated(session);
+      window.setTimeout(() => successHeading.current?.focus(), 0);
+    } catch (caught) {
+      const list = conflictsOf(caught);
+      const onReason =
+        caught instanceof ApiError
+          ? overrideReasonError(caught.fieldErrors)
+          : null;
+      const onForm =
+        caught instanceof ApiError &&
+        !onReason &&
+        caught.fieldErrors.length > 0;
+      if (list || onForm) {
+        // A new conflict list, or a 422 on the form's own fields: close the
+        // dialog and show it on the page.
+        focusAfterDialog.current = list ? 'panel' : 'button';
+        setOverriding(false);
+        handleFailure(caught);
+        return;
+      }
+      throw caught;
+    }
+  }
+
+  function afterDialog(event: Event) {
+    event.preventDefault();
+    const target = focusAfterDialog.current;
+    focusAfterDialog.current = 'button';
+    if (target === 'panel') {
+      panel.current?.querySelector<HTMLElement>('h2')?.focus();
+    } else {
+      overrideButton.current?.focus();
+    }
+  }
+
   function scheduleAnother() {
     setCreated(null);
     setErrors({});
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
   }
+
+  const ruleName = (code: string) =>
+    isConflictCode(code) ? t(`scheduling.rules.${code}`) : code;
+  const overriddenCodes = created
+    ? [...new Set(created.overrides.flatMap((o) => o.codes))]
+    : [];
 
   if (created) {
     const tutor = created.tutor;
@@ -172,6 +256,20 @@ export function ScheduleSessionForm({
         >
           {t('scheduling.success.heading')}
         </h2>
+        {overriddenCodes.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">
+              {t('scheduling.override.scheduledWith')}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {t('scheduling.override.overriddenRules', {
+                rules: overriddenCodes
+                  .map((code) => ruleName(code))
+                  .join(t('scheduling.reasons.separator')),
+              })}
+            </p>
+          </div>
+        ) : null}
         <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
           <dt className="font-medium">{t('scheduling.fields.student')}</dt>
           <dd>{created.participants.map((p) => p.display_name).join(', ')}</dd>
@@ -263,9 +361,39 @@ export function ScheduleSessionForm({
     );
   }
 
+  const action = conflicts ? overrideAction(conflicts, canOverride) : null;
+
   return (
     <div className="flex w-full max-w-2xl flex-col gap-6">
-      {conflicts ? <ConflictPanel conflicts={conflicts} /> : null}
+      {conflicts ? (
+        <div ref={panel} className="flex flex-col gap-3">
+          <ConflictPanel conflicts={conflicts} />
+          {action === 'override' ? (
+            <div>
+              <Button
+                ref={overrideButton}
+                type="button"
+                onClick={() => setOverriding(true)}
+              >
+                {t('scheduling.override.action')}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm">
+              {action === 'fixHardFirst'
+                ? t('scheduling.override.fixHardFirst')
+                : t('scheduling.override.notAllowed')}
+            </p>
+          )}
+          <OverrideDialog
+            open={overriding && action === 'override'}
+            conflicts={conflicts.filter((c) => c.severity === 'soft')}
+            onConfirm={confirmOverride}
+            onCancel={() => setOverriding(false)}
+            onCloseAutoFocus={afterDialog}
+          />
+        </div>
+      ) : null}
       {failure ? <ErrorAlert error={failure} /> : null}
       <form
         method="post"

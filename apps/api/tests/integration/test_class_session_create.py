@@ -832,11 +832,10 @@ def test_bounds_are_422(
     "change",
     [
         {"kind": "group"},
-        {"override": {"codes": ["tutor_unavailable"], "reason": "Acordado"}},
         {"student_id": None},
     ],
 )
-def test_the_schema_rejects_other_kinds_and_overrides(
+def test_the_schema_rejects_other_kinds(
     module_seeded_url, client, cookie, setup, change
 ):
     response = create(client, cookie, body(setup) | change)
@@ -847,7 +846,7 @@ def test_the_schema_rejects_other_kinds_and_overrides(
 # --- E: the read ---------------------------------------------------------------------
 
 
-def test_the_read_takes_at_most_six_statements(
+def test_the_read_takes_at_most_seven_statements(
     module_seeded_url, client, cookie, setup
 ):
     created = create(client, cookie, body(setup)).json()
@@ -857,7 +856,9 @@ def test_the_read_takes_at_most_six_statements(
         lambda session: scheduling.get_class_session(session, uuid.UUID(created["id"])),
     )
 
-    assert count <= 6
+    # #48's six plus the overrides (#49 E1; the tutor and the override
+    # actors are one statement).
+    assert count <= 7
     assert detail.model_dump(mode="json") == {
         k: v for k, v in created.items() if k != "warnings"
     }

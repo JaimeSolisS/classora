@@ -86,12 +86,17 @@ export function validateSchedule(values: ScheduleValues): ScheduleErrors {
   return errors;
 }
 
-/** The POST body: the local date and times as instants in `timeZone`. */
+/**
+ * The POST body: the local date and times as instants in `timeZone`, with
+ * the override when one is given (#49).
+ */
 export function scheduleBody(
   values: ScheduleValues,
   timeZone: string,
+  override?: SessionOverride,
 ): ClassSessionCreate {
   return {
+    ...(override ? { override } : {}),
     kind: 'individual',
     student_id: values.student?.id ?? '',
     subject_id: values.subjectId,
@@ -187,4 +192,86 @@ export function orderedConflicts(
     ...conflicts.filter((c) => c.severity === 'hard'),
     ...conflicts.filter((c) => c.severity !== 'hard'),
   ];
+}
+
+// --- Overrides (#49 F2, F3) ---------------------------------------------------
+
+/** The override member of the create body. */
+export type SessionOverride = NonNullable<ClassSessionCreate['override']>;
+
+/** The most characters of an override reason, once trimmed. */
+export const OVERRIDE_REASON_MAX_LENGTH = 1000;
+
+/**
+ * What the panel offers under the conflicts: the override button (a holder
+ * of schedule.override, only soft conflicts), "fix the hard ones first" (a
+ * holder, at least one hard conflict) or "only an Owner…" (anyone else).
+ */
+export type OverrideAction = 'override' | 'fixHardFirst' | 'notAllowed';
+
+export function overrideAction(
+  conflicts: readonly SchedulingConflict[],
+  canOverride: boolean,
+): OverrideAction {
+  if (!canOverride) {
+    return 'notAllowed';
+  }
+  return conflicts.some((c) => c.severity === 'hard')
+    ? 'fixHardFirst'
+    : 'override';
+}
+
+/** The soft codes to override, once each, in the server's order. */
+export function overrideCodes(
+  conflicts: readonly SchedulingConflict[],
+): string[] {
+  return [
+    ...new Set(
+      conflicts.filter((c) => c.severity === 'soft').map((c) => c.code),
+    ),
+  ];
+}
+
+export type ReasonMessage =
+  'scheduling.override.reasonRequired' | 'scheduling.override.reasonTooLong';
+
+/** The reason rule: 1-1000 characters once trimmed. */
+export function validateOverrideReason(
+  reason: string,
+): ReasonMessage | undefined {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    return 'scheduling.override.reasonRequired';
+  }
+  return trimmed.length > OVERRIDE_REASON_MAX_LENGTH
+    ? 'scheduling.override.reasonTooLong'
+    : undefined;
+}
+
+/** The override of every soft conflict shown, with the trimmed reason. */
+export function sessionOverride(
+  conflicts: readonly SchedulingConflict[],
+  reason: string,
+): SessionOverride {
+  return { codes: overrideCodes(conflicts), reason: reason.trim() };
+}
+
+/** The server's 422 on the override's reason, or null for any other error. */
+export function overrideReasonError(
+  fieldErrors: readonly FieldError[],
+): ReasonMessage | 'errors:validation_error' | null {
+  const reason = fieldErrors.find(
+    ({ path }) => path[1] === 'override' && path[2] === 'reason',
+  );
+  if (reason) {
+    if (reason.code === 'reason_required') {
+      return 'scheduling.override.reasonRequired';
+    }
+    return reason.code === 'reason_too_long'
+      ? 'scheduling.override.reasonTooLong'
+      : 'errors:validation_error';
+  }
+  return fieldErrors.some(({ path }) => path[1] === 'override')
+    ? 'errors:validation_error'
+    : null;
 }

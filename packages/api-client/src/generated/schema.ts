@@ -1837,7 +1837,8 @@ export interface paths {
          * Create Class Session
          * @description Schedule a one-off individual session. With a tutor it is created
          *     `offered` to them, without one `unassigned`. Every rule is checked
-         *     first; `warnings` is always empty for now.
+         *     first; with an `override` the listed soft conflicts are allowed, stored
+         *     with the reason and audited. `warnings` is always empty for now.
          */
         post: operations["create_class_session_api_v1_class_sessions_post"];
         delete?: never;
@@ -2283,8 +2284,8 @@ export interface components {
          * ClassSessionCreate
          * @description A one-off individual session (``POST /api/v1/class-sessions``).
          *
-         *     Groups and courses (#56, #65) extend ``kind``; overrides (#49) add an
-         *     ``override`` member, which is an unknown field until then.
+         *     Groups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs
+         *     ``schedule.override``.
          */
         ClassSessionCreate: {
             /**
@@ -2324,6 +2325,8 @@ export interface components {
              * @description An instant with an offset (RFC 3339).
              */
             ends_at: string;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
         };
         /**
          * ClassSessionCreated
@@ -2369,6 +2372,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Overrides
+             * @description The overrides of its soft conflicts, oldest first.
+             */
+            overrides: components["schemas"]["SessionOverrideItem"][];
             /** Warnings */
             warnings: components["schemas"]["SchedulingWarning"][];
         };
@@ -2416,6 +2424,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Overrides
+             * @description The overrides of its soft conflicts, oldest first.
+             */
+            overrides: components["schemas"]["SessionOverrideItem"][];
         };
         /**
          * ClassroomCreate
@@ -3809,6 +3822,19 @@ export interface components {
             closes_at: string;
         };
         /**
+         * OverrideActor
+         * @description Who overrode the rules.
+         */
+        OverrideActor: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * PasswordChange
          * @description The signed-in user's current and new password (``POST /auth/password``).
          */
@@ -4288,6 +4314,48 @@ export interface components {
         };
         /** @enum {string} */
         SessionKindCode: "individual" | "group" | "course";
+        /**
+         * SessionOverride
+         * @description The soft conflicts to override and why (#49 B1; ADR-0005). The server
+         *     recomputes every conflict: a hard one is never overridden, and every soft
+         *     one must be listed; listed codes that don't occur are ignored.
+         */
+        SessionOverride: {
+            /**
+             * Codes
+             * @description The soft conflict codes to override, 1-7, no duplicates; never a hard code.
+             */
+            codes: string[];
+            /**
+             * Reason
+             * @description Why the rules are overridden: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * SessionOverrideItem
+         * @description One override of a session's soft conflicts (#49 E1).
+         */
+        SessionOverrideItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Codes
+             * @description The overridden soft codes, in rule order.
+             */
+            codes: string[];
+            /** Reason */
+            reason: string;
+            actor: components["schemas"]["OverrideActor"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /**
          * SessionParticipant
          * @description A student of the session.
@@ -11196,7 +11264,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11205,7 +11273,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. Nothing is created. */
+            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. */
             409: {
                 headers: {
                     [name: string]: unknown;
