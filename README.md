@@ -154,6 +154,9 @@ unless a bullet says otherwise.
   Administrator with the delegated override permission, can override soft
   conflicts with a reason, which is audited; overlaps and room capacity are
   never overridable.
+- When a time conflicts, the page suggests the nearest free times;
+  exceeding a tutor's daily or weekly teaching limit, or a too-short break,
+  gives a warning but doesn't block.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned (tutors can't accept offers yet).
 

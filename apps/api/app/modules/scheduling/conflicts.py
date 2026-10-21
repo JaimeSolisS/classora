@@ -9,8 +9,8 @@ ADR-0005 invariants table:
   ``room_unavailable``, ``center_closed``, ``outside_operating_hours``,
   ``tutor_not_qualified``, ``group_capacity_exceeded``, ``notice_window``;
 - **warnings** (never block): ``daily_limit_exceeded``,
-  ``weekly_limit_exceeded``, ``break_too_short``. Defined for #50; nothing
-  here emits them.
+  ``weekly_limit_exceeded``, ``break_too_short``; emitted by
+  :mod:`~app.modules.scheduling.workload` (#50).
 
 The data source of each check (``scheduling.service.create_class_session``
 runs them; :mod:`app.modules.scheduling.booking`):
@@ -34,6 +34,9 @@ runs them; :mod:`app.modules.scheduling.booking`):
 - ``notice_window``: ``administration.service.violates_booking_notice``
   with the policy in force now (#61).
 
+:func:`local_slot` gives an interval's local values in the center zone
+(the create and the in-memory slot check, #50, share it).
+
 :func:`sort_conflicts` gives the deterministic order of a ``409`` body: hard
 first, then the code order of the table above, then the details.
 """
@@ -41,8 +44,9 @@ first, then the code order of the table above, then the details.
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import time
+from datetime import date, datetime, time
 from typing import Any, Final, Literal
+from zoneinfo import ZoneInfo
 
 from app.core.errors import SchedulingConflict
 from app.modules.scheduling.capacity import (
@@ -162,3 +166,34 @@ def tutor_unavailable_reasons(reasons: Sequence[str]) -> list[str]:
     ``center_closed``, kept in their order (#45). A closure is reported once,
     as ``center_closed`` (D7)."""
     return [reason for reason in reasons if reason != _CLOSURE_REASON]
+
+
+@dataclass(frozen=True)
+class LocalSlot:
+    """An interval as instants and as local values in the center zone."""
+
+    starts_at: datetime
+    ends_at: datetime
+    local_date: date
+    weekday: int
+    start: time
+    end: time
+
+
+def local_slot(starts_at: datetime, ends_at: datetime, zone: str) -> LocalSlot:
+    """The local date, ISO weekday and wall-clock start and end of an
+    interval with valid bounds (#47 B2): the end is on the start's date, or
+    at the next local midnight, which is :data:`datetime.time.max` for the
+    window checks (never covered)."""
+    tz = ZoneInfo(zone)
+    local_start = starts_at.astimezone(tz)
+    local_end = ends_at.astimezone(tz)
+    end = local_end.time() if local_end.date() == local_start.date() else time.max
+    return LocalSlot(
+        starts_at=starts_at,
+        ends_at=ends_at,
+        local_date=local_start.date(),
+        weekday=local_start.isoweekday(),
+        start=local_start.time(),
+        end=end,
+    )

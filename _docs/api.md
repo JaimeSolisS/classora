@@ -1838,12 +1838,15 @@ Implemented by M4-03 (#48; spec §3, §15 W1.1–W1.2; ADR-0005 D1, D2, D7,
 D9) in `apps/api/app/modules/scheduling/` (`booking.py`: create and read;
 `conflicts.py`: the codes and pure rules; `locks.py`: the student lock).
 Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
-Only one-off **individual** sessions so far; groups, courses, recurrence,
+Workload warnings and suggested times: M4-05 (#50; spec §3), `workload.py`
+and `suggestions.py` (pure rules), `workload_sessions.py` and
+`slot_search.py` (the reads). Only one-off **individual** sessions so far; groups, courses, recurrence,
 offers and the calendar come with later M4 issues.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `ClassSessionDetail` plus `warnings` (always `[]` until M4-05). |
+| `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `ClassSessionDetail` plus `warnings` (the workload warnings below; `[]` without a tutor). |
+| `POST /api/v1/class-sessions/suggestions` | `require("schedule.manage")` (Owner, Administrator) | Read-only: free times for the same session (below). `200` with `SlotSuggestions`. A `GET` on the path is `405`. |
 | `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements. |
 
 **Body** (unknown fields are `422`):
@@ -1893,7 +1896,9 @@ subject is shown inactive when it or its level is.
 8. the session and its participant are stored. A concurrent create that
    wins the tutor or room `EXCLUDE` constraint first makes this one `409
    scheduling_conflict` with that single hard conflict (its
-   `class_session_ids` is `[]`);
+   `class_session_ids` is `[]`). Just before, the tutor's workload warnings
+   are computed (below; at most two statements with a tutor, none
+   without);
 9. with overridden conflicts, the override row and its audit event, in the
    same transaction.
 
@@ -1915,8 +1920,72 @@ midnight is never inside a window or the opening hours.
 | `group_capacity_exceeded` | soft | Groups and courses (M4-11, M4-20). | — |
 | `notice_window` | soft | The start gives less than the booking notice of the scheduling policy in force now (a start in the past included; exactly the notice is fine). | `{booking_notice_hours}` |
 
-The warning codes `daily_limit_exceeded`, `weekly_limit_exceeded` and
-`break_too_short` never block and are not emitted yet (M4-05).
+**Workload warnings** (M4-05, ADR-0005 warnings). They never block, never
+need an override and come only with a `2xx` (`warnings [{code, details}]`;
+never in the `409` body): the `201` of a create (an overridden one
+included) and each suggested time. They count the tutor's `offered`,
+`confirmed` and `completed` sessions plus the new one, once (`unassigned`,
+`cancelled`, `skipped_closure` and `conflict` never count), against the
+tutor's teaching limits (M3-09b; `null` is no limit). Local dates are in the
+center zone; a session counts on its start's local date.
+
+| Code | When | `details` |
+| ---- | ---- | --------- |
+| `daily_limit_exceeded` | The day's scheduled minutes, the new session included, are **above** `daily_limit_minutes` (exactly the limit doesn't warn). | `{date, limit_minutes, scheduled_minutes}` |
+| `weekly_limit_exceeded` | The same over the **ISO week** (Monday to Sunday, local dates) holding the session, against `weekly_limit_minutes`. | `{week_start, limit_minutes, scheduled_minutes}` (`week_start` is the Monday) |
+| `break_too_short` | `required_break_minutes` is above 0, and the gap (elapsed minutes, across midnight too) to the session that ends last at or before the start, or to the one that starts first at or after the end, is **below** it (back-to-back warns; exactly the break doesn't). One warning per neighbour, the earlier first. | `{class_session_id, gap_minutes, required_break_minutes}` |
+
+Order: daily, weekly, then break. Warnings are computed per response and
+never stored, audited or notified. They are **not locked**: two concurrent
+creates for the same tutor on the same day may each miss the other's
+minutes (the overlap guarantees, the student lock and the `EXCLUDE`
+constraints, are unchanged).
+
+**Suggested times** (`POST /api/v1/class-sessions/suggestions`, M4-05). The
+body is the create's without `override` (an `override` member is `422
+extra_forbidden`) plus the search:
+
+```json
+{"kind": "individual", "student_id": "…", "subject_id": "…",
+ "tutor_user_id": "…" | null, "classroom_id": "…" | null,
+ "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00",
+ "limit": 5, "search_from": "2026-11-10", "search_to": "2026-11-16"}
+```
+
+- `limit`: 1–10, default 5;
+- `search_from` / `search_to`: local dates (center zone), both optional.
+  `search_from` defaults to the local date of `starts_at`, `search_to` to
+  `search_from` + 6 days. `422` on `search_to`: `search_range_invalid`
+  (before `search_from`) or `search_range_too_long` (more than 14 dates); a
+  defaulted date is checked the same way;
+- `starts_at` / `ends_at` give only the duration and the ranking anchor.
+
+Order: `401`/`403` → `422` schema (and the window when both dates are sent)
+→ the zone (a plain read: no `FOR SHARE`, no lock) → `422` bounds (as the
+create) → `422` window (defaulted dates) → `422` references (as the create,
+all in one response) → `200`. Nothing is inserted, updated, audited or
+notified.
+
+Only the **time** changes: the student, subject, tutor, classroom and
+duration stay as requested (preferred classrooms are not used). Candidate
+starts are a 15-minute grid of local wall-clock time (`:00`, `:15`, `:30`,
+`:45`) on every date of the window, each lasting the requested elapsed
+minutes. A local start in a spring-forward gap is skipped; an ambiguous
+(fall-back) one gives only its first instant (`fold=0`). A candidate that
+crosses the local date is skipped, and the requested start itself is never
+returned. A candidate is returned only if **every** conflict check of the
+create (the table above) finds nothing; the checks run in memory over data
+read once per request, so the route runs at most 20 statements whatever the
+window. A tutor not qualified for the subject gives no slot. The passing
+candidates are ordered by the absolute distance between their start and the
+requested start (a tie goes to the earlier start), and the first `limit`
+are returned; warnings don't affect the order.
+
+`SlotSuggestions` is `{search_from, search_to, limit, slots [{starts_at,
+ends_at, warnings}]}` (instants in UTC; 0 to `limit` slots; an empty list is
+a normal `200`). Each slot carries the warnings a create at that time would
+get. The route only reads: the create still rechecks everything when a slot
+is chosen.
 
 **Initial state:** with a tutor the session is created `offered` to them,
 without one `unassigned` (ADR-0005 D2). No offer row, notification or inbox

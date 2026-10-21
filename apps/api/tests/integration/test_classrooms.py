@@ -852,3 +852,35 @@ def test_the_exclusion_constraint_backs_the_body_check(
     assert (exc.value.status, exc.value.code) == (422, "validation_error")
     assert stored_windows(module_seeded_url, room["id"]) == []
     assert row(module_seeded_url, room["id"]).version == 1
+
+
+# --- #50 B9: the windows for the slot search -----------------------------------------
+
+
+def test_classroom_weekly_windows_reads_them_in_one_statement(
+    module_seeded_url, client, cookie
+):
+    unrestricted = create_classroom(client, cookie)
+    restricted = create_classroom(
+        client, cookie, availability=[window(3, "14:00", "16:00"), *MONDAY]
+    )
+
+    def windows(room: dict[str, Any]) -> tuple[int, Any]:
+        return count_statements(
+            module_seeded_url,
+            lambda session: service.classroom_weekly_windows(
+                session, uuid.UUID(room["id"])
+            ),
+        )
+
+    assert windows(unrestricted) == (1, ())
+    count, found = windows(restricted)
+    assert count == 1
+    assert found == (
+        (1, time(9), time(12)),
+        (1, time(12), time(14)),
+        (3, time(14), time(16)),
+    )
+    assert service.windows_cover(found, 1, time(11), time(13)) is True
+    assert service.windows_cover(found, 2, time(11), time(13)) is False
+    assert service.windows_cover((), 2, time(11), time(13)) is True

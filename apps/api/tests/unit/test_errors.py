@@ -218,6 +218,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}",
         "/api/v1/tutors/{user_id}/availability/check",
         "/api/v1/class-sessions",
+        "/api/v1/class-sessions/suggestions",
         "/api/v1/class-sessions/{class_session_id}",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",

@@ -223,6 +223,11 @@ export function toLocalDate(instant: Instant, timeZone: string): LocalDate {
   return localDateOf(parseInstant(instant), timeZone);
 }
 
+/** The wall-clock time (HH:MM, 24-hour) of `instant` in `timeZone`. */
+export function toLocalTime(instant: Instant, timeZone: string): LocalTime {
+  return format(wallClock(parseInstant(instant), timeZone), 'HH:mm');
+}
+
 /** Today's calendar date in `timeZone`; `now` is injectable for tests. */
 export function todayInZone(
   timeZone: string,

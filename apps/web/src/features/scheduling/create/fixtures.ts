@@ -2,11 +2,14 @@ import type {
   ClassSessionCreated,
   Option,
   SchedulingConflict,
+  SchedulingWarning,
+  SlotSuggestions,
   SubjectOption,
 } from './api';
 import type { ScheduleValues } from './rules';
 
-// Sample data for the scheduling form's tests and stories (#48 F4, #49 F5).
+// Sample data for the scheduling form's tests and stories (#48 F4, #49 F5,
+// #50 C3).
 
 export const ANA: Option = {
   id: '00000000-0000-4000-8000-0000000004a1',
@@ -135,3 +138,62 @@ export const OVERRIDDEN: ClassSessionCreated = {
     },
   ],
 };
+
+// --- Workload warnings and suggested times (#50 C) ---------------------------
+
+/** One of each workload warning, in the server's order. */
+export const WARNINGS: SchedulingWarning[] = [
+  {
+    code: 'daily_limit_exceeded',
+    details: { date: '2031-01-06', limit_minutes: 240, scheduled_minutes: 300 },
+  },
+  {
+    code: 'weekly_limit_exceeded',
+    details: {
+      week_start: '2031-01-06',
+      limit_minutes: 1200,
+      scheduled_minutes: 1260,
+    },
+  },
+  {
+    code: 'break_too_short',
+    details: {
+      class_session_id: '00000000-0000-4000-8000-0000000004e9',
+      gap_minutes: 1,
+      required_break_minutes: 15,
+    },
+  },
+];
+
+/** Created with all three warnings. */
+export const CREATED_WITH_WARNINGS: ClassSessionCreated = {
+  ...CREATED,
+  warnings: WARNINGS,
+};
+
+/** Three free times on Monday 2031-01-06 (Mexico City, UTC-6). */
+export const SUGGESTIONS: SlotSuggestions = {
+  search_from: '2031-01-06',
+  search_to: '2031-01-12',
+  limit: 5,
+  slots: [
+    {
+      starts_at: '2031-01-06T17:00:00Z',
+      ends_at: '2031-01-06T18:00:00Z',
+      warnings: [],
+    },
+    {
+      starts_at: '2031-01-06T17:15:00Z',
+      ends_at: '2031-01-06T18:15:00Z',
+      warnings: [WARNINGS[0]!],
+    },
+    {
+      starts_at: '2031-01-06T15:00:00Z',
+      ends_at: '2031-01-06T16:00:00Z',
+      warnings: [],
+    },
+  ],
+};
+
+/** No free time in the default window. */
+export const NO_SUGGESTIONS: SlotSuggestions = { ...SUGGESTIONS, slots: [] };

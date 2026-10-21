@@ -9,6 +9,7 @@ import {
   parseLocalDate,
   todayInZone,
   toLocalDate,
+  toLocalTime,
 } from './time';
 
 // These tests must pass under any host zone. `make test-web` runs them under
@@ -37,6 +38,13 @@ describe('DEFAULT_CENTER_TIME_ZONE', () => {
 });
 
 describe('instant → local values', () => {
+  it('gives the 24-hour wall-clock time in the zone (#50), across a DST change', () => {
+    expect(toLocalTime('2026-10-18T05:30:00Z', MX)).toBe('23:30');
+    // Tijuana 2026-03-08: 01:59 PST, then 03:00 PDT.
+    expect(toLocalTime('2026-03-08T09:59:00Z', TIJUANA)).toBe('01:59');
+    expect(toLocalTime('2026-03-08T10:00:00Z', TIJUANA)).toBe('03:00');
+  });
+
   it('uses the zone date, not the UTC date, late in the evening', () => {
     expect(toLocalDate('2026-10-18T05:30:00Z', MX)).toBe('2026-10-17');
     expect(

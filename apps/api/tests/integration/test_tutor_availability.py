@@ -38,6 +38,7 @@ from tests.integration.auth_support import (
     signed_headers,
 )
 from tests.integration.catalog_support import (
+    count_statements,
     create_closure,
     get,
     post,
@@ -942,3 +943,61 @@ def test_weekly_changes_and_exceptions_are_audited(module_seeded_url, client, tu
         removed.headers["X-Request-ID"],
     ]
     assert {e.actor_user_id for e in exception_events} == {person.id}
+
+
+# --- #50 B9: the preloaded rules for the slot search ---------------------------------
+
+
+def test_tutor_availability_rules_preloads_windows_and_the_dates_exceptions(
+    module_seeded_url, client, tutor
+):
+    person, cookie = tutor
+    put_weekly(client, cookie, person.id, 0, AFTERNOONS)
+    for starts_on, ends_on in (
+        ("2026-12-01", "2026-12-02"),  # before the range
+        ("2026-12-04", "2026-12-08"),  # overlaps its first day
+        ("2026-12-10", "2026-12-10"),  # inside
+        ("2026-12-12", "2026-12-20"),  # after
+    ):
+        response = add_exception(
+            client, cookie, person.id, starts_on=starts_on, ends_on=ends_on
+        )
+        assert response.status_code == 201, response.text
+    available = add_exception(
+        client,
+        cookie,
+        person.id,
+        kind="available",
+        starts_on="2026-12-09",
+        ends_on="2026-12-09",
+        starts_at="09:00",
+        ends_at="11:00",
+    )
+    assert available.status_code == 201, available.text
+
+    count, rules = count_statements(
+        module_seeded_url,
+        lambda session: service.tutor_availability_rules(
+            session, person.id, date(2026, 12, 8), date(2026, 12, 11)
+        ),
+    )
+
+    assert count == 2
+    assert rules.windows == (
+        WeeklyWindow(1, time(16), time(20)),
+        WeeklyWindow(3, time(16), time(18)),
+    )
+    assert rules.exceptions == (
+        DatedException("unavailable", date(2026, 12, 4), date(2026, 12, 8)),
+        DatedException(
+            "available", date(2026, 12, 9), date(2026, 12, 9), time(9), time(11)
+        ),
+        DatedException("unavailable", date(2026, 12, 10), date(2026, 12, 10)),
+    )
+    with pytest.raises(ValueError):
+        in_uow(
+            module_seeded_url,
+            lambda session: service.tutor_availability_rules(
+                session, person.id, date(2026, 12, 9), date(2026, 12, 8)
+            ),
+        )

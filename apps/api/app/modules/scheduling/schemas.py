@@ -4,6 +4,11 @@ Times are instants (ADR-0004): ``starts_at`` / ``ends_at`` carry an offset
 (RFC 3339); a naive value is ``422`` (``naive_datetime``). Names come from
 the other modules' references (``catalog``, ``identity``, ``families``).
 
+The create body (:class:`ClassSessionCreate`) is :class:`ClassSessionSlot`
+plus the ``override``; the slot suggestions body (#50,
+:class:`SlotSuggestionRequest`) is :class:`ClassSessionSlot` plus the
+search (``limit``, ``search_from``, ``search_to``).
+
 An ``override`` (#49 B) lists the soft codes to override and a reason. Its
 ``422`` codes: ``reason_required`` / ``reason_too_long`` on
 ``override.reason``; ``codes_required`` / ``duplicate_code`` on
@@ -13,7 +18,7 @@ An ``override`` (#49 B) lists the soft codes to override and a reason. Its
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Final, Literal
 
 from pydantic import (
@@ -21,6 +26,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -105,11 +111,10 @@ class SessionOverride(BaseModel):
     _codes = field_validator("codes")(_check_codes)
 
 
-class ClassSessionCreate(BaseModel):
-    """A one-off individual session (``POST /api/v1/class-sessions``).
-
-    Groups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs
-    ``schedule.override``."""
+class ClassSessionSlot(BaseModel):
+    """The members a one-off individual session is made of: the create body
+    without the ``override`` (#48 B1). Shared by the create and the slot
+    suggestions (#50 B1)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -125,6 +130,14 @@ class ClassSessionCreate(BaseModel):
     )
     starts_at: datetime = Field(description="An instant with an offset (RFC 3339).")
     ends_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+
+
+class ClassSessionCreate(ClassSessionSlot):
+    """A one-off individual session (``POST /api/v1/class-sessions``).
+
+    Groups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs
+    ``schedule.override``."""
+
     override: SessionOverride | None = Field(
         default=None,
         description=(
@@ -219,14 +232,117 @@ class ClassSessionDetail(BaseModel):
     )
 
 
-class SchedulingWarning(BaseModel):
-    """A rule that never blocks (ADR-0005 warnings; filled by #50)."""
+type SchedulingWarningCode = Literal[
+    "daily_limit_exceeded", "weekly_limit_exceeded", "break_too_short"
+]
 
-    code: str
+
+class SchedulingWarning(BaseModel):
+    """A rule that never blocks (ADR-0005 warnings; #50 A): the tutor's
+    teaching limits and required break (:mod:`~app.modules.scheduling.workload`).
+
+    ``details``: ``daily_limit_exceeded`` ``{date, limit_minutes,
+    scheduled_minutes}``; ``weekly_limit_exceeded`` ``{week_start,
+    limit_minutes, scheduled_minutes}`` (``week_start`` is the Monday of the
+    ISO week); ``break_too_short`` ``{class_session_id, gap_minutes,
+    required_break_minutes}``."""
+
+    code: SchedulingWarningCode
     details: dict[str, Any]
 
 
 class ClassSessionCreated(ClassSessionDetail):
-    """The created session and its warnings (always empty until #50)."""
+    """The created session and its workload warnings (#50 A7)."""
 
-    warnings: list[SchedulingWarning]
+    warnings: list[SchedulingWarning] = Field(
+        description=(
+            "The tutor's workload warnings for this session: daily, weekly,"
+            " then break; empty without a tutor. They never block."
+        )
+    )
+
+
+# --- Slot suggestions (#50 B) -----------------------------------------------------
+
+
+SUGGESTIONS_DEFAULT_LIMIT: Final = 5
+SUGGESTIONS_MAX_LIMIT: Final = 10
+SEARCH_DEFAULT_DAYS: Final = 7
+SEARCH_MAX_DAYS: Final = 14
+
+
+def search_range_error(
+    search_from: date, search_to: date
+) -> PydanticCustomError | None:
+    """The ``search_to`` error of a window (#50 B1), or ``None``."""
+    if search_to < search_from:
+        return PydanticCustomError(
+            "search_range_invalid", "The search end must not be before its start."
+        )
+    if (search_to - search_from).days + 1 > SEARCH_MAX_DAYS:
+        return PydanticCustomError(
+            "search_range_too_long", "Search at most 14 days at a time."
+        )
+    return None
+
+
+class SlotSuggestionRequest(ClassSessionSlot):
+    """``POST /api/v1/class-sessions/suggestions`` (#50 B1): the session's
+    members (the requested start and end give only the duration and the
+    ranking anchor) plus the search. No ``override``: only slots that need
+    none are returned."""
+
+    limit: int = Field(
+        default=SUGGESTIONS_DEFAULT_LIMIT,
+        ge=1,
+        le=SUGGESTIONS_MAX_LIMIT,
+        description="How many slots to return at most: 1-10, default 5.",
+    )
+    search_from: date | None = Field(
+        default=None,
+        description=(
+            "The first local date (center zone) to search; default the local"
+            " date of starts_at."
+        ),
+    )
+    search_to: date | None = Field(
+        default=None,
+        description=(
+            "The last local date to search, at most 14 dates in all; default"
+            " search_from + 6 days."
+        ),
+    )
+
+    @field_validator("search_to")
+    @classmethod
+    def _window(cls, value: date | None, info: ValidationInfo) -> date | None:
+        start = info.data.get("search_from")
+        if value is not None and start is not None:
+            error = search_range_error(start, value)
+            if error is not None:
+                raise error
+        return value
+
+
+class SuggestedSlot(BaseModel):
+    """One free time: every hard and soft rule passes (#50 B4)."""
+
+    starts_at: datetime
+    ends_at: datetime
+    warnings: list[SchedulingWarning] = Field(
+        description="The workload warnings a create at this time would get."
+    )
+
+
+class SlotSuggestions(BaseModel):
+    """The free times nearest the requested start (#50 B5, B7)."""
+
+    search_from: date
+    search_to: date
+    limit: int
+    slots: list[SuggestedSlot] = Field(
+        description=(
+            "0 to limit slots, nearest the requested start first (a tie goes"
+            " to the earlier start)."
+        )
+    )

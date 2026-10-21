@@ -7,7 +7,9 @@ writes of both, and the closure checks other modules use
 :func:`is_center_closed_at`). Classrooms (#39) are implemented in
 :mod:`app.modules.catalog.classrooms` and re-exported below, with the checks
 other modules use (:func:`get_classroom`, :func:`classroom_references`,
-:func:`active_classroom_ids`, :func:`is_classroom_available`).
+:func:`active_classroom_ids`, :func:`is_classroom_available`; for the
+M4-05 slot search, :func:`classroom_weekly_windows`, one statement, and the
+pure :func:`windows_cover`).
 
 **Reads** (every signed-in user): :func:`list_education_levels`,
 :func:`get_education_level`, :func:`list_subjects`, :func:`get_subject`. The
@@ -71,6 +73,9 @@ from app.modules.catalog.classrooms import (
     classroom_references as classroom_references,
 )
 from app.modules.catalog.classrooms import (
+    classroom_weekly_windows as classroom_weekly_windows,
+)
+from app.modules.catalog.classrooms import (
     create_classroom as create_classroom,
 )
 from app.modules.catalog.classrooms import (
@@ -84,6 +89,9 @@ from app.modules.catalog.classrooms import (
 )
 from app.modules.catalog.classrooms import (
     update_classroom as update_classroom,
+)
+from app.modules.catalog.classrooms import (
+    windows_cover as windows_cover,
 )
 from app.modules.catalog.errors import (
     EducationLevelHasActiveSubjectsError,

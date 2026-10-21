@@ -14,7 +14,9 @@ import {
   type ClassSessionCreated,
   type Option,
   type SchedulingConflict,
+  type SlotSuggestions,
   type SubjectOption,
+  type SuggestedSlot,
 } from './api';
 import { ConflictPanel } from './ConflictPanel';
 import { OverrideDialog } from './OverrideDialog';
@@ -26,6 +28,7 @@ import {
   overrideReasonError,
   serverErrors,
   sessionOverride,
+  slotValues,
   subjectsByLevel,
   validateSchedule,
   type ScheduleErrors,
@@ -34,6 +37,9 @@ import {
   type ScheduleValues,
   type SessionOverride,
 } from './rules';
+import { useSlotParts } from './slotParts';
+import { SuggestedSlots, type SuggestionsState } from './SuggestedSlots';
+import { useWarningMessage } from './warningMessages';
 
 // The "Schedule a session" form (#48 F2, F3), without any API call: the
 // page passes the options, the student search and `onSubmit` (which
@@ -50,6 +56,13 @@ import {
 // the reason: a 201 shows the success panel with the overridden rules, a new
 // 409 closes the dialog and shows the new list (focus on its heading), a
 // 422 on the reason stays in the dialog, and a 403 shows its ErrorAlert.
+//
+// Suggested times (#50 C1): after a 409 the form asks `onSuggest` for free
+// times with the same values and shows them under the panel. Choosing one
+// fills in the date, start and end (it doesn't submit), closes the panel,
+// moves the focus to the submit button and announces the new time in a
+// polite live region. The success panel lists the 201's workload warnings
+// (#50 C2).
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -64,6 +77,8 @@ export interface ScheduleSessionFormProps {
   ) => Promise<ClassSessionCreated>;
   /** Whether the user holds schedule.override. */
   canOverride: boolean;
+  /** Free times for the same values after a conflict (#50); none: no section. */
+  onSuggest?: (values: ScheduleValues) => Promise<SlotSuggestions>;
   /** The values to start from (stories). */
   initialValues?: ScheduleValues;
   /** The id of the page heading that names the form. */
@@ -78,6 +93,7 @@ export function ScheduleSessionForm({
   timeZone,
   onSubmit,
   canOverride,
+  onSuggest,
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
 }: ScheduleSessionFormProps) {
@@ -92,6 +108,12 @@ export function ScheduleSessionForm({
   const [failure, setFailure] = useState<unknown>(null);
   const [created, setCreated] = useState<ClassSessionCreated | null>(null);
   const [overriding, setOverriding] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestionsState | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const suggestionRequest = useRef(0);
+  const submitButton = useRef<HTMLButtonElement>(null);
+  const warningMessage = useWarningMessage();
+  const slotParts = useSlotParts(timeZone);
   const inFlight = useRef(false);
   const successHeading = useRef<HTMLHeadingElement>(null);
   const overrideButton = useRef<HTMLButtonElement>(null);
@@ -133,8 +155,46 @@ export function ScheduleSessionForm({
     element?.focus();
   }
 
+  function clearSuggestions() {
+    // A later answer of an earlier request is ignored.
+    suggestionRequest.current += 1;
+    setSuggestions(null);
+  }
+
+  function suggest(forValues: ScheduleValues) {
+    if (!onSuggest) {
+      return;
+    }
+    suggestionRequest.current += 1;
+    const request = suggestionRequest.current;
+    setSuggestions({ status: 'loading' });
+    onSuggest(forValues).then(
+      (result) => {
+        if (request === suggestionRequest.current) {
+          setSuggestions({ status: 'loaded', result });
+        }
+      },
+      (error: unknown) => {
+        if (request === suggestionRequest.current) {
+          setSuggestions({ status: 'error', error });
+        }
+      },
+    );
+  }
+
+  function chooseSlot(slot: SuggestedSlot) {
+    setValues((current) => ({ ...current, ...slotValues(slot, timeZone) }));
+    setErrors({});
+    setConflicts(null);
+    clearSuggestions();
+    setAnnouncement(t('scheduling.suggestions.chosen', slotParts(slot)));
+    window.setTimeout(() => submitButton.current?.focus(), 0);
+  }
+
   async function submit() {
     setConflicts(null);
+    clearSuggestions();
+    setAnnouncement('');
     setFailure(null);
     const found = validateSchedule(values);
     setErrors(found);
@@ -169,6 +229,7 @@ export function ScheduleSessionForm({
     const list = conflictsOf(caught);
     if (list) {
       setConflicts(list);
+      suggest(values);
     } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
       const mapped = serverErrors(caught.fieldErrors);
       if (Object.keys(mapped).length > 0) {
@@ -194,6 +255,7 @@ export function ScheduleSessionForm({
       // The success panel replaces the form (and the dialog with it).
       setOverriding(false);
       setConflicts(null);
+      clearSuggestions();
       setCreated(session);
       window.setTimeout(() => successHeading.current?.focus(), 0);
     } catch (caught) {
@@ -231,6 +293,7 @@ export function ScheduleSessionForm({
 
   function scheduleAnother() {
     setCreated(null);
+    setAnnouncement('');
     setErrors({});
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
   }
@@ -267,6 +330,24 @@ export function ScheduleSessionForm({
                   .map((code) => ruleName(code))
                   .join(t('scheduling.reasons.separator')),
               })}
+            </p>
+          </div>
+        ) : null}
+        {created.warnings.length > 0 ? (
+          <div
+            role="status"
+            className="flex flex-col gap-1 rounded-md border border-border p-3"
+          >
+            <p className="font-medium">{t('scheduling.warnings.heading')}</p>
+            <ul className="list-disc pl-5 text-sm break-words">
+              {created.warnings.map((warning, index) => (
+                <li key={`${warning.code}-${index}`}>
+                  {warningMessage(warning)}
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              {t('scheduling.warnings.intro')}
             </p>
           </div>
         ) : null}
@@ -394,6 +475,16 @@ export function ScheduleSessionForm({
           />
         </div>
       ) : null}
+      {suggestions ? (
+        <SuggestedSlots
+          state={suggestions}
+          timeZone={timeZone}
+          onChoose={chooseSlot}
+        />
+      ) : null}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       {failure ? <ErrorAlert error={failure} /> : null}
       <form
         method="post"
@@ -481,7 +572,7 @@ export function ScheduleSessionForm({
           </div>
         </fieldset>
         <div>
-          <Button type="submit" disabled={submitting}>
+          <Button ref={submitButton} type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}
             {submitting ? t('scheduling.submitting') : t('scheduling.submit')}
           </Button>

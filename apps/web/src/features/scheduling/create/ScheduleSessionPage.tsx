@@ -13,14 +13,16 @@ import {
   fetchTutorOptions,
   SCHEDULE_OPTIONS_KEY,
   searchStudents,
+  suggestSlots,
 } from './api';
-import { scheduleBody } from './rules';
+import { scheduleBody, suggestionBody } from './rules';
 import { ScheduleSessionForm } from './ScheduleSessionForm';
 
 // /schedule/new, "Schedule a session" (#48 F1), for schedule.manage holders:
 // loads the active subjects, tutors and classrooms, then shows the form.
 // The times are in the center zone (the session's business setting).
-// Holders of schedule.override can override soft conflicts (#49).
+// Holders of schedule.override can override soft conflicts (#49). After a
+// conflict the form shows suggested times (#50).
 
 export function ScheduleSessionPage() {
   const { t } = useTranslation();
@@ -72,6 +74,7 @@ export function ScheduleSessionPage() {
         onSubmit={(values, override) =>
           createClassSession(scheduleBody(values, timeZone, override))
         }
+        onSuggest={(values) => suggestSlots(suggestionBody(values, timeZone))}
       />
     );
   }

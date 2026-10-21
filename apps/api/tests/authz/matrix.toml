@@ -269,13 +269,25 @@ allow = ["owner", "administrator"]
 json = { kind = "individual", student_id = "00000000-0000-4000-8000-000000000048", subject_id = "00000000-0000-4000-8000-000000000048", starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
 
 [[route]]
+method = "POST"
+path = "/api/v1/class-sessions/suggestions"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #50: read-only; a valid body with unknown ids: 422 (student_unknown,
+# subject_unknown) for every allowed role. The 200 cases are tested in
+# tests/integration/test_class_session_suggestions.py.
+json = { kind = "individual", student_id = "00000000-0000-4000-8000-000000000050", subject_id = "00000000-0000-4000-8000-000000000050", starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
+
+[[route]]
 method = "GET"
-path = "/api/v1/class-sessions/{class_session_id}"
+path = "/api/v1/class-sessions/{class_session_id:uuid}"
 access = "permission"
 permission = "schedule.view"
 allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
 # #48: every holder sees every session; the placeholder id is no session:
-# 404 for every allowed role.
+# 404 for every allowed role. The uuid convertor (#50) keeps the path from
+# shadowing /suggestions (a GET there is 405).
 
 [[route]]
 method = "GET"
