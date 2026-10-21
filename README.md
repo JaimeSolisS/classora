@@ -1,7 +1,7 @@
 # Classora
 
 Classora is a management platform for a single tutoring center. It covers class
-scheduling and enrollment, attendance, academic records, documents, billing and
+scheduling and enrollment, attendance, academic records, billing and
 payments, tutor payroll and operational reporting for owners, administrators,
 coordinators, finance staff, tutors, students and guardians. It is built as a
 FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
@@ -224,11 +224,15 @@ unless a bullet says otherwise.
   light and dark themes.
 
 **Not built yet:** recurring and group scheduling, rescheduling from the
-calendar, course cohorts, attendance, academic records
-and documents, billing and payments, payroll, reporting and analytics, and
+calendar, course cohorts, attendance, academic records,
+billing and payments, payroll, reporting and analytics, and
 deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
+
+**Not in this version:** file uploads and documents (attachments, the shared
+academic library, malware scanning, file previews and the recycle bin) are
+planned for a later version.
 
 ## Prerequisites
 
