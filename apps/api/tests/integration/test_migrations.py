@@ -1,6 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
 M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
-M3-03 A, M3-04 A, M3-05 A, M3-09 A); each test uses a fresh database."""
+M3-03 A, M3-04 A, M3-05 A, M3-09 A, M4-02 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0029"
+HEAD = "0030"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -100,6 +100,7 @@ AVAILABILITY_TABLES = [
     "tutor_availability_windows",
 ]
 PREFERRED_ROOM_TABLES = ["tutor_preferred_classrooms"]
+SESSION_TABLES = ["class_session_participants", "class_sessions"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -211,6 +212,9 @@ def test_history_is_linear_with_one_head():
     limits = script.get_revision("0029")
     assert limits.down_revision == "0028"
     assert Path(limits.path).name == "0029_staff_tutor_limits_rooms.py"
+    sessions = script.get_revision("0030")
+    assert sessions.down_revision == "0029"
+    assert Path(sessions.path).name == "0030_scheduling_class_sessions.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -251,6 +255,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *QUALIFICATION_TABLES,
             *AVAILABILITY_TABLES,
             *PREFERRED_ROOM_TABLES,
+            *SESSION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3969,3 +3974,132 @@ def test_a_preferred_classroom_is_unique_per_tutor_and_restricts_deletes(
         IntegrityError, match="fk_tutor_preferred_classrooms_tutor_user_id"
     ):
         run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": other})
+
+
+# --- 0030: class sessions (#47 A) ------------------------------------------
+
+
+def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0029")
+    before = public_tables(fresh_database_url)
+    [gist] = run_sql(
+        fresh_database_url,
+        "SELECT count(*) AS n FROM pg_extension WHERE extname = 'btree_gist'",
+    )
+    assert gist.n == 1
+
+    command.upgrade(config, "0030")
+
+    assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
+    assert metadata_diff(fresh_database_url) == []
+
+    command.downgrade(config, "0029")
+
+    assert version_nums(fresh_database_url) == ["0029"]
+    assert public_tables(fresh_database_url) == before
+    # 0030 never owned btree_gist (0021 did): it is still there.
+    [gist] = run_sql(
+        fresh_database_url,
+        "SELECT count(*) AS n FROM pg_extension WHERE extname = 'btree_gist'",
+    )
+    assert gist.n == 1
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "class_sessions"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "kind": ("character varying", "NO", 20, None),
+        "state": ("character varying", "NO", 20, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "tutor_user_id": ("uuid", "YES", None, None),
+        "classroom_id": ("uuid", "YES", None, None),
+        "starts_at": ("timestamp with time zone", "NO", None, None),
+        "ends_at": ("timestamp with time zone", "NO", None, None),
+        "scheduled_minutes": ("smallint", "NO", None, None),
+        "actual_minutes": ("smallint", "YES", None, None),
+        "cancelled_at": ("timestamp with time zone", "YES", None, None),
+        "cancellation_reason": ("character varying", "YES", 1000, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    checks = {
+        f"ck_{table}_{name}"
+        for name in (
+            "kind_valid",
+            "state_valid",
+            "starts_before_ends",
+            "whole_minutes",
+            "duration_range",
+            "scheduled_minutes_match",
+            "actual_minutes_range",
+            "unassigned_has_no_tutor",
+            "assigned_has_tutor",
+            "cancellation_iff_cancelled",
+            "cancellation_reason_trimmed",
+        )
+    }
+    foreign_keys = {
+        f"fk_{table}_subject_id_subjects",
+        f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_classroom_id_classrooms",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        *checks,
+        *foreign_keys,
+        "ex_class_sessions_tutor_overlap",
+        "ex_class_sessions_room_overlap",
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_subject_id",
+        f"ix_{table}_tutor_user_id",
+        f"ix_{table}_classroom_id",
+        f"ix_{table}_starts_at",
+        "ex_class_sessions_tutor_overlap",
+        "ex_class_sessions_room_overlap",
+    }
+
+
+def test_class_session_participants_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "class_session_participants"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "class_session_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_class_session_id_class_sessions",
+        f"fk_{table}_student_id_students",
+        "uq_class_session_participants_session_student",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_student_id_students"]
+    assert (
+        "ON DELETE RESTRICT"
+        in (constraints[f"fk_{table}_class_session_id_class_sessions"])
+    )
+    assert constraints["uq_class_session_participants_session_student"] == (
+        "UNIQUE (class_session_id, student_id)"
+    )
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_student_id",
+        "uq_class_session_participants_session_student",
+    }

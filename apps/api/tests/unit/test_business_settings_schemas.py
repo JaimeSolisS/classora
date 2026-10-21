@@ -215,9 +215,14 @@ def test_a_name_is_registered_once():
     assert name not in administration.time_zone_dependencies()
 
 
-def test_no_production_check_is_registered_before_m4():
+def test_the_app_registers_only_the_class_sessions_check():
     from app.main import build_app
+    from app.modules.scheduling import service as scheduling
 
     build_app()
+    # Building the app again (tests, the OpenAPI export) does not raise.
+    build_app()
 
-    assert dict(administration.time_zone_dependencies()) == {}
+    assert dict(administration.time_zone_dependencies()) == {
+        "scheduling.class_sessions": scheduling.has_class_sessions
+    }
