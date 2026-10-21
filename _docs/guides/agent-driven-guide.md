@@ -230,8 +230,8 @@ Place these rules into the real root `AGENTS.md` (do not make this guide an alte
 
 - Read relevant sections of `_docs/spec.md` and `_docs/architecture.md`.
 - Follow `_docs/process.md`; GitHub Issues are the only active backlog.
-- Work on exactly one groomed issue at a time unless orchestrator explicitly
-  manages independently approved work.
+- Each agent works on exactly one groomed issue; the orchestrator keeps at most
+  two issues in flight, each in its own worktree (`_docs/process.md`).
 - Do not implement extra features, adjust acceptance criteria during coding,
   or introduce Redis/Celery/RDS without a new approved ADR.
 - Use tests, migrations and authorization checks suited to the change.
@@ -293,8 +293,10 @@ Select one ready GitHub issue
   → Engineer implements and performs README gate
   → QA independently verifies behavior AND README gate
      ├─ FAIL → engineer addresses findings, repeats README gate → QA again
-     └─ PASS → orchestrator closes issue and selects next ready issue
+     └─ PASS → orchestrator enables auto-merge, closes issue once merged
 ```
+
+Classora overlaps delivery ([`_docs/process.md`](../process.md)): once an issue is handed off to QA, the next issue's engineer may start in its own git worktree, so at most two issues are in flight. A dependent issue branches from its prerequisite's branch and merges `develop` after the prerequisite lands. Each issue keeps its own QA PASS, README verdict and merge; after them the orchestrator runs `gh pr merge <number> --auto --squash` and GitHub merges when `ci-required` is green. A flaky test gets an issue on first sighting and only the failed job is re-run. Engineers and QA run the native local stack (`make db-shared`, own database and ports); CI's Docker-based jobs are the parity check on every pull request. On an 8 GB machine, heavy commands run one at a time across agents.
 
 **Manual prompts:**
 
