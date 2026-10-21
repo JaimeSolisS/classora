@@ -4000,7 +4000,12 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
     command.upgrade(config, "0030")
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
-    assert metadata_diff(fresh_database_url) == []
+    # Only the tables of later revisions (0031 scheduling_policies) differ.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not (diff[0] == "add_table" and diff[1].name in POLICY_TABLES)  # type: ignore[index]
+    ] == []
 
     command.downgrade(config, "0029")
 
