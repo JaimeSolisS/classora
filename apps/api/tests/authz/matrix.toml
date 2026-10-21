@@ -343,6 +343,49 @@ allow = ["owner", "administrator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
 
+# Course templates (#64, owner decision E3 (a)).
+[[route]]
+method = "GET"
+path = "/api/v1/course-templates"
+access = "permission"
+permission = "course.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/course-templates"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# The placeholder id is no template: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# A valid body on the placeholder id: 404 for the allowed roles.
+json = { version = 1, is_active = false }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
 [[route]]
 method = "POST"
 path = "/api/v1/dev/demo-jobs"

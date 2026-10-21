@@ -157,6 +157,17 @@ unless a bullet says otherwise.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned (tutors can't accept offers yet).
 
+**Courses**
+
+- On the Courses page, staff and academic coordinators build reusable
+  course templates: a name, one or more subjects, the number of sessions and
+  their length, ordered syllabus modules (with planned sessions and
+  free-text materials references), assessment definitions and completion
+  criteria (minimum attendance, required modules and assessments). Templates
+  are deactivated instead of deleted; finance staff can read them.
+- Cohorts (arriving with scheduling) will be created from a fixed copy of
+  the template, so later edits never change a cohort already created.
+
 **Approvals**
 
 - The Approvals page is the shared list of requests waiting for a decision,
@@ -192,7 +203,7 @@ unless a bullet says otherwise.
   light and dark themes.
 
 **Not built yet:** recurring and group scheduling, the calendar and
-courses, attendance, academic records
+course cohorts, attendance, academic records
 and documents, billing and payments, payroll, reporting and analytics, and
 deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

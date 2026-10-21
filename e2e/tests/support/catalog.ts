@@ -25,6 +25,7 @@ type Common = {
     families: string;
     tutors: string;
     schedule: string;
+    courses: string;
   };
   roles: Record<string, string>;
   scheduling: {
@@ -401,6 +402,33 @@ type Common = {
       staff_qualification_approved: string;
       staff_qualification_rejected: string;
       staff_qualification_revoked: string;
+    };
+  };
+  courses: {
+    templates: Record<
+      | 'title'
+      | 'new'
+      | 'newTitle'
+      | 'name'
+      | 'sessionCount'
+      | 'sessionMinutes'
+      | 'subjectOption'
+      | 'moduleTitleLabel'
+      | 'plannedSessionsLabel'
+      | 'addModule'
+      | 'moveModuleUpLabel'
+      | 'addAssessment'
+      | 'assessmentTitleLabel'
+      | 'assessmentModuleLabel'
+      | 'minAttendance'
+      | 'save'
+      | 'saved'
+      | 'deactivate'
+      | 'statusFilter',
+      string
+    > & {
+      statusOptions: Record<'active' | 'inactive' | 'all', string>;
+      validation: Record<'plannedExceedTotal' | 'nameTaken', string>;
     };
   };
 };

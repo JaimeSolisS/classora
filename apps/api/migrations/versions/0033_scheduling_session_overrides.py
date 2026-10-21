@@ -1,7 +1,7 @@
 """Scheduling: ``class_session_overrides``.
 
-Revision ID: 0032
-Revises: 0031
+Revision ID: 0033
+Revises: 0032
 Create Date: 2026-10-21
 
 M4-04 (#49 D1; spec §3, W1.6; ADR-0005 "Conflict wire format and
@@ -29,8 +29,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0032"
-down_revision: str | Sequence[str] | None = "0031"
+revision: str = "0033"
+down_revision: str | Sequence[str] | None = "0032"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

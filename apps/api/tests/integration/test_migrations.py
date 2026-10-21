@@ -1,6 +1,7 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
 M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
-M3-03 A, M3-04 A, M3-05 A, M3-09 A, M4-02 A, M4-16 A); each test uses a fresh
+M3-03 A, M3-04 A, M3-05 A, M3-09 A, M4-02 A, M4-16 A, M4-19 B); each test uses a
+fresh
 database."""
 
 import asyncio
@@ -15,6 +16,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
@@ -65,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0032"
+HEAD = "0033"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -103,6 +105,13 @@ AVAILABILITY_TABLES = [
 PREFERRED_ROOM_TABLES = ["tutor_preferred_classrooms"]
 SESSION_TABLES = ["class_session_participants", "class_sessions"]
 POLICY_TABLES = ["scheduling_policies"]
+COURSE_TABLES = [
+    "course_template_assessments",
+    "course_template_modules",
+    "course_template_snapshots",
+    "course_template_subjects",
+    "course_templates",
+]
 OVERRIDE_TABLES = ["class_session_overrides"]
 
 PROCRASTINATE_TABLES = [
@@ -221,9 +230,12 @@ def test_history_is_linear_with_one_head():
     policies = script.get_revision("0031")
     assert policies.down_revision == "0030"
     assert Path(policies.path).name == "0031_administration_scheduling_policies.py"
-    overrides = script.get_revision("0032")
-    assert overrides.down_revision == "0031"
-    assert Path(overrides.path).name == "0032_scheduling_session_overrides.py"
+    courses = script.get_revision("0032")
+    assert courses.down_revision == "0031"
+    assert Path(courses.path).name == "0032_courses_course_templates.py"
+    overrides = script.get_revision("0033")
+    assert overrides.down_revision == "0032"
+    assert Path(overrides.path).name == "0033_scheduling_session_overrides.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -266,6 +278,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PREFERRED_ROOM_TABLES,
             *SESSION_TABLES,
             *POLICY_TABLES,
+            *COURSE_TABLES,
             *OVERRIDE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
@@ -4005,15 +4018,13 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
     command.upgrade(config, "0030")
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
-    # Only the tables (and their indexes) of later revisions (0031
-    # scheduling_policies, 0032 class_session_overrides) differ.
-    later = POLICY_TABLES + OVERRIDE_TABLES
+    # Only the tables of later revisions (0031 scheduling_policies, 0032 the
+    # course tables, 0033 class_session_overrides) differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
-        if not (
-            (diff[0] == "add_table" and diff[1].name in later)  # type: ignore[index]
-            or (diff[0] == "add_index" and diff[1].table.name in later)  # type: ignore[index]
+        if not _of_later_revision(
+            diff, [*POLICY_TABLES, *COURSE_TABLES, *OVERRIDE_TABLES]
         )
     ] == []
 
@@ -4029,6 +4040,16 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
     assert gist.n == 1
     command.upgrade(config, "head")
     assert version_nums(fresh_database_url) == [HEAD]
+
+
+def _of_later_revision(diff: Any, tables: list[str]) -> bool:
+    """A metadata difference that is a table (or one of its indexes) a later
+    revision adds."""
+    if diff[0] == "add_table":
+        return diff[1].name in tables
+    if diff[0] == "add_index":
+        return diff[1].table.name in tables
+    return False
 
 
 def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
@@ -4276,7 +4297,284 @@ def test_a_duplicate_effective_from_is_rejected(fresh_database_url):
     assert _sqlstate(exc.value) == "23505"
 
 
-# --- 0032: session overrides (#49 D1) ---------------------------------------------
+# --- 0032: course templates (#64 B) ---------------------------------------------------
+
+COURSE_SUBJECT_ID = uuid.UUID("01900000-0000-7000-8000-00000000c001")
+
+
+def _course_template(dsn: str, name: str = "Curso", **values: Any) -> uuid.UUID:
+    columns: dict[str, Any] = {
+        "name": name,
+        "session_count": 10,
+        "session_minutes": 90,
+        "min_attendance_percent": None,
+        "is_active": True,
+        **values,
+    }
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO course_templates (name, session_count, session_minutes,"
+        " min_attendance_percent, is_active) VALUES (:name, :session_count,"
+        " :session_minutes, :min_attendance_percent, :is_active) RETURNING id",
+        columns,
+    )
+    template_id: uuid.UUID = row.id
+    return template_id
+
+
+def _in_one_transaction(dsn: str, *statements: Statement) -> None:
+    async def _run() -> None:
+        engine = short_lived_engine(dsn)
+        try:
+            async with engine.begin() as conn:
+                for sql, params in statements:
+                    await conn.execute(text(sql), params)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def _course_module(template_id: uuid.UUID, position: int, title: str) -> Statement:
+    return (
+        "INSERT INTO course_template_modules (template_id, position, title)"
+        " VALUES (:template_id, :position, :title)",
+        {"template_id": template_id, "position": position, "title": title},
+    )
+
+
+def test_0032_adds_exactly_the_course_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0031")
+    before = public_tables(fresh_database_url)
+
+    command.upgrade(config, "0032")
+
+    assert public_tables(fresh_database_url) - before == set(COURSE_TABLES)
+    # Only the table of a later revision (0033 class_session_overrides) differs.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not _of_later_revision(diff, OVERRIDE_TABLES)
+    ] == []
+    [trigger] = run_sql(
+        fresh_database_url,
+        "SELECT count(*) AS n FROM pg_trigger"
+        " WHERE tgname = 'course_template_snapshots_immutable'",
+    )
+    assert trigger.n == 1
+
+    command.downgrade(config, "0031")
+
+    assert version_nums(fresh_database_url) == ["0031"]
+    assert public_tables(fresh_database_url) == before
+    [function] = run_sql(
+        fresh_database_url,
+        "SELECT count(*) AS n FROM pg_proc"
+        " WHERE proname = 'course_template_snapshots_immutable'",
+    )
+    assert function.n == 0
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_course_templates_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "course_templates"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 100, None),
+        "description": ("character varying", "YES", 2000, None),
+        "session_count": ("smallint", "NO", None, None),
+        "session_minutes": ("smallint", "NO", None, None),
+        "min_attendance_percent": ("smallint", "YES", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert set(_constraints(fresh_database_url, table)) == {
+        "pk_course_templates",
+        "ck_course_templates_name_trimmed",
+        "ck_course_templates_name_not_blank",
+        "ck_course_templates_session_count_range",
+        "ck_course_templates_session_minutes_range",
+        "ck_course_templates_min_attendance_percent_range",
+    }
+    assert set(_indexes(fresh_database_url, table)) == {
+        "pk_course_templates",
+        "uq_course_templates_name_ci",
+    }
+
+
+def test_course_template_child_tables_constraints(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    modules = _constraints(fresh_database_url, "course_template_modules")
+    assert set(modules) == {
+        "pk_course_template_modules",
+        "fk_course_template_modules_template_id_course_templates",
+        "fk_course_template_modules_subject_id_subjects",
+        "uq_course_template_modules_template_position",
+        "ck_course_template_modules_position_range",
+        "ck_course_template_modules_title_trimmed",
+        "ck_course_template_modules_title_not_blank",
+        "ck_course_template_modules_planned_sessions_range",
+    }
+    assert modules["uq_course_template_modules_template_position"] == (
+        'UNIQUE (template_id, "position") DEFERRABLE INITIALLY DEFERRED'
+    )
+    assessments = _constraints(fresh_database_url, "course_template_assessments")
+    assert assessments["uq_course_template_assessments_template_position"] == (
+        'UNIQUE (template_id, "position") DEFERRABLE INITIALLY DEFERRED'
+    )
+    assert (
+        "ON DELETE RESTRICT"
+        in assessments["fk_course_template_assessments_module_id_modules"]
+    )
+    assert set(_constraints(fresh_database_url, "course_template_subjects")) == {
+        "pk_course_template_subjects",
+        "fk_course_template_subjects_template_id_course_templates",
+        "fk_course_template_subjects_subject_id_subjects",
+        "uq_course_template_subjects_template_subject",
+    }
+    assert set(_constraints(fresh_database_url, "course_template_snapshots")) == {
+        "pk_course_template_snapshots",
+        "fk_course_template_snapshots_template_id_course_templates",
+        "uq_course_template_snapshots_template_version",
+    }
+    assert "ix_course_template_subjects_subject_id" in _indexes(
+        fresh_database_url, "course_template_subjects"
+    )
+    for child in ("course_template_modules", "course_template_assessments"):
+        assert f"ix_{child}_template_id" in _indexes(fresh_database_url, child)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("session_count", 0),
+        ("session_count", 201),
+        ("session_minutes", 14),
+        ("session_minutes", 481),
+        ("min_attendance_percent", 0),
+        ("min_attendance_percent", 101),
+    ],
+)
+def test_course_template_ranges_are_checked(fresh_database_url, column, value):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(IntegrityError, match=f"ck_course_templates_{column}_range"):
+        _course_template(fresh_database_url, **{column: value})
+
+
+def test_course_template_bounds_and_null_attendance_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    _course_template(
+        fresh_database_url,
+        "Uno",
+        session_count=1,
+        session_minutes=15,
+        min_attendance_percent=1,
+    )
+    _course_template(
+        fresh_database_url,
+        "Dos",
+        session_count=200,
+        session_minutes=480,
+        min_attendance_percent=100,
+    )
+    _course_template(fresh_database_url, "Tres", min_attendance_percent=None)
+
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM course_templates")
+    assert count.n == 3
+
+
+def test_a_course_template_name_in_another_case_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    _course_template(fresh_database_url, "Curso de Verano", is_active=False)
+
+    with pytest.raises(IntegrityError, match="uq_course_templates_name_ci"):
+        _course_template(fresh_database_url, "CURSO DE VERANO")
+
+
+def test_two_modules_at_one_position_are_rejected_at_commit(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    template_id = _course_template(fresh_database_url)
+
+    with pytest.raises(
+        IntegrityError, match="uq_course_template_modules_template_position"
+    ):
+        _in_one_transaction(
+            fresh_database_url,
+            _course_module(template_id, 1, "Uno"),
+            _course_module(template_id, 1, "Dos"),
+        )
+
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM course_template_modules"
+    )
+    assert count.n == 0
+
+
+def test_swapping_two_module_positions_in_one_transaction_is_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    template_id = _course_template(fresh_database_url)
+    run_sql(fresh_database_url, *_course_module(template_id, 1, "Uno"))
+    run_sql(fresh_database_url, *_course_module(template_id, 2, "Dos"))
+    move = (
+        "UPDATE course_template_modules SET position = :position"
+        " WHERE template_id = :template_id AND title = :title"
+    )
+
+    _in_one_transaction(
+        fresh_database_url,
+        (move, {"position": 2, "template_id": template_id, "title": "Uno"}),
+        (move, {"position": 1, "template_id": template_id, "title": "Dos"}),
+    )
+
+    rows = run_sql(
+        fresh_database_url,
+        "SELECT title FROM course_template_modules ORDER BY position",
+    )
+    assert [row.title for row in rows] == ["Dos", "Uno"]
+
+
+def test_a_snapshot_row_can_be_neither_updated_nor_deleted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    template_id = _course_template(fresh_database_url)
+    [snapshot] = run_sql(
+        fresh_database_url,
+        "INSERT INTO course_template_snapshots (template_id, template_version, content)"
+        ' VALUES (:template_id, 1, \'{"name": "Curso"}\') RETURNING id, schema_version',
+        {"template_id": template_id},
+    )
+    assert snapshot.schema_version == 1
+
+    for statement in (
+        "UPDATE course_template_snapshots SET template_version = 2 WHERE id = :id",
+        "DELETE FROM course_template_snapshots WHERE id = :id",
+    ):
+        with pytest.raises(DBAPIError, match="rows never change") as exc:
+            run_sql(fresh_database_url, statement, {"id": snapshot.id})
+        assert _sqlstate(exc.value) == "42501"
+
+    with pytest.raises(
+        IntegrityError, match="uq_course_template_snapshots_template_version"
+    ):
+        run_sql(
+            fresh_database_url,
+            "INSERT INTO course_template_snapshots"
+            " (template_id, template_version, content)"
+            " VALUES (:template_id, 1, '{}')",
+            {"template_id": template_id},
+        )
+
+
+# --- 0033: session overrides (#49 D1) ---------------------------------------------
 
 OVERRIDES_TRIGGER = (
     "SELECT tgname FROM pg_trigger"
@@ -4287,23 +4585,24 @@ OVERRIDES_FUNCTION = (
 )
 
 
-def test_0032_adds_exactly_the_override_table_and_downgrade_drops_it(
+def test_0033_adds_exactly_the_override_table_and_downgrade_drops_it(
     fresh_database_url,
 ):
     config = alembic_config(fresh_database_url)
-    command.upgrade(config, "0031")
-    before = public_tables(fresh_database_url)
     command.upgrade(config, "0032")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0033")
 
     assert public_tables(fresh_database_url) - before == set(OVERRIDE_TABLES)
+    assert metadata_diff(fresh_database_url) == []
     assert [r.tgname for r in run_sql(fresh_database_url, OVERRIDES_TRIGGER)] == [
         "class_session_overrides_immutable"
     ]
     assert len(run_sql(fresh_database_url, OVERRIDES_FUNCTION)) == 1
 
-    command.downgrade(config, "0031")
+    command.downgrade(config, "0032")
 
-    assert version_nums(fresh_database_url) == ["0031"]
+    assert version_nums(fresh_database_url) == ["0032"]
     assert public_tables(fresh_database_url) == before
     assert run_sql(fresh_database_url, OVERRIDES_FUNCTION) == []
     command.upgrade(config, "head")

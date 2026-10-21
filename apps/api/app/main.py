@@ -69,6 +69,7 @@ from app.modules.administration.settings_router import (
 from app.modules.catalog.classrooms_router import router as classrooms_router
 from app.modules.catalog.periods_router import router as periods_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.courses.router import router as courses_router
 from app.modules.families import service as families_service
 from app.modules.families.consent_router import router as consent_router
 from app.modules.families.groupings_router import router as groupings_router
@@ -184,6 +185,7 @@ def build_app(
     app.include_router(groupings_router)
     app.include_router(consent_router)
     app.include_router(tutors_router)
+    app.include_router(courses_router)
     app.include_router(class_sessions_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)

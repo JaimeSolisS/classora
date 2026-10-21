@@ -38,6 +38,8 @@ type PermissionCode = Literal[
     "audit.view",
     "catalog.manage",
     "consent.record",
+    "course.manage",
+    "course.view",
     "family.manage",
     "finance.refund.approve",
     "guardian.view",
