@@ -55,8 +55,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # tutor_preferred_classrooms in staff, M3-09b), then scheduling
     # (class_sessions and class_session_participants, M4-02;
     # scheduling_policies in administration, M4-16; class_session_overrides,
-    # M4-04), then courses (course_templates, _subjects, _modules,
-    # _assessments and _snapshots, M4-19);
+    # M4-04; class_series and class_series_participants, M4-08), then
+    # courses (course_templates, _subjects, _modules, _assessments and
+    # _snapshots, M4-19);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -78,6 +79,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "class_sessions",
         "class_session_participants",
         "class_session_overrides",
+        "class_series",
+        "class_series_participants",
         "users",
         "roles",
         "permissions",

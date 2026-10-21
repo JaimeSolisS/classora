@@ -1,0 +1,407 @@
+"""Rolling materialization of class series occurrences (#53 F; ADR-0005 D4,
+D6; spec §3, W1.2).
+
+:func:`materialize_series` is the **one** function that turns a series rule
+into ``class_sessions`` rows, for the series create (``mode="create"``) and
+the nightly job (``mode="extend"``, :mod:`~app.modules.scheduling.tasks`).
+Both share the expansion (:func:`~app.modules.scheduling.recurrence.expand`,
+with its DST rule: naive local expansion, ``fold=0``, the end from elapsed
+minutes), the closure skip and the checks.
+
+**Window:** ``[now, horizon_end(now, horizon_weeks))`` on instants; it never
+reaches the past.
+
+**Lock order** (fixed; deadlock-free together with #48 and the
+``scheduling.occurrence_conflict`` approve):
+
+1. ``lock_students`` for the series' participants (ascending ids);
+2. the center zone ``FOR SHARE``;
+3. the **series row ``FOR UPDATE``**.
+
+The create takes steps 1 and 2 itself before inserting the series (so in
+``create`` mode they are already held); the extend mode takes all three.
+
+**Each occurrence**, in order:
+
+- on a **closed local date** (one ``catalog.service.closures_between`` call
+  over the window's dates) → ``skipped_closure``, with no checks. It keeps
+  the tutor, room and participant (so #232 can restore it) and holds
+  nothing (ADR-0005 D2, D6);
+- otherwise ``validate_session_bounds`` and
+  :func:`~app.modules.scheduling.checks.collect_conflicts` with
+  ``check_center_closed=False`` (a closure date never gets here). In extend
+  mode the references are re-validated too (:func:`revalidate_references`:
+  a tutor, student, subject or room deactivated since the create).
+
+**Create mode:** any conflict refuses the whole create: ``409
+scheduling_conflict`` listing every conflict of every occurrence, each with
+``details.occurrence_start`` and ``details.date``, by occurrence then rule
+order. Nothing is stored (the Unit of Work rolls the series back). A bounds
+failure (only where a DST change falls at local midnight) is ``422
+crosses_local_date`` on ``start_time``.
+
+**Extend mode:** a failing occurrence is stored as **``conflict``** with its
+``conflict_codes``, the series' tutor and room and its participant; it
+holds nothing (D2), and one ``scheduling.occurrence_conflict`` approval
+request (requester ``NULL``, the system) is raised for it. Nothing is
+created silently and nothing is dropped (D4, W1.2).
+
+**Idempotency (#53 E3):** the series row lock plus a **pre-filter** (the
+``original_start`` values the series already has in the window are left
+out) mean a rerun inserts nothing. The rows are inserted through the ORM so
+they are audited; ``INSERT … ON CONFLICT DO NOTHING`` is not used because
+the #22 audit guard refuses Core inserts into audited tables. The unique
+constraint ``uq_class_sessions_series_original_start`` is the backstop: a
+violation (which the lock rules out) rolls back that series' transaction and
+the next run retries it.
+
+**Existing rows are never updated** here, whatever their state
+(``conflict``, ``skipped_closure``, exceptions, past, ``completed``,
+``cancelled``): closures added or removed later are #232's.
+
+Every function runs in the caller's Unit of Work and never commits.
+"""
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from typing import Final, Literal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.errors import FieldError, SchedulingConflict
+from app.modules.administration import service as administration
+from app.modules.catalog import service as catalog
+from app.modules.catalog.schemas import ClosureDetail
+from app.modules.scheduling.booking import references
+from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
+from app.modules.scheduling.conflicts import ROOM_OVERLAP, TUTOR_OVERLAP, Conflict
+from app.modules.scheduling.errors import (
+    InvalidSessionTimesError,
+    SchedulingConflictError,
+    SessionOverlapError,
+    SessionValidationError,
+)
+from app.modules.scheduling.locks import lock_students
+from app.modules.scheduling.models import (
+    ClassSeries,
+    ClassSeriesParticipant,
+    ClassSession,
+    ClassSessionParticipant,
+)
+from app.modules.scheduling.recurrence import Occurrence, expand, horizon_end
+from app.modules.scheduling.sessions import flush_class_sessions
+from app.modules.scheduling.states import SessionState
+from app.modules.scheduling.times import validate_session_bounds
+
+OCCURRENCE_CONFLICT_TYPE: Final = "scheduling.occurrence_conflict"
+"""The approval type raised for each ``conflict`` occurrence (#53 G)."""
+
+Mode = Literal["create", "extend"]
+
+
+@dataclass(frozen=True)
+class MaterializeCounts:
+    """What one run of :func:`materialize_series` inserted."""
+
+    created: int = 0
+    skipped_closure: int = 0
+    conflicts: int = 0
+
+
+@dataclass(frozen=True)
+class _SeriesRefs:
+    student_id: uuid.UUID
+    subject_id: uuid.UUID
+    tutor_user_id: uuid.UUID | None
+    classroom_id: uuid.UUID | None
+
+
+@dataclass
+class _Planned:
+    occurrence: Occurrence
+    state: SessionState
+    codes: list[str] = field(default_factory=list)
+
+
+def occurrence_initial_state(series: ClassSeries) -> SessionState:
+    """The state a clean occurrence of ``series`` is created in: ``offered``
+    with a tutor, ``unassigned`` without one (the #48 E1 rule). The single
+    seam where #233 adds ``confirmed`` once a series assignment is
+    accepted."""
+    if series.tutor_user_id is None:
+        return SessionState.UNASSIGNED
+    return SessionState.OFFERED
+
+
+async def series_participant_ids(
+    session: AsyncSession, series_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The series' students, by id (one statement)."""
+    return sorted(
+        await session.scalars(
+            select(ClassSeriesParticipant.student_id).where(
+                ClassSeriesParticipant.class_series_id == series_id
+            )
+        )
+    )
+
+
+async def validate_series_references(
+    session: AsyncSession, series: ClassSeries, student_ids: list[uuid.UUID]
+) -> None:
+    """``422`` (:class:`SessionValidationError`) with the #48 C3 field errors
+    of the series' references that are no longer valid (a student, the
+    subject or its level, the tutor or the room deactivated since the
+    create), each once. The subject is read ``FOR SHARE``, as at create."""
+    errors: list[FieldError] = []
+    for student_id in student_ids:
+        try:
+            await references(
+                session,
+                _SeriesRefs(
+                    student_id=student_id,
+                    subject_id=series.subject_id,
+                    tutor_user_id=series.tutor_user_id,
+                    classroom_id=series.classroom_id,
+                ),
+            )
+        except SessionValidationError as exc:
+            errors += [error for error in exc.errors or [] if error not in errors]
+    if errors:
+        raise SessionValidationError(errors)
+
+
+async def revalidate_references(
+    session: AsyncSession, series: ClassSeries, student_ids: list[uuid.UUID]
+) -> list[str]:
+    """The codes of :func:`validate_series_references` (``student_inactive``,
+    ``subject_inactive``, ``tutor_inactive``, ``classroom_inactive`` or an
+    ``…_unknown``), each once in check order; empty when all are valid. The
+    nightly job stores them in ``conflict_codes``."""
+    try:
+        await validate_series_references(session, series, student_ids)
+    except SessionValidationError as exc:
+        return list(dict.fromkeys(error["code"] for error in exc.errors or []))
+    return []
+
+
+def _closed_dates(closures: list[ClosureDetail]) -> set[date]:
+    closed: set[date] = set()
+    for closure in closures:
+        day = closure.starts_on
+        while day <= closure.ends_on:
+            closed.add(day)
+            day += timedelta(days=1)
+    return closed
+
+
+def _occurrence_wire(conflict: Conflict, occurrence: Occurrence) -> SchedulingConflict:
+    wire = conflict.as_wire()
+    wire["details"] = {
+        **wire["details"],
+        "occurrence_start": occurrence.original_start.isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "date": occurrence.local_date.isoformat(),
+    }
+    return wire
+
+
+def _bounds_error(occurrence: Occurrence) -> SessionValidationError:
+    error: FieldError = {
+        "path": ["body", "start_time"],
+        "code": "crosses_local_date",
+        "message": (
+            "The occurrence on"
+            f" {occurrence.local_date.isoformat()} would end on another local"
+            " date."
+        ),
+    }
+    return SessionValidationError([error])
+
+
+def _race_conflict(code: str, series: ClassSeries) -> Conflict:
+    if code == ROOM_OVERLAP:
+        return Conflict(
+            ROOM_OVERLAP,
+            {"classroom_id": str(series.classroom_id), "class_session_ids": []},
+        )
+    return Conflict(TUTOR_OVERLAP, {"class_session_ids": []})
+
+
+async def _locked_series(session: AsyncSession, series_id: uuid.UUID) -> ClassSeries:
+    series = await session.scalar(
+        select(ClassSeries)
+        .where(ClassSeries.id == series_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if series is None:
+        raise LookupError(f"no class series {series_id}")
+    return series
+
+
+async def _existing_starts(
+    session: AsyncSession, series_id: uuid.UUID, window_start: datetime
+) -> set[datetime]:
+    rows = await session.scalars(
+        select(ClassSession.original_start).where(
+            ClassSession.series_id == series_id,
+            ClassSession.original_start >= window_start,
+        )
+    )
+    return {row for row in rows if row is not None}
+
+
+async def materialize_series(
+    session: AsyncSession,
+    series_id: uuid.UUID,
+    *,
+    now: datetime,
+    horizon_weeks: int,
+    mode: Mode,
+) -> MaterializeCounts:
+    """Create the series' missing occurrences in ``[now, horizon_end)``; see
+    the module docstring. Returns the inserted counts. In ``create`` mode a
+    conflict raises :class:`SchedulingConflictError` (and a bounds failure
+    :class:`SessionValidationError`); the caller holds the student locks
+    and the zone ``FOR SHARE``."""
+    student_ids = await series_participant_ids(session, series_id)
+    if mode == "extend":
+        await lock_students(session, student_ids)
+        await administration.get_center_time_zone(session, for_share=True)
+    series = await _locked_series(session, series_id)
+    zone = series.time_zone
+
+    window_start = now
+    occurrences = expand(
+        series.rrule,
+        starts_on=series.starts_on,
+        start_time=series.start_time,
+        duration_minutes=series.duration_minutes,
+        zone=zone,
+        window_start=window_start,
+        window_end=horizon_end(now, horizon_weeks),
+    )
+    if mode == "extend":
+        existing = await _existing_starts(session, series.id, window_start)
+        occurrences = [o for o in occurrences if o.original_start not in existing]
+    if not occurrences:
+        return MaterializeCounts()
+
+    closed = _closed_dates(
+        await catalog.closures_between(
+            session, occurrences[0].local_date, occurrences[-1].local_date
+        )
+    )
+    reference_codes = (
+        await revalidate_references(session, series, student_ids)
+        if mode == "extend"
+        else []
+    )
+    clean_state = occurrence_initial_state(series)
+    planned: list[_Planned] = []
+    refused: list[SchedulingConflict] = []
+    for occurrence in occurrences:
+        if occurrence.local_date in closed:
+            planned.append(_Planned(occurrence, SessionState.SKIPPED_CLOSURE))
+            continue
+        codes = list(reference_codes)
+        try:
+            validate_session_bounds(occurrence.starts_at, occurrence.ends_at, zone)
+        except InvalidSessionTimesError as exc:
+            if mode == "create":
+                raise _bounds_error(occurrence) from None
+            codes.append(exc.reason)
+        else:
+            conflicts = await collect_conflicts(
+                session,
+                SlotCandidate(
+                    kind=series.kind,
+                    student_ids=tuple(student_ids),
+                    subject_id=series.subject_id,
+                    tutor_user_id=series.tutor_user_id,
+                    classroom_id=series.classroom_id,
+                    starts_at=occurrence.starts_at,
+                    ends_at=occurrence.ends_at,
+                ),
+                zone=zone,
+                now=now,
+                check_center_closed=False,
+            )
+            if mode == "create":
+                refused += [_occurrence_wire(c, occurrence) for c in conflicts]
+            codes += [c.code for c in conflicts if c.code not in codes]
+        if codes:
+            planned.append(_Planned(occurrence, SessionState.CONFLICT, codes))
+        else:
+            planned.append(_Planned(occurrence, clean_state))
+    if refused:
+        raise SchedulingConflictError(refused)
+
+    rows = await _insert(session, series, planned, student_ids, mode=mode)
+    for row in rows:
+        if row.state == SessionState.CONFLICT:
+            await administration.create_approval_request(
+                session,
+                request_type=OCCURRENCE_CONFLICT_TYPE,
+                subject_id=row.id,
+                requester_user_id=None,
+            )
+    states = [row.state for row in rows]
+    skipped = states.count(SessionState.SKIPPED_CLOSURE)
+    conflicted = states.count(SessionState.CONFLICT)
+    return MaterializeCounts(
+        created=len(rows) - skipped - conflicted,
+        skipped_closure=skipped,
+        conflicts=conflicted,
+    )
+
+
+async def _insert(
+    session: AsyncSession,
+    series: ClassSeries,
+    planned: list[_Planned],
+    student_ids: list[uuid.UUID],
+    *,
+    mode: Mode,
+) -> list[ClassSession]:
+    """ORM inserts (audited), one flush per row so an ``EXCLUDE`` race is
+    attributed to its occurrence; then the participants."""
+    rows: list[ClassSession] = []
+    for item in planned:
+        occurrence = item.occurrence
+        tutor = series.tutor_user_id
+        row = ClassSession(
+            kind=series.kind,
+            state=item.state.value,
+            subject_id=series.subject_id,
+            tutor_user_id=tutor,
+            classroom_id=series.classroom_id,
+            starts_at=occurrence.starts_at,
+            ends_at=occurrence.ends_at,
+            scheduled_minutes=series.duration_minutes,
+            series_id=series.id,
+            original_start=occurrence.original_start,
+            is_exception=False,
+            conflict_codes=item.codes,
+        )
+        session.add(row)
+        try:
+            await flush_class_sessions(session)
+        except SessionOverlapError as exc:
+            if mode == "create":
+                raise SchedulingConflictError(
+                    [_occurrence_wire(_race_conflict(exc.code, series), occurrence)]
+                ) from None
+            raise
+        rows.append(row)
+    session.add_all(
+        ClassSessionParticipant(class_session_id=row.id, student_id=student_id)
+        for row in rows
+        for student_id in student_ids
+    )
+    await flush_class_sessions(session)
+    return rows

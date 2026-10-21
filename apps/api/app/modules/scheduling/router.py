@@ -28,12 +28,20 @@
   ``require("schedule.assign")`` (Owners, Administrators and Academic
   Coordinators; ADR-0005 D9). The eligible tutors in workload order;
   read-only and advisory.
+- ``POST /api/v1/class-series`` (#53 E): ``require("schedule.manage")``. A
+  recurring individual series; order ``401``/``403`` → ``422`` body →
+  student lock → zone ``FOR SHARE`` → ``422`` recurrence → ``422``
+  ``starts_on_in_past`` / ``crosses_local_date`` → ``422`` references →
+  every occurrence in the horizon checked (closure dates skipped) → ``409
+  scheduling_conflict`` listing every occurrence's conflicts → ``201``.
+- ``GET /api/v1/class-series/{class_series_id}`` (#53 I):
+  ``require("schedule.view")``; every holder sees every series.
 """
 
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.core.authz import (
     PERMISSION_RESPONSES,
@@ -41,12 +49,16 @@ from app.core.authz import (
     ensure_permission,
     require,
 )
+from app.core.config import Settings, get_settings
 from app.core.errors import problem_response_doc
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
 from app.modules.scheduling.schemas import (
     TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
     TUTOR_SUGGESTIONS_MAX_LIMIT,
+    ClassSeriesCreate,
+    ClassSeriesCreated,
+    ClassSeriesDetail,
     ClassSessionCalendar,
     ClassSessionCreate,
     ClassSessionCreated,
@@ -69,6 +81,7 @@ options_router = APIRouter(prefix="/api/v1/schedule", tags=["class-sessions"])
 suggestions_router = APIRouter(
     prefix="/api/v1/tutor-suggestions", tags=["class-sessions"]
 )
+series_router = APIRouter(prefix="/api/v1/class-series", tags=["class-series"])
 
 TUTOR_OPTIONS_DEFAULT_LIMIT: Final = 20
 TUTOR_OPTIONS_MAX_LIMIT: Final = 50
@@ -288,3 +301,63 @@ async def list_tutor_suggestions(
     who prefer the classroom, then name. Limits are shown, never applied.
     Advisory and read-only: creating or offering re-checks everything."""
     return await service.suggest_for_slot(uow.session, query)
+
+
+@series_router.post(
+    "",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        409: problem_response_doc(
+            "An occurrence breaks scheduling rules (scheduling_conflict):"
+            " `conflicts` lists every conflict of every occurrence in the"
+            " horizon, each with `details.occurrence_start` and `details.date`,"
+            " by occurrence. Nothing is created."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field (an `override` or `rrule` included), a kind other than"
+            " individual, `start_time` not HH:MM (time_format), a duration"
+            " outside 15-480; the recurrence (weekdays_empty,"
+            " weekday_out_of_range, weekdays_duplicate, interval_out_of_range,"
+            " until_and_count, count_out_of_range, until_before_start,"
+            " no_occurrences); starts_on_in_past; crosses_local_date on"
+            " start_time; or the references (student_unknown, student_inactive,"
+            " subject_unknown, subject_inactive, tutor_unknown, tutor_inactive,"
+            " classroom_unknown, classroom_inactive), all in one response."
+        ),
+    },
+)
+async def create_class_series(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    body: ClassSeriesCreate,
+    uow: UnitOfWorkDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ClassSeriesCreated:
+    """Schedule a recurring individual series. Every occurrence inside the
+    rolling horizon (`SCHEDULING_HORIZON_WEEKS`, default 12 weeks) is created
+    now and checked like a one-off session (a closure date is stored as
+    `skipped_closure` instead); any conflict refuses the whole series. Later
+    occurrences are created by the nightly job. With a tutor the occurrences
+    are `offered` to them, without one `unassigned`. `warnings` is always
+    empty for now."""
+    return await service.create_class_series(
+        uow.session, body, horizon_weeks=settings.scheduling_horizon_weeks
+    )
+
+
+@series_router.get(
+    "/{class_series_id}",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class series (not_found)."),
+    },
+)
+async def get_class_series(
+    principal: Annotated[Principal, require(SCHEDULE_VIEW)],
+    class_series_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> ClassSeriesDetail:
+    """One class series with its rule, references and the occurrences that
+    start now or later."""
+    return await service.get_class_series(uow.session, class_series_id)

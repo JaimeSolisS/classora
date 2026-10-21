@@ -47,6 +47,19 @@ the pure eligibility and workload ranking rule in
 implementation, for #52 / #55 too), :func:`suggest_for_slot` and
 :func:`suggest_replacements` (the two routes' reads).
 
+Recurring series (#53): :func:`create_class_series` and
+:func:`get_class_series` (:mod:`~app.modules.scheduling.series`), the pure
+weekly rule (:mod:`~app.modules.scheduling.recurrence`), the one
+materializer :func:`materialize_series` (create and nightly extend modes,
+:mod:`~app.modules.scheduling.materialize`) with its state seam
+:func:`occurrence_initial_state`, the shared conflict collector
+:func:`collect_conflicts` (:mod:`~app.modules.scheduling.checks`; #48's
+create calls it too), the ``scheduling.occurrence_conflict`` approval
+handler :data:`OCCURRENCE_CONFLICT_HANDLER` and the time-zone check
+:func:`has_class_series` (:data:`SERIES_TIME_ZONE_DEPENDENCY`). The nightly
+task lives in :mod:`~app.modules.scheduling.tasks`, imported only by
+``app/core/jobs.py``.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -78,6 +91,8 @@ from app.modules.scheduling.capacity import (
 from app.modules.scheduling.capacity import (
     effective_capacity as effective_capacity,
 )
+from app.modules.scheduling.checks import SlotCandidate as SlotCandidate
+from app.modules.scheduling.checks import collect_conflicts as collect_conflicts
 from app.modules.scheduling.conflicts import HARD as HARD
 from app.modules.scheduling.conflicts import SOFT as SOFT
 from app.modules.scheduling.conflicts import WARNING as WARNING
@@ -102,6 +117,24 @@ from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
+from app.modules.scheduling.materialize import (
+    OCCURRENCE_CONFLICT_TYPE as OCCURRENCE_CONFLICT_TYPE,
+)
+from app.modules.scheduling.materialize import (
+    MaterializeCounts as MaterializeCounts,
+)
+from app.modules.scheduling.materialize import (
+    materialize_series as materialize_series,
+)
+from app.modules.scheduling.materialize import (
+    occurrence_initial_state as occurrence_initial_state,
+)
+from app.modules.scheduling.materialize import (
+    revalidate_references as revalidate_references,
+)
+from app.modules.scheduling.occurrence_approval import (
+    OCCURRENCE_CONFLICT_HANDLER as OCCURRENCE_CONFLICT_HANDLER,
+)
 from app.modules.scheduling.overrides import (
     OverrideDecision as OverrideDecision,
 )
@@ -111,6 +144,14 @@ from app.modules.scheduling.overrides import (
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,
 )
+from app.modules.scheduling.series import (
+    SERIES_TIME_ZONE_DEPENDENCY as SERIES_TIME_ZONE_DEPENDENCY,
+)
+from app.modules.scheduling.series import (
+    create_class_series as create_class_series,
+)
+from app.modules.scheduling.series import get_class_series as get_class_series
+from app.modules.scheduling.series import has_class_series as has_class_series
 from app.modules.scheduling.sessions import (
     TIME_ZONE_DEPENDENCY as TIME_ZONE_DEPENDENCY,
 )

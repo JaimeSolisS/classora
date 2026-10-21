@@ -453,6 +453,8 @@ to start on a missing or invalid value; `docker compose logs api` (or
 `logs worker`) shows a short `Configuration error` message naming each bad
 variable. `WORKER_SHUTDOWN_TIMEOUT_SECONDS` (default 20, 1 to 30) sets how long
 a stopping worker lets running jobs finish before aborting them.
+`SCHEDULING_HORIZON_WEEKS` (default 12, 4 to 26) sets how far ahead the worker
+generates the sessions of recurring series.
 
 `APP_ORIGIN` (required, `http://127.0.0.1:5173` in `.env.example`) is the web
 app's origin. Change it together with `WEB_PORT`; `http` is accepted only with

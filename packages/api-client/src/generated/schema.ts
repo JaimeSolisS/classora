@@ -1985,6 +1985,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Class Series
+         * @description Schedule a recurring individual series. Every occurrence inside the
+         *     rolling horizon (`SCHEDULING_HORIZON_WEEKS`, default 12 weeks) is created
+         *     now and checked like a one-off session (a closure date is stored as
+         *     `skipped_closure` instead); any conflict refuses the whole series. Later
+         *     occurrences are created by the nightly job. With a tutor the occurrences
+         *     are `offered` to them, without one `unassigned`. `warnings` is always
+         *     empty for now.
+         */
+        post: operations["create_class_series_api_v1_class_series_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-series/{class_series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Class Series
+         * @description One class series with its rule, references and the occurrences that
+         *     start now or later.
+         */
+        get: operations["get_class_series_api_v1_class_series__class_series_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2440,6 +2487,195 @@ export interface components {
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
         /**
+         * ClassSeriesCreate
+         * @description A recurring individual series (``POST /api/v1/class-series``, #53 E1).
+         *
+         *     ``starts_on`` is the local date of the rule's start (DTSTART) and
+         *     ``start_time`` the local wall-clock time (``HH:MM``) in the center zone.
+         *     No ``override`` (#236) and no ``rrule`` text: both are ``422``.
+         */
+        ClassSeriesCreate: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "individual";
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the occurrences to; null: unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The local date the rule starts on (not before today).
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * Format: time
+             * @description The local start time, HH:MM (whole minutes, no seconds).
+             */
+            start_time: string;
+            /**
+             * Duration Minutes
+             * @description 15-480 minutes.
+             */
+            duration_minutes: number;
+            recurrence: components["schemas"]["SeriesRecurrence"];
+        };
+        /**
+         * ClassSeriesCreated
+         * @description The created series and its workload warnings.
+         */
+        ClassSeriesCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * @description The local start time, HH:MM.
+             */
+            start_time: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Time Zone
+             * @description The center zone the series was created in.
+             */
+            time_zone: string;
+            recurrence: components["schemas"]["SeriesRecurrenceDetail"];
+            /**
+             * Rrule
+             * @description The normalized RFC 5545 rule (derived).
+             */
+            rrule: string;
+            /**
+             * Last Occurrence On
+             * @description The local date of the last occurrence; null: open-ended.
+             */
+            last_occurrence_on: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Occurrences
+             * @description The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon).
+             */
+            occurrences: components["schemas"]["SeriesOccurrence"][];
+            /**
+             * Warnings
+             * @description Always empty for a series for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * ClassSeriesDetail
+         * @description One class series (``GET /api/v1/class-series/{id}``). The web app
+         *     never parses ``rrule``: it reads ``recurrence``.
+         */
+        ClassSeriesDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * @description The local start time, HH:MM.
+             */
+            start_time: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Time Zone
+             * @description The center zone the series was created in.
+             */
+            time_zone: string;
+            recurrence: components["schemas"]["SeriesRecurrenceDetail"];
+            /**
+             * Rrule
+             * @description The normalized RFC 5545 rule (derived).
+             */
+            rrule: string;
+            /**
+             * Last Occurrence On
+             * @description The local date of the last occurrence; null: open-ended.
+             */
+            last_occurrence_on: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Occurrences
+             * @description The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon).
+             */
+            occurrences: components["schemas"]["SeriesOccurrence"][];
+        };
+        /**
          * ClassSessionCalendar
          * @description The sessions overlapping the range, by ``starts_at`` then ``id``; at
          *     most 1000, with ``truncated`` true when more match.
@@ -2582,6 +2818,26 @@ export interface components {
              */
             overrides: components["schemas"]["SessionOverrideItem"][];
             /**
+             * Series Id
+             * @description The series this session is an occurrence of (#53); null: one-off.
+             */
+            series_id: string | null;
+            /**
+             * Original Start
+             * @description The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved.
+             */
+            original_start: string | null;
+            /**
+             * Is Exception
+             * @description An occurrence edited apart from its series (#54).
+             */
+            is_exception: boolean;
+            /**
+             * Conflict Codes
+             * @description The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`).
+             */
+            conflict_codes: string[];
+            /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
              */
@@ -2636,6 +2892,26 @@ export interface components {
              * @description The overrides of its soft conflicts, oldest first.
              */
             overrides: components["schemas"]["SessionOverrideItem"][];
+            /**
+             * Series Id
+             * @description The series this session is an occurrence of (#53); null: one-off.
+             */
+            series_id: string | null;
+            /**
+             * Original Start
+             * @description The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved.
+             */
+            original_start: string | null;
+            /**
+             * Is Exception
+             * @description An occurrence edited apart from its series (#54).
+             */
+            is_exception: boolean;
+            /**
+             * Conflict Codes
+             * @description The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`).
+             */
+            conflict_codes: string[];
         };
         /**
          * ClassroomCreate
@@ -4514,6 +4790,81 @@ export interface components {
         };
         /** @enum {string} */
         SchedulingWarningCode: "daily_limit_exceeded" | "weekly_limit_exceeded" | "break_too_short";
+        /**
+         * SeriesOccurrence
+         * @description One occurrence row of a series.
+         */
+        SeriesOccurrence: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Original Start
+             * Format: date-time
+             */
+            original_start: string;
+            /** Is Exception */
+            is_exception: boolean;
+        };
+        /**
+         * SeriesRecurrence
+         * @description A weekly rule as structured fields (ADR-0005 D4): the API never takes
+         *     ``RRULE`` text. The ranges are checked after the locks, as ``422`` on
+         *     ``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,
+         *     ``weekdays_duplicate``, ``interval_out_of_range``, ``until_and_count``,
+         *     ``count_out_of_range``, ``until_before_start``; ``no_occurrences`` on
+         *     ``recurrence``).
+         */
+        SeriesRecurrence: {
+            /**
+             * Weekdays
+             * @description ISO weekdays (1 = Monday … 7 = Sunday), at least one, no duplicates.
+             */
+            weekdays: number[];
+            /**
+             * Interval
+             * @description Every 1-4 weeks (default 1).
+             * @default 1
+             */
+            interval: number;
+            /**
+             * Until
+             * @description The last local date (inclusive); not together with `count`.
+             */
+            until?: string | null;
+            /**
+             * Count
+             * @description How many occurrences in all (1-200), the ones skipped for a closure included; not together with `until`.
+             */
+            count?: number | null;
+        };
+        /**
+         * SeriesRecurrenceDetail
+         * @description The stored rule's structured fields.
+         */
+        SeriesRecurrenceDetail: {
+            /** Weekdays */
+            weekdays: number[];
+            /** Interval */
+            interval: number;
+            /** Until */
+            until: string | null;
+            /** Count */
+            count: number | null;
+        };
         /**
          * SessionClassroom
          * @description The session's classroom (an inactive room stays shown as such).
@@ -12020,6 +12371,124 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_class_series_api_v1_class_series_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSeriesCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSeriesCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_class_series_api_v1_class_series__class_series_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSeriesDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class series (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -19,6 +19,7 @@ import {
   type ApprovalRequestItem,
 } from './api';
 import { approvalSummary, registrationSubject } from './summary';
+import { useSummaryContext } from './useSummaryContext';
 
 // The confirmation of a decision (#40 F4; moved from #169 G3). Approve asks
 // for confirmation; Reject and Request changes have a reason field, required
@@ -119,7 +120,8 @@ function DecisionDialogContent({
   // trigger), to give focus back on close.
   const returnFocus = useRef<Element | null>(null);
   const { item, action } = pending;
-  const summary = approvalSummary(item, t);
+  const context = useSummaryContext();
+  const summary = approvalSummary(item, t, context);
   const registration = registrationSubject(item);
   const withReason = action !== 'approve';
   const required = reasonRequired(item.request_type, action);

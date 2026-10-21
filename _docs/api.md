@@ -108,7 +108,7 @@ Codes in use today:
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
-| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). See Class sessions. |
+| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). For a series (M4-08) the list covers every occurrence, each with `details.occurrence_start` and `details.date`. See Class sessions and Class series. |
 | `class_session_not_assignable` | 409 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` for a session that is `completed`, `cancelled` or `skipped_closure`: it can no longer take a tutor (see Class sessions, "Tutor suggestions"). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
@@ -654,8 +654,9 @@ M8-01 (#118); the web app has a basic list at `/approvals`.
 - **Audit:** the automatic `create` event when a request is raised, and an
   `update` event with `status`, `resolved_*` and `reason` on each transition
   (the actor is the reviewer). `404`, `409` and `422` write nothing.
-- **Types today:** `identity.registration` (see Registration requests) and
-  `staff.qualification` (#44, see Tutor qualifications).
+- **Types today:** `identity.registration` (see Registration requests),
+  `staff.qualification` (#44, see Tutor qualifications) and
+  `scheduling.occurrence_conflict` (#53, see Class series).
 
 **Adding a type** (later issues: M4 offers, session and availability
 requests):
@@ -1007,8 +1008,10 @@ operating hours and the **center time zone**.
   under the settings row lock and, if any returns true, answers `409
   tz_change_requires_migration` and changes nothing. M4-02 (#47) registers
   `scheduling.class_sessions`: any class session, in any state (past and
-  cancelled ones included), blocks a zone change. M4-08 (#53) adds a check
-  for recurrence series. Both read the zone with
+  cancelled ones included), blocks a zone change. M4-08 (#53) registers
+  `scheduling.class_series`: any class series, even one with no session row
+  yet (it starts after the horizon), blocks a zone change. Both read the
+  zone with
   `administration.service.get_center_time_zone(session, for_share=True)`
   (`FOR SHARE` on the settings row) while they create sessions, so a
   concurrent zone change can't slip in. The migration job that would move
@@ -1846,6 +1849,9 @@ groups, courses, recurrence and offers come with later M4 issues. The
 calendar's range read and tutor options (M4-12, #57) are in
 `calendar_read.py` and `markers.py`. Tutor suggestions (M4-06, #51; spec
 §3, W1.3): `eligibility.py` (the pure rule) and `tutor_suggestions.py`.
+Recurring series (M4-08, #53) are in Class series below; their occurrences
+are class sessions too. The conflict checks of every write path run in one
+collector, `checks.collect_conflicts`.
 
 `schedule.assign` (M4-06, ADR-0005 D9; not delegable) is held by the Owner,
 Administrators and Academic coordinators: it covers seeing tutor
@@ -1877,8 +1883,14 @@ education_level_name, is_active}, tutor {id, display_name} | null,
 classroom {id, name, is_active} | null, participants [{student_id,
 display_name, is_active}], starts_at, ends_at, scheduled_minutes, version,
 created_at, updated_at, overrides [{id, codes, reason, actor {id,
-display_name}, created_at}]}` (overrides oldest first, `[]` when none); a
-subject is shown inactive when it or its level is.
+display_name}, created_at}], series_id, original_start, is_exception,
+conflict_codes}` (overrides oldest first, `[]` when none); a subject is
+shown inactive when it or its level is. `series_id` and `original_start`
+(the occurrence's instant in its series rule, kept when it is moved) are
+`null` for a one-off session; `is_exception` marks an occurrence edited
+apart from its series (M4-09); `conflict_codes` lists the codes that put a
+generated occurrence in `conflict` (informational, kept after it leaves
+`conflict`; `[]` otherwise).
 
 **Order of the create:**
 
@@ -2162,6 +2174,142 @@ statements, `C` being the qualified active tutors (tutors without the
 qualification cost nothing). The web app's "Schedule a session" form has a
 "Suggest tutors" button for holders of `schedule.assign`; the replacement
 list has no screen yet (M4-07, M4-10, M4-12 use it).
+
+### Class series
+
+Implemented by M4-08 (#53; spec §1, §3, §15 W1.2; ADR-0005 D4, D5, D6, D9;
+ADR-0004) in `apps/api/app/modules/scheduling/` (`recurrence.py`: the pure
+weekly rule; `series.py`: create and read; `materialize.py`: the rolling
+materialization; `tasks.py`: the nightly job; `occurrence_approval.py`: the
+inbox item). Only **individual** series so far; groups and courses (M4-11,
+M4-20), editing (M4-09), series offers (M4-07b), series overrides (M4-09c),
+closures added or removed after occurrences exist (M4-08b) and the web form
+(M4-09b) come later.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/class-series` | `require("schedule.manage")` (Owner, Administrator) | Body below. `201` with `ClassSeriesDetail` plus `warnings` (always `[]` for now). |
+| `GET /api/v1/class-series/{class_series_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSeriesDetail`; `404 not_found` for an unknown id. Every holder sees every series. At most 7 statements. |
+
+**Body** (unknown fields are `422`, `override` and `rrule` included: the
+API never takes rule text):
+
+```json
+{"kind": "individual", "student_id": "…", "subject_id": "…",
+ "tutor_user_id": "…" | null, "classroom_id": "…" | null,
+ "starts_on": "2026-11-09", "start_time": "16:00", "duration_minutes": 60,
+ "recurrence": {"weekdays": [1, 3], "interval": 1, "until": "2026-12-18" | null, "count": null}}
+```
+
+- `starts_on` is the local date the rule starts on (the first occurrence is
+  the first matching weekday on or after it); `start_time` the local
+  wall-clock time in the center zone, `HH:MM` only (`422 time_format`
+  otherwise, seconds included); `duration_minutes` 15–480.
+- `recurrence`: `weekdays` ISO 1 (Monday) to 7 (Sunday); `interval` every
+  1–4 weeks (default 1); `until` (an inclusive local date) **or** `count`
+  (1–200 occurrences in all, the ones skipped for a closure included), or
+  neither (open-ended).
+
+The series stores the structured fields, the center zone (`time_zone`) and
+the derived, normalized RFC 5545 rule
+`FREQ=WEEKLY;INTERVAL=<n>;WKST=MO;BYDAY=<MO,…>` followed by
+`;UNTIL=<YYYYMMDD>T235959` (floating local time) or `;COUNT=<n>`.
+`last_occurrence_on` is the local date of a finite series' last
+occurrence (`null` for an open-ended one).
+
+**Order of the create:**
+
+1. `401`/`403`, then `422` for the schema;
+2. the per-student advisory lock (as Class sessions);
+3. the center time zone, read `FOR SHARE`;
+4. `422` for the recurrence, on `recurrence.weekdays` (`weekdays_empty`,
+   `weekday_out_of_range`, `weekdays_duplicate`), `recurrence.interval`
+   (`interval_out_of_range`), `recurrence.until` (`until_and_count`,
+   `until_before_start`), `recurrence.count` (`count_out_of_range`) or
+   `recurrence` (`no_occurrences`: a finite rule with no date);
+5. `422 starts_on_in_past` when `starts_on` is before the center's local
+   today;
+6. `422 crosses_local_date` on `start_time` when `start_time` plus the
+   duration is after 24:00 (ending exactly at midnight is allowed);
+7. `422` for the references, every one in one response (the Class sessions
+   codes);
+8. every occurrence in the window `[now, now + SCHEDULING_HORIZON_WEEKS)`
+   is expanded: one on a closed local date (an active closure) is planned
+   `skipped_closure` with no checks; every other one gets every Class
+   sessions check except `center_closed` (a closure date never gets that
+   far). A bounds failure (only where a DST change falls at local midnight)
+   is `422 crosses_local_date` on `start_time`;
+9. any conflict: `409 scheduling_conflict` with **every** conflict of
+   **every** occurrence, by occurrence then in the Class sessions order,
+   each `details` with `occurrence_start` (the instant, UTC) and `date`
+   (the local date). Nothing is created; overrides for series come later
+   (M4-09c);
+10. the series, its participant and every occurrence (with its
+    participant) are stored; `201`.
+
+A series that starts after the horizon is created with no occurrence: the
+nightly job creates and checks them when they enter the window.
+
+**DST and times.** The rule is expanded in local wall-clock time; each
+local start is placed in the zone with `fold=0`: an ambiguous time (fall
+back) takes its first instant, a nonexistent one (spring forward) moves
+forward by the gap. The end is the start plus the duration in elapsed
+minutes, so `scheduled_minutes` always equals `duration_minutes`.
+
+**Occurrences.** Each is a class session (`kind` `individual`, the series'
+subject, tutor and room, one participant, `series_id` and `original_start`
+set). A clean one is `offered` with a tutor and `unassigned` without one
+(`scheduling.materialize.occurrence_initial_state`, the seam the series
+offers extend). A `skipped_closure` one keeps the tutor, room and
+participant and holds nothing (no overlap, never billable, no makeup,
+ADR-0005 D6). Audit: only the automatic `create` events of the series, its
+participant and each session and session participant.
+
+`ClassSeriesDetail` is `{id, kind, subject {…}, tutor {…} | null,
+classroom {…} | null, participants [...], starts_on, start_time (HH:MM),
+duration_minutes, time_zone, recurrence {weekdays, interval, until, count},
+rrule, last_occurrence_on, version, created_at, updated_at, occurrences
+[{id, state, starts_at, ends_at, original_start, is_exception}]}`; the
+occurrences are the series' rows starting now or later, by start. The web
+app never parses `rrule`.
+
+**Horizon and the nightly job.** `SCHEDULING_HORIZON_WEEKS` (an operator
+setting, default 12, 4–26; API and worker) sets how far ahead occurrences
+exist. The periodic task `scheduling:materialize_series` runs every day at
+08:00 UTC (`0 8 * * *`; Procrastinate evaluates the cron in UTC) with a
+queueing lock, in every environment. It extends every series that is
+open-ended or whose last occurrence is today or later, one transaction per
+series (the system is the actor; a failing series is logged with its id and
+error class, and retried next run), and logs one line with counts only. It
+can be run by hand: `scheduling.tasks.run_materialization(settings)`. Per
+series it takes the student locks, the zone `FOR SHARE` and the series row
+`FOR UPDATE` (in that order), leaves out the `original_start` values that
+already exist, and inserts the rest through the ORM (audited). `INSERT … ON
+CONFLICT DO NOTHING` is not used: the audit guard refuses Core inserts into
+audited tables; `UNIQUE (series_id, original_start)` is the backstop. A
+rerun inserts nothing, and existing rows (any state) are never updated
+(closures added or removed later are M4-08b's).
+
+In the job, an occurrence on a closed date is `skipped_closure`; one that
+fails a check, or whose references became invalid since the create
+(`student_inactive`, `subject_inactive`, `tutor_inactive`,
+`classroom_inactive`, or an `…_unknown`), is stored as **`conflict`**:
+`conflict_codes` holds the codes, it keeps the tutor, room and participant
+and holds nothing. Each `conflict` row raises one **`scheduling.occurrence_conflict`**
+approval request (subject: the session; requester `null`, the system;
+reviewers hold `schedule.manage`; no request-changes; a rejection needs a
+reason). Its summary is `{class_session_id, series_id, starts_at,
+subject_name, student_display_names, tutor_display_name, conflict_codes}`.
+
+- **Approve = re-check and schedule:** the student locks, the zone `FOR
+  SHARE`, the session `FOR UPDATE`. A session no longer in `conflict` is
+  `409 approval_transition_invalid`; invalid references are `422` (the
+  create's codes); the checks run again now (`center_closed` off): still
+  failing is `409 scheduling_conflict` and the request stays `pending`;
+  clean moves the session to `offered` (with the series' tutor) or
+  `unassigned`. A start already in the past fails `notice_window`: reject
+  it instead.
+- **Reject = cancel the occurrence** with the reviewer's reason.
 
 ### Course templates
 

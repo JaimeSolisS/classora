@@ -9221,6 +9221,152 @@
           }
         }
       }
+    },
+    "/api/v1/class-series": {
+      "post": {
+        "tags": [
+          "class-series"
+        ],
+        "summary": "Create Class Series",
+        "description": "Schedule a recurring individual series. Every occurrence inside the\nrolling horizon (`SCHEDULING_HORIZON_WEEKS`, default 12 weeks) is created\nnow and checked like a one-off session (a closure date is stored as\n`skipped_closure` instead); any conflict refuses the whole series. Later\noccurrences are created by the nightly job. With a tutor the occurrences\nare `offered` to them, without one `unassigned`. `warnings` is always\nempty for now.",
+        "operationId": "create_class_series_api_v1_class_series_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSeriesCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSeriesCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-series/{class_series_id}": {
+      "get": {
+        "tags": [
+          "class-series"
+        ],
+        "summary": "Get Class Series",
+        "description": "One class series with its rule, references and the occurrences that\nstart now or later.",
+        "operationId": "get_class_series_api_v1_class_series__class_series_id__get",
+        "parameters": [
+          {
+            "name": "class_series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Series Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSeriesDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10246,6 +10392,349 @@
           "all"
         ]
       },
+      "ClassSeriesCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "individual",
+            "title": "Kind"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the occurrences to; null: unassigned."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "The local date the rule starts on (not before today)."
+          },
+          "start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM (whole minutes, no seconds)."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "description": "15-480 minutes."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "student_id",
+          "subject_id",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "recurrence"
+        ],
+        "title": "ClassSeriesCreate",
+        "description": "A recurring individual series (``POST /api/v1/class-series``, #53 E1).\n\n``starts_on`` is the local date of the rule's start (DTSTART) and\n``start_time`` the local wall-clock time (``HH:MM``) in the center zone.\nNo ``override`` (#236) and no ``rrule`` text: both are ``422``."
+      },
+      "ClassSeriesCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone",
+            "description": "The center zone the series was created in."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrenceDetail"
+          },
+          "rrule": {
+            "type": "string",
+            "title": "Rrule",
+            "description": "The normalized RFC 5545 rule (derived)."
+          },
+          "last_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Occurrence On",
+            "description": "The local date of the last occurrence; null: open-ended."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesOccurrence"
+            },
+            "type": "array",
+            "title": "Occurrences",
+            "description": "The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon)."
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for a series for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "time_zone",
+          "recurrence",
+          "rrule",
+          "last_occurrence_on",
+          "version",
+          "created_at",
+          "updated_at",
+          "occurrences",
+          "warnings"
+        ],
+        "title": "ClassSeriesCreated",
+        "description": "The created series and its workload warnings."
+      },
+      "ClassSeriesDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone",
+            "description": "The center zone the series was created in."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrenceDetail"
+          },
+          "rrule": {
+            "type": "string",
+            "title": "Rrule",
+            "description": "The normalized RFC 5545 rule (derived)."
+          },
+          "last_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Occurrence On",
+            "description": "The local date of the last occurrence; null: open-ended."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesOccurrence"
+            },
+            "type": "array",
+            "title": "Occurrences",
+            "description": "The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "time_zone",
+          "recurrence",
+          "rrule",
+          "last_occurrence_on",
+          "version",
+          "created_at",
+          "updated_at",
+          "occurrences"
+        ],
+        "title": "ClassSeriesDetail",
+        "description": "One class series (``GET /api/v1/class-series/{id}``). The web app\nnever parses ``rrule``: it reads ``recurrence``."
+      },
       "ClassSessionCalendar": {
         "properties": {
           "items": {
@@ -10505,6 +10994,45 @@
             "title": "Overrides",
             "description": "The overrides of its soft conflicts, oldest first."
           },
+          "series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id",
+            "description": "The series this session is an occurrence of (#53); null: one-off."
+          },
+          "original_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Start",
+            "description": "The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved."
+          },
+          "is_exception": {
+            "type": "boolean",
+            "title": "Is Exception",
+            "description": "An occurrence edited apart from its series (#54)."
+          },
+          "conflict_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflict Codes",
+            "description": "The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`)."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -10530,6 +11058,10 @@
           "created_at",
           "updated_at",
           "overrides",
+          "series_id",
+          "original_start",
+          "is_exception",
+          "conflict_codes",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -10614,6 +11146,45 @@
             "type": "array",
             "title": "Overrides",
             "description": "The overrides of its soft conflicts, oldest first."
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id",
+            "description": "The series this session is an occurrence of (#53); null: one-off."
+          },
+          "original_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Start",
+            "description": "The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved."
+          },
+          "is_exception": {
+            "type": "boolean",
+            "title": "Is Exception",
+            "description": "An occurrence edited apart from its series (#54)."
+          },
+          "conflict_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflict Codes",
+            "description": "The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`)."
           }
         },
         "type": "object",
@@ -10631,7 +11202,11 @@
           "version",
           "created_at",
           "updated_at",
-          "overrides"
+          "overrides",
+          "series_id",
+          "original_start",
+          "is_exception",
+          "conflict_codes"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -14689,6 +15264,145 @@
           "weekly_limit_exceeded",
           "break_too_short"
         ]
+      },
+      "SeriesOccurrence": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "original_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Original Start"
+          },
+          "is_exception": {
+            "type": "boolean",
+            "title": "Is Exception"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at",
+          "original_start",
+          "is_exception"
+        ],
+        "title": "SeriesOccurrence",
+        "description": "One occurrence row of a series."
+      },
+      "SeriesRecurrence": {
+        "properties": {
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "description": "ISO weekdays (1 = Monday … 7 = Sunday), at least one, no duplicates."
+          },
+          "interval": {
+            "type": "integer",
+            "title": "Interval",
+            "description": "Every 1-4 weeks (default 1).",
+            "default": 1
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "The last local date (inclusive); not together with `count`."
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "How many occurrences in all (1-200), the ones skipped for a closure included; not together with `until`."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "weekdays"
+        ],
+        "title": "SeriesRecurrence",
+        "description": "A weekly rule as structured fields (ADR-0005 D4): the API never takes\n``RRULE`` text. The ranges are checked after the locks, as ``422`` on\n``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,\n``weekdays_duplicate``, ``interval_out_of_range``, ``until_and_count``,\n``count_out_of_range``, ``until_before_start``; ``no_occurrences`` on\n``recurrence``)."
+      },
+      "SeriesRecurrenceDetail": {
+        "properties": {
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays"
+          },
+          "interval": {
+            "type": "integer",
+            "title": "Interval"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weekdays",
+          "interval",
+          "until",
+          "count"
+        ],
+        "title": "SeriesRecurrenceDetail",
+        "description": "The stored rule's structured fields."
       },
       "SessionClassroom": {
         "properties": {

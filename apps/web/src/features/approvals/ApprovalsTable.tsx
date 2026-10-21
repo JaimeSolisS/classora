@@ -18,6 +18,7 @@ import type {
   ApprovalRequestPage,
 } from './api';
 import { approvalSummary, itemName, typeLabel } from './summary';
+import { useSummaryContext } from './useSummaryContext';
 
 // The approval requests (#40 F3): type, a per-type summary, requester,
 // submitted at, priority and status (as text), and a button per allowed
@@ -57,6 +58,7 @@ export function ApprovalsTable({
   onPage,
 }: ApprovalsTableProps) {
   const { t } = useTranslation();
+  const context = useSummaryContext();
   const { formatInstant } = useFormatters();
   const id = useId();
   const titleId = `${id}-title`;
@@ -94,7 +96,7 @@ export function ApprovalsTable({
               <TableRow key={item.id}>
                 <TableCell>{typeLabel(item.request_type, t)}</TableCell>
                 <TableCell className="whitespace-normal">
-                  {approvalSummary(item, t)}
+                  {approvalSummary(item, t, context)}
                 </TableCell>
                 <TableCell>
                   {item.requester?.display_name ?? t('approvals.list.system')}
@@ -178,7 +180,8 @@ function ActionButtons({
   onDecide: (item: ApprovalRequestItem, action: ApprovalAction) => void;
 }) {
   const { t } = useTranslation();
-  const name = itemName(item, t);
+  const context = useSummaryContext();
+  const name = itemName(item, t, context);
   return (
     <div className="flex flex-wrap gap-2">
       {item.allowed_actions.map((action) => (

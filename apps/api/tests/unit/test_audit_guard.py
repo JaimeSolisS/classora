@@ -53,7 +53,12 @@ from app.modules.identity.models import (
     UserDelegation,
     UserRole,
 )
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    ClassSeries,
+    ClassSeriesParticipant,
+    ClassSession,
+    ClassSessionParticipant,
+)
 from app.modules.staff.models import (
     TutorAvailabilityException,
     TutorAvailabilitySettings,
@@ -94,6 +99,8 @@ def test_the_guard_scans_the_real_audited_models():
         AcademicPeriod,
         ApprovalRequest,
         BusinessSettings,
+        ClassSeries,
+        ClassSeriesParticipant,
         ClassSession,
         ClassSessionParticipant,
         Classroom,
@@ -162,6 +169,8 @@ def test_the_guard_scans_the_real_audited_models():
         TutorPreferredClassroom,
         ClassSession,
         ClassSessionParticipant,
+        ClassSeries,
+        ClassSeriesParticipant,
         CourseTemplate,
         CourseTemplateSubject,
         CourseTemplateModule,

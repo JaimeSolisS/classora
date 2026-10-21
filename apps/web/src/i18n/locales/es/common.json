@@ -289,11 +289,13 @@
     },
     "types": {
       "identity_registration": "Solicitud de cuenta",
-      "staff_qualification": "Calificación de tutor"
+      "staff_qualification": "Calificación de tutor",
+      "scheduling_occurrence_conflict": "Conflicto en sesión de serie"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
-      "qualification": "{{tutor}} — {{subject}} ({{level}})"
+      "qualification": "{{tutor}} — {{subject}} ({{level}})",
+      "occurrenceConflict": "Sesión de serie {{when}} — {{students}} · {{subject}}: {{codes}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -340,6 +342,17 @@
       "approved": "Aprobada.",
       "rejected": "Rechazada.",
       "changesRequested": "Cambios solicitados."
+    },
+    "occurrenceCodes": {
+      "student_unknown": "Estudiante desconocido",
+      "student_inactive": "Estudiante inactivo",
+      "subject_unknown": "Materia desconocida",
+      "subject_inactive": "Materia inactiva",
+      "tutor_unknown": "No es tutor",
+      "tutor_inactive": "Tutor inactivo",
+      "classroom_unknown": "Aula desconocida",
+      "classroom_inactive": "Aula inactiva",
+      "crosses_local_date": "Cruza la medianoche"
     }
   },
   "users": {

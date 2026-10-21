@@ -4,8 +4,10 @@
 ``identity`` and later modules call), so the approval types' handlers, the
 notification types of the modules (#41), the account-reference resolver
 of the approval inbox and the modules' time-zone dependency checks (#37,
-#47: ``scheduling.class_sessions``) are wired here, by the API app factory
-(``app.main.build_app``), ``app.cli`` and ``app.worker``.
+#47: ``scheduling.class_sessions``; #53: ``scheduling.class_series``, and
+the ``scheduling.occurrence_conflict`` approval type) are wired here, by
+the API app factory (``app.main.build_app``), ``app.cli`` and
+``app.worker``.
 """
 
 from app.modules.administration import service as administration_service
@@ -26,8 +28,15 @@ def register_approval_wiring() -> None:
     Registering again changes nothing."""
     administration_service.register_approval_handler(REGISTRATION_APPROVAL_HANDLER)
     administration_service.register_approval_handler(QUALIFICATION_APPROVAL_HANDLER)
+    administration_service.register_approval_handler(
+        scheduling_service.OCCURRENCE_CONFLICT_HANDLER
+    )
     register_qualification_notifications()
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
+    )
+    administration_service.register_time_zone_dependency(
+        scheduling_service.SERIES_TIME_ZONE_DEPENDENCY,
+        scheduling_service.has_class_series,
     )

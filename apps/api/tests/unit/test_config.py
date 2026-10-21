@@ -228,6 +228,28 @@ def test_non_boolean_cookie_secure_is_rejected(monkeypatch):
     assert "boolean" in line_for(message, "SESSION_COOKIE_SECURE")
 
 
+def test_the_scheduling_horizon_defaults_to_12_weeks(monkeypatch):
+    set_env(monkeypatch, MINIMAL_ENV)
+
+    assert load_settings().scheduling_horizon_weeks == 12
+
+
+@pytest.mark.parametrize("value", ["4", "26"])
+def test_the_scheduling_horizon_accepts_its_bounds(monkeypatch, value):
+    set_env(monkeypatch, {**MINIMAL_ENV, "SCHEDULING_HORIZON_WEEKS": value})
+
+    assert load_settings().scheduling_horizon_weeks == int(value)
+
+
+@pytest.mark.parametrize("value", ["3", "27"])
+def test_the_scheduling_horizon_rejects_beyond_its_bounds(monkeypatch, value):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "SCHEDULING_HORIZON_WEEKS": value}
+    )
+
+    assert "SCHEDULING_HORIZON_WEEKS" in message
+
+
 @pytest.mark.parametrize("app_env", ["dev", "prod"])
 def test_insecure_cookie_rejected_outside_local(monkeypatch, app_env):
     message = config_error(
@@ -524,6 +546,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "STORAGE_ACCESS_KEY_ID",
         "STORAGE_SECRET_ACCESS_KEY",
         "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
+        "SCHEDULING_HORIZON_WEEKS",
         "TRUSTED_PROXIES",
     }
 
