@@ -8,7 +8,7 @@ import { createSubjectViaApi } from '../support/tutors';
 // Overriding a soft conflict (#49 G9). The demo Owner (the shared state;
 // schedule.manage and schedule.override) creates a student and a subject
 // through the API and schedules that student, without tutor or classroom,
-// on the first Sunday at least 14 days ahead, 10:00–11:00. The center is
+// on the first Sunday at least 14 days ahead, 15:00–16:00. The center is
 // closed on Sundays, so the panel lists outside_operating_hours labelled
 // "Can be overridden"; "Override and schedule" opens the dialog (no axe
 // violations with it open), a reason is typed, and the success panel says
@@ -16,7 +16,9 @@ import { createSubjectViaApi } from '../support/tutors';
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (two API creates with the shared Owner session). It never
-// changes the zone, the opening hours or the scheduling policy.
+// changes the zone, the opening hours or the scheduling policy. The time is
+// after 13:00 on purpose: settings.spec.ts briefly opens Sunday 10:00–13:00
+// on another worker, and the slot must be outside the hours either way.
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -93,10 +95,10 @@ test('an Owner overrides a soft conflict with a reason', async ({
     .fill(firstSundayAhead());
   await main
     .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
+    .fill('15:00');
   await main
     .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('11:00');
+    .fill('16:00');
   await main
     .getByRole('button', { name: common.scheduling.submit, exact: true })
     .click();
