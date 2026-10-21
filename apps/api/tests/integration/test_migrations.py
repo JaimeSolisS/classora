@@ -1,6 +1,6 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
 M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
-M3-03 A, M3-04 A, M3-05 A); each test uses a fresh database."""
+M3-03 A, M3-04 A, M3-05 A, M3-09 A); each test uses a fresh database."""
 
 import asyncio
 import uuid
@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0026"
+HEAD = "0027"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -94,6 +94,11 @@ APPROVAL_TABLES = ["approval_requests"]
 NOTIFICATION_TABLES = ["notifications"]
 STAFF_TABLES = ["tutor_profiles"]
 QUALIFICATION_TABLES = ["tutor_qualifications"]
+AVAILABILITY_TABLES = [
+    "tutor_availability_exceptions",
+    "tutor_availability_settings",
+    "tutor_availability_windows",
+]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -196,6 +201,9 @@ def test_history_is_linear_with_one_head():
     tutor_profiles = script.get_revision("0025")
     assert tutor_profiles.down_revision == "0024"
     assert Path(tutor_profiles.path).name == "0025_staff_tutor_profiles.py"
+    availability = script.get_revision("0027")
+    assert availability.down_revision == "0026"
+    assert Path(availability.path).name == "0027_staff_tutor_availability.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -234,6 +242,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *NOTIFICATION_TABLES,
             *STAFF_TABLES,
             *QUALIFICATION_TABLES,
+            *AVAILABILITY_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3329,3 +3338,272 @@ def test_invalid_tutor_qualifications_are_rejected(
             decided=decided,
             reason=reason,
         )
+
+
+# --- 0027: tutor availability (#45 A) ------------------------------------------------
+
+
+def test_0027_adds_exactly_the_availability_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0026")
+    before = public_tables(fresh_database_url)
+    extensions = [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)]
+    command.upgrade(config, "0027")
+
+    assert public_tables(fresh_database_url) - before == set(AVAILABILITY_TABLES)
+    # btree_gist comes from 0021; 0027 creates no extension.
+    assert [r.extname for r in run_sql(fresh_database_url, EXTENSIONS)] == extensions
+    [count] = run_sql(
+        fresh_database_url,
+        "SELECT (SELECT count(*) FROM tutor_availability_settings)"
+        " + (SELECT count(*) FROM tutor_availability_windows)"
+        " + (SELECT count(*) FROM tutor_availability_exceptions) AS n",
+    )
+    assert count.n == 0
+
+    command.downgrade(config, "0026")
+
+    assert version_nums(fresh_database_url) == ["0026"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_tutor_availability_settings_columns_and_constraints(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_availability_settings"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "user_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_user_id_users",
+        f"uq_{table}_user_id",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_user_id_users"]
+
+
+def test_tutor_availability_windows_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_availability_windows"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "weekday": ("smallint", "NO", None, None),
+        "starts_at": ("time without time zone", "NO", None, None),
+        "ends_at": ("time without time zone", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_tutor_user_id_users",
+        f"ck_{table}_weekday_range",
+        f"ck_{table}_starts_before_ends",
+        f"ck_{table}_zero_seconds",
+        "ex_tutor_windows_no_overlap",
+    }
+    assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_tutor_user_id_users"]
+    exclusion = constraints["ex_tutor_windows_no_overlap"]
+    assert exclusion.startswith(
+        "EXCLUDE USING gist (tutor_user_id WITH =, weekday WITH =, tsrange("
+    )
+    assert "'[)'::text) WITH &&)" in exclusion
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_tutor_user_id",
+        "ex_tutor_windows_no_overlap",
+    }
+
+
+def test_tutor_availability_exceptions_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "tutor_availability_exceptions"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "kind": ("character varying", "NO", 20, None),
+        "starts_on": ("date", "NO", None, None),
+        "ends_on": ("date", "NO", None, None),
+        "starts_at": ("time without time zone", "YES", None, None),
+        "ends_at": ("time without time zone", "YES", None, None),
+        "note": ("character varying", "YES", 200, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_tutor_user_id_users",
+        f"ck_{table}_kind_valid",
+        f"ck_{table}_starts_before_ends",
+        f"ck_{table}_span_max",
+        f"ck_{table}_hours_valid",
+        f"ck_{table}_zero_seconds",
+        f"ck_{table}_available_has_hours",
+        f"ck_{table}_note_trimmed",
+    }
+    assert "366" in constraints[f"ck_{table}_span_max"]
+    assert set(_indexes(fresh_database_url, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_tutor_user_id",
+    }
+
+
+def _tutor_window(tutor_id: Any, weekday: int, starts: str, ends: str) -> Statement:
+    return (
+        "INSERT INTO tutor_availability_windows"
+        " (tutor_user_id, weekday, starts_at, ends_at)"
+        " VALUES (:tutor, :weekday, :starts, :ends)",
+        {
+            "tutor": tutor_id,
+            "weekday": weekday,
+            "starts": time.fromisoformat(starts),
+            "ends": time.fromisoformat(ends),
+        },
+    )
+
+
+def _tutor_exception(
+    tutor_id: Any,
+    kind: str = "unavailable",
+    starts_on: str = "2026-12-21",
+    ends_on: str = "2026-12-31",
+    starts: str | None = None,
+    ends: str | None = None,
+    note: str | None = None,
+) -> Statement:
+    return (
+        "INSERT INTO tutor_availability_exceptions"
+        " (tutor_user_id, kind, starts_on, ends_on, starts_at, ends_at, note)"
+        " VALUES (:tutor, :kind, :starts_on, :ends_on, :starts, :ends, :note)",
+        {
+            "tutor": tutor_id,
+            "kind": kind,
+            "starts_on": date.fromisoformat(starts_on),
+            "ends_on": date.fromisoformat(ends_on),
+            "starts": time.fromisoformat(starts) if starts else None,
+            "ends": time.fromisoformat(ends) if ends else None,
+            "note": note,
+        },
+    )
+
+
+def test_overlapping_tutor_windows_on_one_weekday_are_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    run_sql(fresh_database_url, *_tutor_window(tutor, 1, "16:00", "20:00"))
+
+    with pytest.raises(IntegrityError, match="ex_tutor_windows_no_overlap") as exc:
+        run_sql(fresh_database_url, *_tutor_window(tutor, 1, "19:00", "21:00"))
+    assert _sqlstate(exc.value) == "23P01"
+
+
+def test_touching_tutor_windows_other_weekdays_and_tutors_are_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    other = _recipient(fresh_database_url)
+
+    run_sql(fresh_database_url, *_tutor_window(tutor, 1, "16:00", "18:00"))
+    run_sql(fresh_database_url, *_tutor_window(tutor, 1, "18:00", "20:00"))
+    run_sql(fresh_database_url, *_tutor_window(tutor, 3, "16:00", "20:00"))
+    run_sql(fresh_database_url, *_tutor_window(other, 1, "16:00", "20:00"))
+
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM tutor_availability_windows"
+    )
+    assert count.n == 4
+    with pytest.raises(IntegrityError, match="fk_tutor_availability_windows_tutor"):
+        run_sql(fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": tutor})
+
+
+@pytest.mark.parametrize(
+    ("weekday", "starts", "ends", "constraint"),
+    [
+        (1, "12:00", "12:00", "starts_before_ends"),
+        (1, "13:00", "12:00", "starts_before_ends"),
+        (0, "09:00", "12:00", "weekday_range"),
+        (8, "09:00", "12:00", "weekday_range"),
+        (1, "09:00:30", "12:00", "zero_seconds"),
+    ],
+)
+def test_invalid_tutor_window_rows_are_rejected(
+    fresh_database_url, weekday, starts, ends, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+
+    with pytest.raises(
+        IntegrityError, match=f"ck_tutor_availability_windows_{constraint}"
+    ):
+        run_sql(fresh_database_url, *_tutor_window(tutor, weekday, starts, ends))
+
+
+def test_one_availability_settings_row_per_tutor(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+    statement = "INSERT INTO tutor_availability_settings (user_id) VALUES (:id)"
+
+    run_sql(fresh_database_url, statement, {"id": tutor})
+    with pytest.raises(IntegrityError, match="uq_tutor_availability_settings_user_id"):
+        run_sql(fresh_database_url, statement, {"id": tutor})
+
+
+def test_valid_and_overlapping_exceptions_are_accepted(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+
+    run_sql(fresh_database_url, *_tutor_exception(tutor, note="Vacaciones"))
+    run_sql(fresh_database_url, *_tutor_exception(tutor, starts="10:00", ends="12:00"))
+    run_sql(
+        fresh_database_url,
+        *_tutor_exception(tutor, "available", starts="10:00", ends="12:00"),
+    )
+    run_sql(
+        fresh_database_url,
+        *_tutor_exception(tutor, starts_on="2027-01-01", ends_on="2028-01-02"),
+    )
+
+    [count] = run_sql(
+        fresh_database_url, "SELECT count(*) AS n FROM tutor_availability_exceptions"
+    )
+    assert count.n == 4
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"kind": "available"}, "available_has_hours"),
+        ({"starts": "10:00"}, "hours_valid"),
+        ({"ends": "10:00"}, "hours_valid"),
+        ({"starts": "12:00", "ends": "10:00"}, "hours_valid"),
+        ({"starts": "10:00", "ends": "10:00"}, "hours_valid"),
+        ({"starts_on": "2026-12-31", "ends_on": "2026-12-21"}, "starts_before_ends"),
+        ({"starts_on": "2027-01-01", "ends_on": "2028-01-03"}, "span_max"),
+        ({"kind": "busy", "starts": "10:00", "ends": "12:00"}, "kind_valid"),
+        ({"note": " Vacaciones"}, "note_trimmed"),
+        ({"starts": "10:00:30", "ends": "12:00"}, "zero_seconds"),
+    ],
+)
+def test_invalid_exception_rows_are_rejected(fresh_database_url, overrides, constraint):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor = _recipient(fresh_database_url)
+
+    with pytest.raises(
+        IntegrityError, match=f"ck_tutor_availability_exceptions_{constraint}"
+    ):
+        run_sql(fresh_database_url, *_tutor_exception(tutor, **overrides))

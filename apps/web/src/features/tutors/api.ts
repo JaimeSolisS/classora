@@ -189,3 +189,72 @@ export async function fetchActiveSubjectOptions(
     .filter((item) => item.is_active && item.education_level_id === levelId)
     .map(({ id, name }) => ({ id, name }));
 }
+
+// --- Tutor availability (#45) -----------------------------------------------
+
+export type TutorAvailability =
+  components['schemas']['TutorAvailabilityDetail'];
+export type AvailabilityException =
+  components['schemas']['AvailabilityExceptionItem'];
+export type AvailabilityExceptionCreate =
+  components['schemas']['AvailabilityExceptionCreate'];
+export type ExceptionKind = components['schemas']['ExceptionKind'];
+export type WeeklyAvailabilityUpdate =
+  components['schemas']['WeeklyAvailabilityUpdate'];
+
+export function availabilityKey(userId: string) {
+  return [...TUTORS_QUERY_KEY, 'availability', userId] as const;
+}
+
+export function fetchAvailability(
+  userId: string,
+  signal: AbortSignal,
+): Promise<TutorAvailability> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/tutors/{user_id}/availability', {
+        params: { path: { user_id: userId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** PUT the full list of weekly windows with the loaded `version`. */
+export function replaceWeeklyAvailability(
+  userId: string,
+  body: WeeklyAvailabilityUpdate,
+): Promise<TutorAvailability> {
+  return apiCall(() =>
+    api.PUT('/api/v1/tutors/{user_id}/availability/weekly', {
+      params: { path: { user_id: userId } },
+      body,
+    }),
+  );
+}
+
+export function createAvailabilityException(
+  userId: string,
+  body: AvailabilityExceptionCreate,
+): Promise<AvailabilityException> {
+  return apiCall(() =>
+    api.POST('/api/v1/tutors/{user_id}/availability/exceptions', {
+      params: { path: { user_id: userId } },
+      body,
+    }),
+  );
+}
+
+export async function deleteAvailabilityException(
+  userId: string,
+  exceptionId: string,
+): Promise<void> {
+  await apiCall(() =>
+    api.DELETE(
+      '/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}',
+      {
+        params: { path: { user_id: userId, exception_id: exceptionId } },
+      },
+    ),
+  );
+}

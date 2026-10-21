@@ -77,6 +77,10 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['too_many_streams', 'too_many_streams'],
   ['qualification_exists', 'qualification_exists'],
   ['subject_inactive', 'subject_inactive'],
+  [
+    'availability_change_requires_approval',
+    'availability_change_requires_approval',
+  ],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

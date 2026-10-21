@@ -123,6 +123,23 @@ type Common = {
       close: string;
       requested: string;
     };
+    availability: {
+      title: string;
+      save: string;
+      saved: string;
+      exceptionsEmpty: string;
+      kinds: Record<'unavailable' | 'available', string>;
+      add: string;
+      delete: string;
+      deleteConfirm: string;
+      deleted: string;
+      added: string;
+      kindLabel: string;
+      startsOn: string;
+      endsOn: string;
+      noteLabel: string;
+      send: string;
+    };
   };
   catalog: {
     title: string;

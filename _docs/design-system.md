@@ -278,7 +278,7 @@ Loading and error primitives in `apps/web/src/components/feedback/`
 - **`WeeklyWindowsEditor`** (`components/weekly-windows`, #39; reused by
   #45 for tutor availability): a fieldset of weekly windows, each row a
   weekday select, start and end (`type="time"`, 15-minute step) and
-  "Remove", with "Add window" below (disabled at 28 rows, with a help
+  "Remove", with "Add window" below (disabled at 28 rows, or the `max` prop, with a help
   text). Controlled: the parent keeps the rows and passes each row's errors
   (`validateWindows` mirrors the API: `HH:MM`, end after start, no overlap
   with an earlier row of the same weekday; touching is fine). Every control
@@ -323,6 +323,18 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   select (active ones, loaded per level; API errors in the dialog's alert),
   and a pending row has "Cancel request" behind a confirmation ("Keep
   request" / "Cancel request"). Results are polite status messages.
+- **`AvailabilitySection`** (`features/tutors`, #45): the tutor profile's
+  `#availability` section. A help line names the center's time zone. For
+  the tutor themselves and `tutor.manage` holders, the
+  `WeeklyWindowsEditor` (up to 42 windows; tutor-specific legend, help and
+  empty text) with "Save availability"; for other viewers a per-weekday
+  list. "Exceptions" is a table (type as text, dates, hours or "All day",
+  note) with "Delete" behind a confirmation, and "Add exception" opens a
+  dialog: type, start and end date, an "All day" checkbox (disabled and off
+  for extra availability, with a help text), start and end time, note.
+  `version_conflict` offers "Reload"; `availability_change_requires_approval`
+  and other errors show in the alert region; results are polite status
+  messages.
 - **`SettingsForm`** (`features/settings`, #37): the business settings in
   three fieldsets of one form. Each operating-hours row has an "Open"
   checkbox and two `type="time"` inputs (15-minute step) that are disabled

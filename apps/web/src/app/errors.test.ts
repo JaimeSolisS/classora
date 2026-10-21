@@ -72,6 +72,7 @@ const API_CODES = [
   'too_many_streams',
   'qualification_exists',
   'subject_inactive',
+  'availability_change_requires_approval',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

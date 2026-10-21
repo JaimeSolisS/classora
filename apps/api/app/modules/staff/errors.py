@@ -9,6 +9,8 @@ Tutor qualifications (#44) add the typed errors below. None takes record
 data, so no submitted value reaches a response. Cancelling a qualification
 that is no longer pending reuses the approval inbox's ``409
 approval_transition_invalid`` (``administration.service``).
+
+Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`.
 """
 
 from app.core.errors import AppError
@@ -53,6 +55,19 @@ class QualificationExistsError(AppError):
     status = 409
     code = "qualification_exists"
     detail = "There is already a pending or approved qualification for this subject."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AvailabilityChangeRequiresApprovalError(AppError):
+    """The availability change affects scheduled sessions (#45 D2; the
+    ``assignment_impact`` seam): nothing changes. M4-18 (#63) turns this
+    into an approval request; clients treat it as "needs approval"."""
+
+    status = 409
+    code = "availability_change_requires_approval"
+    detail = "This change affects scheduled classes and needs approval."
 
     def __init__(self) -> None:
         super().__init__()

@@ -703,6 +703,54 @@ json = { version = 0 }
 
 [[route]]
 method = "GET"
+path = "/api/v1/tutors/{user_id}/availability"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the #43 view policy. The placeholder id is no tutor: 404 for every
+# allowed role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability/check"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the matrix sends no query parameters: the missing date gets 422 for
+# every allowed role ("not denied"). The 200 and 404 cases are tested in
+# tests/integration/test_tutor_availability.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/exceptions"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the tutor themselves or tutor.manage edit. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role.
+json = { kind = "unavailable", starts_on = "2031-01-06", ends_on = "2031-01-06" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the placeholder ids are no tutor and no exception: 404 for every
+# allowed role.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/tutors/{user_id}/availability/weekly"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: a valid body for the placeholder id, which is no tutor: 404 for every
+# allowed role (nothing changes).
+json = { version = 0, windows = [] }
+
+[[route]]
+method = "GET"
 path = "/api/v1/tutors/{user_id}/qualifications"
 access = "permission"
 permission = "tutor.view"

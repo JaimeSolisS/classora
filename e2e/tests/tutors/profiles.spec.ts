@@ -68,7 +68,9 @@ async function openProfile(page: Page) {
 
 async function saveForm(page: Page) {
   const main = page.getByRole('main');
-  await main.getByRole('button', { name: common.tutors.form.save }).click();
+  await main
+    .getByRole('button', { name: common.tutors.form.save, exact: true })
+    .click();
   await expect(
     main.getByRole('status').filter({ hasText: common.tutors.profile.saved }),
   ).toBeVisible();
@@ -118,7 +120,9 @@ test('an Owner edits a tutor profile; the tutor edits only their own contact', a
   await main.getByLabel(common.tutors.list.search, { exact: true }).fill(TUTOR);
   await expect(page).toHaveURL(/[?&]q=/);
   await openProfile(page);
-  await main.getByRole('button', { name: common.tutors.profile.edit }).click();
+  await main
+    .getByRole('button', { name: common.tutors.profile.edit, exact: true })
+    .click();
   await expect(
     main.getByLabel(common.tutors.profile.displayName, { exact: true }),
   ).toHaveValue(TUTOR_NAME);
@@ -147,7 +151,7 @@ test('an Owner edits a tutor profile; the tutor edits only their own contact', a
       tutorMain.getByText('Diez años enseñando matemáticas.'),
     ).toBeVisible();
     await tutorMain
-      .getByRole('button', { name: common.tutors.profile.edit })
+      .getByRole('button', { name: common.tutors.profile.edit, exact: true })
       .click();
     await expect(
       tutorMain.getByLabel(common.tutors.form.phone, { exact: true }),
