@@ -1,11 +1,12 @@
 """The staff module's public API (ADR-0002): tutor profiles (#43) and
 tutor qualifications (#44, implemented in
 :mod:`app.modules.staff.qualifications`; the approval handler in
-:mod:`app.modules.staff.qualification_approval`).
+:mod:`app.modules.staff.qualification_approval`; revocation, #198, in
+:mod:`app.modules.staff.qualification_revocation`).
 
 For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
 :func:`is_qualified` and :func:`qualified_tutor_ids` count **approved**
-qualifications only.
+qualifications only (a revoked one stops counting at once).
 
 Tutor availability (#45, implemented in
 :mod:`app.modules.staff.tutor_availability`; the rules in
@@ -64,6 +65,9 @@ from app.modules.staff.qualification_approval import (
 )
 from app.modules.staff.qualification_approval import (
     register_qualification_notifications as register_qualification_notifications,
+)
+from app.modules.staff.qualification_revocation import (
+    revoke_qualification as revoke_qualification,
 )
 from app.modules.staff.qualifications import (
     approved_subject_ids as approved_subject_ids,
@@ -138,6 +142,7 @@ __all__ = [
     "register_qualification_notifications",
     "replace_weekly_availability",
     "request_qualification",
+    "revoke_qualification",
     "teaching_limits",
     "update_availability_settings",
     "update_tutor",

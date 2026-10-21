@@ -501,7 +501,8 @@
         "pending": "Pending",
         "approved": "Approved",
         "rejected": "Rejected",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "revoked": "Revoked"
       },
       "request": "Request qualification",
       "requestTitle": "Request a qualification",
@@ -524,6 +525,18 @@
       "cancelKeep": "Keep request",
       "cancelling": "Cancelling…",
       "cancelled": "Request cancelled.",
+      "revoke": "Revoke",
+      "revokeFor": "Revoke qualification for {{subject}}",
+      "revokeTitle": "Revoke qualification",
+      "revokeDescription": "The qualification for {{subject}} ({{level}}) will stop counting at once. The tutor is notified and sees the reason.",
+      "revokeReason": "Reason (required)",
+      "revokeReasonRequired": "Enter the reason.",
+      "revokeReasonTooLong": "Use at most 1000 characters.",
+      "revokeConfirm": "Revoke qualification",
+      "revoking": "Revoking…",
+      "revoked": "Qualification revoked.",
+      "revokedOn": "Revoked {{date}}",
+      "reload": "Reload",
       "loadError": "The qualifications couldn't be loaded."
     },
     "availability": {
@@ -1208,7 +1221,8 @@
     "types": {
       "dev_demo": "Demo notification: {{label}}",
       "staff_qualification_approved": "Your qualification for {{subject_name}} ({{education_level_name}}) was approved.",
-      "staff_qualification_rejected": "Your qualification for {{subject_name}} ({{education_level_name}}) was not approved; see the reason in your qualifications."
+      "staff_qualification_rejected": "Your qualification for {{subject_name}} ({{education_level_name}}) was not approved; see the reason in your qualifications.",
+      "staff_qualification_revoked": "Your qualification for {{subject_name}} ({{education_level_name}}) was revoked. See the reason in your qualifications."
     }
   }
 }

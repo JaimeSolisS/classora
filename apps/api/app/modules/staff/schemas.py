@@ -1,6 +1,6 @@
-"""Tutor profile bodies (#43 C1-C3), tutor qualifications (#44 B3, D1),
-tutor availability (#45 C) and the teaching limits and preferred classrooms
-(#197 B).
+"""Tutor profile bodies (#43 C1-C3), tutor qualifications (#44 B3, D1;
+revocation #198 B1, B3), tutor availability (#45 C) and the teaching limits
+and preferred classrooms (#197 B).
 
 The contact fields are the account's (``users.email``/``phone``, #31) with
 the #31 formats; ``display_name`` is the account's too. Only
@@ -49,6 +49,7 @@ from app.modules.staff.models import (
     EXCEPTION_NOTE_MAX_LENGTH,
     EXPERIENCE_MAX_LENGTH,
     PREFERRED_CLASSROOMS_MAX,
+    REVOCATION_REASON_MAX_LENGTH,
     WEEKLY_LIMIT_MAX,
     WEEKLY_LIMIT_MIN,
 )
@@ -149,9 +150,11 @@ class TutorUpdate(BaseModel):
 
 # --- Tutor qualifications (#44) ------------------------------------------------------
 
-type QualificationStatus = Literal["pending", "approved", "rejected", "cancelled"]
+type QualificationStatus = Literal[
+    "pending", "approved", "rejected", "cancelled", "revoked"
+]
 type QualificationStatusFilter = Literal[
-    "all", "pending", "approved", "rejected", "cancelled"
+    "all", "pending", "approved", "rejected", "cancelled", "revoked"
 ]
 
 
@@ -178,7 +181,29 @@ class QualificationItem(BaseModel):
     rejection_reason: str | None = Field(
         description="The reviewer's reason; set only for rejected."
     )
+    revoked_at: datetime | None = Field(
+        description="When the approval was revoked; set only for revoked."
+    )
+    revocation_reason: str | None = Field(
+        description="The reviewer's revocation reason; set only for revoked."
+    )
     version: int
+
+
+class QualificationRevoke(BaseModel):
+    """A reviewer withdraws an approved qualification (#198 B1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+            max_length=REVOCATION_REASON_MAX_LENGTH,
+        ),
+    ] = Field(description="Why the qualification is revoked; the tutor sees it.")
+    version: int = Field(ge=1, description="The version the caller loaded.")
 
 
 # --- Tutor availability (#45) --------------------------------------------------------

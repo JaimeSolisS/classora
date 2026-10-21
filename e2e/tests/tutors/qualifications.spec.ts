@@ -15,7 +15,11 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // and requests the second. The Owner approves the first and rejects the
 // second with a reason on /approvals. The tutor reloads: the bell has the
 // approval message, the rows say Approved and Rejected with its reason, and
-// "Teaching subjects" lists the approved one.
+// "Teaching subjects" lists the approved one. Then (#198 F1) the Owner opens
+// the tutor's profile and revokes Física with a reason; the tutor reloads:
+// the row says Revoked with the reason, "Teaching subjects" no longer lists
+// it, the bell has the revoked message, and requesting Física again gives
+// Pending.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (the demo Owner's
 // own reauthenticated API context for the role change, and the tutor), 0
@@ -26,6 +30,7 @@ const TUTOR = 'e2e.tutor.qualifications';
 const TUTOR_NAME = 'E2E Tutor Calificaciones';
 const PASSWORD = 'e2e-tutor-qualifications-password';
 const REASON = 'Falta el certificado de química.';
+const REVOKE_REASON = 'El certificado de física venció.';
 // A seeded level (#32) that no spec deactivates.
 const LEVEL = 'Secundaria';
 
@@ -35,9 +40,9 @@ const LEVEL = 'Secundaria';
 const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of (401|409)/;
 
-// Two browsers, a login and two decisions: more than the default 30 s under
-// machine load.
-const TEST_TIMEOUT_MS = 120_000;
+// Two browsers, a login, two decisions and a revocation: more than the
+// default 30 s under machine load.
+const TEST_TIMEOUT_MS = 150_000;
 
 function watchConsole(page: Page): string[] {
   const consoleErrors: string[] = [];
@@ -80,7 +85,7 @@ const qualifications = (page: Page) =>
 const row = (page: Page, subject: string) =>
   qualifications(page).getByRole('row').filter({ hasText: subject });
 
-async function openOwnProfile(page: Page) {
+async function openTutorProfile(page: Page) {
   await page
     .getByRole('banner')
     .getByRole('link', { name: common.nav.tutors, exact: true })
@@ -154,7 +159,7 @@ async function decide(
   await expect(button).toHaveCount(0);
 }
 
-test('a tutor requests qualifications; the Owner approves one and rejects one', async ({
+test('a tutor requests qualifications; the Owner approves, rejects and revokes', async ({
   page,
   browser,
   playwright,
@@ -181,7 +186,7 @@ test('a tutor requests qualifications; the Owner approves one and rejects one', 
   const tutor = await signInFresh(browser);
   try {
     // 2. The tutor requests Física: Pending. Again: qualification_exists.
-    await openOwnProfile(tutor.page);
+    await openTutorProfile(tutor.page);
     let dialog = await requestSubject(tutor.page, LEVEL, physics);
     await expect(dialog).toBeHidden();
     await expect(
@@ -271,6 +276,73 @@ test('a tutor requests qualifications; the Owner approves one and rejects one', 
         .getByRole('listitem')
         .filter({ hasText: chemistry }),
     ).toHaveCount(0);
+
+    // 5. (#198) The Owner opens the tutor's profile and revokes Física.
+    await openTutorProfile(page);
+    await qualifications(page)
+      .getByRole('button', {
+        name: fill(common.tutors.qualifications.revokeFor, {
+          subject: physics,
+        }),
+      })
+      .click();
+    const revokeDialog = page.getByRole('dialog');
+    await expect(revokeDialog).toBeVisible();
+    await revokeDialog
+      .getByLabel(common.tutors.qualifications.revokeReason, { exact: true })
+      .fill(REVOKE_REASON);
+    await revokeDialog
+      .getByRole('button', {
+        name: common.tutors.qualifications.revokeConfirm,
+        exact: true,
+      })
+      .click();
+    await expect(revokeDialog).toBeHidden();
+    await expect(
+      qualifications(page)
+        .getByRole('status')
+        .filter({ hasText: common.tutors.qualifications.revoked }),
+    ).toBeVisible();
+    await expect(row(page, physics)).toContainText(
+      common.tutors.qualifications.statuses.revoked,
+    );
+    expect(await cspViolations(page)).toEqual([]);
+    expect(ownerErrors).toEqual([]);
+
+    // 6. The tutor reloads: Revoked with the reason, no longer a teaching
+    // subject, the revoked message in the bell; requesting it again: Pending.
+    await tutor.page.reload();
+    await expect(row(tutor.page, physics)).toContainText(
+      common.tutors.qualifications.statuses.revoked,
+    );
+    await expect(row(tutor.page, physics)).toContainText(REVOKE_REASON);
+    await expect(
+      qualifications(tutor.page)
+        .getByRole('listitem')
+        .filter({ hasText: physics }),
+    ).toHaveCount(0);
+    await expect(bell).toBeVisible();
+    await bell.click();
+    await expect(panel).toContainText(
+      fill(common.notifications.types.staff_qualification_revoked, {
+        subject_name: physics,
+        education_level_name: LEVEL,
+      }),
+    );
+    await tutor.page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    dialog = await requestSubject(tutor.page, LEVEL, physics);
+    await expect(dialog).toBeHidden();
+    await expect(
+      row(tutor.page, physics).filter({
+        hasText: common.tutors.qualifications.statuses.pending,
+      }),
+    ).toHaveCount(1);
+    await expect(
+      row(tutor.page, physics).filter({
+        hasText: common.tutors.qualifications.statuses.revoked,
+      }),
+    ).toHaveCount(1);
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
   } finally {

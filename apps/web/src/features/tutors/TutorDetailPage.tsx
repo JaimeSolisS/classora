@@ -7,6 +7,7 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { canAccess } from '@/features/auth/access';
 import { useSession } from '@/features/auth/useSession';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
@@ -23,6 +24,7 @@ import {
   qualificationsKey,
   replaceWeeklyAvailability,
   requestQualification,
+  revokeQualification,
   tutorDetailKey,
   TUTORS_LIST_QUERY_KEY,
   updateAvailabilitySettings,
@@ -43,8 +45,10 @@ import { TutorForm } from './TutorForm';
 //
 // Below the profile, the Qualifications section (#44 F1): the list query of
 // the tutor's qualifications and, for the tutor themselves, request and
-// cancel. A `#qualifications` hash (the decision notifications' link)
-// scrolls to it once the page has loaded.
+// cancel; for holders of qualification.review, revoke (#198), which then
+// refreshes the list and the profile (its teaching subjects). A
+// `#qualifications` hash (the notifications' link) scrolls to it once the
+// page has loaded.
 //
 // Then the Availability section (#45 F1): the availability query; the
 // tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
@@ -127,6 +131,9 @@ function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
   });
   const isSelf =
     session.status === 'signedIn' && session.user.id === tutor.user_id;
+  const canRevoke =
+    session.status === 'signedIn' &&
+    canAccess(session.user, { permission: 'qualification.review' });
   const scrolled = useRef(false);
 
   useEffect(() => {
@@ -169,6 +176,20 @@ function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
         } finally {
           await refresh();
         }
+      }}
+      canRevoke={canRevoke}
+      onReload={refresh}
+      onRevoke={async (item, reason) => {
+        await revokeQualification(tutor.user_id, item.id, {
+          reason,
+          version: item.version,
+        });
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: tutorDetailKey(tutor.user_id),
+          }),
+        ]);
       }}
     />
   );

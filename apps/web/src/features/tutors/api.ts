@@ -153,6 +153,25 @@ export function cancelQualification(
   );
 }
 
+/** Revokes an approved qualification (#198; qualification.review). */
+export function revokeQualification(
+  userId: string,
+  qualificationId: string,
+  body: { reason: string; version: number },
+): Promise<QualificationItem> {
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke',
+      {
+        params: {
+          path: { user_id: userId, qualification_id: qualificationId },
+        },
+        body,
+      },
+    ),
+  );
+}
+
 /** The active education levels (one page of up to 100, by position). */
 export async function fetchActiveLevelOptions(
   signal: AbortSignal,

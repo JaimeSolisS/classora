@@ -13,6 +13,9 @@ approval_transition_invalid`` (``administration.service``).
 Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`;
 the teaching limits and preferred classrooms (#197) add two ``422`` field
 errors with the generic ``validation_error`` code.
+
+Revoking (#198) adds ``409 qualification_not_approved``; a stale ``version``
+is the shared ``409 version_conflict``.
 """
 
 from app.core.errors import AppError
@@ -57,6 +60,18 @@ class QualificationExistsError(AppError):
     status = 409
     code = "qualification_exists"
     detail = "There is already a pending or approved qualification for this subject."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class QualificationNotApprovedError(AppError):
+    """Only an approved qualification can be revoked (#198 B2): pending,
+    rejected, cancelled and already revoked ones can't."""
+
+    status = 409
+    code = "qualification_not_approved"
+    detail = "Only an approved qualification can be revoked."
 
     def __init__(self) -> None:
         super().__init__()

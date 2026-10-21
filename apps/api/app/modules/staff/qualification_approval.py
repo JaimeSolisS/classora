@@ -16,7 +16,8 @@ a param (the #41 200-character cap): the tutor reads it on their
 qualifications list. Everything commits or rolls back with the decision.
 
 Exported by ``staff.service``; ``app.wiring`` registers the handler and the
-two notification types (:func:`register_qualification_notifications`).
+qualification notification types, #198's ``staff.qualification_revoked``
+included (:func:`register_qualification_notifications`).
 """
 
 import uuid
@@ -43,18 +44,21 @@ QUALIFICATION_REVIEW: Final = "qualification.review"
 
 QUALIFICATION_APPROVED: Final = "staff.qualification_approved"
 QUALIFICATION_REJECTED: Final = "staff.qualification_rejected"
+QUALIFICATION_REVOKED: Final = "staff.qualification_revoked"
+"""Sent by a revocation (#198 B4; ``staff/qualification_revocation.py``)."""
 
 
 class QualificationDecisionParams(BaseModel):
-    """The params of both qualification notifications."""
+    """The params of the three qualification notifications (never a
+    reason: the #41 200-character cap)."""
 
     subject_name: str
     education_level_name: str
 
 
 def register_qualification_notifications() -> None:
-    """Register the two notification types (again: a no-op)."""
-    for code in (QUALIFICATION_APPROVED, QUALIFICATION_REJECTED):
+    """Register the three notification types (again: a no-op)."""
+    for code in (QUALIFICATION_APPROVED, QUALIFICATION_REJECTED, QUALIFICATION_REVOKED):
         administration.register_notification_type(code, QualificationDecisionParams)
 
 

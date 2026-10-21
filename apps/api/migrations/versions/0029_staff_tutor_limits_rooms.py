@@ -1,7 +1,7 @@
 """Staff: tutor teaching limits, required break and preferred classrooms.
 
-Revision ID: 0028
-Revises: 0027
+Revision ID: 0029
+Revises: 0028
 Create Date: 2026-10-20
 
 M3-09b (#197; spec §3). Configuration only: exceeding a limit is a warning
@@ -26,8 +26,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0028"
-down_revision: str | Sequence[str] | None = "0027"
+revision: str = "0029"
+down_revision: str | Sequence[str] | None = "0028"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
