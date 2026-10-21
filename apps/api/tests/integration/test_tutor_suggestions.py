@@ -15,8 +15,10 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.identity.models import Role, UserRole
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     FINANCE_STAFF,
@@ -112,6 +114,23 @@ def qualification(
         )
 
     in_uow(url, _add)
+
+
+def remove_tutor_role(url: str, user_id: uuid.UUID) -> None:
+    """Take the ``tutor`` role away (through the ORM: audited table)."""
+
+    async def _remove(session: AsyncSession) -> None:
+        role_id = await session.scalar(select(Role.id).where(Role.code == TUTOR))
+        row = await session.scalar(
+            select(UserRole).where(
+                UserRole.user_id == user_id, UserRole.role_id == role_id
+            )
+        )
+        assert row is not None
+        await session.delete(row)
+        await session.flush()
+
+    in_uow(url, _remove)
 
 
 def set_limits(
@@ -236,8 +255,12 @@ def test_inactive_accounts_are_dropped(
 def test_a_user_without_the_tutor_role_is_dropped(
     module_seeded_url, client, cookie, subject, control
 ):
-    former = create_user(module_seeded_url, roles=(ACADEMIC_COORDINATOR,)).id
-    qualification(module_seeded_url, former, subject, "approved")
+    # Otherwise eligible (qualified, available all week), then the tutor role
+    # is removed: only the role check can drop them.
+    former = new_tutor(module_seeded_url, qualified_for=[subject])
+    assert set(listed(suggest(client, cookie, query(subject)))) == {control, former}
+
+    remove_tutor_role(module_seeded_url, former)
 
     assert listed(suggest(client, cookie, query(subject))) == [control]
 
