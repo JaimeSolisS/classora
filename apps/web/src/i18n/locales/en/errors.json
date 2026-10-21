@@ -69,5 +69,7 @@
   "qualification_exists": "There is already a pending or approved qualification for this subject.",
   "subject_inactive": "This subject or its education level is inactive. Choose another one.",
   "qualification_not_approved": "Only an approved qualification can be revoked.",
-  "availability_change_requires_approval": "This change affects scheduled classes and needs approval."
+  "availability_change_requires_approval": "This change affects scheduled classes and needs approval.",
+  "invalid_effective_from": "A new policy must take effect now or later, and after every upcoming change. Choose a later date.",
+  "policy_version_in_effect": "This policy is already in effect, so it can't be deleted. Reload the page."
 }

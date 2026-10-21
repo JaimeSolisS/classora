@@ -74,6 +74,8 @@ const API_CODES = [
   'subject_inactive',
   'qualification_not_approved',
   'availability_change_requires_approval',
+  'invalid_effective_from',
+  'policy_version_in_effect',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

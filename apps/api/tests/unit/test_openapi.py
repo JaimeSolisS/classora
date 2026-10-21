@@ -62,6 +62,8 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/notifications/read-all",
         "/api/v1/notifications/{notification_id}/read",
         "/api/v1/business-settings",
+        "/api/v1/scheduling-policies",
+        "/api/v1/scheduling-policies/{policy_id}",
         "/api/v1/classrooms",
         "/api/v1/classrooms/{classroom_id}",
         "/api/v1/closures",

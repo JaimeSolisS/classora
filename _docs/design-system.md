@@ -356,6 +356,14 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   while the day is closed; every control's accessible name includes the day
   (for example "Monday opening time"). A closing time not after the opening
   time is an error on the closing field. "Saved." is a polite status.
+- **`SettingsTabs`** (`features/settings`, #61): the Settings area's tab
+  bar, the `CatalogTabs` pattern ("General", "Scheduling policies"); M8-04
+  adds its groups as more tabs.
+- **`SchedulingPolicyForm`** (`features/settings`, #61): number inputs whose
+  labels carry the unit ("Cancellation notice (hours)"), three makeup
+  checkboxes and a "Takes effect" radio group ("Immediately" or "From
+  date", which reveals a `type="date"` input with the center's zone in its
+  help text). Save stays disabled until a rule changes.
 - **`popover`** (`components/ui/popover.tsx`, #41): the shadcn wrapper over
   the Popover of the pinned `radix-ui` package. Non-modal (`role="dialog"`);
   give the content an accessible name (`aria-labelledby` its heading).

@@ -69,5 +69,7 @@
   "qualification_exists": "Ya existe una calificación pendiente o aprobada para esta materia.",
   "subject_inactive": "Esta materia o su nivel educativo está inactivo. Elige otra.",
   "qualification_not_approved": "Solo se puede revocar una calificación aprobada.",
-  "availability_change_requires_approval": "Este cambio afecta clases programadas y necesita aprobación."
+  "availability_change_requires_approval": "Este cambio afecta clases programadas y necesita aprobación.",
+  "invalid_effective_from": "Una política nueva debe entrar en vigor ahora o después, y después de todos los cambios próximos. Elige una fecha posterior.",
+  "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página."
 }

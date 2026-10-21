@@ -1,6 +1,7 @@
 """Alembic history (M1-07 C5-C8, M1-16 B, M2-02 D4, M2-05 A3, M2-07 B2, B3,
 M2-08 A1, A2, M2-09 A, M2-11 B, M2-13 A, M2-14 A, M2-15 A, M3-01 A, M3-02 A,
-M3-03 A, M3-04 A, M3-05 A, M3-09 A, M4-02 A); each test uses a fresh database."""
+M3-03 A, M3-04 A, M3-05 A, M3-09 A, M4-02 A, M4-16 A); each test uses a fresh
+database."""
 
 import asyncio
 import uuid
@@ -64,7 +65,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0030"
+HEAD = "0031"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -101,6 +102,7 @@ AVAILABILITY_TABLES = [
 ]
 PREFERRED_ROOM_TABLES = ["tutor_preferred_classrooms"]
 SESSION_TABLES = ["class_session_participants", "class_sessions"]
+POLICY_TABLES = ["scheduling_policies"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -215,6 +217,9 @@ def test_history_is_linear_with_one_head():
     sessions = script.get_revision("0030")
     assert sessions.down_revision == "0029"
     assert Path(sessions.path).name == "0030_scheduling_class_sessions.py"
+    policies = script.get_revision("0031")
+    assert policies.down_revision == "0030"
+    assert Path(policies.path).name == "0031_administration_scheduling_policies.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -256,6 +261,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *AVAILABILITY_TABLES,
             *PREFERRED_ROOM_TABLES,
             *SESSION_TABLES,
+            *POLICY_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -3994,7 +4000,12 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
     command.upgrade(config, "0030")
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
-    assert metadata_diff(fresh_database_url) == []
+    # Only the tables of later revisions (0031 scheduling_policies) differ.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not (diff[0] == "add_table" and diff[1].name in POLICY_TABLES)  # type: ignore[index]
+    ] == []
 
     command.downgrade(config, "0029")
 
@@ -4103,3 +4114,153 @@ def test_class_session_participants_columns_constraints_and_indexes(
         f"ix_{table}_student_id",
         "uq_class_session_participants_session_student",
     }
+
+
+# --- 0031: scheduling policy versions (#61 A) -----------------------------------------
+
+POLICY_SELECT = (
+    "SELECT effective_from, booking_notice_hours, change_notice_hours,"
+    " response_hours, makeup_after_on_time, makeup_after_late,"
+    " makeup_after_no_show, makeup_window_days FROM scheduling_policies"
+)
+POLICY_INSERT = (
+    "INSERT INTO scheduling_policies (effective_from, booking_notice_hours,"
+    " change_notice_hours, response_hours, makeup_after_on_time,"
+    " makeup_after_late, makeup_after_no_show, makeup_window_days)"
+    " VALUES (:effective_from, :booking_notice_hours, :change_notice_hours,"
+    " :response_hours, :makeup_after_on_time, :makeup_after_late,"
+    " :makeup_after_no_show, :makeup_window_days)"
+)
+
+
+def _policy(**changes: Any) -> Statement:
+    values: dict[str, Any] = {
+        "effective_from": datetime(2030, 1, 1, tzinfo=UTC),
+        "booking_notice_hours": 24,
+        "change_notice_hours": 24,
+        "response_hours": 48,
+        "makeup_after_on_time": True,
+        "makeup_after_late": False,
+        "makeup_after_no_show": False,
+        "makeup_window_days": 30,
+        **changes,
+    }
+    return (POLICY_INSERT, values)
+
+
+def test_0031_adds_exactly_the_policy_table_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0030")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0031")
+
+    assert public_tables(fresh_database_url) - before == set(POLICY_TABLES)
+
+    command.downgrade(config, "0030")
+
+    assert version_nums(fresh_database_url) == ["0030"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_scheduling_policies_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "scheduling_policies"
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "effective_from": ("timestamp with time zone", "NO", None, None),
+        "booking_notice_hours": ("smallint", "NO", None, None),
+        "change_notice_hours": ("smallint", "NO", None, None),
+        "response_hours": ("smallint", "NO", None, None),
+        "makeup_after_on_time": ("boolean", "NO", None, None),
+        "makeup_after_late": ("boolean", "NO", None, None),
+        "makeup_after_no_show": ("boolean", "NO", None, None),
+        "makeup_window_days": ("smallint", "NO", None, None),
+    }
+    assert set(_constraints(fresh_database_url, table)) == {
+        "pk_scheduling_policies",
+        "uq_scheduling_policies_effective_from",
+        "ck_scheduling_policies_booking_notice_hours_range",
+        "ck_scheduling_policies_change_notice_hours_range",
+        "ck_scheduling_policies_response_hours_range",
+        "ck_scheduling_policies_makeup_window_days_range",
+    }
+    assert set(_indexes(fresh_database_url, table)) == {
+        "pk_scheduling_policies",
+        "uq_scheduling_policies_effective_from",
+    }
+
+
+def test_0031_inserts_version_1_with_the_defaults(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    [row] = run_sql(fresh_database_url, POLICY_SELECT)
+    assert tuple(row) == (
+        datetime(2000, 1, 1, tzinfo=UTC),
+        24,
+        24,
+        48,
+        True,
+        False,
+        False,
+        30,
+    )
+    # A raw insert: no audit event.
+    [count] = run_sql(fresh_database_url, "SELECT count(*) AS n FROM audit_events")
+    assert count.n == 0
+
+
+POLICY_RANGES = [
+    ("booking_notice_hours", 0, 336),
+    ("change_notice_hours", 0, 336),
+    ("response_hours", 1, 168),
+    ("makeup_window_days", 1, 365),
+]
+
+
+@pytest.mark.parametrize(("column", "low", "high"), POLICY_RANGES)
+def test_each_policy_range_accepts_both_bounds(fresh_database_url, column, low, high):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    run_sql(fresh_database_url, *_policy(**{column: low}))
+    run_sql(
+        fresh_database_url,
+        *_policy(effective_from=datetime(2031, 1, 1, tzinfo=UTC), **{column: high}),
+    )
+
+    rows = run_sql(
+        fresh_database_url,
+        POLICY_SELECT + " WHERE effective_from > '2001-01-01' ORDER BY effective_from",
+    )
+    assert [getattr(row, column) for row in rows] == [low, high]
+
+
+@pytest.mark.parametrize(("column", "low", "high"), POLICY_RANGES)
+@pytest.mark.parametrize("beyond", ["low", "high"])
+def test_each_policy_range_rejects_beyond_its_bounds(
+    fresh_database_url, column, low, high, beyond
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    value = low - 1 if beyond == "low" else high + 1
+
+    with pytest.raises(IntegrityError, match=f"ck_scheduling_policies_{column}_range"):
+        run_sql(fresh_database_url, *_policy(**{column: value}))
+
+
+def test_a_duplicate_effective_from_is_rejected(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+
+    with pytest.raises(
+        IntegrityError, match="uq_scheduling_policies_effective_from"
+    ) as exc:
+        run_sql(
+            fresh_database_url,
+            *_policy(effective_from=datetime(2000, 1, 1, tzinfo=UTC)),
+        )
+    assert _sqlstate(exc.value) == "23505"

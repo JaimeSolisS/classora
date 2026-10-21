@@ -197,6 +197,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/notifications/read-all",
         "/api/v1/notifications/{notification_id}/read",
         "/api/v1/business-settings",
+        "/api/v1/scheduling-policies",
+        "/api/v1/scheduling-policies/{policy_id}",
         "/api/v1/classrooms",
         "/api/v1/classrooms/{classroom_id}",
         "/api/v1/closures",

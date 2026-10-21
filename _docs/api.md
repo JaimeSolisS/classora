@@ -126,6 +126,8 @@ Codes in use today:
 | `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
 | `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
 | `tz_change_requires_migration` | 409 | A business-settings change of the center time zone while scheduled data exists (see Business settings); nothing changes. The body never names the data. |
+| `invalid_effective_from` | 422 | A new scheduling policy version whose `effective_from` (now when omitted) is in the past or not later than every existing version; nothing is created (see Scheduling policies). |
+| `policy_version_in_effect` | 409 | Deleting a scheduling policy version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -1019,6 +1021,85 @@ operating hours and the **center time zone**.
   fields; `operating_hours` `create`/`update`/`delete` per weekday. An
   hours-only change writes only `operating_hours` events. `403`, `409`,
   `422` and a body that changes nothing write no event.
+
+### Scheduling policies
+
+Implemented by M4-16 (#61; spec §3, §9; ADR-0005 D1, D3, D6) in
+`apps/api/app/modules/administration/` (`scheduling_policy.py`, the pure
+evaluator; `policy_versions.py`, the versions; `policies_router.py`). One
+**effective-dated** policy for the center: the notice windows, the offer
+response time and the makeup rules.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/scheduling-policies` | `authenticated()` | `SchedulingPolicyOverview`: `current` (the version in force now), `upcoming` (`effective_from` later than now, oldest first) and `history` (versions no longer in force, newest first, at most 50). Each item: `id`, `effective_from`, the rules below and `created_at` (the author is in the audit trail). Every role reads it: families and tutors need the notice rules, and nothing in it is personal data. |
+| `POST /api/v1/scheduling-policies` | `require("settings.manage")` | Body `SchedulingPolicyCreate` (`extra="forbid"`): `based_on_id`, every rule (all required) and an optional aware `effective_from`. `201` with the new version. |
+| `DELETE /api/v1/scheduling-policies/{policy_id}` | `require("settings.manage")` | `204` for an upcoming version. |
+
+- **Rules** (ranges inclusive, `422` on the field otherwise):
+  `booking_notice_hours` 0-336 (0 = no notice), `change_notice_hours` 0-336
+  (0 = a change before the start is never late), `response_hours` 1-168,
+  `makeup_after_on_time`, `makeup_after_late`, `makeup_after_no_show`
+  (booleans) and `makeup_window_days` 1-365. Version 1, inserted by migration
+  0031 and effective from `2000-01-01T00:00:00Z`, holds the defaults 24, 24,
+  48, true, false, false, 30, so a version is in force at every instant.
+  `make seed` never touches it.
+- **Effective dating, append-only:** a version is in force from its unique
+  `effective_from` until the next version's. Versions are created, never
+  edited, so an event can always be classified again with the version in
+  force at the time. To change an upcoming version, delete it and create
+  another. A body equal to the latest version is still accepted (an
+  explicit re-publish); the web app disables Save when nothing changed.
+- **Create order:** `401` → `403 csrf_failed` → `403 privacy_notice_required`
+  → `403 permission_denied` → `422` (body) → a transaction-scoped advisory
+  lock with one constant key (writers are serialized) → `based_on_id` must
+  be the version with the latest `effective_from` (current or upcoming),
+  else `409 version_conflict` → `effective_from` (when omitted, the
+  application clock's now) must not be in the past and must be later than
+  every existing `effective_from`, else `422 invalid_effective_from` → the
+  insert.
+- **Delete order:** `401` → `403 csrf_failed` → `403 privacy_notice_required`
+  → `403 permission_denied` → the same advisory lock → `404` for an unknown
+  id → `409 policy_version_in_effect` for a version in force or in the past
+  (version 1 always is) → the delete.
+- **Not a time-zone dependency** (#37 D): the instants are moments chosen by
+  an administrator, not occurrences computed from local time. The web app's
+  "From date" sends the start of that date in the center's zone.
+- **For other modules** (ADR-0002: import from `administration.service`,
+  never the model): `get_scheduling_policy(session, at)` returns the
+  `SchedulingPolicyValues` in force at `at` (the latest `effective_from <=
+  at`, one statement; a naive `at` raises `ValueError`). The pure evaluator
+  takes aware datetimes only (`ValueError` otherwise), reads no clock and no
+  zone, and compares instants:
+  - `classify_change(policy, *, kind, initiated_by, starts_at, at)` →
+    `PolicyOutcome(classification, makeup_allowed, makeup_until,
+    policy_id)`. `kind` is `cancellation`, `reschedule` or `absence`;
+    `initiated_by` is `family` (a student or guardian), `tutor` or `center`
+    (staff or the system); `at` is when the request was made, or when the
+    absence was recorded.
+
+    | Case (first match) | Classification |
+    | ------------------ | -------------- |
+    | `initiated_by` is `tutor` or `center` | `excused` |
+    | `kind = absence` | `no_show` |
+    | `at >= starts_at` | `no_show` |
+    | `at > starts_at - change_notice_hours` | `late` |
+    | otherwise (exactly the notice before the start included) | `on_time` |
+
+    Makeup: a `reschedule` never allows one (it is its own replacement);
+    otherwise `excused` allows one and `on_time`/`late`/`no_show` follow
+    `makeup_after_*`. When allowed, `makeup_until = starts_at +
+    makeup_window_days` (days of 24 hours), else `null`. M4-17 (#62) stores
+    the outcome at request time and never recomputes it.
+  - `violates_booking_notice(policy, *, starts_at, at)`: true when
+    `starts_at - at < booking_notice_hours` (exactly the notice is fine;
+    with 0, only a start before `at`). The input of the soft `notice_window`
+    conflict (#48, ADR-0005 D1) and of slot filtering (#59).
+  - `default_respond_by(policy, *, offered_at, first_starts_at)` =
+    `min(offered_at + response_hours, first_starts_at)` (#52, ADR-0005 D3).
+- **Audit:** automatic only: a `create` event with every value, and a
+  `delete` event. `403`, `404`, `409` and `422` write no event. There is no
+  `update`.
 
 ### Academic catalog
 
