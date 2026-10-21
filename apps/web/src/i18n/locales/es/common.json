@@ -1357,6 +1357,7 @@
       "duration": "{{count}} × {{minutes}} min ({{total}})",
       "hours_one": "{{count}} h",
       "hours_other": "{{count}} h",
+      "hours_many": "{{count}} h",
       "hoursMinutes": "{{hours}} h {{minutes}} min",
       "minutesOnly": "{{count}} min",
       "open": "Abrir",
@@ -1437,6 +1438,7 @@
       "minScoreValue": "Calificación mínima {{value}} %",
       "plannedValue_one": "{{count}} sesión prevista",
       "plannedValue_other": "{{count}} sesiones previstas",
+      "plannedValue_many": "{{count}} sesiones previstas",
       "optional": "Opcional",
       "validation": {
         "nameRequired": "Escribe un nombre.",
