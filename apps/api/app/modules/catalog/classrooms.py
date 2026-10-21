@@ -18,7 +18,9 @@ covers its windows: any change bumps it once.
 
 **Other modules** (#197 preferred rooms, M4 scheduling) use
 :func:`get_classroom`, :func:`classroom_references`,
-:func:`active_classroom_ids` and :func:`is_classroom_available`.
+:func:`active_classroom_ids` and :func:`is_classroom_available`; the M4-05
+slot search reads :func:`classroom_weekly_windows` once and checks
+candidates with the pure :func:`windows_cover`.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -198,17 +200,38 @@ async def active_classroom_ids(
     return set(found)
 
 
-def _covers(windows: list[ClassroomAvailabilityWindow], start: time, end: time) -> bool:
-    """Whether the union of ``windows`` (one weekday) covers ``[start, end)``;
-    touching windows join."""
+def windows_cover(
+    windows: Iterable[WindowKey], weekday: int, start: time, end: time
+) -> bool:
+    """The room-window rule, pure (#39; M4-05 checks it in memory): a room
+    without any window (``windows`` empty) has no time restriction;
+    otherwise the union of the ISO ``weekday``'s windows ``(weekday,
+    starts_at, ends_at)`` must cover ``[start, end)`` (touching windows
+    join; a local end at the next midnight, ``time.max``, is never
+    covered)."""
+    all_windows = list(windows)
+    if not all_windows:
+        return True
     reached = start
-    for window in sorted(windows, key=_key):
-        if window.starts_at > reached:
+    for day, starts_at, ends_at in sorted(all_windows):
+        if day != weekday:
+            continue
+        if starts_at > reached:
             break
-        reached = max(reached, window.ends_at)
+        reached = max(reached, ends_at)
         if reached >= end:
             return True
     return False
+
+
+async def classroom_weekly_windows(
+    session: AsyncSession, classroom_id: uuid.UUID
+) -> tuple[WindowKey, ...]:
+    """The room's weekly windows ``(weekday, starts_at, ends_at)``, sorted;
+    empty means no time restriction (or an unknown room). One statement
+    (M4-05: checked in memory with :func:`windows_cover`)."""
+    windows = (await _windows_of(session, [classroom_id]))[classroom_id]
+    return tuple(sorted(_key(window) for window in windows))
 
 
 async def is_classroom_available(
@@ -222,9 +245,9 @@ async def is_classroom_available(
     end)`` (local wall-clock times, ``start < end``, same day): false for an
     unknown or inactive room; true when the room has no windows at all;
     otherwise true only if the union of that weekday's windows covers the
-    interval (09:00-12:00 plus 12:00-14:00 covers 11:00-13:00). Two
-    statements. A weekday outside 1-7 or ``start >= end`` raises
-    :class:`ValueError`."""
+    interval (09:00-12:00 plus 12:00-14:00 covers 11:00-13:00;
+    :func:`windows_cover`). Two statements. A weekday outside 1-7 or ``start
+    >= end`` raises :class:`ValueError`."""
     if not FIRST_WEEKDAY <= weekday <= LAST_WEEKDAY:
         raise ValueError("weekday must be an ISO weekday (1-7)")
     if start >= end:
@@ -235,9 +258,7 @@ async def is_classroom_available(
     if not is_active:
         return False
     windows = (await _windows_of(session, [classroom_id]))[classroom_id]
-    if not windows:
-        return True
-    return _covers([w for w in windows if w.weekday == weekday], start, end)
+    return windows_cover((_key(w) for w in windows), weekday, start, end)
 
 
 # --- Writes --------------------------------------------------------------------------

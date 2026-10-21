@@ -24,9 +24,12 @@ import {
   CLASSROOMS,
   CONFLICTS,
   CREATED,
+  CREATED_WITH_WARNINGS,
+  NO_SUGGESTIONS,
   OVERRIDDEN,
   SOFT_CONFLICTS,
   SUBJECTS,
+  SUGGESTIONS,
   TUTORS,
 } from './fixtures';
 import {
@@ -37,6 +40,8 @@ import {
   scheduleBody,
   serverErrors,
   sessionOverride,
+  slotValues,
+  suggestionBody,
   validateOverrideReason,
   validateSchedule,
 } from './rules';
@@ -45,9 +50,11 @@ import {
 // rules, the instant conversion in the center zone, the 409 conflict panel
 // (order, severity labels, focus) and the 422 field errors. #49 F2-F5: the
 // override action's branches, the reason rules, the body sent and the
-// outcomes of the resend.
+// outcomes of the resend. #50 C1-C3: the suggestions request after a 409,
+// choosing a slot, the states of the section and the workload warnings.
 
 const CREATE = 'POST /api/v1/class-sessions';
+const SUGGEST = 'POST /api/v1/class-sessions/suggestions';
 
 const SCHEDULER: SessionUserBody = {
   ...TEST_USER,
@@ -617,5 +624,202 @@ describe('overriding on the page (#49 F2-F4)', () => {
     );
     const area = dialog.querySelector('textarea')!;
     expect(area.getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
+// --- #50: suggested times and workload warnings --------------------------------
+
+describe('suggested times (#50 C1)', () => {
+  it('sends the form values without an override or a window', () => {
+    const values = {
+      ...EMPTY_SCHEDULE,
+      student: ANA,
+      subjectId: 's',
+      tutorId: 't',
+      date: '2031-01-06',
+      start: '10:00',
+      end: '11:00',
+    };
+    expect(suggestionBody(values, 'America/Mexico_City')).toEqual({
+      kind: 'individual',
+      student_id: ANA.id,
+      subject_id: 's',
+      tutor_user_id: 't',
+      classroom_id: null,
+      starts_at: '2031-01-06T16:00:00.000Z',
+      ends_at: '2031-01-06T17:00:00.000Z',
+      limit: 5,
+    });
+  });
+
+  it('turns a slot into local fields in the center zone (Tijuana DST)', () => {
+    // 2026-03-08: 01:30 is still PST (UTC-8); 03:00 is already PDT (UTC-7).
+    expect(
+      slotValues(
+        { starts_at: '2026-03-08T09:30:00Z', ends_at: '2026-03-08T10:00:00Z' },
+        'America/Tijuana',
+      ),
+    ).toEqual({ date: '2026-03-08', start: '01:30', end: '03:00' });
+    // 2026-11-01: the first 01:30 (PDT) and an end in PST.
+    expect(
+      slotValues(
+        { starts_at: '2026-11-01T08:30:00Z', ends_at: '2026-11-01T10:00:00Z' },
+        'America/Tijuana',
+      ),
+    ).toEqual({ date: '2026-11-01', start: '01:30', end: '02:00' });
+  });
+
+  it('asks for free times after a 409 and fills the fields with the chosen one', async () => {
+    const api = stub(SCHEDULER, {
+      [CREATE]: () => conflictResponse(),
+      [SUGGEST]: () => jsonResponse(200, SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+    await settle();
+
+    const [request] = api.calls(SUGGEST);
+    expect(request!.body).toEqual({
+      ...(api.calls(CREATE)[0]!.body as object),
+      limit: 5,
+    });
+    expect(request!.body).not.toHaveProperty('search_from');
+    expect(request!.body).not.toHaveProperty('search_to');
+    const section = [...main().querySelectorAll('section')].find(
+      (s) => s.querySelector('h2')?.textContent === 'Suggested times',
+    )!;
+    const buttons = [...section.querySelectorAll('button')].map(
+      (b) => b.textContent,
+    );
+    expect(buttons).toEqual([
+      'January 6, 2031, 11:00 AM to 12:00 PM',
+      'January 6, 2031, 11:15 AM to 12:15 PM',
+      'January 6, 2031, 9:00 AM to 10:00 AM',
+    ]);
+    expect(section.textContent).toContain(
+      'Times in the center time zone (America/Mexico_City).',
+    );
+    // The second slot's note.
+    expect(section.textContent).toContain('Workload warning');
+    expect(section.textContent).toContain(
+      'Daily teaching limit exceeded on Jan 6, 2031: 300 minutes scheduled, limit 240.',
+    );
+
+    await click(buttonNamed(section, 'January 6, 2031, 11:00 AM to 12:00 PM'));
+
+    expect(fieldByLabel(main(), 'Date').value).toBe('2031-01-06');
+    expect(fieldByLabel(main(), 'Start').value).toBe('11:00');
+    expect(fieldByLabel(main(), 'End').value).toBe('12:00');
+    expect(main().querySelector('[role="alert"]')).toBeNull();
+    expect(main().textContent).not.toContain('Suggested times');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    expect(document.activeElement).toBe(
+      buttonNamed(main(), 'Schedule session'),
+    );
+    expect(main().querySelector('[aria-live="polite"]')?.textContent).toBe(
+      'Time changed to January 6, 2031, 11:00 AM to 12:00 PM. Review it and schedule the session.',
+    );
+    // Not submitted: one create only.
+    expect(api.calls(CREATE)).toHaveLength(1);
+  });
+
+  it('shows the loading, empty and error states', async () => {
+    stub(SCHEDULER, { [CREATE]: () => conflictResponse() });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(main().textContent).toContain('Looking for other times…');
+    app.unmount();
+
+    stub(SCHEDULER, {
+      [CREATE]: () => conflictResponse(),
+      [SUGGEST]: () => jsonResponse(200, NO_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    await settle();
+    expect(main().textContent).toContain(
+      'No other free times between January 6, 2031 and January 12, 2031.',
+    );
+    app.unmount();
+
+    stub(SCHEDULER, {
+      [CREATE]: () => conflictResponse(),
+      [SUGGEST]: () => problem(500, 'internal_error'),
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    await settle();
+    const section = [...main().querySelectorAll('section')].find(
+      (s) => s.querySelector('h2')?.textContent === 'Suggested times',
+    )!;
+    expect(section.querySelector('[role="alert"]')).not.toBeNull();
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
+  });
+});
+
+describe('workload warnings (#50 C2)', () => {
+  it('lists the warnings of the 201 in the success panel', async () => {
+    stub(SCHEDULER, {
+      [CREATE]: () => jsonResponse(201, CREATED_WITH_WARNINGS),
+    });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    const status = [...main().querySelectorAll('[role="status"]')].find((s) =>
+      s.textContent?.includes('Workload warnings'),
+    )!;
+    expect(
+      [...status.querySelectorAll('li')].map((li) => li.textContent),
+    ).toEqual([
+      'Daily teaching limit exceeded on Jan 6, 2031: 300 minutes scheduled, limit 240.',
+      'Weekly teaching limit exceeded in the week of Jan 6, 2031: 1260 minutes scheduled, limit 1200.',
+      'Break too short: 1 minute between classes, 15 required.',
+    ]);
+  });
+
+  it('shows nothing extra without warnings, and Spanish messages', async () => {
+    stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(main().textContent).toContain('Session scheduled');
+    expect(main().textContent).not.toContain('Workload warnings');
+    app.unmount();
+
+    applyLanguage('es');
+    stub(SCHEDULER, {
+      [CREATE]: () => jsonResponse(201, CREATED_WITH_WARNINGS),
+    });
+    app = await renderApp('/schedule/new');
+    typeInto(fieldByLabel(main(), 'Estudiante'), 'Ana');
+    await act(async () => {
+      await new Promise((resolve) =>
+        setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
+      );
+    });
+    await settle();
+    await click(
+      main().querySelector<HTMLInputElement>(
+        `input[type="radio"][value="${ANA.id}"]`,
+      )!,
+    );
+    choose('Materia', SUBJECTS[0]!.id);
+    typeInto(fieldByLabel(main(), 'Fecha'), '2031-01-06');
+    typeInto(fieldByLabel(main(), 'Inicio'), '10:00');
+    typeInto(fieldByLabel(main(), 'Fin'), '11:00');
+    await click(buttonNamed(main(), 'Programar sesión'));
+    expect(main().textContent).toContain('Avisos de carga de trabajo');
+    expect(main().textContent).toContain(
+      'Descanso demasiado corto: 1 minuto entre clases, se requieren 15.',
+    );
   });
 });

@@ -27,6 +27,16 @@ refuses) and :func:`record_session_override` (the append-only row plus the
 ``scheduling.session_override`` audit event). Every later write path that
 runs the conflict checks uses both.
 
+Workload warnings and slot suggestions (#50): the pure rules
+:func:`workload_warnings` / :func:`sort_warnings`
+(:mod:`~app.modules.scheduling.workload`), the loader
+:func:`tutor_workload_sessions` and :func:`session_warnings` (the create's
+step, :mod:`~app.modules.scheduling.workload_sessions`); the pure
+:func:`candidate_slots` / :func:`slot_conflicts` over a :class:`SlotContext`
+(:mod:`~app.modules.scheduling.suggestions`), loaded once by
+:func:`load_slot_context`, and the read-only route's :func:`suggest_slots`
+(:mod:`~app.modules.scheduling.slot_search`). #51, #58 and #59 reuse them.
+
 The calendar (#57, :mod:`~app.modules.scheduling.calendar_read`):
 :func:`list_calendar_sessions` (the range read with its read-time markers,
 :mod:`~app.modules.scheduling.markers`) and :func:`list_tutor_options`.
@@ -104,6 +114,10 @@ from app.modules.scheduling.sessions import (
 from app.modules.scheduling.sessions import (
     transition_class_session as transition_class_session,
 )
+from app.modules.scheduling.slot_search import (
+    load_slot_context as load_slot_context,
+)
+from app.modules.scheduling.slot_search import suggest_slots as suggest_slots
 from app.modules.scheduling.states import (
     ALLOWED_TRANSITIONS as ALLOWED_TRANSITIONS,
 )
@@ -121,9 +135,31 @@ from app.modules.scheduling.states import (
 from app.modules.scheduling.states import SessionKind as SessionKind
 from app.modules.scheduling.states import SessionState as SessionState
 from app.modules.scheduling.states import can_transition as can_transition
+from app.modules.scheduling.suggestions import SlotContext as SlotContext
+from app.modules.scheduling.suggestions import (
+    candidate_slots as candidate_slots,
+)
+from app.modules.scheduling.suggestions import slot_conflicts as slot_conflicts
 from app.modules.scheduling.times import (
     scheduled_minutes as scheduled_minutes,
 )
 from app.modules.scheduling.times import (
     validate_session_bounds as validate_session_bounds,
+)
+from app.modules.scheduling.workload import BREAK_MAX as BREAK_MAX
+from app.modules.scheduling.workload import (
+    WorkloadSession as WorkloadSession,
+)
+from app.modules.scheduling.workload import (
+    WorkloadWarning as WorkloadWarning,
+)
+from app.modules.scheduling.workload import sort_warnings as sort_warnings
+from app.modules.scheduling.workload import (
+    workload_warnings as workload_warnings,
+)
+from app.modules.scheduling.workload_sessions import (
+    session_warnings as session_warnings,
+)
+from app.modules.scheduling.workload_sessions import (
+    tutor_workload_sessions as tutor_workload_sessions,
 )

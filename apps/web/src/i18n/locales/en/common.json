@@ -1519,6 +1519,24 @@
       "submitting": "Scheduling…",
       "scheduledWith": "Scheduled with an override",
       "overriddenRules": "Overridden rules: {{rules}}."
+    },
+    "warnings": {
+      "heading": "Workload warnings",
+      "intro": "These don’t block the session; review the tutor’s workload.",
+      "note": "Workload warning",
+      "daily_limit_exceeded": "Daily teaching limit exceeded on {{date}}: {{scheduled}} minutes scheduled, limit {{limit}}.",
+      "weekly_limit_exceeded": "Weekly teaching limit exceeded in the week of {{week}}: {{scheduled}} minutes scheduled, limit {{limit}}.",
+      "break_too_short_one": "Break too short: {{count}} minute between classes, {{required}} required.",
+      "break_too_short_other": "Break too short: {{count}} minutes between classes, {{required}} required.",
+      "unknown": "Another workload rule applies."
+    },
+    "suggestions": {
+      "heading": "Suggested times",
+      "intro": "Free times for the same student, subject, tutor and classroom, nearest first. Choosing one fills in the date and times; it doesn’t schedule the session.",
+      "loading": "Looking for other times…",
+      "empty": "No other free times between {{from}} and {{to}}.",
+      "slot": "{{date}}, {{start}} to {{end}}",
+      "chosen": "Time changed to {{date}}, {{start}} to {{end}}. Review it and schedule the session."
     }
   },
   "courses": {

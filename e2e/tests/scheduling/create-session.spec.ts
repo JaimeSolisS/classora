@@ -10,10 +10,13 @@ import { createSubjectViaApi } from '../support/tutors';
 // "Schedule" (the calendar, #57), then "Schedule a session", and schedules that student, without tutor or classroom, on the
 // first weekday at least 14 days ahead, 10:00–11:00: the success panel says
 // "Unassigned". "Schedule another" with the same student, 10:30–11:30: the
-// conflict panel lists the student overlap. The page has no axe violations.
+// conflict panel lists the student overlap, and "Suggested times" (#50 D7)
+// lists 11:00–12:00 first. The page has no axe violations with both shown;
+// choosing that time fills in the form, and scheduling it is "Unassigned".
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
-// no registration (two API creates with the shared Owner session). It never
+// no registration (two API creates with the shared Owner session; no tutor
+// is invited). It never
 // changes the zone or the scheduling policy; the stored session blocks zone
 // changes from then on (#47), which no spec makes.
 
@@ -149,7 +152,22 @@ test('an Owner schedules a session and meets a student overlap', async ({
   await expect(alert).toContainText(common.scheduling.severity.hard);
   await expect(alert.getByRole('heading')).toBeFocused();
 
-  // 4. Accessibility of the page with the conflict panel, light and dark.
+  // 4. "Suggested times": the nearest free time first, 11:00-12:00.
+  const suggestions = main.getByRole('region', {
+    name: common.scheduling.suggestions.heading,
+  });
+  const first = suggestions.getByRole('button').first();
+  await expect(first).toHaveText(
+    new RegExp(
+      `^${common.scheduling.suggestions.slot
+        .replace('{{date}}', '.+')
+        .replace('{{start}}', '11:00')
+        .replace('{{end}}', '12:00')}$`,
+    ),
+  );
+
+  // 5. Accessibility of the page with the conflict panel and the
+  // suggestions, light and dark.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     const results = await new AxeBuilder({ page })
@@ -161,6 +179,27 @@ test('an Owner schedules a session and meets a student overlap', async ({
       ),
     ).toEqual([]);
   }
+
+  await page.emulateMedia({ colorScheme: 'light' });
+
+  // 6. Choosing the time fills in the form; scheduling it is unassigned.
+  await first.click();
+  await expect(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+  ).toHaveValue('11:00');
+  await expect(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+  ).toHaveValue('12:00');
+  await expect(main.getByRole('alert')).toHaveCount(0);
+  await main
+    .getByRole('button', { name: common.scheduling.submit, exact: true })
+    .click();
+  await expect(
+    main.getByRole('heading', { name: common.scheduling.success.heading }),
+  ).toBeVisible();
+  await expect(
+    main.getByText(common.scheduling.success.unassigned, { exact: true }),
+  ).toBeVisible();
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);

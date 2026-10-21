@@ -358,7 +358,9 @@ def _collect_routes(app: FastAPI) -> _Routes:
 def _documents_problem(
     document: Mapping[str, Any], method: str, path: str, status: str
 ) -> bool:
-    operation = document.get("paths", {}).get(path, {}).get(method.lower(), {})
+    # OpenAPI writes a template without its convertors ("{id:uuid}" → "{id}").
+    template = _PATH_PARAM.sub(lambda m: "{" + m.group(1) + "}", path)
+    operation = document.get("paths", {}).get(template, {}).get(method.lower(), {})
     response = operation.get("responses", {}).get(status, {})
     schema = response.get("content", {}).get(PROBLEM_JSON, {}).get("schema", {})
     return bool(schema.get("$ref") == PROBLEM_DETAILS_REF)

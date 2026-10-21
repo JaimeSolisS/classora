@@ -28,12 +28,16 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    conflict, sorted (:func:`~app.modules.scheduling.conflicts.sort_conflicts`),
    unless there is none, or the body's ``override`` lists every one and all
    are soft;
-7. the session (``offered`` with the tutor, or ``unassigned`` without one,
+7. the tutor's workload warnings (#50 A7,
+   :func:`~app.modules.scheduling.workload_sessions.session_warnings`): at
+   most two statements with a tutor, none without one; they never block and
+   come only with the ``201`` (an overridden create carries them too);
+8. the session (``offered`` with the tutor, or ``unassigned`` without one,
    D2 / E1) and its one participant, flushed through
    ``flush_class_sessions``: an ``EXCLUDE`` race becomes ``409
    scheduling_conflict`` with that one hard conflict (its
    ``class_session_ids`` is ``[]``: the other row is not known);
-8. with overridden conflicts, the override row and its
+9. with overridden conflicts, the override row and its
    ``scheduling.session_override`` event
    (:func:`~app.modules.scheduling.overrides.record_session_override`).
 
@@ -53,7 +57,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from typing import Any, Final
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,7 +81,9 @@ from app.modules.scheduling.conflicts import (
     TUTOR_OVERLAP,
     TUTOR_UNAVAILABLE,
     Conflict,
+    LocalSlot,
     covers_operating_hours,
+    local_slot,
     sort_conflicts,
     tutor_unavailable_reasons,
 )
@@ -99,6 +104,7 @@ from app.modules.scheduling.schemas import (
     ClassSessionCreate,
     ClassSessionCreated,
     ClassSessionDetail,
+    ClassSessionSlot,
     OverrideActor,
     SessionClassroom,
     SessionOverrideItem,
@@ -115,6 +121,7 @@ from app.modules.scheduling.states import (
     SessionState,
 )
 from app.modules.scheduling.times import scheduled_minutes, validate_session_bounds
+from app.modules.scheduling.workload_sessions import session_warnings
 from app.modules.staff import service as staff
 
 TUTOR_ROLE: Final = "tutor"
@@ -157,7 +164,8 @@ def _bounds_field(reason: str, starts_at: datetime) -> str:
     return "ends_at"
 
 
-def _validate_bounds(body: ClassSessionCreate, zone: str) -> None:
+def validate_bounds(body: ClassSessionSlot, zone: str) -> None:
+    """``422`` for the bounds (step 3; also the slot suggestions, #50)."""
     try:
         validate_session_bounds(body.starts_at, body.ends_at, zone)
     except InvalidSessionTimesError as exc:
@@ -175,8 +183,12 @@ class _References:
     classroom: SessionClassroom | None
 
 
-async def _references(session: AsyncSession, body: ClassSessionCreate) -> _References:
-    """Every reference of the body, or one ``422`` with every invalid one."""
+async def references(
+    session: AsyncSession, body: ClassSessionSlot, *, lock: bool = True
+) -> _References:
+    """Every reference of the body, or one ``422`` with every invalid one
+    (step 4; also the slot suggestions, #50, with ``lock=False``: the
+    subject isn't read ``FOR SHARE`` when nothing is written)."""
     errors: list[FieldError] = []
 
     def reject(field: str, code: str) -> None:
@@ -191,7 +203,7 @@ async def _references(session: AsyncSession, body: ClassSessionCreate) -> _Refer
         reject("student_id", "student_inactive")
 
     subject = await catalog.get_subject_for_reference(
-        session, body.subject_id, lock=True
+        session, body.subject_id, lock=lock
     )
     if subject is None:
         reject("subject_id", "subject_unknown")
@@ -250,35 +262,7 @@ async def _references(session: AsyncSession, body: ClassSessionCreate) -> _Refer
 # --- Conflict checks (D) -------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _Slot:
-    """The requested interval, as instants and as local values."""
-
-    starts_at: datetime
-    ends_at: datetime
-    local_date: Any
-    weekday: int
-    start: time
-    end: time
-
-
-def _slot(starts_at: datetime, ends_at: datetime, zone: str) -> _Slot:
-    tz = ZoneInfo(zone)
-    local_start = starts_at.astimezone(tz)
-    local_end = ends_at.astimezone(tz)
-    # Bounds are valid: the end is on the start's date or at the next midnight.
-    end = local_end.time() if local_end.date() == local_start.date() else time.max
-    return _Slot(
-        starts_at=starts_at,
-        ends_at=ends_at,
-        local_date=local_start.date(),
-        weekday=local_start.isoweekday(),
-        start=local_start.time(),
-        end=end,
-    )
-
-
-def _overlapping(slot: _Slot) -> Any:
+def _overlapping(slot: LocalSlot) -> Any:
     return (ClassSession.starts_at < slot.ends_at) & (
         ClassSession.ends_at > slot.starts_at
     )
@@ -286,7 +270,7 @@ def _overlapping(slot: _Slot) -> Any:
 
 async def _overlap_ids(
     session: AsyncSession,
-    slot: _Slot,
+    slot: LocalSlot,
     states: frozenset[SessionState],
     column: InstrumentedAttribute[Any],
     value: uuid.UUID,
@@ -308,7 +292,7 @@ async def _overlap_ids(
 
 
 async def _overlap_conflicts(
-    session: AsyncSession, body: ClassSessionCreate, slot: _Slot
+    session: AsyncSession, body: ClassSessionSlot, slot: LocalSlot
 ) -> list[Conflict]:
     conflicts: list[Conflict] = []
     students = await _overlap_ids(
@@ -357,7 +341,7 @@ async def _overlap_conflicts(
 
 
 async def _capacity_conflicts(
-    session: AsyncSession, body: ClassSessionCreate
+    session: AsyncSession, body: ClassSessionSlot
 ) -> list[Conflict]:
     """D4 / ADR-0005 D7: one path for every kind. An individual session never
     exceeds a room (a room holds at least 1, #39), so nothing comes back
@@ -376,7 +360,7 @@ async def _capacity_conflicts(
 
 
 async def _tutor_conflicts(
-    session: AsyncSession, body: ClassSessionCreate, slot: _Slot, tutor: uuid.UUID
+    session: AsyncSession, body: ClassSessionSlot, slot: LocalSlot, tutor: uuid.UUID
 ) -> list[Conflict]:
     conflicts: list[Conflict] = []
     availability = await staff.is_tutor_available_at(
@@ -400,7 +384,7 @@ def _hours_of(item: Any) -> tuple[int, time, time]:
     )
 
 
-async def _center_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict]:
+async def _center_conflicts(session: AsyncSession, slot: LocalSlot) -> list[Conflict]:
     conflicts: list[Conflict] = []
     if await catalog.is_center_closed_on(session, slot.local_date):
         conflicts.append(Conflict(CENTER_CLOSED, {"date": slot.local_date.isoformat()}))
@@ -423,7 +407,7 @@ async def _center_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict
     return conflicts
 
 
-async def _notice_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict]:
+async def _notice_conflicts(session: AsyncSession, slot: LocalSlot) -> list[Conflict]:
     """D10: the booking notice of the policy in force now (#61); a start in
     the past breaks it too, and exactly the notice is fine."""
     now = clock.now()
@@ -438,12 +422,12 @@ async def _notice_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict
 
 
 async def find_conflicts(
-    session: AsyncSession, body: ClassSessionCreate, zone: str
+    session: AsyncSession, body: ClassSessionSlot, zone: str
 ) -> list[Conflict]:
     """Every hard and soft conflict of the body, sorted. The caller holds the
     student locks and the zone ``FOR SHARE``, and has validated the bounds
     and the references."""
-    slot = _slot(body.starts_at, body.ends_at, zone)
+    slot = local_slot(body.starts_at, body.ends_at, zone)
     conflicts = await _overlap_conflicts(session, body, slot)
     conflicts += await _capacity_conflicts(session, body)
     if body.tutor_user_id is not None:
@@ -462,7 +446,7 @@ async def find_conflicts(
 # --- Create (C) and read (E) ---------------------------------------------------------
 
 
-def _race_conflict(code: str, body: ClassSessionCreate) -> Conflict:
+def _race_conflict(code: str, body: ClassSessionSlot) -> Conflict:
     if code == ROOM_OVERLAP:
         return Conflict(
             ROOM_OVERLAP,
@@ -522,12 +506,19 @@ async def create_class_session(
     route has already checked ``schedule.override`` for an ``override``."""
     await lock_students(session, [body.student_id])
     zone = await administration.get_center_time_zone(session, for_share=True)
-    _validate_bounds(body, zone)
-    references = await _references(session, body)
+    validate_bounds(body, zone)
+    refs = await references(session, body)
     conflicts = await find_conflicts(session, body, zone)
     decision = evaluate_override(conflicts, body.override)
     if not decision.allowed:
         raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])
+    warnings = (
+        []
+        if body.tutor_user_id is None
+        else await session_warnings(
+            session, body.tutor_user_id, body.starts_at, body.ends_at, zone
+        )
+    )
 
     state = (
         SessionState.UNASSIGNED if body.tutor_user_id is None else SessionState.OFFERED
@@ -568,13 +559,13 @@ async def create_class_session(
         overrides.append(_override_item(stored, actors))
     detail = _detail(
         row,
-        subject=references.subject,
-        tutor=references.tutor,
-        classroom=references.classroom,
-        participants=[references.student],
+        subject=refs.subject,
+        tutor=refs.tutor,
+        classroom=refs.classroom,
+        participants=[refs.student],
         overrides=overrides,
     )
-    return ClassSessionCreated(**detail.model_dump(), warnings=[])
+    return ClassSessionCreated(**detail.model_dump(), warnings=warnings)
 
 
 async def get_class_session(

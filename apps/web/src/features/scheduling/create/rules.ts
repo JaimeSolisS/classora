@@ -1,12 +1,14 @@
 import type { FieldError } from '@classora/api-client';
 import type { ParseKeys } from 'i18next';
 import type { ErrorMessageKey } from '@/app/errors';
-import { localDateTimeToInstant } from '@/lib/time';
+import { localDateTimeToInstant, toLocalDate, toLocalTime } from '@/lib/time';
 import type {
   ClassSessionCreate,
   Option,
   SchedulingConflict,
+  SlotSuggestionRequest,
   SubjectOption,
+  SuggestedSlot,
 } from './api';
 
 // The rules of "Schedule a session" (#48 F2, F3), without React: the form's
@@ -274,4 +276,34 @@ export function overrideReasonError(
   return fieldErrors.some(({ path }) => path[1] === 'override')
     ? 'errors:validation_error'
     : null;
+}
+
+// --- Suggested times (#50 C1) -------------------------------------------------
+
+/** The server's default number of suggested times (#50 E2). */
+export const SUGGESTIONS_LIMIT = 5;
+
+/**
+ * The suggestions request: the form's values as the create sends them,
+ * without an override and without a window (the server's default: the
+ * requested date and the 6 days after it), with the default limit. The
+ * generated type requires `limit` because it has a default.
+ */
+export function suggestionBody(
+  values: ScheduleValues,
+  timeZone: string,
+): SlotSuggestionRequest {
+  return { ...scheduleBody(values, timeZone), limit: SUGGESTIONS_LIMIT };
+}
+
+/** The form's date, start and end for a suggested slot, in `timeZone`. */
+export function slotValues(
+  slot: Pick<SuggestedSlot, 'starts_at' | 'ends_at'>,
+  timeZone: string,
+): Pick<ScheduleValues, 'date' | 'start' | 'end'> {
+  return {
+    date: toLocalDate(slot.starts_at, timeZone),
+    start: toLocalTime(slot.starts_at, timeZone),
+    end: toLocalTime(slot.ends_at, timeZone),
+  };
 }

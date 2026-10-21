@@ -46,7 +46,9 @@ event.
 **For other modules** (M4-03 #48, M4-05, M4-06): :func:`is_tutor_available`
 (local date and times) and :func:`is_tutor_available_at` (instants, split
 into local pieces in the center zone). Neither checks the tutor role or the
-account state. :func:`teaching_limits` and :func:`preferred_classroom_ids`
+account state. :func:`tutor_availability_rules` (M4-05) preloads a tutor's
+windows and the exceptions of a date range, for checking many intervals in
+memory with the same rules. :func:`teaching_limits` and :func:`preferred_classroom_ids`
 (#197) read the configuration for workload warnings and suggestions.
 
 Every function runs in the caller's Unit of Work and never commits.
@@ -74,7 +76,7 @@ from app.modules.staff.availability import (
     ExceptionKind,
     WeeklyWindow,
     evaluate,
-    merge_results,
+    evaluate_interval,
     to_local_intervals,
     uncovered_ranges,
 )
@@ -408,9 +410,38 @@ async def is_tutor_available_at(
         (closure.starts_on, closure.ends_on)
         for closure in await catalog.closures_between(session, first, last)
     )
-    return merge_results(
-        evaluate(windows, exceptions, day in closed, day, start, end)
-        for day, start, end in pieces
+    return evaluate_interval(windows, exceptions, closed, starts_at, ends_at, zone)
+
+
+@dataclass(frozen=True, slots=True)
+class TutorAvailabilityRules:
+    """A tutor's weekly windows (every weekday) and the exceptions that share
+    a day with a date range: the input of
+    :func:`~app.modules.staff.availability.evaluate` /
+    :func:`~app.modules.staff.availability.evaluate_interval` (M4-05 slot
+    search)."""
+
+    windows: tuple[WeeklyWindow, ...]
+    exceptions: tuple[DatedException, ...]
+
+
+async def tutor_availability_rules(
+    session: AsyncSession, tutor_user_id: uuid.UUID, first_date: date, last_date: date
+) -> TutorAvailabilityRules:
+    """The tutor's weekly windows and the exceptions sharing a day with the
+    inclusive local dates ``[first_date, last_date]`` (M4-05). Two
+    statements; no visibility check (the caller's). ``first_date`` after
+    ``last_date`` raises :class:`ValueError`."""
+    if first_date > last_date:
+        raise ValueError("first_date must not be after last_date")
+    windows = sorted(_key(window) for window in await _windows(session, tutor_user_id))
+    exceptions = sorted(
+        await _exceptions(session, tutor_user_id, (first_date, last_date)),
+        key=_exception_order,
+    )
+    return TutorAvailabilityRules(
+        windows=tuple(_rule_window(key) for key in windows),
+        exceptions=tuple(_rule_exception(row) for row in exceptions),
     )
 
 

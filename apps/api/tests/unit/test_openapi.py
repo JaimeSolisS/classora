@@ -90,6 +90,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}",
         "/api/v1/tutors/{user_id}/availability/check",
         "/api/v1/class-sessions",
+        "/api/v1/class-sessions/suggestions",
         "/api/v1/class-sessions/{class_session_id}",
         "/api/v1/schedule/tutor-options",
         "/api/v1/auth/login",

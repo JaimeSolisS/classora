@@ -8,11 +8,14 @@ import {
   CLASSROOMS,
   CONFLICTS,
   CREATED,
+  CREATED_WITH_WARNINGS,
   FILLED,
+  NO_SUGGESTIONS,
   OVERRIDDEN,
   OVERRIDE_REASON,
   SOFT_CONFLICTS,
   SUBJECTS,
+  SUGGESTIONS,
   TUTORS,
   UNASSIGNED,
 } from './fixtures';
@@ -23,8 +26,11 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // conflict panel (one hard, two soft), the success panel and the 422 field
 // errors; the override action (soft only with the button, mixed without it,
 // the non-holder message), the override dialog (empty, a reason error,
-// submitting) and the success panel with an override. No request:
-// `onSubmit` and the student search are stubs.
+// submitting) and the success panel with an override. Suggested times
+// after a conflict (#50 C3): loading, with slots (one with a workload
+// warning), empty and an error; the success panel with all three workload
+// warnings. No request: `onSubmit`, `onSuggest` and the student search are
+// stubs.
 
 const meta = {
   title: 'Scheduling/ScheduleSessionForm',
@@ -357,5 +363,112 @@ export const SuccessWithOverride: Story = {
         }),
       ).toHaveFocus(),
     );
+  },
+};
+
+// --- #50: suggested times and workload warnings --------------------------------
+
+const suggestionsHeading = () => i18n.t('scheduling.suggestions.heading');
+
+/** The create always conflicts; `onSuggest` answers as given. */
+function conflictThenSuggest(onSuggest: () => Promise<typeof SUGGESTIONS>) {
+  return {
+    initialValues: FILLED,
+    onSubmit: fn(() => Promise.reject(conflictError())),
+    onSuggest: fn(onSuggest),
+  };
+}
+
+export const SuggestionsLoading: Story = {
+  args: conflictThenSuggest(() => new Promise<never>(() => {})),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.suggestions.loading')),
+    ).toBeVisible();
+  },
+};
+
+export const SuggestionsWithSlots: Story = {
+  args: conflictThenSuggest(() => Promise.resolve(SUGGESTIONS)),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const section = await canvas.findByRole('region', {
+      name: suggestionsHeading(),
+    });
+    const slots = await within(section).findAllByRole('button');
+    await expect(slots).toHaveLength(3);
+    await expect(section).toHaveTextContent(i18n.t('scheduling.warnings.note'));
+    await userEvent.click(slots[0]!);
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.fields.start')),
+    ).toHaveValue('11:00');
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: submitName() })).toHaveFocus(),
+    );
+  },
+};
+
+export const SuggestionsWithWarning: Story = {
+  args: conflictThenSuggest(() =>
+    Promise.resolve({ ...SUGGESTIONS, slots: SUGGESTIONS.slots.slice(1, 2) }),
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const section = await canvas.findByRole('region', {
+      name: suggestionsHeading(),
+    });
+    await expect(
+      await within(section).findByText(i18n.t('scheduling.warnings.note')),
+    ).toBeVisible();
+  },
+};
+
+export const SuggestionsEmpty: Story = {
+  args: conflictThenSuggest(() => Promise.resolve(NO_SUGGESTIONS)),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const section = await canvas.findByRole('region', {
+      name: suggestionsHeading(),
+    });
+    await expect(
+      await within(section).findByRole('status'),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SuggestionsError: Story = {
+  args: conflictThenSuggest(() =>
+    Promise.reject(
+      new ApiError({ code: 'internal_error', status: 500, requestId: 'req-x' }),
+    ),
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const section = await canvas.findByRole('region', {
+      name: suggestionsHeading(),
+    });
+    await expect(await within(section).findByRole('alert')).toBeVisible();
+  },
+};
+
+export const SuccessWithWarnings: Story = {
+  args: {
+    initialValues: FILLED,
+    onSubmit: fn(() => Promise.resolve(CREATED_WITH_WARNINGS)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.warnings.heading')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(
+        i18n.t('scheduling.warnings.break_too_short', {
+          count: 1,
+          required: 15,
+        }),
+      ),
+    ).toBeVisible();
   },
 };

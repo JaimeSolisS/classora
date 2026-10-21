@@ -1,12 +1,18 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall, ApiError } from '@/app/api';
 
-// The calls of "Schedule a session" (#48 F): the create, and the options of
-// the form (active subjects, tutors and classrooms; the student search).
+// The calls of "Schedule a session" (#48 F): the create, the suggested
+// times after a conflict (#50 C1), and the options of the form (active
+// subjects, tutors and classrooms; the student search).
 
 export type ClassSessionCreate = components['schemas']['ClassSessionCreate'];
 export type ClassSessionCreated = components['schemas']['ClassSessionCreated'];
 export type SchedulingConflict = components['schemas']['SchedulingConflict'];
+export type SchedulingWarning = components['schemas']['SchedulingWarning'];
+export type SlotSuggestionRequest =
+  components['schemas']['SlotSuggestionRequest'];
+export type SlotSuggestions = components['schemas']['SlotSuggestions'];
+export type SuggestedSlot = components['schemas']['SuggestedSlot'];
 
 /** One option of a select. */
 export interface Option {
@@ -32,6 +38,15 @@ export function createClassSession(
   body: ClassSessionCreate,
 ): Promise<ClassSessionCreated> {
   return apiCall(() => api.POST('/api/v1/class-sessions', { body }));
+}
+
+/** Free times for the same session (read-only; the default window, #50 C1). */
+export function suggestSlots(
+  body: SlotSuggestionRequest,
+): Promise<SlotSuggestions> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-sessions/suggestions', { body }),
+  );
 }
 
 /** The conflicts of a `409 scheduling_conflict`, or null for any other error. */

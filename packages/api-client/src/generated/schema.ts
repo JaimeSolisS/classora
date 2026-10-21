@@ -1857,6 +1857,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Class Session Slots
+         * @description Free times for the same student, subject, tutor, classroom and
+         *     duration: starts on a 15-minute local grid in the window (default the
+         *     requested date and the 6 days after it, at most 14 dates), never the
+         *     requested start, each passing every hard and soft rule; nearest the
+         *     requested start first (a tie goes to the earlier one), at most `limit`
+         *     (default 5). Each slot lists the workload warnings a create would get.
+         *     Read-only: nothing is created, locked or audited.
+         */
+        post: operations["suggest_class_session_slots_api_v1_class_sessions_suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/class-sessions/{class_session_id}": {
         parameters: {
             query?: never;
@@ -2448,7 +2474,7 @@ export interface components {
         };
         /**
          * ClassSessionCreated
-         * @description The created session and its warnings (always empty until #50).
+         * @description The created session and its workload warnings (#50 A7).
          */
         ClassSessionCreated: {
             /**
@@ -2495,7 +2521,10 @@ export interface components {
              * @description The overrides of its soft conflicts, oldest first.
              */
             overrides: components["schemas"]["SessionOverrideItem"][];
-            /** Warnings */
+            /**
+             * Warnings
+             * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
+             */
             warnings: components["schemas"]["SchedulingWarning"][];
         };
         /**
@@ -4407,16 +4436,24 @@ export interface components {
         };
         /**
          * SchedulingWarning
-         * @description A rule that never blocks (ADR-0005 warnings; filled by #50).
+         * @description A rule that never blocks (ADR-0005 warnings; #50 A): the tutor's
+         *     teaching limits and required break (:mod:`~app.modules.scheduling.workload`).
+         *
+         *     ``details``: ``daily_limit_exceeded`` ``{date, limit_minutes,
+         *     scheduled_minutes}``; ``weekly_limit_exceeded`` ``{week_start,
+         *     limit_minutes, scheduled_minutes}`` (``week_start`` is the Monday of the
+         *     ISO week); ``break_too_short`` ``{class_session_id, gap_minutes,
+         *     required_break_minutes}``.
          */
         SchedulingWarning: {
-            /** Code */
-            code: string;
+            code: components["schemas"]["SchedulingWarningCode"];
             /** Details */
             details: {
                 [key: string]: unknown;
             };
         };
+        /** @enum {string} */
+        SchedulingWarningCode: "daily_limit_exceeded" | "weekly_limit_exceeded" | "break_too_short";
         /**
          * SessionClassroom
          * @description The session's classroom (an inactive room stays shown as such).
@@ -4570,6 +4607,91 @@ export interface components {
              * @description The center's IANA time zone (business settings, #37). The web app shows instants and computes today's date in it.
              */
             center_time_zone: string;
+        };
+        /**
+         * SlotSuggestionRequest
+         * @description ``POST /api/v1/class-sessions/suggestions`` (#50 B1): the session's
+         *     members (the requested start and end give only the duration and the
+         *     ranking anchor) plus the search. No ``override``: only slots that need
+         *     none are returned.
+         */
+        SlotSuggestionRequest: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "individual";
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the session to; null creates it unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            ends_at: string;
+            /**
+             * Limit
+             * @description How many slots to return at most: 1-10, default 5.
+             * @default 5
+             */
+            limit: number;
+            /**
+             * Search From
+             * @description The first local date (center zone) to search; default the local date of starts_at.
+             */
+            search_from?: string | null;
+            /**
+             * Search To
+             * @description The last local date to search, at most 14 dates in all; default search_from + 6 days.
+             */
+            search_to?: string | null;
+        };
+        /**
+         * SlotSuggestions
+         * @description The free times nearest the requested start (#50 B5, B7).
+         */
+        SlotSuggestions: {
+            /**
+             * Search From
+             * Format: date
+             */
+            search_from: string;
+            /**
+             * Search To
+             * Format: date
+             */
+            search_to: string;
+            /** Limit */
+            limit: number;
+            /**
+             * Slots
+             * @description 0 to limit slots, nearest the requested start first (a tie goes to the earlier start).
+             */
+            slots: components["schemas"]["SuggestedSlot"][];
         };
         /**
          * StudentAccountUpdate
@@ -4860,6 +4982,27 @@ export interface components {
             name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * SuggestedSlot
+         * @description One free time: every hard and soft rule passes (#50 B4).
+         */
+        SuggestedSlot: {
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Warnings
+             * @description The workload warnings a create at this time would get.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
         };
         /**
          * TeachingLimitsDetail
@@ -11482,6 +11625,57 @@ export interface operations {
             };
             /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    suggest_class_session_slots_api_v1_class_sessions_suggestions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SlotSuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlotSuggestions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

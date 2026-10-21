@@ -1521,6 +1521,25 @@
       "submitting": "Programando…",
       "scheduledWith": "Programada con una excepción",
       "overriddenRules": "Reglas exceptuadas: {{rules}}."
+    },
+    "warnings": {
+      "heading": "Avisos de carga de trabajo",
+      "intro": "No impiden programar la sesión; revisa la carga del tutor.",
+      "note": "Aviso de carga de trabajo",
+      "daily_limit_exceeded": "Se supera el límite diario de clases el {{date}}: {{scheduled}} minutos programados, límite {{limit}}.",
+      "weekly_limit_exceeded": "Se supera el límite semanal de clases en la semana del {{week}}: {{scheduled}} minutos programados, límite {{limit}}.",
+      "break_too_short_one": "Descanso demasiado corto: {{count}} minuto entre clases, se requieren {{required}}.",
+      "break_too_short_many": "Descanso demasiado corto: {{count}} minutos entre clases, se requieren {{required}}.",
+      "break_too_short_other": "Descanso demasiado corto: {{count}} minutos entre clases, se requieren {{required}}.",
+      "unknown": "Se aplica otra regla de carga de trabajo."
+    },
+    "suggestions": {
+      "heading": "Horarios sugeridos",
+      "intro": "Horarios libres para el mismo estudiante, materia, tutor y aula, del más cercano al más lejano. Al elegir uno se llenan la fecha y las horas; no se programa la sesión.",
+      "loading": "Buscando otros horarios…",
+      "empty": "No hay otros horarios libres entre el {{from}} y el {{to}}.",
+      "slot": "{{date}}, {{start}} a {{end}}",
+      "chosen": "Horario cambiado a {{date}}, {{start}} a {{end}}. Revísalo y programa la sesión."
     }
   },
   "courses": {

@@ -22,12 +22,15 @@ A tutor without windows and without an ``available`` exception is never
 available (a tutor must publish availability).
 
 :func:`to_local_intervals` turns an instant interval into local wall-clock
-pieces, so M4 can check stored instants with :func:`evaluate`.
+pieces, so M4 can check stored instants with :func:`evaluate`;
+:func:`evaluate_interval` does both for an instant interval over preloaded
+rules (``staff.service.is_tutor_available_at`` and the M4-05 slot search use
+it, so the two can't drift).
 :func:`uncovered_ranges` gives what a weekly change takes away (the input of
 the M4-18 impact seam, ``staff/assignment_impact.py``).
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Final, Literal
@@ -239,6 +242,27 @@ def to_local_intervals(
         pieces.append((day, start_wall.time(), piece_end))
         cursor = boundary
     return pieces
+
+
+def evaluate_interval(
+    windows: Iterable[WeeklyWindow],
+    exceptions: Iterable[DatedException],
+    closed_dates: Collection[date],
+    starts_at: datetime,
+    ends_at: datetime,
+    zone: str,
+) -> AvailabilityResult:
+    """Whether the tutor is available during the instant interval
+    ``[starts_at, ends_at)``: every local piece in ``zone``
+    (:func:`to_local_intervals`) is checked with :func:`evaluate`, the piece's
+    date counting as closed when it is in ``closed_dates``, and the results
+    are merged (:func:`merge_results`). Naive datetimes or ``starts_at >=
+    ends_at`` raise :class:`ValueError`."""
+    window_list, exception_list = list(windows), list(exceptions)
+    return merge_results(
+        evaluate(window_list, exception_list, day in closed_dates, day, start, end)
+        for day, start, end in to_local_intervals(starts_at, ends_at, zone)
+    )
 
 
 # --- What a weekly change takes away (the impact seam's input) ---------------------

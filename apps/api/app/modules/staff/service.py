@@ -18,7 +18,11 @@ with the reasons ``center_closed``, ``time_off`` and
 ``outside_weekly_availability``. The teaching limits and preferred
 classrooms (#197): :func:`teaching_limits` (a :class:`TeachingLimits`, for
 the M4-05 workload warnings) and :func:`preferred_classroom_ids` (M4-05,
-M4-06 suggestions).
+M4-06 suggestions). For checking many intervals in memory (the M4-05 slot
+search): :func:`tutor_availability_rules` (a :class:`TutorAvailabilityRules`:
+the weekly windows and the exceptions of a date range, two statements) and
+the pure rules :func:`evaluate`, :func:`evaluate_interval`,
+:class:`WeeklyWindow` and :class:`DatedException`.
 
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
 through ``identity.service`` (:func:`identity.list_role_members`,
@@ -52,6 +56,12 @@ from app.modules.identity import service as identity
 from app.modules.identity.schemas import RoleMember
 from app.modules.staff.availability import (
     AvailabilityResult as AvailabilityResult,
+)
+from app.modules.staff.availability import DatedException as DatedException
+from app.modules.staff.availability import WeeklyWindow as WeeklyWindow
+from app.modules.staff.availability import evaluate as evaluate
+from app.modules.staff.availability import (
+    evaluate_interval as evaluate_interval,
 )
 from app.modules.staff.models import USER_ID_UNIQUE, TutorProfile
 from app.modules.staff.permissions import (
@@ -93,6 +103,9 @@ from app.modules.staff.tutor_availability import (
     TeachingLimits as TeachingLimits,
 )
 from app.modules.staff.tutor_availability import (
+    TutorAvailabilityRules as TutorAvailabilityRules,
+)
+from app.modules.staff.tutor_availability import (
     check_availability as check_availability,
 )
 from app.modules.staff.tutor_availability import (
@@ -120,18 +133,26 @@ from app.modules.staff.tutor_availability import (
     teaching_limits as teaching_limits,
 )
 from app.modules.staff.tutor_availability import (
+    tutor_availability_rules as tutor_availability_rules,
+)
+from app.modules.staff.tutor_availability import (
     update_availability_settings as update_availability_settings,
 )
 
 __all__ = [
     "QUALIFICATION_APPROVAL_HANDLER",
     "AvailabilityResult",
+    "DatedException",
     "TeachingLimits",
+    "TutorAvailabilityRules",
+    "WeeklyWindow",
     "approved_subject_ids",
     "cancel_qualification",
     "check_availability",
     "create_exception",
     "delete_exception",
+    "evaluate",
+    "evaluate_interval",
     "get_availability",
     "get_tutor",
     "is_qualified",
@@ -147,6 +168,7 @@ __all__ = [
     "request_qualification",
     "revoke_qualification",
     "teaching_limits",
+    "tutor_availability_rules",
     "update_availability_settings",
     "update_tutor",
 ]

@@ -38,6 +38,7 @@ type Common = {
     success: { heading: string; unassigned: string; another: string };
     severity: { hard: string; soft: string };
     conflicts: { student_overlap: string };
+    suggestions: { heading: string; slot: string };
     override: {
       action: string;
       title: string;
