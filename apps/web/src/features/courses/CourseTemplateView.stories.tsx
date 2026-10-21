@@ -30,7 +30,8 @@ export const ReadOnly: Story = {
         name: i18n.t('courses.templates.completion'),
       }),
     ).toBeVisible();
-    await expect(canvas.getByText('Examen de funciones')).toBeVisible();
+    // The assessment row and the required-assessments summary.
+    await expect(canvas.getAllByText('Examen de funciones')).toHaveLength(2);
   },
 };
 
