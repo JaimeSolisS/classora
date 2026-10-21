@@ -1,6 +1,8 @@
 // Missing-key check for the translation catalogs. Pure: it gets the parsed
 // catalogs and returns every problem, so the same function serves the real
 // catalogs (check.test.ts, run by `make test-web` and CI) and the fixtures.
+// findDuplicateKeys works on the raw file text, because JSON.parse silently
+// keeps the last of two equal keys.
 
 /** Parsed catalogs: language → namespace → JSON content. */
 export type Catalogs = Record<string, Record<string, unknown>>;
@@ -207,4 +209,79 @@ export function formatProblems(problems: readonly CatalogProblem[]): string {
         `${p.language}/${p.namespace}${p.key ? `: ${p.key}` : ''} — ${p.message}`,
     )
     .join('\n');
+}
+
+interface ScanFrame {
+  kind: 'object' | 'array';
+  /** Dotted path of this container (arrays add no index). */
+  path: string;
+  keys: Set<string>;
+  reported: Set<string>;
+  expectKey: boolean;
+  lastKey: string;
+}
+
+/**
+ * Dotted path of every key repeated within the same object of a JSON text,
+ * each reported once, in the order the repeats appear. Keys repeated in
+ * different objects are not duplicates. Expects valid JSON (the catalogs are
+ * parsed elsewhere); arrays are walked but their indices are not keys.
+ */
+export function findDuplicateKeys(text: string): string[] {
+  const duplicates: string[] = [];
+  const stack: ScanFrame[] = [];
+  const join = (prefix: string, key: string) =>
+    prefix ? `${prefix}.${key}` : key;
+
+  const open = (kind: ScanFrame['kind']) => {
+    const parent = stack.at(-1);
+    const path = !parent
+      ? ''
+      : parent.kind === 'object'
+        ? join(parent.path, parent.lastKey)
+        : parent.path;
+    stack.push({
+      kind,
+      path,
+      keys: new Set(),
+      reported: new Set(),
+      expectKey: kind === 'object',
+      lastKey: '',
+    });
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') {
+      const start = i;
+      for (i++; i < text.length && text[i] !== '"'; i++) {
+        if (text[i] === '\\') {
+          i++; // skip the escaped character (\" or \\ among others)
+        }
+      }
+      const frame = stack.at(-1);
+      if (frame?.kind === 'object' && frame.expectKey) {
+        const key = JSON.parse(text.slice(start, i + 1)) as string;
+        if (frame.keys.has(key) && !frame.reported.has(key)) {
+          frame.reported.add(key);
+          duplicates.push(join(frame.path, key));
+        }
+        frame.keys.add(key);
+        frame.lastKey = key;
+        frame.expectKey = false;
+      }
+    } else if (char === '{') {
+      open('object');
+    } else if (char === '[') {
+      open('array');
+    } else if (char === '}' || char === ']') {
+      stack.pop();
+    } else if (char === ',') {
+      const frame = stack.at(-1);
+      if (frame?.kind === 'object') {
+        frame.expectKey = true;
+      }
+    }
+  }
+  return duplicates;
 }

@@ -68,7 +68,6 @@
   "too_many_streams": "Hay demasiadas pestañas recibiendo notificaciones en vivo. Cierra alguna o inténtalo más tarde.",
   "qualification_exists": "Ya existe una calificación pendiente o aprobada para esta materia.",
   "subject_inactive": "Esta materia o su nivel educativo está inactivo. Elige otra.",
-  "subject_unknown": "Esta materia no existe. Elige otra.",
   "duplicate_subject": "Elige cada materia una sola vez.",
   "duplicate_title": "Otro elemento ya tiene este título.",
   "module_subject_not_in_template": "Elige para el módulo una de las materias de la plantilla.",
