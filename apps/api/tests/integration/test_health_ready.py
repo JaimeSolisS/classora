@@ -53,3 +53,8 @@ def test_ready_recovers_after_connections_are_killed(
     )
 
     assert client.get("/health/ready").status_code == 200
+
+
+def test_qa217_deliberate_red_shard():
+    # QA #217 temporary: deliberately failing test to prove a red shard turns ci-required red.
+    assert False, "QA #217 deliberate failure"
