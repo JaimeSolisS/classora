@@ -32,9 +32,27 @@ const RESERVED_OPTIONS = new Set([
   'skipInterpolation',
 ]);
 
-function values(params: NotificationItem['params']): Record<string, unknown> {
+/**
+ * Params that hold an instant (RFC 3339, #52 offers): shown formatted in
+ * the center zone when the caller passes a formatter.
+ */
+const INSTANT_PARAMS = new Set(['starts_at', 'respond_by']);
+
+function values(
+  params: NotificationItem['params'],
+  formatInstant?: (instant: string) => string,
+): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(params).filter(([name]) => !RESERVED_OPTIONS.has(name)),
+    Object.entries(params)
+      .filter(([name]) => !RESERVED_OPTIONS.has(name))
+      .map(([name, value]) =>
+        formatInstant &&
+        INSTANT_PARAMS.has(name) &&
+        typeof value === 'string' &&
+        !Number.isNaN(Date.parse(value))
+          ? [name, formatInstant(value)]
+          : [name, value],
+      ),
   );
 }
 
@@ -43,6 +61,7 @@ export function notificationMessage(
   t: TFunction,
   i18n: I18n,
   item: Pick<NotificationItem, 'notification_type' | 'params'>,
+  formatInstant?: (instant: string) => string,
 ): string {
   const key = notificationMessageKey(item.notification_type);
   if (!i18n.exists(key)) {
@@ -51,7 +70,7 @@ export function notificationMessage(
   // A dynamic key: the typed t() can't check it, i18n.exists() did.
   return (t as unknown as (key: string, options: object) => string)(
     key,
-    values(item.params),
+    values(item.params, formatInstant),
   );
 }
 
@@ -66,6 +85,19 @@ function ownQualifications(
   recipient: NotificationRecipient,
 ): string {
   return `/tutors/${encodeURIComponent(recipient.userId)}#qualifications`;
+}
+
+/** The tutor's offers (#52 F3). */
+function myOffers(): string {
+  return '/offers';
+}
+
+/** The staff session page of a declined or expired offer (#52 F3). */
+function offeredSession(params: NotificationItem['params']): string {
+  const id = params.class_session_id;
+  return typeof id === 'string' && id
+    ? `/schedule/sessions/${encodeURIComponent(id)}`
+    : '/schedule';
 }
 
 /**
@@ -84,6 +116,9 @@ export const NOTIFICATION_LINKS: Readonly<
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,
+  'scheduling.offer_received': myOffers,
+  'scheduling.offer_declined': offeredSession,
+  'scheduling.offer_expired': offeredSession,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

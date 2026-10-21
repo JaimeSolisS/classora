@@ -47,6 +47,23 @@ the pure eligibility and workload ranking rule in
 implementation, for #52 / #55 too), :func:`suggest_for_slot` and
 :func:`suggest_replacements` (the two routes' reads).
 
+Assignment offers (#52, :mod:`~app.modules.scheduling.offers` for the pure
+rules, the invariant and the lock order;
+:mod:`~app.modules.scheduling.offer_flow` for the writes and reads): the
+create path makes the offer of a session created with a tutor;
+:func:`offer_class_session` offers an ``unassigned`` session later;
+:func:`answer_offer` (accept / decline, the offered tutor only),
+:func:`expire_offer` (the periodic ``scheduling:expire_offers`` task,
+:mod:`~app.modules.scheduling.tasks`), :func:`withdraw_pending_offers` (the
+seam for #55 / #58 / M4-07b), :func:`list_my_offers` and
+:func:`list_session_offers`. A declined or expired offer becomes a
+``scheduling.offer_reassignment`` inbox item
+(:data:`OFFER_REASSIGNMENT_HANDLER`) and notifies the ``schedule.assign``
+holders; ``app.wiring`` registers the handler and the three notification
+types (:func:`register_offer_notifications`). Family visibility:
+:data:`FAMILY_VISIBLE_STATES` / :func:`is_family_visible` (#67 builds on
+them).
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -57,6 +74,9 @@ from app.modules.scheduling.booking import (
     create_class_session as create_class_session,
 )
 from app.modules.scheduling.booking import find_conflicts as find_conflicts
+from app.modules.scheduling.booking import (
+    find_offer_conflicts as find_offer_conflicts,
+)
 from app.modules.scheduling.booking import (
     get_class_session as get_class_session,
 )
@@ -87,10 +107,20 @@ from app.modules.scheduling.errors import (
     ClassSessionNotAssignableError as ClassSessionNotAssignableError,
 )
 from app.modules.scheduling.errors import (
+    ClassSessionNotOfferableError as ClassSessionNotOfferableError,
+)
+from app.modules.scheduling.errors import (
     InvalidSessionTimesError as InvalidSessionTimesError,
 )
 from app.modules.scheduling.errors import (
     InvalidSessionTransitionError as InvalidSessionTransitionError,
+)
+from app.modules.scheduling.errors import OfferExpiredError as OfferExpiredError
+from app.modules.scheduling.errors import (
+    OfferNotPendingError as OfferNotPendingError,
+)
+from app.modules.scheduling.errors import (
+    ReassignmentStillNeededError as ReassignmentStillNeededError,
 )
 from app.modules.scheduling.errors import (
     SchedulingConflictError as SchedulingConflictError,
@@ -102,6 +132,32 @@ from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
+from app.modules.scheduling.offer_approval import (
+    OFFER_REASSIGNMENT_HANDLER as OFFER_REASSIGNMENT_HANDLER,
+)
+from app.modules.scheduling.offer_flow import REASSIGNMENT_TYPE as REASSIGNMENT_TYPE
+from app.modules.scheduling.offer_flow import answer_offer as answer_offer
+from app.modules.scheduling.offer_flow import expire_offer as expire_offer
+from app.modules.scheduling.offer_flow import list_my_offers as list_my_offers
+from app.modules.scheduling.offer_flow import (
+    list_session_offers as list_session_offers,
+)
+from app.modules.scheduling.offer_flow import (
+    offer_class_session as offer_class_session,
+)
+from app.modules.scheduling.offer_flow import (
+    withdraw_pending_offers as withdraw_pending_offers,
+)
+from app.modules.scheduling.offer_records import (
+    register_offer_notifications as register_offer_notifications,
+)
+from app.modules.scheduling.offers import (
+    can_transition_offer as can_transition_offer,
+)
+from app.modules.scheduling.offers import is_overdue as is_overdue
+from app.modules.scheduling.offers import (
+    resolve_respond_by as resolve_respond_by,
+)
 from app.modules.scheduling.overrides import (
     OverrideDecision as OverrideDecision,
 )
@@ -130,6 +186,9 @@ from app.modules.scheduling.slot_search import suggest_slots as suggest_slots
 from app.modules.scheduling.states import (
     ALLOWED_TRANSITIONS as ALLOWED_TRANSITIONS,
 )
+from app.modules.scheduling.states import (
+    FAMILY_VISIBLE_STATES as FAMILY_VISIBLE_STATES,
+)
 from app.modules.scheduling.states import FINAL_STATES as FINAL_STATES
 from app.modules.scheduling.states import INITIAL_STATES as INITIAL_STATES
 from app.modules.scheduling.states import (
@@ -144,6 +203,7 @@ from app.modules.scheduling.states import (
 from app.modules.scheduling.states import SessionKind as SessionKind
 from app.modules.scheduling.states import SessionState as SessionState
 from app.modules.scheduling.states import can_transition as can_transition
+from app.modules.scheduling.states import is_family_visible as is_family_visible
 from app.modules.scheduling.suggestions import SlotContext as SlotContext
 from app.modules.scheduling.suggestions import (
     candidate_slots as candidate_slots,

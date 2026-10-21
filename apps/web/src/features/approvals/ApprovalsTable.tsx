@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,15 @@ import type {
   ApprovalRequestItem,
   ApprovalRequestPage,
 } from './api';
-import { approvalSummary, itemName, typeLabel } from './summary';
+import {
+  actionLabelKey,
+  approvalSummary,
+  itemName,
+  namedActionLabelKey,
+  reassignmentLink,
+  reassignmentSubject,
+  typeLabel,
+} from './summary';
 
 // The approval requests (#40 F3): type, a per-type summary, requester,
 // submitted at, priority and status (as text), and a button per allowed
@@ -35,21 +44,6 @@ interface ApprovalsTableProps {
   onDecide: (item: ApprovalRequestItem, action: ApprovalAction) => void;
   onPage: (offset: number) => void;
 }
-
-const ACTION_KEYS = {
-  approve: {
-    label: 'approvals.actions.approve',
-    named: 'approvals.actions.approveFor',
-  },
-  reject: {
-    label: 'approvals.actions.reject',
-    named: 'approvals.actions.rejectFor',
-  },
-  request_changes: {
-    label: 'approvals.actions.requestChanges',
-    named: 'approvals.actions.requestChangesFor',
-  },
-} as const;
 
 export function ApprovalsTable({
   state,
@@ -94,7 +88,7 @@ export function ApprovalsTable({
               <TableRow key={item.id}>
                 <TableCell>{typeLabel(item.request_type, t)}</TableCell>
                 <TableCell className="whitespace-normal">
-                  {approvalSummary(item, t)}
+                  <RequestSummary item={item} />
                 </TableCell>
                 <TableCell>
                   {item.requester?.display_name ?? t('approvals.list.system')}
@@ -170,6 +164,36 @@ function Badge({ children }: { children: string }) {
   );
 }
 
+/** The summary, with the session link of a reassignment item (#52 H3). */
+function RequestSummary({ item }: { item: ApprovalRequestItem }) {
+  const { t } = useTranslation();
+  const { formatInstant } = useFormatters();
+  const summary = approvalSummary(item, t, (instant) =>
+    formatInstant(instant, 'dateTime'),
+  );
+  const link = reassignmentLink(item);
+  if (!link) {
+    return <>{summary}</>;
+  }
+  const note = reassignmentSubject(item)?.decline_note;
+  return (
+    <span className="flex flex-col gap-1">
+      <span>{summary}</span>
+      {note ? (
+        <span className="text-sm break-words text-muted-foreground">
+          {t('approvals.reassignment.note', { note })}
+        </span>
+      ) : null}
+      <Link
+        to={link}
+        className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        {t('approvals.reassignment.openSession')}
+      </Link>
+    </span>
+  );
+}
+
 function ActionButtons({
   item,
   onDecide,
@@ -178,7 +202,10 @@ function ActionButtons({
   onDecide: (item: ApprovalRequestItem, action: ApprovalAction) => void;
 }) {
   const { t } = useTranslation();
-  const name = itemName(item, t);
+  const { formatInstant } = useFormatters();
+  const name = itemName(item, t, (instant) =>
+    formatInstant(instant, 'dateTime'),
+  );
   return (
     <div className="flex flex-wrap gap-2">
       {item.allowed_actions.map((action) => (
@@ -187,10 +214,12 @@ function ActionButtons({
           type="button"
           size="sm"
           variant={action === 'approve' ? 'default' : 'outline'}
-          aria-label={t(ACTION_KEYS[action].named, { name })}
+          aria-label={t(namedActionLabelKey(item.request_type, action), {
+            name,
+          })}
           onClick={() => onDecide(item, action)}
         >
-          {t(ACTION_KEYS[action].label)}
+          {t(actionLabelKey(item.request_type, action))}
         </Button>
       ))}
     </div>

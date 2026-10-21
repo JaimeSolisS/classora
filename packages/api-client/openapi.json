@@ -8556,7 +8556,7 @@
           "class-sessions"
         ],
         "summary": "Create Class Session",
-        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, without one `unassigned`. Every rule is checked\nfirst; with an `override` the listed soft conflicts are allowed, stored\nwith the reason and audited. `warnings` is always empty for now.",
+        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, with a pending offer (deadline `respond_by`, by\ndefault the scheduling policy's response time but never after the\nstart) and a notification to the tutor; without one `unassigned`. Every\nrule is checked first; with an `override` the listed soft conflicts are\nallowed, stored with the reason and audited. `warnings` lists the\ntutor's workload warnings.",
         "operationId": "create_class_session_api_v1_class_sessions_post",
         "requestBody": {
           "required": true,
@@ -8600,7 +8600,7 @@
             }
           },
           "409": {
-            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created.",
+            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9017,6 +9017,172 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/offers": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Offer Class Session",
+        "description": "Offer an `unassigned` session to a tutor: it becomes `offered` to them\nwith a pending offer and the tutor is notified. Checked again for the\nnew tutor: overlap (hard), availability, qualification, center closure,\noperating hours and the room's availability (soft; an `override` with\nschedule.override allows them). Not re-checked: the booking notice and\nthe student and room overlaps. Offering closes the session's open\nreassignment item. `warnings` lists the tutor's workload warnings.",
+        "operationId": "offer_class_session_api_v1_class_sessions__class_session_id__offers_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentOfferCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOfferCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.assign, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); it is not unassigned (class_session_not_offerable, details.state) or has begun (class_session_not_offerable, details.reason = started); or the tutor breaks scheduling rules (scheduling_conflict, every conflict listed). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Class Session Offers",
+        "description": "The session's offers, newest first, with each answer and decline\nnote.",
+        "operationId": "list_class_session_offers_api_v1_class_sessions__class_session_id__offers_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionOffers"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -9201,6 +9367,283 @@
           },
           "403": {
             "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignment-offers": {
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Assignment Offers",
+        "description": "The signed-in user's own offers: `pending` (by deadline, the\ndefault), `answered` (accepted, declined, expired or withdrawn; newest\nfirst) or `all` (newest first). Anyone who has none gets an empty\npage.",
+        "operationId": "list_assignment_offers_api_v1_assignment_offers_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "answered",
+                "all"
+              ],
+              "type": "string",
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOfferPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignment-offers/{offer_id}/accept": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Accept Assignment Offer",
+        "description": "Accept an offer made to you before its deadline: its sessions become\n`confirmed` with you as the tutor.",
+        "operationId": "accept_assignment_offer_api_v1_assignment_offers__offer_id__accept_post",
+        "parameters": [
+          {
+            "name": "offer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOfferItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such offer, or it was offered to someone else (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The offer was already answered, expired or withdrawn (offer_not_pending, details.status), or its deadline has passed (offer_expired).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignment-offers/{offer_id}/decline": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Decline Assignment Offer",
+        "description": "Decline an offer made to you before its deadline, with an optional\nnote for the staff: its sessions go back to `unassigned` and the staff\nget an inbox item to offer them again.",
+        "operationId": "decline_assignment_offer_api_v1_assignment_offers__offer_id__decline_post",
+        "parameters": [
+          {
+            "name": "offer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offer Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AssignmentOfferDecline"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOfferItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such offer, or it was offered to someone else (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The offer was already answered, expired or withdrawn (offer_not_pending, details.status), or its deadline has passed (offer_expired).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9598,6 +10041,203 @@
           "cancelled",
           "all"
         ]
+      },
+      "AssignmentOfferCreate": {
+        "properties": {
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "An earlier deadline for the tutor's answer, after now and no later than the default; truncated to whole minutes."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tutor_user_id",
+          "version"
+        ],
+        "title": "AssignmentOfferCreate",
+        "description": "Offer an ``unassigned`` session to a tutor\n(``POST /api/v1/class-sessions/{id}/offers``, #52 C2)."
+      },
+      "AssignmentOfferCreated": {
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/AssignmentOfferItem"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "The tutor's workload warnings for the session. They never block."
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer",
+          "warnings"
+        ],
+        "title": "AssignmentOfferCreated",
+        "description": "The new offer and the tutor's workload warnings (#52 C2 step 12)."
+      },
+      "AssignmentOfferDecline": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Why the tutor declines, for the staff: trimmed, at most 500 characters; empty is no note."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AssignmentOfferDecline",
+        "description": "The optional body of a decline (#52 D3)."
+      },
+      "AssignmentOfferItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OfferScopeCode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OfferStatusCode"
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/OfferPerson"
+          },
+          "offered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Offered At"
+          },
+          "offered_by": {
+            "$ref": "#/components/schemas/OfferPerson"
+          },
+          "respond_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Respond By"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "decline_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decline Note"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/OfferSession"
+            },
+            "type": "array",
+            "title": "Sessions",
+            "description": "The covered sessions, by start."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scope",
+          "status",
+          "tutor",
+          "offered_at",
+          "offered_by",
+          "respond_by",
+          "responded_at",
+          "decline_note",
+          "sessions"
+        ],
+        "title": "AssignmentOfferItem",
+        "description": "One assignment offer (#52 G1)."
+      },
+      "AssignmentOfferPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentOfferItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "AssignmentOfferPage",
+        "description": "A page of the caller's offers (#52 G2)."
       },
       "AuditChange": {
         "properties": {
@@ -10411,6 +11051,19 @@
               }
             ],
             "description": "Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "With a tutor only (#52): an earlier deadline for the tutor's answer, after now and no later than the default (the scheduling policy's response time, but never after the start); truncated to whole minutes. Null or absent: the default."
           }
         },
         "additionalProperties": false,
@@ -10505,6 +11158,17 @@
             "title": "Overrides",
             "description": "The overrides of its soft conflicts, oldest first."
           },
+          "pending_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingOffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending offer of an `offered` session (#52); null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -10530,6 +11194,7 @@
           "created_at",
           "updated_at",
           "overrides",
+          "pending_offer",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -10614,6 +11279,17 @@
             "type": "array",
             "title": "Overrides",
             "description": "The overrides of its soft conflicts, oldest first."
+          },
+          "pending_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingOffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending offer of an `offered` session (#52); null otherwise."
           }
         },
         "type": "object",
@@ -10631,10 +11307,28 @@
           "version",
           "created_at",
           "updated_at",
-          "overrides"
+          "overrides",
+          "pending_offer"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
+      },
+      "ClassSessionOffers": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentOfferItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ClassSessionOffers",
+        "description": "A session's offer history, newest first (#52 G3)."
       },
       "ClassroomCreate": {
         "properties": {
@@ -13391,6 +14085,142 @@
         ],
         "title": "NotificationUnreadCount"
       },
+      "OfferPerson": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "OfferPerson",
+        "description": "A user named on an offer."
+      },
+      "OfferScopeCode": {
+        "type": "string",
+        "const": "session"
+      },
+      "OfferSession": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/OfferSessionSubject"
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferSessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/OfferSessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at",
+          "subject",
+          "classroom",
+          "participants"
+        ],
+        "title": "OfferSession",
+        "description": "A session the offer covers."
+      },
+      "OfferSessionClassroom": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "OfferSessionClassroom",
+        "description": "The classroom of an offered session."
+      },
+      "OfferSessionParticipant": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "OfferSessionParticipant",
+        "description": "A student of an offered session."
+      },
+      "OfferSessionSubject": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "education_level_name"
+        ],
+        "title": "OfferSessionSubject",
+        "description": "The subject of an offered session."
+      },
+      "OfferStatusCode": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "declined",
+          "expired",
+          "withdrawn"
+        ]
+      },
       "OffsetPage_AcademicPeriodDetail_": {
         "properties": {
           "items": {
@@ -13987,6 +14817,31 @@
         "title": "PasswordResetTokenRequest",
         "description": "The token from a reset link (``POST …/password-reset/lookup``)."
       },
+      "PendingOffer": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/SessionTutor"
+          },
+          "respond_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Respond By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tutor",
+          "respond_by"
+        ],
+        "title": "PendingOffer",
+        "description": "The pending offer of an ``offered`` session (#52 G3)."
+      },
       "PeriodType": {
         "type": "string",
         "enum": [
@@ -14153,6 +15008,13 @@
             },
             "title": "Conflicts",
             "type": "array"
+          },
+          "details": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Details",
+            "type": "object"
           }
         },
         "required": [

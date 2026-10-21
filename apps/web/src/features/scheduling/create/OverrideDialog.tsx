@@ -41,6 +41,18 @@ export interface OverrideDialogProps {
   onCloseAutoFocus?: (event: Event) => void;
   /** The reason to start from (stories). */
   initialReason?: string;
+  /**
+   * Translated texts for another write than the create (#52: "Override and
+   * offer"); default: the create's.
+   */
+  labels?: OverrideDialogLabels;
+}
+
+export interface OverrideDialogLabels {
+  title: string;
+  description: string;
+  submit: string;
+  submitting: string;
 }
 
 export function OverrideDialog({
@@ -50,6 +62,7 @@ export function OverrideDialog({
   onCancel,
   onCloseAutoFocus,
   initialReason = '',
+  labels,
 }: OverrideDialogProps) {
   const sending = useRef(false);
   return (
@@ -69,6 +82,7 @@ export function OverrideDialog({
           onCloseAutoFocus={onCloseAutoFocus}
           initialReason={initialReason}
           sendingRef={sending}
+          labels={labels}
         />
       ) : null}
     </Dialog>
@@ -82,6 +96,7 @@ function OverrideContent({
   onCloseAutoFocus,
   initialReason,
   sendingRef,
+  labels,
 }: Omit<OverrideDialogProps, 'open'> & {
   initialReason: string;
   sendingRef: { current: boolean };
@@ -151,9 +166,11 @@ function OverrideContent({
       className="sm:max-w-lg"
     >
       <DialogHeader>
-        <DialogTitle>{t('scheduling.override.title')}</DialogTitle>
+        <DialogTitle>
+          {labels?.title ?? t('scheduling.override.title')}
+        </DialogTitle>
         <DialogDescription>
-          {t('scheduling.override.description')}
+          {labels?.description ?? t('scheduling.override.description')}
         </DialogDescription>
       </DialogHeader>
       <form
@@ -221,9 +238,14 @@ function OverrideContent({
           </Button>
           <Button type="submit" disabled={busy}>
             {busy ? (
-              <Spinner label={t('scheduling.override.submitting')} showLabel />
+              <Spinner
+                label={
+                  labels?.submitting ?? t('scheduling.override.submitting')
+                }
+                showLabel
+              />
             ) : (
-              t('scheduling.override.submit')
+              (labels?.submit ?? t('scheduling.override.submit'))
             )}
           </Button>
         </DialogFooter>

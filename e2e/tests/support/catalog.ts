@@ -26,6 +26,7 @@ type Common = {
     tutors: string;
     schedule: string;
     courses: string;
+    offers: string;
   };
   roles: Record<string, string>;
   scheduling: {
@@ -54,6 +55,23 @@ type Common = {
       filters: { student: string };
     };
     states: Record<string, string>;
+    session: { title: string; history: string; noTutor: string };
+  };
+  offers: {
+    title: string;
+    tabs: Record<'label' | 'pending' | 'answered', string>;
+    status: Record<
+      'pending' | 'accepted' | 'declined' | 'expired' | 'withdrawn',
+      string
+    >;
+    card: { note: string };
+    accept: { title: string; submit: string; action: string };
+    decline: {
+      title: string;
+      note: string;
+      submit: string;
+      action: string;
+    };
   };
   delegations: Record<string, { label: string; description: string }>;
   auth: {
@@ -375,7 +393,8 @@ type Common = {
       reject: string;
       rejectFor: string;
     };
-    summary: { qualification: string };
+    summary: { qualification: string; reassignmentDeclined: string };
+    reassignment: { openSession: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };
   };

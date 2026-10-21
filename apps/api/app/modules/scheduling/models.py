@@ -50,8 +50,22 @@ database agree (the integration drift test reads them back). See
   (SQLSTATE 42501). Not ``Audited``: the named event
   ``scheduling.session_override`` is its audit record.
 
-Series, groups, cohorts and offers add their own columns and tables (#53,
-#56, #65, #52); #53 adds a ``series_id`` to the overrides.
+- ``assignment_offers`` (#52 A1; ADR-0005 D3): one offer of sessions to a
+  tutor. ``scope`` (``session`` only; M4-07b adds ``series``), ``status``
+  (``pending`` → ``accepted`` | ``declined`` | ``expired`` |
+  ``withdrawn``), ``offered_at`` / ``offered_by_user_id``, ``respond_by``
+  (after ``offered_at``), ``responded_at`` (set exactly when no longer
+  ``pending``) and an optional ``decline_note`` (only when ``declined``,
+  at most 500 characters). ``Audited``, versioned.
+- ``assignment_offer_sessions`` (#52 A2): the sessions an offer covers, one
+  row per offer and session (a session-scope offer has exactly one).
+  ``Audited``; not versioned (the offer's ``version`` covers them).
+
+The rules (the "``offered`` iff exactly one pending offer" invariant and the
+lock order) are in :mod:`~app.modules.scheduling.offers`.
+
+Series, groups and cohorts add their own columns and tables (#53, #56,
+#65); #53 adds a ``series_id`` to the overrides.
 """
 
 import uuid
@@ -62,6 +76,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     SmallInteger,
     String,
     Text,
@@ -253,4 +268,90 @@ class ClassSessionOverride(Model):
     reason: Mapped[str] = mapped_column(Text)
     actor_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+
+# --- Assignment offers (#52 A) ---------------------------------------------------
+
+OFFER_SCOPES: Final = ("session",)
+"""The offer scopes (M4-07b adds ``series``)."""
+
+OFFER_PENDING: Final = "pending"
+OFFER_ACCEPTED: Final = "accepted"
+OFFER_DECLINED: Final = "declined"
+OFFER_EXPIRED: Final = "expired"
+OFFER_WITHDRAWN: Final = "withdrawn"
+OFFER_STATUSES: Final = (
+    OFFER_PENDING,
+    OFFER_ACCEPTED,
+    OFFER_DECLINED,
+    OFFER_EXPIRED,
+    OFFER_WITHDRAWN,
+)
+DECLINE_NOTE_MAX_LENGTH: Final = 500
+OFFER_SESSION_UNIQUE: Final = "uq_assignment_offer_sessions_offer_session"
+
+
+class AssignmentOffer(Audited, VersionedMixin, Model):
+    """An offer of sessions to a tutor (ADR-0005 D3; #52 A1). See the module
+    docstring."""
+
+    __tablename__ = "assignment_offers"
+    __table_args__ = (
+        CheckConstraint(f"scope IN ({_quoted(OFFER_SCOPES)})", name="scope_valid"),
+        CheckConstraint(f"status IN ({_quoted(OFFER_STATUSES)})", name="status_valid"),
+        CheckConstraint("respond_by > offered_at", name="respond_by_after_offered"),
+        CheckConstraint(
+            "(status = 'pending') = (responded_at IS NULL)",
+            name="responded_iff_answered",
+        ),
+        CheckConstraint(
+            "decline_note IS NULL OR status = 'declined'",
+            name="decline_note_only_declined",
+        ),
+        Index("ix_assignment_offers_tutor_user_id_status", "tutor_user_id", "status"),
+        Index(
+            "ix_assignment_offers_pending_respond_by",
+            "respond_by",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    scope: Mapped[str] = mapped_column(String(20))
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default=OFFER_PENDING, server_default=text("'pending'")
+    )
+    offered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    offered_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    respond_by: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    responded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decline_note: Mapped[str | None] = mapped_column(
+        String(DECLINE_NOTE_MAX_LENGTH), nullable=True
+    )
+
+
+class AssignmentOfferSession(Audited, Model):
+    """A session an offer covers (#52 A2). Not versioned: the offer's
+    ``version`` covers its sessions."""
+
+    __tablename__ = "assignment_offer_sessions"
+    __table_args__ = (
+        # Its leading column also serves the per-offer lookups.
+        UniqueConstraint("offer_id", "class_session_id", name=OFFER_SESSION_UNIQUE),
+    )
+
+    offer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assignment_offers.id", ondelete="RESTRICT")
+    )
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        index=True,
     )

@@ -25,6 +25,8 @@ export type ApprovalAssigneeFilter =
 export const APPROVAL_REVIEW_PERMISSIONS: readonly PermissionCode[] = [
   'registration.review',
   'qualification.review',
+  // #52 E2: the reassignment items of declined or expired offers.
+  'schedule.assign',
 ];
 
 /** The approval types the page knows, with their label key. */
@@ -33,6 +35,8 @@ export const APPROVAL_TYPE_LABELS: Readonly<
 > = {
   'identity.registration': 'approvals.types.identity_registration',
   'staff.qualification': 'approvals.types.staff_qualification',
+  'scheduling.offer_reassignment':
+    'approvals.types.scheduling_offer_reassignment',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
@@ -136,6 +140,7 @@ export function decideApproval(
  */
 export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
   'staff.qualification',
+  'scheduling.offer_reassignment',
 ]);
 
 /** Whether `action` on an item of `type` needs a reason (UX only; the API

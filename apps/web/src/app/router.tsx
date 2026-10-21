@@ -38,6 +38,8 @@ import {
 } from '@/features/students/StudentFormPages';
 import { StudentsPage } from '@/features/students/StudentsPage';
 import { ScheduleSessionPage } from '@/features/scheduling/create/ScheduleSessionPage';
+import { SessionPage } from '@/features/scheduling/session/SessionPage';
+import { OffersPage } from '@/features/tutor-portal/offers/OffersPage';
 import { TutorDetailPage } from '@/features/tutors/TutorDetailPage';
 import { TutorsPage } from '@/features/tutors/TutorsPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
@@ -249,6 +251,18 @@ export const routes: RouteObject[] = [
             path: 'schedule/new',
             element: <ScheduleSessionPage />,
             handle: { permission: 'schedule.manage' },
+          },
+          // #52 H2: the session page (its offer panel needs schedule.assign).
+          {
+            path: 'schedule/sessions/:sessionId',
+            element: <SessionPage />,
+            handle: { permission: 'schedule.view' },
+          },
+          // #52 H1: the tutor's own offers (the API filters by caller).
+          {
+            path: 'offers',
+            element: <OffersPage />,
+            handle: { role: 'tutor' },
           },
           {
             path: 'courses',

@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0033"
+HEAD = "0034"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -113,6 +113,7 @@ COURSE_TABLES = [
     "course_templates",
 ]
 OVERRIDE_TABLES = ["class_session_overrides"]
+OFFER_TABLES = ["assignment_offer_sessions", "assignment_offers"]
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -236,6 +237,9 @@ def test_history_is_linear_with_one_head():
     overrides = script.get_revision("0033")
     assert overrides.down_revision == "0032"
     assert Path(overrides.path).name == "0033_scheduling_session_overrides.py"
+    offers = script.get_revision("0034")
+    assert offers.down_revision == "0033"
+    assert Path(offers.path).name == "0034_scheduling_assignment_offers.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -280,6 +284,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *POLICY_TABLES,
             *COURSE_TABLES,
             *OVERRIDE_TABLES,
+            *OFFER_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4019,12 +4024,13 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
 
     assert public_tables(fresh_database_url) - before == set(SESSION_TABLES)
     # Only the tables of later revisions (0031 scheduling_policies, 0032 the
-    # course tables, 0033 class_session_overrides) differ.
+    # course tables, 0033 class_session_overrides, 0034 the offer tables)
+    # differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
         if not _of_later_revision(
-            diff, [*POLICY_TABLES, *COURSE_TABLES, *OVERRIDE_TABLES]
+            diff, [*POLICY_TABLES, *COURSE_TABLES, *OVERRIDE_TABLES, *OFFER_TABLES]
         )
     ] == []
 
@@ -4353,11 +4359,12 @@ def test_0032_adds_exactly_the_course_tables_and_downgrade_drops_them(
     command.upgrade(config, "0032")
 
     assert public_tables(fresh_database_url) - before == set(COURSE_TABLES)
-    # Only the table of a later revision (0033 class_session_overrides) differs.
+    # Only the tables of later revisions (0033 class_session_overrides, 0034
+    # the offer tables) differ.
     assert [
         diff
         for diff in metadata_diff(fresh_database_url)
-        if not _of_later_revision(diff, OVERRIDE_TABLES)
+        if not _of_later_revision(diff, [*OVERRIDE_TABLES, *OFFER_TABLES])
     ] == []
     [trigger] = run_sql(
         fresh_database_url,
@@ -4594,7 +4601,12 @@ def test_0033_adds_exactly_the_override_table_and_downgrade_drops_it(
     command.upgrade(config, "0033")
 
     assert public_tables(fresh_database_url) - before == set(OVERRIDE_TABLES)
-    assert metadata_diff(fresh_database_url) == []
+    # Only the tables of a later revision (0034 the offer tables) differ.
+    assert [
+        diff
+        for diff in metadata_diff(fresh_database_url)
+        if not _of_later_revision(diff, OFFER_TABLES)
+    ] == []
     assert [r.tgname for r in run_sql(fresh_database_url, OVERRIDES_TRIGGER)] == [
         "class_session_overrides_immutable"
     ]
@@ -4640,3 +4652,189 @@ def test_class_session_overrides_columns_constraints_and_indexes(fresh_database_
         "pk_class_session_overrides",
         "ix_class_session_overrides_class_session_id",
     }
+
+
+# --- 0034: assignment offers (#52 A) ----------------------------------------------
+
+
+def test_0034_adds_exactly_the_offer_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0033")
+    before = public_tables(fresh_database_url)
+    command.upgrade(config, "0034")
+
+    assert public_tables(fresh_database_url) - before == set(OFFER_TABLES)
+    assert metadata_diff(fresh_database_url) == []
+
+    command.downgrade(config, "0033")
+
+    assert version_nums(fresh_database_url) == ["0033"]
+    assert public_tables(fresh_database_url) == before
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_assignment_offers_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "assignment_offers"
+
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "scope": ("character varying", "NO", 20, None),
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "status": ("character varying", "NO", 20, "'pending'::character varying"),
+        "offered_at": ("timestamp with time zone", "NO", None, None),
+        "offered_by_user_id": ("uuid", "NO", None, None),
+        "respond_by": ("timestamp with time zone", "NO", None, None),
+        "responded_at": ("timestamp with time zone", "YES", None, None),
+        "decline_note": ("character varying", "YES", 500, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    assert set(constraints) == {
+        "pk_assignment_offers",
+        "fk_assignment_offers_tutor_user_id_users",
+        "fk_assignment_offers_offered_by_user_id_users",
+        "ck_assignment_offers_scope_valid",
+        "ck_assignment_offers_status_valid",
+        "ck_assignment_offers_respond_by_after_offered",
+        "ck_assignment_offers_responded_iff_answered",
+        "ck_assignment_offers_decline_note_only_declined",
+    }
+    for name in (
+        "fk_assignment_offers_tutor_user_id_users",
+        "fk_assignment_offers_offered_by_user_id_users",
+    ):
+        assert "ON DELETE RESTRICT" in constraints[name]
+    indexes = _indexes(fresh_database_url, table)
+    assert set(indexes) == {
+        "pk_assignment_offers",
+        "ix_assignment_offers_tutor_user_id_status",
+        "ix_assignment_offers_pending_respond_by",
+    }
+    assert (
+        "WHERE ((status)::text = 'pending'::text)"
+        in indexes["ix_assignment_offers_pending_respond_by"]
+    )
+
+    sessions = "assignment_offer_sessions"
+    assert set(_constraints(fresh_database_url, sessions)) == {
+        "pk_assignment_offer_sessions",
+        "fk_assignment_offer_sessions_offer_id_assignment_offers",
+        "fk_assignment_offer_sessions_class_session_id_class_sessions",
+        "uq_assignment_offer_sessions_offer_session",
+    }
+    assert set(_indexes(fresh_database_url, sessions)) == {
+        "pk_assignment_offer_sessions",
+        "uq_assignment_offer_sessions_offer_session",
+        "ix_assignment_offer_sessions_class_session_id",
+    }
+
+
+def _offer_refs(dsn: str) -> tuple[Any, Any]:
+    """A user (tutor and offerer) and a class session to cover."""
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES ('offer.tutor', 'Tutora', 'active') RETURNING id",
+    )
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order) VALUES ('Primaria', 1)"
+        " RETURNING id",
+    )
+    [subject] = run_sql(
+        dsn,
+        "INSERT INTO subjects (name, education_level_id) VALUES ('Mate', :l)"
+        " RETURNING id",
+        {"l": level.id},
+    )
+    [session] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes) VALUES ('individual', 'unassigned', :s,"
+        " '2031-01-06 16:00+00', '2031-01-06 17:00+00', 60) RETURNING id",
+        {"s": subject.id},
+    )
+    return user.id, session.id
+
+
+def _insert_offer(dsn: str, user_id: Any, **columns: Any) -> Any:
+    values = {
+        "scope": "session",
+        "status": "pending",
+        "offered_at": datetime(2031, 1, 1, 12, tzinfo=UTC),
+        "respond_by": datetime(2031, 1, 3, 12, tzinfo=UTC),
+        "responded_at": None,
+        "decline_note": None,
+    } | columns
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO assignment_offers (scope, tutor_user_id, status, offered_at,"
+        " offered_by_user_id, respond_by, responded_at, decline_note)"
+        " VALUES (:scope, :u, :status, :offered_at, :u,"
+        " :respond_by, :responded_at,"
+        " :decline_note) RETURNING id",
+        {"u": user_id, **values},
+    )
+    return row.id
+
+
+@pytest.mark.parametrize(
+    ("columns", "constraint"),
+    [
+        (
+            {"responded_at": datetime(2031, 1, 2, 12, tzinfo=UTC)},
+            "responded_iff_answered",
+        ),
+        ({"status": "declined"}, "responded_iff_answered"),
+        (
+            {"respond_by": datetime(2031, 1, 1, 12, tzinfo=UTC)},
+            "respond_by_after_offered",
+        ),
+        (
+            {
+                "status": "accepted",
+                "responded_at": datetime(2031, 1, 2, 12, tzinfo=UTC),
+                "decline_note": "No",
+            },
+            "decline_note_only_declined",
+        ),
+        ({"scope": "series"}, "scope_valid"),
+        (
+            {"status": "draft", "responded_at": datetime(2031, 1, 2, 12, tzinfo=UTC)},
+            "status_valid",
+        ),
+    ],
+)
+def test_assignment_offer_checks(fresh_database_url, columns, constraint):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user_id, _ = _offer_refs(fresh_database_url)
+
+    with pytest.raises(IntegrityError, match=f"ck_assignment_offers_{constraint}"):
+        _insert_offer(fresh_database_url, user_id, **columns)
+
+
+def test_assignment_offer_valid_rows_and_a_duplicate_session_row(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    user_id, session_id = _offer_refs(fresh_database_url)
+    pending = _insert_offer(fresh_database_url, user_id)
+    declined = _insert_offer(
+        fresh_database_url,
+        user_id,
+        status="declined",
+        responded_at=datetime(2031, 1, 2, 12, tzinfo=UTC),
+        decline_note="Viajo",
+    )
+    insert = (
+        "INSERT INTO assignment_offer_sessions (offer_id, class_session_id)"
+        " VALUES (:o, :s)"
+    )
+    run_sql(fresh_database_url, insert, {"o": pending, "s": session_id})
+    run_sql(fresh_database_url, insert, {"o": declined, "s": session_id})
+
+    with pytest.raises(
+        IntegrityError, match="uq_assignment_offer_sessions_offer_session"
+    ):
+        run_sql(fresh_database_url, insert, {"o": pending, "s": session_id})

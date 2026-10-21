@@ -13,6 +13,8 @@
 - Account references (#34 B1): :func:`get_account_reference` and
   :func:`get_account_references` (``schemas.AccountReference``: id, username,
   display name, state and roles; never a hash or contact data).
+  :func:`active_user_ids_with_permission` (#52 F2): the active holders of
+  a permission (role grants plus delegations), for notifications.
 - Role members (#43; ``members.py``): :func:`list_role_members` and
   :func:`get_role_member` (``schemas.RoleMember``: the account reference
   fields **plus** ``email`` and ``phone``, for a module whose record policy
@@ -188,6 +190,7 @@ __all__ = [
     "RoleMember",
     "UsernameInvalidError",
     "accept_privacy_notice",
+    "active_user_ids_with_permission",
     "add_user_role",
     "change_user_state",
     "current_privacy_notice",
@@ -315,6 +318,40 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         permissions=await effective_permissions(session, user_id),
         privacy_notice_accepted=bool(row[1]),
     )
+
+
+async def active_user_ids_with_permission(
+    session: AsyncSession, permission: str
+) -> list[uuid.UUID]:
+    """The ids of the ``active`` users who hold ``permission`` now, sorted
+    (#52 F2: who to notify). A holder has it through one of their roles'
+    seeded grants, or through an active delegation while they hold
+    ``administrator`` (the :func:`resolve_permissions` rule); one statement.
+    An unknown code gives an empty list."""
+    by_role = (
+        select(UserRole.user_id)
+        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(Permission.code == permission)
+    )
+    administrators = (
+        select(UserRole.user_id)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(Role.code == ADMINISTRATOR)
+    )
+    by_delegation = (
+        select(UserDelegation.user_id)
+        .join(Permission, Permission.id == UserDelegation.permission_id)
+        .where(Permission.code == permission, Permission.delegable.is_(True))
+        .where(UserDelegation.user_id.in_(administrators))
+    )
+    holders = by_role.union(by_delegation).subquery()
+    rows = await session.scalars(
+        select(User.id)
+        .where(User.state == ACTIVE, User.id.in_(select(holders.c.user_id)))
+        .order_by(User.id)
+    )
+    return list(rows)
 
 
 async def get_account_references(

@@ -53,7 +53,12 @@ from app.modules.identity.models import (
     UserDelegation,
     UserRole,
 )
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    AssignmentOffer,
+    AssignmentOfferSession,
+    ClassSession,
+    ClassSessionParticipant,
+)
 from app.modules.staff.models import (
     TutorAvailabilityException,
     TutorAvailabilitySettings,
@@ -93,6 +98,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert audited_classes(Base) == [
         AcademicPeriod,
         ApprovalRequest,
+        AssignmentOffer,
+        AssignmentOfferSession,
         BusinessSettings,
         ClassSession,
         ClassSessionParticipant,
