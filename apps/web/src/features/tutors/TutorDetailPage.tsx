@@ -11,10 +11,12 @@ import { useSession } from '@/features/auth/useSession';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import {
+  ACTIVE_CLASSROOM_OPTIONS_KEY,
   availabilityKey,
   cancelQualification,
   createAvailabilityException,
   deleteAvailabilityException,
+  fetchActiveClassroomOptions,
   fetchAvailability,
   fetchQualifications,
   fetchTutor,
@@ -23,6 +25,7 @@ import {
   requestQualification,
   tutorDetailKey,
   TUTORS_LIST_QUERY_KEY,
+  updateAvailabilitySettings,
   updateTutor,
   type TutorDetail,
   type TutorUpdate,
@@ -45,7 +48,8 @@ import { TutorForm } from './TutorForm';
 //
 // Then the Availability section (#45 F1): the availability query; the
 // tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
-// edit it. After a change the query is refetched.
+// edit it. After a change the query is refetched. Editors also load the
+// active classrooms for the preferred-room choices (#197).
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -180,6 +184,14 @@ function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
     queryFn: ({ signal }) => fetchAvailability(tutor.user_id, signal),
   });
 
+  // Self or tutor.manage: exactly the callers with editable fields (#43).
+  const canEdit = tutor.editable_fields.length > 0;
+  const rooms = useQuery({
+    queryKey: ACTIVE_CLASSROOM_OPTIONS_KEY,
+    queryFn: ({ signal }) => fetchActiveClassroomOptions(signal),
+    enabled: canEdit,
+  });
+
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: key });
   }
@@ -197,8 +209,7 @@ function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
             ? { status: 'ready', availability: availability.data }
             : { status: 'loading' }
       }
-      // Self or tutor.manage: exactly the callers with editable fields (#43).
-      canEdit={tutor.editable_fields.length > 0}
+      canEdit={canEdit}
       timeZone={timeZone}
       onSaveWeekly={async (version, windows) => {
         const saved = await replaceWeeklyAvailability(tutor.user_id, {
@@ -208,6 +219,21 @@ function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
         queryClient.setQueryData(key, saved);
       }}
       onReload={refresh}
+      classrooms={
+        rooms.isError
+          ? {
+              status: 'error',
+              error: rooms.error,
+              onRetry: () => void rooms.refetch(),
+            }
+          : rooms.data
+            ? { status: 'ready', items: rooms.data }
+            : { status: 'loading' }
+      }
+      onSaveSettings={async (body) => {
+        const saved = await updateAvailabilitySettings(tutor.user_id, body);
+        queryClient.setQueryData(key, saved);
+      }}
       onAddException={async (body) => {
         await createAvailabilityException(tutor.user_id, body);
         await refresh();

@@ -24,7 +24,13 @@ import {
   validateException,
 } from './availabilityRules';
 import {
+  settingsBody,
+  settingsValues,
+  validateSettings,
+} from './availabilitySettingsRules';
+import {
   AVAILABILITY,
+  CLASSROOM_OPTIONS,
   EXCEPTIONS,
   NO_AVAILABILITY,
   TUTOR_AS_ADMIN,
@@ -43,6 +49,8 @@ const DETAIL = `GET /api/v1/tutors/${TUTOR_ID}`;
 const AVAILABILITY_ROUTE = `GET /api/v1/tutors/${TUTOR_ID}/availability`;
 const WEEKLY = `PUT /api/v1/tutors/${TUTOR_ID}/availability/weekly`;
 const EXCEPTIONS_ROUTE = `POST /api/v1/tutors/${TUTOR_ID}/availability/exceptions`;
+const SETTINGS = `PATCH /api/v1/tutors/${TUTOR_ID}/availability/settings`;
+const CLASSROOMS = 'GET /api/v1/classrooms';
 const DELETE = `DELETE /api/v1/tutors/${TUTOR_ID}/availability/exceptions/${EXCEPTIONS[0]!.id}`;
 
 const ADMIN: SessionUserBody = {
@@ -160,10 +168,11 @@ describe('the Availability section (F1, F2)', () => {
     app = await renderApp(`/tutors/${TUTOR_ID}`);
 
     expect(section().querySelector('fieldset')).toBeNull();
-    const terms = [...section().querySelectorAll('dt')].map(
+    const weekly = section().querySelector('dl')!;
+    const terms = [...weekly.querySelectorAll('dt')].map(
       (dt) => dt.textContent,
     );
-    const definitions = [...section().querySelectorAll('dd')].map(
+    const definitions = [...weekly.querySelectorAll('dd')].map(
       (dd) => dd.textContent,
     );
     expect(terms).toEqual(['Monday', 'Wednesday']);
@@ -480,5 +489,256 @@ describe('deleting an exception (F1, F3)', () => {
     expect(alerts(section()).join(' ')).toContain(
       'This change affects scheduled classes and needs approval.',
     );
+  });
+});
+
+// --- #197: teaching limits and preferred classrooms -------------------------
+
+function group(root: ParentNode, legend: string): HTMLFieldSetElement {
+  const found = [...root.querySelectorAll('fieldset')].find(
+    (candidate) => candidate.querySelector('legend')?.textContent === legend,
+  );
+  if (!found) {
+    throw new Error(`No fieldset "${legend}"`);
+  }
+  return found;
+}
+
+function checkboxFor(root: ParentNode, text: string): HTMLButtonElement {
+  return labelled<HTMLButtonElement>(root, text);
+}
+
+function classroomsPage() {
+  return jsonResponse(200, {
+    items: CLASSROOM_OPTIONS.map((room) => ({
+      ...room,
+      capacity: 10,
+      is_active: true,
+      availability: [],
+      version: 1,
+      created_at: '2026-10-01T15:00:00Z',
+      updated_at: '2026-10-01T15:00:00Z',
+    })),
+    total: CLASSROOM_OPTIONS.length,
+    limit: 100,
+    offset: 0,
+  });
+}
+
+describe('the teaching limits and preferred classrooms (#197 C1, C2)', () => {
+  it('sends only the changed fields with the loaded version', async () => {
+    const saved = {
+      ...AVAILABILITY,
+      limits: { ...AVAILABILITY.limits, daily_limit_minutes: 270 },
+      version: 3,
+    };
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+      [SETTINGS]: () => jsonResponse(200, saved),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const daily = group(section(), 'Daily maximum');
+    expect(labelled(daily, 'Hours').value).toBe('4');
+    expect(labelled(daily, 'Minutes').value).toBe('0');
+    typeInto(labelled(daily, 'Minutes'), '30');
+    await click(checkboxFor(section(), 'Aula 2'));
+    await click(checkboxFor(section(), 'Aula Vieja (inactive)'));
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+
+    expect(api.calls(SETTINGS).map((r) => r.body)).toEqual([
+      {
+        version: 2,
+        daily_limit_minutes: 270,
+        preferred_classroom_ids: [
+          '00000000-0000-4000-8000-0000000000c1',
+          '00000000-0000-4000-8000-0000000000c2',
+        ],
+      },
+    ]);
+    expect(section().textContent).toContain('Limits and classrooms saved.');
+    expect(api.calls(CLASSROOMS)).toHaveLength(1);
+  });
+
+  it('"No limit" sends null and unchanged values send nothing', async () => {
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+      [SETTINGS]: () => jsonResponse(200, AVAILABILITY),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+    expect(api.calls(SETTINGS)).toHaveLength(0);
+    expect(section().textContent).toContain('No changes to save.');
+
+    await click(checkboxFor(group(section(), 'Weekly maximum'), 'No limit'));
+    await click(
+      checkboxFor(
+        group(section(), 'Required break between classes'),
+        'No break',
+      ),
+    );
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+
+    expect(api.calls(SETTINGS).map((r) => r.body)).toEqual([
+      { version: 2, weekly_limit_minutes: null, required_break_minutes: null },
+    ]);
+  });
+
+  it('checks the values before sending', async () => {
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    typeInto(labelled(group(section(), 'Weekly maximum'), 'Hours'), '3');
+    typeInto(
+      labelled(group(section(), 'Required break between classes'), 'Minutes'),
+      '300',
+    );
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+
+    expect(api.calls(SETTINGS)).toHaveLength(0);
+    expect(section().textContent).toContain(
+      "The weekly maximum can't be below the daily maximum.",
+    );
+    expect(section().textContent).toContain('Enter between 0 and 240 minutes.');
+    expect(document.activeElement).toBe(
+      labelled(group(section(), 'Weekly maximum'), 'Hours'),
+    );
+  });
+
+  it('shows server field errors on their fields', async () => {
+    stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+      [SETTINGS]: () =>
+        new Response(
+          JSON.stringify({
+            type: 'about:blank',
+            title: 'Problem',
+            status: 422,
+            code: 'validation_error',
+            request_id: 'req-1',
+            errors: [
+              {
+                path: ['body', 'weekly_limit_minutes'],
+                code: 'weekly_below_daily',
+                message: 'x',
+              },
+            ],
+          }),
+          {
+            status: 422,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    typeInto(labelled(group(section(), 'Daily maximum'), 'Hours'), '5');
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+
+    expect(section().textContent).toContain(
+      "The weekly maximum can't be below the daily maximum.",
+    );
+  });
+
+  it('version_conflict offers Reload', async () => {
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+      [SETTINGS]: () => problem(409, 'version_conflict'),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    typeInto(labelled(group(section(), 'Daily maximum'), 'Hours'), '5');
+
+    await click(buttonNamed(section(), 'Save limits and classrooms'));
+    const before = api.calls(AVAILABILITY_ROUTE).length;
+    await click(buttonNamed(section(), 'Reload'));
+
+    expect(api.calls(AVAILABILITY_ROUTE).length).toBe(before + 1);
+  });
+
+  it('a Coordinator sees the values as text and loads no classrooms', async () => {
+    const api = stub(COORDINATOR, TUTOR_READ_ONLY, AVAILABILITY, {
+      [CLASSROOMS]: classroomsPage,
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const text = section().textContent ?? '';
+    expect(text).toContain('Daily maximum4 h');
+    expect(text).toContain('Weekly maximum20 h');
+    expect(text).toContain('Required break between classes15 min');
+    expect(text).toContain('Aula Vieja (inactive)');
+    expect(text).toContain('Limits only produce warnings when scheduling');
+    expect(buttonTexts(section())).toEqual([]);
+    expect(api.calls(CLASSROOMS)).toHaveLength(0);
+  });
+
+  it('shows "No limit" and "No break" when none is set', async () => {
+    stub(COORDINATOR, TUTOR_READ_ONLY, NO_AVAILABILITY);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const text = section().textContent ?? '';
+    expect(text).toContain('Daily maximumNo limit');
+    expect(text).toContain('Required break between classesNo break');
+    expect(text).toContain('No preferred classrooms.');
+  });
+
+  it('shows the strings in Spanish', async () => {
+    applyLanguage('es');
+    stub(COORDINATOR, TUTOR_READ_ONLY, AVAILABILITY);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const text = section().textContent ?? '';
+    expect(text).toContain('Límites de enseñanza');
+    expect(text).toContain('Aula Vieja (inactiva)');
+  });
+});
+
+describe('the settings rules (#197)', () => {
+  it('round-trips the stored values without changes', () => {
+    expect(settingsBody(settingsValues(AVAILABILITY), AVAILABILITY)).toBeNull();
+    expect(
+      settingsBody(settingsValues(NO_AVAILABILITY), NO_AVAILABILITY),
+    ).toBeNull();
+  });
+
+  it.each([
+    [{ hours: '24', minutes: '1' }, 'daily'],
+    [{ hours: '0', minutes: '14' }, 'daily'],
+    [{ hours: '', minutes: '' }, 'daily'],
+    [{ hours: '1', minutes: '60' }, 'daily'],
+    [{ hours: '1.5', minutes: '' }, 'daily'],
+  ])('rejects the daily maximum %j', (daily, field) => {
+    const values = settingsValues(NO_AVAILABILITY);
+    expect(
+      validateSettings({ ...values, daily: { none: false, ...daily } }),
+    ).toHaveProperty(field);
+  });
+
+  it('accepts the bounds', () => {
+    const values = settingsValues(NO_AVAILABILITY);
+    expect(
+      validateSettings({
+        ...values,
+        daily: { none: false, hours: '24', minutes: '0' },
+        weekly: { none: false, hours: '168', minutes: '' },
+        breakNone: false,
+        breakMinutes: '240',
+      }),
+    ).toEqual({});
+    expect(
+      validateSettings({
+        ...values,
+        weekly: { none: false, hours: '168', minutes: '1' },
+        breakNone: false,
+        breakMinutes: '241',
+        rooms: Array.from({ length: 11 }, (_, index) => String(index)),
+      }),
+    ).toEqual({
+      weekly: 'tutors.availability.settings.validation.weeklyRange',
+      break: 'tutors.availability.settings.validation.breakRange',
+      rooms: 'tutors.availability.settings.validation.tooManyRooms',
+    });
   });
 });

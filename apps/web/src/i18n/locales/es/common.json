@@ -584,6 +584,37 @@
         "endsAfterStart": "La hora de fin debe ser posterior a la de inicio.",
         "noteTooLong": "Usa como máximo 200 caracteres.",
         "invalid": "Revisa este campo."
+      },
+      "settings": {
+        "limitsTitle": "Límites de enseñanza",
+        "limitsHelp": "Tiempo máximo de clase y el descanso entre clases. Los límites solo generan avisos al programar; nunca bloquean una clase.",
+        "daily": "Máximo diario",
+        "weekly": "Máximo semanal",
+        "break": "Descanso requerido entre clases",
+        "noLimit": "Sin límite",
+        "noBreak": "Sin descanso",
+        "hoursLabel": "Horas",
+        "minutesLabel": "Minutos",
+        "hours": "{{count}} h",
+        "minutes": "{{count}} min",
+        "hoursMinutes": "{{hours}} h {{minutes}} min",
+        "roomsTitle": "Aulas preferidas",
+        "roomsHelp": "Hasta {{max}} aulas. Las preferencias orientan la programación, pero no la restringen.",
+        "roomsEmpty": "No hay aulas preferidas.",
+        "roomsLoading": "Cargando aulas…",
+        "noRooms": "No hay aulas activas.",
+        "inactiveRoom": "{{name}} (inactiva)",
+        "save": "Guardar límites y aulas",
+        "saved": "Límites y aulas guardados.",
+        "validation": {
+          "dailyRange": "Escribe entre 15 minutos y 24 horas (minutos 0-59).",
+          "weeklyRange": "Escribe entre 15 minutos y 168 horas (minutos 0-59).",
+          "weeklyBelowDaily": "El máximo semanal no puede ser menor que el diario.",
+          "breakRange": "Escribe entre 0 y 240 minutos.",
+          "tooManyRooms": "Elige como máximo 10 aulas.",
+          "roomUnavailable": "Un aula elegida ya no está disponible. Recarga y vuelve a elegir.",
+          "invalid": "Revisa este campo."
+        }
       }
     }
   },
