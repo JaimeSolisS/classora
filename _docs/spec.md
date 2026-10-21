@@ -67,19 +67,21 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 
 ## 4. Academic records and learning
 
-- Student profile: personal/contact details, emergency contacts, school information, education level, documents and optional account credentials.
-- Tutor profile: contact details, qualifications, teaching subjects/levels, professional experience, supporting documents and availability.
+- Student profile: personal/contact details, emergency contacts, school information, education level, documents and optional account credentials. *(Profile documents: deferred to a later version, see §5.)*
+- Tutor profile: contact details, qualifications, teaching subjects/levels, professional experience, supporting documents and availability. *(Supporting documents: deferred to a later version, see §5.)*
 - Subject catalog by education level (e.g., elementary, middle school, high school, university).
 - Complete academic history grouped by school year/semester/period while maintaining chronological history.
 - Structured diagnostic and ongoing evaluations with templates, grading criteria, scores and tutor feedback; independent tutor contributions roll up into a unified student history by subject/period.
 - Structured learning plans with objectives, milestones, due dates, activities and progress visible to students/guardians.
-- Assignments: tutors provide instructions/deadlines, students upload work, tutors grade and provide feedback, guardians track completion.
+- Assignments: tutors provide instructions/deadlines, students upload work, tutors grade and provide feedback, guardians track completion. *(In this version students submit text and/or a URL; uploaded work is deferred to a later version, see §5.)*
 - Progress dashboards with grade trends, attendance, completed objectives and learning goals.
 - Weekly/monthly/on-demand academic progress reports prepared by tutors **require admin approval before family visibility**.
 - Internal notes stay private; parent-facing attendance, assignments, grades and approved reports are visible according to permissions.
-- File attachments to student records, lessons, assignments, courses and reusable materials.
+- File attachments to student records, lessons, assignments, courses and reusable materials. *(Deferred to a later version, see §5.)*
 
 ## 5. Document and resource management
+
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). The text below is kept for that version; nothing in it is built in this one. This covers the shared academic library, file uploads and attachments, object storage, malware scanning, downloads and previews, file quotas and the file recycle bin.
 
 - Shared searchable academic library organized by folders, subject, education level, categories, document type and tags; reuse resources in courses/classes.
 - Accept PDF, images, Word, Excel and PowerPoint; previews where supported.
@@ -117,14 +119,14 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 - Fixed salary may be prorated for partial pay periods, according to configurable rules and finance review.
 - Configurable manual or recurring bonuses/deductions with types, descriptions and effective dates.
 - Finalized payroll is locked; later corrections become traceable adjustments in future periods.
-- Payments processed outside the platform and logged with payment date, method, reference and proof.
+- Payments processed outside the platform and logged with payment date, method, reference and proof. *(In this version the proof is a reference and a note; proof file uploads are deferred to a later version, see §5.)*
 - Tutor portal shows approved earnings, sessions, hours, rates, bonuses, deductions, payment dates and downloadable payslips.
 
 ## 8. Financial operations and reporting
 
 - Operating expense records: rent, utilities, supplies, equipment, maintenance and administrator-defined expense categories; categories can be created, renamed and deactivated without corrupting historical reporting.
 - One-time expenses and auto-generated weekly/monthly/annual recurring expense templates.
-- Track vendors, due dates, paid/unpaid status, payment method, reference number and attached receipt.
+- Track vendors, due dates, paid/unpaid status, payment method, reference number and attached receipt. *(In this version a receipt reference and a note replace the attachment; receipt files are deferred to a later version, see §5.)*
 - Cash-basis and accrual-basis financial reporting; distinguish receivables and outstanding payables.
 - Center-wide profitability, plus revenue, direct tutor costs and gross profit by individual tutoring, group tutoring and courses. Shared-overhead allocations to detailed course-level net profit were not selected.
 - Analytics: revenue trends, utilization, student retention, course profitability, tutor performance, unpaid balances, payroll and other KPIs.
@@ -178,7 +180,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 | Rate limits | Caddy/FastAPI enforcement, without Redis |
 | Notifications | PostgreSQL persistence with SSE and LISTEN/NOTIFY where appropriate |
 | Reports | WeasyPrint PDFs; openpyxl XLSX; background generation via worker |
-| Files | S3-compatible API, production S3, presigned URLs, malware scanning |
+| Files | S3-compatible API, production S3, presigned URLs, malware scanning — *deferred to a later version (§5)* |
 | Configuration | .env locally; GitHub Secrets delivered via SSM to EC2; pydantic-settings validation |
 | Tooling | uv, Ruff, mypy; pnpm, ESLint, Prettier, TypeScript strict |
 | Local commands | Makefile + Docker Compose (`make dev/test/lint/migrate/seed`) |
@@ -279,7 +281,7 @@ The detailed schema is **not designed yet**. Candidate entities:
 | Billing | ServicePrice, PriceVersion, Charge, Payment, PaymentAllocation, TuitionPlan, Package, CreditTransaction, Discount, Refund |
 | Payroll | CompensationRate, TeachingHours, PayrollPeriod, PayrollLine, PayrollAdjustment, PayrollPayment |
 | Finance | Expense, ExpenseCategory, ExpensePayment, ExpenseTemplate |
-| Documents | File, Folder, FileAccessGrant, ResourceTag |
+| Documents | File, Folder, FileAccessGrant, ResourceTag — *deferred to a later version (§5)* |
 | Administration | ApprovalRequest, Notification, AuditEvent, BusinessSetting, ConsentRecord, ImportJob |
 
 **Schema design requirements:** normalized relational relationships, appropriate foreign keys/uniqueness/check constraints, UUID primary keys, indexed search, optimistic concurrency on edited records, financial ledger/adjustment semantics, audit history, file soft-deletion, and historical rate integrity. These are candidates, not final table names.
@@ -354,6 +356,8 @@ The scenarios below translate the approved capabilities into checkable end-to-en
 
 ### W6. File submission and release
 
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). The text below is kept for that version; nothing in it is built in this one.
+
 1. Authorized users request a presigned upload, constrained by type, size, quota and record access.
 2. File metadata begins in a pending/unreleased state until server-side validation and malware scanning succeeds.
 3. Only approved viewers obtain download access. Unauthorized URLs/requests cannot expose another family's or tutor's files.
@@ -379,7 +383,7 @@ The scenarios below translate the approved capabilities into checkable end-to-en
 - **Money:** Financial calculations must use exact decimal-safe representations; do not use binary floating point for charges, allocations, compensation or balances. The exact storage/value-object strategy remains a schema-level implementation detail, not a recorded choice.
 - **Time:** Store instants as UTC-aware timestamps; capture the center's configured time zone for scheduling, local date boundaries, recurrence and due dates. Never infer class dates solely from UTC dates.
 - **Identifiers and relations:** UUID keys, unique/check constraints and foreign keys; represent guardian-child links and tutor qualifications explicitly.
-- **Permissions:** Server-side role + record-level checks in API endpoints, generated files, background jobs and presigned links. Never rely on frontend route guards alone.
+- **Permissions:** Server-side role + record-level checks in API endpoints, generated files, background jobs and presigned links (presigned links arrive with the file features deferred to a later version, §5). Never rely on frontend route guards alone.
 - **Historical truth:** Use effective-dated catalog values, immutable posted financial activity, payroll locks, audit events and correction entries so past reports remain explainable.
 - **Consistency:** Use transactions/idempotency for charge generation, payment allocations, payroll approvals and asynchronous retries. Database constraints—not frontend checks alone—protect business invariants.
 - **Search and performance:** Index predictable access paths (user, family, schedule, billing status, academic period), test query performance, and cap export sizes or run exports asynchronously.
@@ -410,7 +414,7 @@ These are **not permission to change the product scope**. They need explicit imp
 2. Exact authentication account-recovery delivery mechanism without introducing general outbound email notifications.
 3. Whether/how Sentry is hosted or consolidated with the selected monitoring stack.
 4. Details of rate-limit enforcement without Redis, and operation of SSE/`LISTEN/NOTIFY` in the chosen container process topology.
-5. Concrete workflow for malware scanning, preview generation and safe presigned-download authorization.
+5. Concrete workflow for malware scanning, preview generation and safe presigned-download authorization. *(Deferred to a later version with the file features, §5.)*
 6. FullCalendar licensing implications if premium scheduler/resource features are required.
 7. Resource sizing and deploy interruption tolerance on a single small EC2 host; load testing and recovery time objectives.
 8. Distribution-specific CloudFront origin authentication and secret exposure controls during SSM-based deployments.
