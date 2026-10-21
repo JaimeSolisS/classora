@@ -2,7 +2,7 @@
 
 The policy is a list of append-only versions (``scheduling_policies``), each
 in force from its unique ``effective_from`` until the next one's. Migration
-0030 inserts version 1, effective from 2000-01-01, so a version is in force
+0031 inserts version 1, effective from 2000-01-01, so a version is in force
 at every instant a caller can ask about.
 
 **Reads:** :func:`get_scheduling_policy` (the version in force at an
@@ -66,7 +66,7 @@ RULE_FIELDS: Final = (
 )
 
 
-def _missing() -> RuntimeError:  # pragma: no cover - migration 0030 inserts it
+def _missing() -> RuntimeError:  # pragma: no cover - migration 0031 inserts it
     return RuntimeError("no scheduling policy version is in force (run make migrate)")
 
 
@@ -154,7 +154,7 @@ async def create_scheduling_policy(
         .order_by(SchedulingPolicy.effective_from.desc())
         .limit(1)
     )
-    if latest is None:  # pragma: no cover - migration 0030 inserts version 1
+    if latest is None:  # pragma: no cover - migration 0031 inserts version 1
         raise _missing()
     if body.based_on_id != latest.id:
         raise VersionConflictError()

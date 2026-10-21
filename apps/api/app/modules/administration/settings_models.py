@@ -14,7 +14,7 @@
 - ``scheduling_policies`` (#61): the center's scheduling policy as
   append-only, **effective-dated** versions (notice windows, the offer
   response time and the makeup rules). A version is in force from its unique
-  ``effective_from`` until the next version's. Migration 0030 inserts version
+  ``effective_from`` until the next version's. Migration 0031 inserts version
   1 (effective from 2000-01-01, so a policy applies to every instant). Rows
   are never updated: not versioned; only an upcoming version may be deleted.
   Not a time-zone dependency (#37 D): its instants are moments chosen by an

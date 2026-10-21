@@ -1,7 +1,7 @@
 """Administration: effective-dated scheduling policy versions.
 
-Revision ID: 0030
-Revises: 0029
+Revision ID: 0031
+Revises: 0030
 Create Date: 2026-10-20
 
 M4-16 (#61; spec §3, §9; ADR-0005 D3).
@@ -29,8 +29,8 @@ from typing import Final
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0030"
-down_revision: str | Sequence[str] | None = "0029"
+revision: str = "0031"
+down_revision: str | Sequence[str] | None = "0030"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

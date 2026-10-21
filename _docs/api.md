@@ -1002,9 +1002,10 @@ operating hours and the **center time zone**.
   where `has_data(session)` returns whether it holds any; a name registered
   twice with a different check raises. A time-zone change runs every check
   under the settings row lock and, if any returns true, answers `409
-  tz_change_requires_migration` and changes nothing. M3-01 registers no
-  check: M4-02 (#47, class sessions) and M4-08 (#53, recurrence series)
-  register theirs, and read the zone with
+  tz_change_requires_migration` and changes nothing. M4-02 (#47) registers
+  `scheduling.class_sessions`: any class session, in any state (past and
+  cancelled ones included), blocks a zone change. M4-08 (#53) adds a check
+  for recurrence series. Both read the zone with
   `administration.service.get_center_time_zone(session, for_share=True)`
   (`FOR SHARE` on the settings row) while they create sessions, so a
   concurrent zone change can't slip in. The migration job that would move
@@ -1040,7 +1041,7 @@ response time and the makeup rules.
   (0 = a change before the start is never late), `response_hours` 1-168,
   `makeup_after_on_time`, `makeup_after_late`, `makeup_after_no_show`
   (booleans) and `makeup_window_days` 1-365. Version 1, inserted by migration
-  0030 and effective from `2000-01-01T00:00:00Z`, holds the defaults 24, 24,
+  0031 and effective from `2000-01-01T00:00:00Z`, holds the defaults 24, 24,
   48, true, false, false, 30, so a version is in force at every instant.
   `make seed` never touches it.
 - **Effective dating, append-only:** a version is in force from its unique
