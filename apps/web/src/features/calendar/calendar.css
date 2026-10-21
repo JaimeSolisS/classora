@@ -147,3 +147,35 @@
   align-items: center;
   column-gap: calc(var(--spacing) * 2);
 }
+
+/* Compact (short time-grid) events: the first line is the state and the
+   markers as icons; it never wraps, so it stays visible on 15 minutes. */
+.cl-calendar .cl-event-status {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.cl-calendar .cl-event-status .cl-badge:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-calendar .cl-event-status .cl-badge--marker {
+  flex-shrink: 0;
+}
+
+/* Content starts at the event's top edge, so the first line (state and
+   markers) is the part that stays visible when an event is short. */
+.cl-calendar .cl-event,
+.cl-calendar .cl-event > * {
+  justify-content: flex-start;
+}
+
+.cl-calendar .cl-event-content {
+  align-self: flex-start;
+}

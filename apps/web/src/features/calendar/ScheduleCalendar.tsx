@@ -24,7 +24,7 @@ import {
 } from './api';
 import { CalendarFilters } from './CalendarFilters';
 import { EventContent } from './EventContent';
-import type { LabelContext } from './labels';
+import { isCompact, type LabelContext } from './labels';
 import { SessionDialog } from './SessionDialog';
 import {
   filterQuery,
@@ -176,12 +176,18 @@ export function ScheduleCalendar({
       eventInteractive: true,
       eventClass: (info) =>
         `cl-event cl-event--${(info.event.extendedProps as EventProps).item.state}`,
-      eventContent: (info) => (
-        <EventContent
-          item={(info.event.extendedProps as EventProps).item}
-          context={context}
-        />
-      ),
+      eventContent: (info) => {
+        const { item } = info.event.extendedProps as EventProps;
+        return (
+          <EventContent
+            item={item}
+            context={context}
+            compact={isCompact(info.view.type, item)}
+          />
+        );
+      },
+      // A 15-minute event keeps one full line: its state and markers.
+      eventMinHeight: 22,
       eventDidMount: (info) => {
         info.el.dataset.sessionId = info.event.id;
       },

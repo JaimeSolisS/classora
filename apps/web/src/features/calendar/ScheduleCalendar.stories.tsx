@@ -16,6 +16,7 @@ import {
   page,
   ROOM,
   ROOM_OPTIONS,
+  SHORT_ITEMS,
   STUDENT_OPTIONS,
   TIJUANA,
   TUTOR_OPTIONS,
@@ -275,5 +276,48 @@ export const TijuanaFallBack: Story = {
     await expect(
       region.getByRole('button', { name: /UTC−08:00\)–/ }),
     ).toBeInTheDocument();
+  },
+};
+
+/** Every event's state and markers fit inside the event's box. */
+async function statusVisible(event: HTMLElement) {
+  const box = event.getBoundingClientRect();
+  const status = event.querySelector('.cl-event-status');
+  await expect(status).not.toBeNull();
+  for (const part of [
+    status!,
+    ...status!.querySelectorAll<HTMLElement>('.cl-badge'),
+  ]) {
+    const rect = part.getBoundingClientRect();
+    await expect(rect.width).toBeGreaterThan(0);
+    await expect(rect.top).toBeGreaterThanOrEqual(box.top - 1);
+    await expect(rect.bottom).toBeLessThanOrEqual(box.bottom + 1);
+    await expect(rect.right).toBeLessThanOrEqual(box.right + 1);
+  }
+}
+
+export const ShortEvents: Story = {
+  args: { result: () => Promise.resolve(page(SHORT_ITEMS)) },
+  parameters: { viewport: { defaultViewport: 'responsive' } },
+  play: async ({ canvasElement }) => {
+    const region = await events(canvasElement);
+    const buttons = region.getAllByRole('button');
+    await expect(buttons).toHaveLength(3);
+    for (const [index, state] of (
+      ['unassigned', 'offered', 'confirmed'] as const
+    ).entries()) {
+      const event = buttons[index]!;
+      await expect(event).toHaveAccessibleName(stateName(state));
+      await expect(event).toHaveAccessibleName(
+        new RegExp(escape(i18n.t('scheduling.markers.center_closed.label'))),
+      );
+      await expect(
+        event.querySelectorAll('.cl-event-status [data-marker]'),
+      ).toHaveLength(2);
+      await expect(event.querySelector('.cl-event-status')).toHaveTextContent(
+        i18n.t(`scheduling.states.${state}`),
+      );
+      await statusVisible(event);
+    }
   },
 };

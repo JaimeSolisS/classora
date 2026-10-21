@@ -62,3 +62,17 @@ export function sessionName(item: CalendarItem, context: LabelContext): string {
     .filter((part): part is string => Boolean(part))
     .join(', ');
 }
+
+/** Shorter time-grid events than this use the compact layout. */
+export const COMPACT_MINUTES = 90;
+
+/**
+ * Whether an event is drawn compactly: a time-grid (day or week) event of
+ * less than COMPACT_MINUTES. Its first line then holds the state (icon and
+ * text) and the markers as icons, so even a 15-minute event shows them.
+ */
+export function isCompact(viewType: string, item: CalendarItem): boolean {
+  const minutes =
+    (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 60_000;
+  return viewType.startsWith('timeGrid') && minutes < COMPACT_MINUTES;
+}

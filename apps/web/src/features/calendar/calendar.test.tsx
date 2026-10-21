@@ -16,7 +16,12 @@ import {
 import type { CalendarItem } from './api';
 import { ANA, CARMEN, item, ROOM, TIJUANA, WEEK_ITEMS, ZONE } from './fixtures';
 import { CalendarPage } from './CalendarPage';
-import { sessionName, sessionTimeText, type LabelContext } from './labels';
+import {
+  isCompact,
+  sessionName,
+  sessionTimeText,
+  type LabelContext,
+} from './labels';
 import {
   calendarSearchParams,
   filterQuery,
@@ -62,7 +67,7 @@ vi.mock('@fullcalendar/react', async () => {
       <div data-testid="calendar">
         {props.events.map((event) => (
           <div key={event.id} role="button" tabIndex={0}>
-            {props.eventContent({ event })}
+            {props.eventContent({ event, view: { type: props.initialView } })}
           </div>
         ))}
       </div>
@@ -301,6 +306,24 @@ describe('the accessible name', () => {
         context('es', TIJUANA),
       ),
     ).toBe('08:00–09:00');
+  });
+});
+
+describe('the compact layout of short events', () => {
+  const minutes = (n: number) =>
+    item({
+      starts_at: '2026-11-09T16:00:00Z',
+      ends_at: new Date(
+        Date.parse('2026-11-09T16:00:00Z') + n * 60_000,
+      ).toISOString(),
+    });
+
+  it('applies to day and week events under 90 minutes only', () => {
+    expect(isCompact('timeGridWeek', minutes(15))).toBe(true);
+    expect(isCompact('timeGridDay', minutes(60))).toBe(true);
+    expect(isCompact('timeGridWeek', minutes(90))).toBe(false);
+    expect(isCompact('dayGridMonth', minutes(15))).toBe(false);
+    expect(isCompact('listWeek', minutes(15))).toBe(false);
   });
 });
 

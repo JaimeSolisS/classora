@@ -153,3 +153,16 @@ export function calendarState(
 ): CalendarState {
   return { view: 'week', date: WEEK, filters: NO_FILTERS, ...overrides };
 }
+
+/** Short sessions (15, 30 and 60 minutes) with both markers (#57 QA D1). */
+export const SHORT_ITEMS: CalendarItem[] = [15, 30, 60].map((minutes, index) =>
+  item({
+    state: (['unassigned', 'offered', 'confirmed'] as const)[index],
+    tutor: index === 0 ? null : CARMEN,
+    starts_at: `2026-11-1${index}T16:00:00Z`,
+    ends_at: new Date(
+      Date.parse(`2026-11-1${index}T16:00:00Z`) + minutes * 60_000,
+    ).toISOString(),
+    markers: ['center_closed', 'tutor_not_qualified'],
+  }),
+);

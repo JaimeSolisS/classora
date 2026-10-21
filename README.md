@@ -15,9 +15,10 @@ PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate) and a React + TypeScript + Vite web
 app. The web app has a routed shell (layout with navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
-generated from the API's OpenAPI document, and a design system foundation
+generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in
-Storybook). Its home page only shows whether the API is live.
+Storybook) and FullCalendar for the staff calendar. Its home page only shows
+whether the API is live.
 
 No email is sent: invitations and password resets produce a one-time link
 that staff hand over in person or by phone. The privacy notice text is a
