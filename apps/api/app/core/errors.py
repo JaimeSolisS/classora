@@ -3,7 +3,8 @@
 Every error response has ``Content-Type: application/problem+json`` and a body
 with ``type`` (always ``"about:blank"``), ``title`` (the HTTP reason phrase),
 ``status``, a stable ``snake_case`` ``code``, the ``request_id`` and an optional
-fixed ``detail``. Field-level errors add ``errors``.
+fixed ``detail``. Field-level errors add ``errors``; a ``409
+scheduling_conflict`` adds ``conflicts`` (ADR-0005 wire format, #48).
 
 Routes and dependencies raise :class:`AppError` (or a subclass); they never
 build Problem JSON by hand. A domain error defines only its class attributes::
@@ -46,6 +47,17 @@ class FieldError(TypedDict):
     message: str
 
 
+@with_config(ConfigDict(extra="forbid"))
+class SchedulingConflict(TypedDict):
+    """One broken scheduling rule (ADR-0005): its code, whether it is
+    ``hard`` (never allowed) or ``soft`` (allowed with an override), and
+    code-specific details."""
+
+    code: str
+    severity: Literal["hard", "soft"]
+    details: dict[str, Any]
+
+
 # The single source of the ProblemDetails schema in the OpenAPI document
 # (install_problem_details_openapi). tests/unit/test_openapi.py validates real
 # problem_response output against it. Docstrings become schema descriptions.
@@ -60,6 +72,7 @@ class ProblemDetails(TypedDict):
     request_id: str
     detail: NotRequired[str]
     errors: NotRequired[list[FieldError]]
+    conflicts: NotRequired[list[SchedulingConflict]]
 
 
 class AppError(Exception):
@@ -76,10 +89,12 @@ class AppError(Exception):
         detail: str | None = None,
         *,
         errors: Sequence[FieldError] | None = None,
+        conflicts: Sequence[SchedulingConflict] | None = None,
     ) -> None:
         if detail is not None:
             self.detail = detail
         self.errors = list(errors) if errors is not None else None
+        self.conflicts = list(conflicts) if conflicts is not None else None
         super().__init__(self.code)
 
 
@@ -115,6 +130,7 @@ def problem_response(
     detail: str | None = None,
     *,
     errors: Sequence[FieldError] | None = None,
+    conflicts: Sequence[SchedulingConflict] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """The single renderer for Problem Details responses."""
@@ -129,6 +145,8 @@ def problem_response(
         body["detail"] = detail
     if errors is not None:
         body["errors"] = list(errors)
+    if conflicts is not None:
+        body["conflicts"] = list(conflicts)
     return JSONResponse(
         status_code=status,
         content=body,
@@ -157,7 +175,12 @@ async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     # Type narrowing only: the handler is registered for this exception type.
     assert isinstance(exc, AppError)  # noqa: S101
     return problem_response(
-        exc.status, exc.code, exc.detail, errors=exc.errors, headers=exc.headers
+        exc.status,
+        exc.code,
+        exc.detail,
+        errors=exc.errors,
+        conflicts=exc.conflicts,
+        headers=exc.headers,
     )
 
 
@@ -188,7 +211,8 @@ async def _http_exception_handler(request: Request, exc: Exception) -> JSONRespo
 
 
 def problem_details_schemas() -> dict[str, Any]:
-    """``ProblemDetails`` and ``FieldError`` as OpenAPI component schemas."""
+    """``ProblemDetails``, ``FieldError`` and ``SchedulingConflict`` as OpenAPI
+    component schemas."""
     schema = TypeAdapter(ProblemDetails).json_schema(
         ref_template="#/components/schemas/{model}"
     )

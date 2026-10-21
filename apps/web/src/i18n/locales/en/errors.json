@@ -69,5 +69,18 @@
   "qualification_exists": "There is already a pending or approved qualification for this subject.",
   "subject_inactive": "This subject or its education level is inactive. Choose another one.",
   "qualification_not_approved": "Only an approved qualification can be revoked.",
-  "availability_change_requires_approval": "This change affects scheduled classes and needs approval."
+  "availability_change_requires_approval": "This change affects scheduled classes and needs approval.",
+  "scheduling_conflict": "The session conflicts with scheduling rules.",
+  "student_unknown": "Choose an existing student.",
+  "student_inactive": "This student is inactive. Choose another one.",
+  "subject_unknown": "Choose an existing subject.",
+  "tutor_unknown": "Choose an existing tutor.",
+  "tutor_inactive": "This tutor's account is not active. Choose another tutor.",
+  "classroom_unknown": "Choose an existing classroom.",
+  "classroom_inactive": "This classroom is inactive. Choose another one.",
+  "naive_datetime": "Enter the time again.",
+  "not_whole_minutes": "Use whole minutes.",
+  "ends_before_start": "The end must be after the start.",
+  "duration_out_of_range": "A session lasts from 15 minutes to 8 hours.",
+  "crosses_local_date": "A session must start and end on the same day."
 }

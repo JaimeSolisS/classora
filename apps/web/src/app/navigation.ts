@@ -48,4 +48,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/families', labelKey: 'nav.families', permission: 'guardian.view' },
   // Tutors see only their own profile (#43 E1).
   { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
+  // #48 F1: the scheduling form until the calendar (#57) takes this entry.
+  {
+    to: '/schedule/new',
+    labelKey: 'nav.schedule',
+    permission: 'schedule.manage',
+  },
 ];

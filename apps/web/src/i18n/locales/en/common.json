@@ -38,7 +38,8 @@
     "students": "Students",
     "guardians": "Guardians",
     "families": "Families",
-    "tutors": "Tutors"
+    "tutors": "Tutors",
+    "schedule": "Schedule"
   },
   "notFound": {
     "title": "Page not found",
@@ -1223,6 +1224,72 @@
       "staff_qualification_approved": "Your qualification for {{subject_name}} ({{education_level_name}}) was approved.",
       "staff_qualification_rejected": "Your qualification for {{subject_name}} ({{education_level_name}}) was not approved; see the reason in your qualifications.",
       "staff_qualification_revoked": "Your qualification for {{subject_name}} ({{education_level_name}}) was revoked. See the reason in your qualifications."
+    }
+  },
+  "scheduling": {
+    "title": "Schedule a session",
+    "fields": {
+      "student": "Student",
+      "subject": "Subject",
+      "tutor": "Tutor",
+      "classroom": "Classroom",
+      "when": "Date and time",
+      "date": "Date",
+      "start": "Start",
+      "end": "End"
+    },
+    "studentHelp": "Search an active student by name, then choose one.",
+    "studentChosen": "Chosen: {{name}}.",
+    "chooseSubject": "Choose a subject",
+    "noTutor": "No tutor yet",
+    "noClassroom": "No classroom",
+    "zone": "Times in the center time zone ({{zone}}).",
+    "submit": "Schedule session",
+    "submitting": "Scheduling…",
+    "validation": {
+      "studentRequired": "Choose a student.",
+      "subjectRequired": "Choose a subject.",
+      "dateRequired": "Enter the date.",
+      "startRequired": "Enter the start time.",
+      "endRequired": "Enter the end time.",
+      "endAfterStart": "The end must be after the start, on the same day."
+    },
+    "success": {
+      "heading": "Session scheduled",
+      "subject": "{{subject}} ({{level}})",
+      "when": "When",
+      "range": "{{start}} to {{end}}",
+      "state": "Status",
+      "offered": "Offered to {{tutor}}",
+      "unassigned": "Unassigned",
+      "another": "Schedule another"
+    },
+    "severity": {
+      "hard": "Not allowed",
+      "soft": "Needs an override (coming soon)"
+    },
+    "reasons": {
+      "time_off": "time off",
+      "outside_weekly_availability": "outside their weekly availability",
+      "separator": ", "
+    },
+    "conflicts": {
+      "heading_one": "The session can’t be scheduled: 1 conflict",
+      "heading_other": "The session can’t be scheduled: {{count}} conflicts",
+      "keepForm": "Change the form and try again; nothing was saved.",
+      "unknown": "Another scheduling rule is broken.",
+      "tutor_overlap": "The tutor already has a class at this time.",
+      "room_overlap": "The classroom is already in use at this time.",
+      "student_overlap": "The student already has a class at this time.",
+      "room_capacity_exceeded": "The classroom is too small for this class.",
+      "tutor_unavailable": "The tutor is not available at this time ({{reasons}}).",
+      "room_unavailable": "The classroom is not available at this time.",
+      "center_closed": "The center is closed on {{date}}.",
+      "outside_operating_hours": "The time is outside the opening hours of {{date}} ({{opens}} to {{closes}}).",
+      "outside_operating_hours_closed": "The center is closed on that day of the week ({{date}}).",
+      "tutor_not_qualified": "The tutor is not qualified for this subject.",
+      "group_capacity_exceeded": "The group is full.",
+      "notice_window": "The session starts too soon: it needs {{hours}} hours of notice."
     }
   }
 }

@@ -83,6 +83,10 @@ TUTOR_MANAGE = "tutor.manage"
 # Tutor qualification requests (#44): who sees and decides the
 # staff.qualification approval requests.
 QUALIFICATION_REVIEW = "qualification.review"
+# Class sessions (#48; ADR-0005 D9): who reads every session and who
+# schedules them. schedule.assign is #52's.
+SCHEDULE_VIEW = "schedule.view"
+SCHEDULE_MANAGE = "schedule.manage"
 
 
 @dataclass(frozen=True)
@@ -114,6 +118,8 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(TUTOR_VIEW),
     PermissionDef(TUTOR_MANAGE),
     PermissionDef(QUALIFICATION_REVIEW),
+    PermissionDef(SCHEDULE_VIEW),
+    PermissionDef(SCHEDULE_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -149,12 +155,14 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 TUTOR_VIEW,
                 TUTOR_MANAGE,
                 QUALIFICATION_REVIEW,
+                SCHEDULE_VIEW,
+                SCHEDULE_MANAGE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
-            {STUDENT_VIEW, STUDENT_MANAGE, GUARDIAN_VIEW, TUTOR_VIEW}
+            {STUDENT_VIEW, STUDENT_MANAGE, GUARDIAN_VIEW, TUTOR_VIEW, SCHEDULE_VIEW}
         ),
-        FINANCE_STAFF: frozenset({STUDENT_VIEW, GUARDIAN_VIEW}),
+        FINANCE_STAFF: frozenset({STUDENT_VIEW, GUARDIAN_VIEW, SCHEDULE_VIEW}),
         # Record policies limit these to assigned students, self and linked
         # children (#21, #33-#35), and tutor.view to the tutor's own profile
         # (#43).

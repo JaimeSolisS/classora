@@ -24,8 +24,20 @@ type Common = {
     guardians: string;
     families: string;
     tutors: string;
+    schedule: string;
   };
   roles: Record<string, string>;
+  scheduling: {
+    title: string;
+    fields: Record<
+      'student' | 'subject' | 'tutor' | 'classroom' | 'date' | 'start' | 'end',
+      string
+    >;
+    submit: string;
+    success: { heading: string; unassigned: string; another: string };
+    severity: { hard: string; soft: string };
+    conflicts: { student_overlap: string };
+  };
   delegations: Record<string, { label: string; description: string }>;
   auth: {
     login: {
