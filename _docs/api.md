@@ -1164,12 +1164,14 @@ rooms); Owners and Administrators maintain it.
   name_taken`. A body that changes nothing returns `200` with no new version.
 - **Service helpers** for other modules (`catalog.service`, ADR-0002):
   `get_classroom(session, classroom_id)` (the detail; `404` when unknown),
+  `classroom_references(session, ids)` (`{id: ClassroomReference(id, name,
+  is_active)}`, active or not, unknown ids left out; one statement, #197),
   `active_classroom_ids(session, ids)` (which of the ids exist and are
   active; one statement) and `is_classroom_available(session, classroom_id,
   weekday, start, end)`: false for an unknown or inactive room, true for a
   room without windows, otherwise true only if `[start, end)` is covered by
   the union of that weekday's windows (`start >= end` or a weekday outside
-  1–7 raises `ValueError`). Preferred rooms (#45) and scheduling (M4) use
+  1–7 raises `ValueError`). Preferred rooms (#197) and scheduling (M4) use
   them. Bookings and capacity against sessions are M4's.
 - **No reference or demo rooms.**
 - **Audit:** automatic only: `classrooms` `create`/`update` with the changed
@@ -1612,7 +1614,8 @@ from it.
 Implemented by M3-09 (#45; spec §3, §16; ADR-0004) in
 `apps/api/app/modules/staff/` (`availability.py`: the pure rules;
 `tutor_availability.py`: the routes' service; `assignment_impact.py`: the
-M4-18 seam). Teaching limits, breaks and preferred rooms are #197.
+M4-18 seam). Teaching limits, the required break and preferred classrooms
+were added by M3-09b (#197, same files).
 
 **Local wall-clock rule:** every availability value is a local `DATE` or
 `TIME` of the center (`business_settings.time_zone`), never an instant. A
@@ -1622,8 +1625,9 @@ the time-zone change guard (#37).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/tutors/{user_id}/availability` | `require("tutor.view")` + the tutor profile record policy | `TutorAvailabilityDetail`: `weekly` (windows by weekday, then start; `HH:MM`), `exceptions` (by `starts_on`, whole days first, then `starts_at`), `version` (`0` while the weekly windows never changed). |
+| `GET /api/v1/tutors/{user_id}/availability` | `require("tutor.view")` + the tutor profile record policy | `TutorAvailabilityDetail`: `weekly` (windows by weekday, then start; `HH:MM`), `exceptions` (by `starts_on`, whole days first, then `starts_at`), `limits` (`{daily_limit_minutes, weekly_limit_minutes, required_break_minutes}`, `null` = none), `preferred_classrooms` (`[{id, name, is_active}]` by name), `version` (`0` while nothing was ever changed). |
 | `PUT /api/v1/tutors/{user_id}/availability/weekly` | `require("tutor.view")`; the tutor themselves or `tutor.manage` | Body `{version, windows: [{weekday, starts_at, ends_at}]}`, at most 42 windows, the classroom window checks (`window_overlap` on the later item's `starts_at`). Replaces the windows; `200` with the detail. |
+| `PATCH /api/v1/tutors/{user_id}/availability/settings` | as above | Body `{version, daily_limit_minutes?, weekly_limit_minutes?, required_break_minutes?, preferred_classroom_ids?}`; fields not sent stay, a limit sent as `null` is cleared, `preferred_classroom_ids` replaces the list. `200` with the detail. No impact check. |
 | `POST /api/v1/tutors/{user_id}/availability/exceptions` | as above | Body `{kind, starts_on, ends_on, starts_at?, ends_at?, note?}`. `201` with the `AvailabilityExceptionItem`. |
 | `DELETE /api/v1/tutors/{user_id}/availability/exceptions/{exception_id}` | as above | `204`. An id of another tutor's exception is `404`. |
 | `GET /api/v1/tutors/{user_id}/availability/check` | `require("tutor.view")` + the record policy | Query `date` (`YYYY-MM-DD`), `start`, `end` (`HH:MM`, `start < end`; else `422`). `{available, reasons}`. |
@@ -1673,10 +1677,42 @@ the time-zone change guard (#37).
   `AvailabilityImpactSource.affected_session_ids`. A non-empty answer is
   `409 availability_change_requires_approval` and nothing changes. Until M4
   the app wires `NoAssignmentImpact` (always empty, no SQL).
-- **Audit:** all three tables are audited: `create`/`delete` per changed
-  window, `create`/`delete` per exception, and the settings row's `create`
-  on the first change (later changes only bump its `version`, which is
-  never audited, #22).
+- **Teaching limits** (#197; spec §3) on `tutor_availability_settings`,
+  minutes, each optional (`null`: no limit, no break):
+  `daily_limit_minutes` 15–1440, `weekly_limit_minutes` 15–10080 and not
+  below the daily limit, `required_break_minutes` 0–240 (`0` is a value,
+  "no break" is `null`). The database has the same CHECKs. **Warnings
+  only:** M4-05 (#50) compares a tutor's workload with them and warns; they
+  never block an assignment (ISSUE-D4), so changing them asks no impact
+  check.
+- **Preferred classrooms** (#197; `tutor_preferred_classrooms`, unique per
+  tutor and room): at most 10, each once (`duplicate_classroom`). They
+  guide scheduling suggestions (M4-05, M4-06) and never restrict them.
+  Names come from `catalog.service.classroom_references`. A newly chosen
+  room must exist and be active (`catalog.service.active_classroom_ids`);
+  otherwise `422 validation_error` on `["body","preferred_classroom_ids"]`,
+  code `classroom_unavailable`. A stored room deactivated later stays (with
+  `is_active: false`) and may be kept when the list is edited, until it is
+  removed.
+- **Settings `PATCH` order:** `422` (bounds, a weekly limit below the daily
+  one when both are sent, more than 10 rooms, duplicates, `null` rooms,
+  unknown fields) → `404` → `403` → `409 version_conflict` → `422`
+  `weekly_below_daily` on `["body","weekly_limit_minutes"]` when the weekly
+  limit would fall below the daily one combined with the stored limits →
+  `422 classroom_unavailable` → the update. The `version` is the same as
+  the weekly windows' (one settings row): a weekly `PUT` and a settings
+  `PATCH` each bump it. A body that changes nothing keeps it.
+- **For M4:** `staff.service.teaching_limits(session, tutor_user_id)`
+  returns `TeachingLimits(daily_limit_minutes, weekly_limit_minutes,
+  required_break_minutes)` (all `None` when never set);
+  `staff.service.preferred_classroom_ids(session, tutor_user_id)` returns
+  the stored room ids in the order chosen, inactive ones included (filter
+  with `catalog.service.active_classroom_ids`).
+- **Audit:** all four tables are audited: `create`/`delete` per changed
+  window, `create`/`delete` per exception, `create`/`delete` per preferred
+  room, and the settings row's `create` on the first change and `update`
+  with the changed limits (a change of only windows or rooms bumps its
+  `version`, which is never audited, #22).
 
 ### Response headers
 

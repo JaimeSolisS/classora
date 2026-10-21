@@ -98,3 +98,24 @@ export async function createSubjectViaApi(
   expect(created.status).toBe(201);
   return (created.body as { id: string }).id;
 }
+
+/**
+ * A new active classroom named `name` (capacity 10, no time restriction),
+ * through the API with the page's session (the shared demo Owner,
+ * catalog.manage). The page must be on the app origin first. Returns the
+ * classroom id.
+ */
+export async function createClassroomViaApi(
+  page: Page,
+  name: string,
+): Promise<string> {
+  const me = await api(page, '/api/v1/auth/me');
+  expect(me.status).toBe(200);
+  const created = await api(page, '/api/v1/classrooms', {
+    method: 'POST',
+    json: { name, capacity: 10 },
+    headers: { 'X-CSRF-Token': csrfTokenOf(me) },
+  });
+  expect(created.status).toBe(201);
+  return (created.body as { id: string }).id;
+}

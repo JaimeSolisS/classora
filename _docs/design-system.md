@@ -334,7 +334,17 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   for extra availability, with a help text), start and end time, note.
   `version_conflict` offers "Reload"; `availability_change_requires_approval`
   and other errors show in the alert region; results are polite status
-  messages.
+  messages. Between the weekly windows and the exceptions,
+  **`AvailabilitySettingsForm`** (#197): "Teaching limits" (a help text
+  says they only produce warnings when scheduling) with one fieldset per
+  limit (daily and weekly maximum: a "No limit" checkbox, then "Hours" and
+  "Minutes" number inputs; required break: "No break", then "Minutes"), and
+  "Preferred classrooms", a checkbox group of the active rooms plus stored
+  rooms deactivated since, labelled "<name> (inactive)" (at most 10).
+  Saved with the shared `version` ("Save limits and classrooms"), sending
+  only what changed; errors on the fieldset (`aria-invalid` and
+  `aria-describedby` on its inputs). Other viewers see a definition list
+  and a room list.
 - **`SettingsForm`** (`features/settings`, #37): the business settings in
   three fieldsets of one form. Each operating-hours row has an "Open"
   checkbox and two `type="time"` inputs (15-minute step) that are disabled
