@@ -37,6 +37,7 @@ import {
   NewStudentPage,
 } from '@/features/students/StudentFormPages';
 import { StudentsPage } from '@/features/students/StudentsPage';
+import { ScheduleSessionPage } from '@/features/scheduling/create/ScheduleSessionPage';
 import { TutorDetailPage } from '@/features/tutors/TutorDetailPage';
 import { TutorsPage } from '@/features/tutors/TutorsPage';
 import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
@@ -233,6 +234,11 @@ export const routes: RouteObject[] = [
             path: 'tutors/:userId',
             element: <TutorDetailPage />,
             handle: { permission: 'tutor.view' },
+          },
+          {
+            path: 'schedule/new',
+            element: <ScheduleSessionPage />,
+            handle: { permission: 'schedule.manage' },
           },
           {
             path: 'courses',

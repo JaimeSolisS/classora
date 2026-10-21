@@ -1,11 +1,17 @@
-"""Scheduling domain errors (#47 C2, B2).
+"""Scheduling domain errors (#47 C2, B2; #48 B2, C2, C3).
 
-Plain exceptions, not :class:`~app.core.errors.AppError`: nothing is
-reachable over HTTP yet. M4-03 (#48) maps them into the shared ``409
-scheduling_conflict`` body (ADR-0005) or a ``422``. None carries record data.
+The #47 errors are plain exceptions raised by the shared writes and rules;
+the create route maps them (``scheduling/booking.py``) into the HTTP errors
+below: :class:`SchedulingConflictError` (``409 scheduling_conflict`` with
+``conflicts``, ADR-0005) and :class:`SessionValidationError` (``422
+validation_error`` with field errors). None carries record data beyond ids
+and the rule details.
 """
 
+from collections.abc import Sequence
 from typing import Final, Literal
+
+from app.core.errors import AppError, FieldError, SchedulingConflict
 
 OverlapCode = Literal["tutor_overlap", "room_overlap"]
 
@@ -44,3 +50,29 @@ class InvalidSessionTransitionError(Exception):
         super().__init__(f"{from_state} -> {to_state}")
         self.from_state = from_state
         self.to_state = to_state
+
+
+class SchedulingConflictError(AppError):
+    """``409 scheduling_conflict``: the session breaks hard or soft rules;
+    ``conflicts`` lists every one (ADR-0005 wire format). Nothing is
+    stored."""
+
+    status = 409
+    code = "scheduling_conflict"
+    detail = "The session conflicts with existing rules."
+
+    def __init__(self, conflicts: Sequence[SchedulingConflict]) -> None:
+        super().__init__(conflicts=conflicts)
+
+
+class SessionValidationError(AppError):
+    """``422 validation_error`` with field errors: invalid bounds (#47
+    reasons) or invalid references (``student_unknown`` …
+    ``classroom_inactive``). Data validity is never a conflict (ADR-0005)."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, errors: Sequence[FieldError]) -> None:
+        super().__init__(errors=errors)

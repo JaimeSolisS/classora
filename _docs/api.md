@@ -52,6 +52,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `request_id` | yes    | The same value as the `X-Request-ID` response header. |
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
+| `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -61,7 +62,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
   SQL, DSN, host names) in any environment. Unexpected exceptions become
   `500 internal_error` and are logged with their traceback.
 - The OpenAPI document contains one `ProblemDetails` schema (and `FieldError`
-  for the `errors` items). Every operation that can return `422` documents it as
+  for the `errors` items, `SchedulingConflict` for the `conflicts` items). Every operation that can return `422` documents it as
   `ProblemDetails` with `application/problem+json`; FastAPI's default
   `HTTPValidationError` schema is removed. An endpoint documents its other error
   statuses with `responses={503: problem_response_doc("...")}`.
@@ -107,6 +108,7 @@ Codes in use today:
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
+| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. Soft conflicts block too until overrides exist (M4-04). See Class sessions. |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1829,6 +1831,94 @@ the time-zone change guard (#37).
   room, and the settings row's `create` on the first change and `update`
   with the changed limits (a change of only windows or rooms bumps its
   `version`, which is never audited, #22).
+
+### Class sessions
+
+Implemented by M4-03 (#48; spec §3, §15 W1.1–W1.2; ADR-0005 D1, D2, D7,
+D9) in `apps/api/app/modules/scheduling/` (`booking.py`: create and read;
+`conflicts.py`: the codes and pure rules; `locks.py`: the student lock).
+Only one-off **individual** sessions so far; groups, courses, recurrence,
+overrides, offers and the calendar come with later M4 issues.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator) | Body below. `201` with `ClassSessionDetail` plus `warnings` (always `[]` until M4-05). |
+| `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session (no record policy for staff). At most 6 statements. |
+
+**Body** (unknown fields are `422`, an `override` member included until
+M4-04):
+
+```json
+{"kind": "individual", "student_id": "…", "subject_id": "…",
+ "tutor_user_id": "…" | null, "classroom_id": "…" | null,
+ "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00"}
+```
+
+`starts_at`/`ends_at` are instants with an offset; responses give them in
+UTC (`Z`). `ClassSessionDetail` is `{id, kind, state, subject {id, name,
+education_level_name, is_active}, tutor {id, display_name} | null,
+classroom {id, name, is_active} | null, participants [{student_id,
+display_name, is_active}], starts_at, ends_at, scheduled_minutes, version,
+created_at, updated_at}`; a subject is shown inactive when it or its level
+is.
+
+**Order of the create:**
+
+1. `401`/`403`, then `422` for the schema;
+2. the per-student advisory lock (below);
+3. the center time zone, read `FOR SHARE` (a zone change waits);
+4. `422` for the bounds (#47), as a field error on `ends_at`, except
+   `naive_datetime` and `not_whole_minutes`, which go on the field at fault:
+   `naive_datetime`, `not_whole_minutes`, `ends_before_start`,
+   `duration_out_of_range` (15–480 elapsed minutes), `crosses_local_date`
+   (start and end on different local dates in the center zone; an end at
+   the next midnight is allowed);
+5. `422` for the references, every one in one response: `student_unknown`,
+   `student_inactive` (`student_id`); `subject_unknown`, `subject_inactive`
+   (the subject or its level; `subject_id`); `tutor_unknown` (no such user,
+   or not a tutor), `tutor_inactive` (any state but `active`, a pending
+   invitee included; `tutor_user_id`); `classroom_unknown`,
+   `classroom_inactive` (`classroom_id`);
+6. every conflict check below, then `409 scheduling_conflict` with **all**
+   of them, hard first, then in this table's order;
+7. the session and its participant are stored. A concurrent create that
+   wins the tutor or room `EXCLUDE` constraint first makes this one `409
+   scheduling_conflict` with that single hard conflict (its
+   `class_session_ids` is `[]`).
+
+**Conflicts.** The tutor checks run only with a tutor, the room checks
+only with a room. Local values are in the center zone; a local end at
+midnight is never inside a window or the opening hours.
+
+| Code | Severity | When | `details` |
+| ---- | -------- | ---- | --------- |
+| `tutor_overlap` | hard | The tutor has an `offered`, `confirmed` or `completed` session that overlaps (`[)` ranges: back-to-back is fine). | `{class_session_ids}` (up to 10) |
+| `room_overlap` | hard | The room has an `unassigned`, `offered`, `confirmed` or `completed` session that overlaps. | `{classroom_id, class_session_ids}` |
+| `student_overlap` | hard | The student is in a session in those four states that overlaps. | `{student_id, class_session_ids}` |
+| `room_capacity_exceeded` | hard | Never for an individual session (a room holds at least 1); groups (M4-11). | — |
+| `tutor_unavailable` | soft | The tutor is outside their weekly availability or on time off (M3-09); a closure is reported only as `center_closed`. | `{reasons}` (`time_off`, `outside_weekly_availability`) |
+| `room_unavailable` | soft | The room has windows and they don't cover the time. | `{classroom_id}` |
+| `center_closed` | soft | An active closure contains the local date. | `{date}` |
+| `outside_operating_hours` | soft | The weekday's opening hours don't cover the time; a weekday without hours is closed. | `{date, opens_at, closes_at}` (`null` on a closed weekday) |
+| `tutor_not_qualified` | soft | The tutor has no approved qualification for the subject (a revoked one doesn't count). | `{subject_id}` |
+| `group_capacity_exceeded` | soft | Groups and courses (M4-11, M4-20). | — |
+| `notice_window` | soft | The start gives less than the booking notice of the scheduling policy in force now (a start in the past included; exactly the notice is fine). | `{booking_notice_hours}` |
+
+The warning codes `daily_limit_exceeded`, `weekly_limit_exceeded` and
+`break_too_short` never block and are not emitted yet (M4-05).
+
+**Initial state:** with a tutor the session is created `offered` to them,
+without one `unassigned` (ADR-0005 D2). No offer row, notification or inbox
+item exists yet (M4-07); the request never waits for the tutor.
+
+**Student lock:** before reading anything, the create takes
+`pg_advisory_xact_lock(480301, hashtext(student_id::text))` for each
+student, in ascending id order (`scheduling.locks.lock_students`). Every
+writer that adds a participant or moves a session in time must take it
+first, so two concurrent bookings of one student can never both succeed.
+
+**Audit:** only the automatic `create` events of `class_sessions` and
+`class_session_participants`, with the actor and the request ID.
 
 ### Course templates
 

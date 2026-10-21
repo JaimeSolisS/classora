@@ -8549,6 +8549,152 @@
           }
         }
       }
+    },
+    "/api/v1/class-sessions": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Create Class Session",
+        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, without one `unassigned`. Every rule is checked\nfirst; `warnings` is always empty for now.",
+        "operationId": "create_class_session_api_v1_class_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. Nothing is created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}": {
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Get Class Session",
+        "description": "One class session with its subject, tutor, classroom and students.",
+        "operationId": "get_class_session_api_v1_class_sessions__class_session_id__get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9508,6 +9654,266 @@
           "inactive",
           "all"
         ]
+      },
+      "ClassSessionCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "individual",
+            "title": "Kind"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the session to; null creates it unassigned."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At",
+            "description": "An instant with an offset (RFC 3339)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "student_id",
+          "subject_id",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "ClassSessionCreate",
+        "description": "A one-off individual session (``POST /api/v1/class-sessions``).\n\nGroups and courses (#56, #65) extend ``kind``; overrides (#49) add an\n``override`` member, which is an unknown field until then."
+      },
+      "ClassSessionCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_at",
+          "ends_at",
+          "scheduled_minutes",
+          "version",
+          "created_at",
+          "updated_at",
+          "warnings"
+        ],
+        "title": "ClassSessionCreated",
+        "description": "The created session and its warnings (always empty until #50)."
+      },
+      "ClassSessionDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_at",
+          "ends_at",
+          "scheduled_minutes",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClassSessionDetail",
+        "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
       },
       "ClassroomCreate": {
         "properties": {
@@ -12855,7 +13261,9 @@
           "payroll.finalize",
           "qualification.review",
           "registration.review",
+          "schedule.manage",
           "schedule.override",
+          "schedule.view",
           "settings.manage",
           "student.manage",
           "student.view",
@@ -12988,6 +13396,13 @@
               "$ref": "#/components/schemas/FieldError"
             },
             "title": "Errors",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingConflict"
+            },
+            "title": "Conflicts",
             "type": "array"
           }
         },
@@ -13281,6 +13696,36 @@
           "tutor"
         ]
       },
+      "SchedulingConflict": {
+        "additionalProperties": false,
+        "description": "One broken scheduling rule (ADR-0005): its code, whether it is\n``hard`` (never allowed) or ``soft`` (allowed with an override), and\ncode-specific details.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "hard",
+              "soft"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "details"
+        ],
+        "title": "SchedulingConflict",
+        "type": "object"
+      },
       "SchedulingPolicyCreate": {
         "properties": {
           "booking_notice_hours": {
@@ -13468,6 +13913,146 @@
         ],
         "title": "SchedulingPolicyOverview",
         "description": "The version in force now, the upcoming ones and the past ones."
+      },
+      "SchedulingWarning": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "details"
+        ],
+        "title": "SchedulingWarning",
+        "description": "A rule that never blocks (ADR-0005 warnings; filled by #50)."
+      },
+      "SessionClassroom": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active"
+        ],
+        "title": "SessionClassroom",
+        "description": "The session's classroom (an inactive room stays shown as such)."
+      },
+      "SessionKindCode": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group",
+          "course"
+        ]
+      },
+      "SessionParticipant": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name",
+          "is_active"
+        ],
+        "title": "SessionParticipant",
+        "description": "A student of the session."
+      },
+      "SessionStateCode": {
+        "type": "string",
+        "enum": [
+          "unassigned",
+          "offered",
+          "confirmed",
+          "completed",
+          "cancelled",
+          "skipped_closure",
+          "conflict"
+        ]
+      },
+      "SessionSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name",
+          "is_active"
+        ],
+        "title": "SessionSubject",
+        "description": "The session's subject with its level's name. ``is_active`` is false\nwhen the subject or its level is inactive."
+      },
+      "SessionTutor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "SessionTutor",
+        "description": "The tutor the session is offered to, or who teaches it."
       },
       "SessionUser": {
         "properties": {

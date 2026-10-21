@@ -50,4 +50,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
   // Course templates (#64 G1): Finance Staff read them.
   { to: '/courses', labelKey: 'nav.courses', permission: 'course.view' },
+  // #48 F1: the scheduling form until the calendar (#57) takes this entry.
+  {
+    to: '/schedule/new',
+    labelKey: 'nav.schedule',
+    permission: 'schedule.manage',
+  },
 ];

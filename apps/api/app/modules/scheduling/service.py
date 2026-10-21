@@ -11,11 +11,29 @@ Pure rules: the states, kinds, occupying sets and transitions
 (``scheduling.class_sessions``) with
 ``administration.service.register_time_zone_dependency`` in ``app/wiring.py``.
 
-The errors are plain exceptions; #48 maps them into ``409
-scheduling_conflict``. Every function runs in the caller's Unit of Work and
-never commits.
+One-off individual sessions (#48, implemented in
+:mod:`~app.modules.scheduling.booking`): :func:`create_class_session` (the
+per-student lock, the zone ``FOR SHARE``, the ``422`` bounds and
+references, every ADR-0005 conflict check, then ``offered`` / ``unassigned``)
+and :func:`get_class_session`. The conflict codes, severities and pure
+rules are in :mod:`~app.modules.scheduling.conflicts` (with each check's data
+source); :func:`find_conflicts` runs them for one body. The student lock
+(:func:`lock_students`, :mod:`~app.modules.scheduling.locks`) must be taken
+first by every writer that adds a participant or moves a session in time.
+
+The #47 errors are plain exceptions; the create maps them into ``409
+scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
+(:class:`SessionValidationError`). Every function runs in the caller's Unit
+of Work and never commits.
 """
 
+from app.modules.scheduling.booking import (
+    create_class_session as create_class_session,
+)
+from app.modules.scheduling.booking import find_conflicts as find_conflicts
+from app.modules.scheduling.booking import (
+    get_class_session as get_class_session,
+)
 from app.modules.scheduling.capacity import (
     GROUP_CAPACITY_EXCEEDED as GROUP_CAPACITY_EXCEEDED,
 )
@@ -28,6 +46,11 @@ from app.modules.scheduling.capacity import (
 from app.modules.scheduling.capacity import (
     effective_capacity as effective_capacity,
 )
+from app.modules.scheduling.conflicts import HARD as HARD
+from app.modules.scheduling.conflicts import SOFT as SOFT
+from app.modules.scheduling.conflicts import WARNING as WARNING
+from app.modules.scheduling.conflicts import Conflict as Conflict
+from app.modules.scheduling.conflicts import sort_conflicts as sort_conflicts
 from app.modules.scheduling.errors import (
     InvalidSessionTimesError as InvalidSessionTimesError,
 )
@@ -35,8 +58,15 @@ from app.modules.scheduling.errors import (
     InvalidSessionTransitionError as InvalidSessionTransitionError,
 )
 from app.modules.scheduling.errors import (
+    SchedulingConflictError as SchedulingConflictError,
+)
+from app.modules.scheduling.errors import (
     SessionOverlapError as SessionOverlapError,
 )
+from app.modules.scheduling.errors import (
+    SessionValidationError as SessionValidationError,
+)
+from app.modules.scheduling.locks import lock_students as lock_students
 from app.modules.scheduling.sessions import (
     TIME_ZONE_DEPENDENCY as TIME_ZONE_DEPENDENCY,
 )

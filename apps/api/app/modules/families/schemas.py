@@ -278,6 +278,16 @@ class StudentGuardianItem(BaseModel):
     has_account: bool = Field(description="The profile is linked to a login.")
 
 
+class StudentReference(BaseModel):
+    """A student as another module's record shows it (#48: class session
+    participants): the id, the display name (``given_names family_names``)
+    and whether the profile is active. No birthdate or contact data."""
+
+    id: uuid.UUID
+    display_name: str
+    is_active: bool
+
+
 class FamilyReference(BaseModel):
     """The family a student or guardian belongs to (#172 E1)."""
 
