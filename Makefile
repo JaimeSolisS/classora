@@ -105,9 +105,10 @@ test-web:
 test-unit:
 	cd apps/api && uv run pytest -m unit
 
-## Run only the API integration tests (Testcontainers PostgreSQL; Docker must be running).
+## Run the API integration tests except the migration checks (those are `make test-migrations`)
+## (Testcontainers PostgreSQL; Docker must be running). SHARD=K/N runs only shard K of N, as in CI.
 test-integration:
-	cd apps/api && uv run pytest -m integration
+	cd apps/api && uv run pytest -m integration --ignore=tests/integration/test_migrations.py $(if $(SHARD),--shard=$(SHARD))
 
 ## Run only the migration tests: upgrade from empty, single head, round trip, no model drift (Docker).
 test-migrations:
