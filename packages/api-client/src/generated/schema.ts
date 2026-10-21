@@ -1903,6 +1903,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/replacement-tutors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Replacement Tutors
+         * @description Replacement tutors for the session's own subject, time and
+         *     classroom, never its current tutor; the session itself counts for
+         *     nobody's overlap or workload.
+         *
+         *     A tutor is listed when they are an active tutor with an approved
+         *     qualification for the subject, available for the whole slot (a center
+         *     closure doesn't count against them) and without an overlapping offered,
+         *     confirmed or completed session. Order: scheduled minutes in the slot's
+         *     local ISO week, then on its local date (fewest first), then the tutors
+         *     who prefer the classroom, then name. Limits are shown, never applied.
+         *     Advisory and read-only: creating or offering re-checks everything.
+         */
+        get: operations["list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -1917,6 +1947,36 @@ export interface paths {
          *     included with their `state`. No contact data.
          */
         get: operations["list_tutor_options_api_v1_schedule_tutor_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutor-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tutor Suggestions
+         * @description The tutors who can teach a new slot (subject, start, end, optional
+         *     classroom), the first `limit` in ranking order, with how many are
+         *     eligible in all.
+         *
+         *     A tutor is listed when they are an active tutor with an approved
+         *     qualification for the subject, available for the whole slot (a center
+         *     closure doesn't count against them) and without an overlapping offered,
+         *     confirmed or completed session. Order: scheduled minutes in the slot's
+         *     local ISO week, then on its local date (fewest first), then the tutors
+         *     who prefer the classroom, then name. Limits are shown, never applied.
+         *     Advisory and read-only: creating or offering re-checks everything.
+         */
+        get: operations["list_tutor_suggestions_api_v1_tutor_suggestions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4068,7 +4128,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -5155,6 +5215,56 @@ export interface components {
         TutorOptions: {
             /** Items */
             items: components["schemas"]["TutorOption"][];
+        };
+        /**
+         * TutorSuggestion
+         * @description An eligible tutor and the values of the workload ranking rule.
+         *     The limits are shown only: they never drop or reorder a tutor.
+         */
+        TutorSuggestion: {
+            /**
+             * Rank
+             * @description The position in the ranking, from 1.
+             */
+            rank: number;
+            tutor: components["schemas"]["SessionTutor"];
+            /**
+             * Weekly Minutes
+             * @description Scheduled minutes as tutor (offered, confirmed, completed) starting in the slot's local ISO week.
+             */
+            weekly_minutes: number;
+            /**
+             * Daily Minutes
+             * @description The same, starting on the slot's local date.
+             */
+            daily_minutes: number;
+            /**
+             * Weekly Limit Minutes
+             * @description Null is no limit.
+             */
+            weekly_limit_minutes: number | null;
+            /**
+             * Daily Limit Minutes
+             * @description Null is no limit.
+             */
+            daily_limit_minutes: number | null;
+            /**
+             * Prefers Classroom
+             * @description The slot has a classroom and it is one of the tutor's preferred.
+             */
+            prefers_classroom: boolean;
+        };
+        /**
+         * TutorSuggestionList
+         * @description The first ``limit`` eligible tutors in ranking order, and how many
+         *     are eligible in all (advisory: creating or offering re-checks
+         *     everything).
+         */
+        TutorSuggestionList: {
+            /** Items */
+            items: components["schemas"]["TutorSuggestion"][];
+            /** Eligible Count */
+            eligible_count: number;
         };
         /**
          * TutorUpdate
@@ -11752,6 +11862,75 @@ export interface operations {
             };
         };
     };
+    list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorSuggestionList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session is completed, cancelled or skipped for a closure (class_session_not_assignable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_tutor_options_api_v1_schedule_tutor_options_get: {
         parameters: {
             query?: {
@@ -11771,6 +11950,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TutorOptions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_tutor_suggestions_api_v1_tutor_suggestions_get: {
+        parameters: {
+            query: {
+                subject_id: string;
+                /** @description An instant with an offset (RFC 3339). */
+                starts_at: string;
+                /** @description An instant with an offset (RFC 3339). */
+                ends_at: string;
+                /** @description The classroom; ranks the tutors who prefer it first on ties. */
+                classroom_id?: string | null;
+                /** @description At most this many items (1-50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorSuggestionList"];
                 };
             };
             /** @description Authentication required. */

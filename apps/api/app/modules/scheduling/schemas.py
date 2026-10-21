@@ -454,3 +454,61 @@ class SlotSuggestions(BaseModel):
             " to the earlier start)."
         )
     )
+
+
+# --- Tutor suggestions (#51 D, E) ---------------------------------------------------
+
+TUTOR_SUGGESTIONS_DEFAULT_LIMIT: Final = 10
+TUTOR_SUGGESTIONS_MAX_LIMIT: Final = 50
+
+
+class TutorSuggestionQuery(BaseModel):
+    """The query of ``GET /api/v1/tutor-suggestions`` (#51 D1): a new slot.
+    Unknown parameters are ``422``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: uuid.UUID
+    starts_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    ends_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    classroom_id: uuid.UUID | None = Field(
+        default=None,
+        description="The classroom; ranks the tutors who prefer it first on ties.",
+    )
+    limit: int = Field(
+        default=TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
+        ge=1,
+        le=TUTOR_SUGGESTIONS_MAX_LIMIT,
+        description="At most this many items (1-50).",
+    )
+
+
+class TutorSuggestion(BaseModel):
+    """An eligible tutor and the values of the workload ranking rule.
+    The limits are shown only: they never drop or reorder a tutor."""
+
+    rank: int = Field(description="The position in the ranking, from 1.")
+    tutor: SessionTutor
+    weekly_minutes: int = Field(
+        description=(
+            "Scheduled minutes as tutor (offered, confirmed, completed)"
+            " starting in the slot's local ISO week."
+        )
+    )
+    daily_minutes: int = Field(
+        description="The same, starting on the slot's local date."
+    )
+    weekly_limit_minutes: int | None = Field(description="Null is no limit.")
+    daily_limit_minutes: int | None = Field(description="Null is no limit.")
+    prefers_classroom: bool = Field(
+        description="The slot has a classroom and it is one of the tutor's preferred."
+    )
+
+
+class TutorSuggestionList(BaseModel):
+    """The first ``limit`` eligible tutors in ranking order, and how many
+    are eligible in all (advisory: creating or offering re-checks
+    everything)."""
+
+    items: list[TutorSuggestion]
+    eligible_count: int

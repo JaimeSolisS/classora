@@ -46,6 +46,7 @@ type PermissionCode = Literal[
     "payroll.finalize",
     "qualification.review",
     "registration.review",
+    "schedule.assign",
     "schedule.manage",
     "schedule.override",
     "schedule.view",

@@ -8921,6 +8921,102 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/replacement-tutors": {
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Replacement Tutors",
+        "description": "Replacement tutors for the session's own subject, time and\nclassroom, never its current tutor; the session itself counts for\nnobody's overlap or workload.\n\nA tutor is listed when they are an active tutor with an approved\nqualification for the subject, available for the whole slot (a center\nclosure doesn't count against them) and without an overlapping offered,\nconfirmed or completed session. Order: scheduled minutes in the slot's\nlocal ISO week, then on its local date (fewest first), then the tutors\nwho prefer the classroom, then name. Limits are shown, never applied.\nAdvisory and read-only: creating or offering re-checks everything.",
+        "operationId": "list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorSuggestionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session is completed, cancelled or skipped for a closure (class_session_not_assignable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -8968,6 +9064,127 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TutorOptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutor-suggestions": {
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Tutor Suggestions",
+        "description": "The tutors who can teach a new slot (subject, start, end, optional\nclassroom), the first `limit` in ranking order, with how many are\neligible in all.\n\nA tutor is listed when they are an active tutor with an approved\nqualification for the subject, available for the whole slot (a center\nclosure doesn't count against them) and without an overlapping offered,\nconfirmed or completed session. Order: scheduled minutes in the slot's\nlocal ISO week, then on its local date (fewest first), then the tutors\nwho prefer the classroom, then name. Limits are shown, never applied.\nAdvisory and read-only: creating or offering re-checks everything.",
+        "operationId": "list_tutor_suggestions_api_v1_tutor_suggestions_get",
+        "parameters": [
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "starts_at",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "Starts At"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "ends_at",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "Ends At"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "classroom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The classroom; ranks the tutors who prefer it first on ties.",
+              "title": "Classroom Id"
+            },
+            "description": "The classroom; ranks the tutors who prefer it first on ties."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "At most this many items (1-50).",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "At most this many items (1-50)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorSuggestionList"
                 }
               }
             }
@@ -13792,6 +14009,7 @@
           "payroll.finalize",
           "qualification.review",
           "registration.review",
+          "schedule.assign",
           "schedule.manage",
           "schedule.override",
           "schedule.view",
@@ -15975,6 +16193,91 @@
         ],
         "title": "TutorOptions",
         "description": "The matching tutors, in the user list order."
+      },
+      "TutorSuggestion": {
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "description": "The position in the ranking, from 1."
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/SessionTutor"
+          },
+          "weekly_minutes": {
+            "type": "integer",
+            "title": "Weekly Minutes",
+            "description": "Scheduled minutes as tutor (offered, confirmed, completed) starting in the slot's local ISO week."
+          },
+          "daily_minutes": {
+            "type": "integer",
+            "title": "Daily Minutes",
+            "description": "The same, starting on the slot's local date."
+          },
+          "weekly_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Limit Minutes",
+            "description": "Null is no limit."
+          },
+          "daily_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Minutes",
+            "description": "Null is no limit."
+          },
+          "prefers_classroom": {
+            "type": "boolean",
+            "title": "Prefers Classroom",
+            "description": "The slot has a classroom and it is one of the tutor's preferred."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rank",
+          "tutor",
+          "weekly_minutes",
+          "daily_minutes",
+          "weekly_limit_minutes",
+          "daily_limit_minutes",
+          "prefers_classroom"
+        ],
+        "title": "TutorSuggestion",
+        "description": "An eligible tutor and the values of the workload ranking rule.\nThe limits are shown only: they never drop or reorder a tutor."
+      },
+      "TutorSuggestionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TutorSuggestion"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "eligible_count": {
+            "type": "integer",
+            "title": "Eligible Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "eligible_count"
+        ],
+        "title": "TutorSuggestionList",
+        "description": "The first ``limit`` eligible tutors in ranking order, and how many\nare eligible in all (advisory: creating or offering re-checks\neverything)."
       },
       "TutorUpdate": {
         "properties": {

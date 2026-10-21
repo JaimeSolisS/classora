@@ -9,6 +9,7 @@ import type {
   SlotSuggestionRequest,
   SubjectOption,
   SuggestedSlot,
+  TutorSuggestionParams,
 } from './api';
 
 // The rules of "Schedule a session" (#48 F2, F3), without React: the form's
@@ -306,4 +307,51 @@ export function slotValues(
     start: toLocalTime(slot.starts_at, timeZone),
     end: toLocalTime(slot.ends_at, timeZone),
   };
+}
+
+// --- Suggested tutors (#51 G) -------------------------------------------------
+
+/**
+ * Whether "Suggest tutors" can ask: a subject, a date, a start and an end
+ * after it (the same client checks as the submit, without the student).
+ */
+export function canSuggestTutors(values: ScheduleValues): boolean {
+  const { subject, date, start, end } = validateSchedule(values);
+  return !subject && !date && !start && !end;
+}
+
+/**
+ * The query for the slot: the form's local date and times as instants in
+ * `timeZone`, and the classroom when one is chosen.
+ */
+export function tutorSuggestionParams(
+  values: ScheduleValues,
+  timeZone: string,
+): TutorSuggestionParams {
+  const params: TutorSuggestionParams = {
+    subject_id: values.subjectId,
+    starts_at: localDateTimeToInstant(values.date, values.start, timeZone),
+    ends_at: localDateTimeToInstant(values.date, values.end, timeZone),
+  };
+  if (values.classroomId) {
+    params.classroom_id = values.classroomId;
+  }
+  return params;
+}
+
+/** The fields whose change makes shown tutor suggestions stale (G2). */
+export const SLOT_FIELDS: ReadonlySet<keyof ScheduleValues> = new Set([
+  'subjectId',
+  'classroomId',
+  'date',
+  'start',
+  'end',
+]);
+
+/** Whole hours and the minutes left, for "X h Y min". */
+export function hoursAndMinutes(total: number): {
+  hours: number;
+  minutes: number;
+} {
+  return { hours: Math.floor(total / 60), minutes: total % 60 };
 }

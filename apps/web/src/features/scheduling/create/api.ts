@@ -2,7 +2,7 @@ import type { components } from '@classora/api-client';
 import { api, apiCall, ApiError } from '@/app/api';
 
 // The calls of "Schedule a session" (#48 F): the create, the suggested
-// times after a conflict (#50 C1), and the options of the form (active
+// times after a conflict (#50 C1), the suggested tutors (#51 G), and the options of the form (active
 // subjects, tutors and classrooms; the student search).
 
 export type ClassSessionCreate = components['schemas']['ClassSessionCreate'];
@@ -13,6 +13,16 @@ export type SlotSuggestionRequest =
   components['schemas']['SlotSuggestionRequest'];
 export type SlotSuggestions = components['schemas']['SlotSuggestions'];
 export type SuggestedSlot = components['schemas']['SuggestedSlot'];
+export type TutorSuggestionList = components['schemas']['TutorSuggestionList'];
+export type TutorSuggestion = components['schemas']['TutorSuggestion'];
+
+/** The query of GET /api/v1/tutor-suggestions (#51 D1). */
+export interface TutorSuggestionParams {
+  subject_id: string;
+  starts_at: string;
+  ends_at: string;
+  classroom_id?: string;
+}
 
 /** One option of a select. */
 export interface Option {
@@ -46,6 +56,15 @@ export function suggestSlots(
 ): Promise<SlotSuggestions> {
   return apiCall(() =>
     api.POST('/api/v1/class-sessions/suggestions', { body }),
+  );
+}
+
+/** The eligible tutors for a new slot, lightest week first (#51 G1). */
+export function suggestTutors(
+  query: TutorSuggestionParams,
+): Promise<TutorSuggestionList> {
+  return apiCall(() =>
+    api.GET('/api/v1/tutor-suggestions', { params: { query } }),
   );
 }
 

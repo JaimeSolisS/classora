@@ -78,6 +78,7 @@
   "qualification_not_approved": "Only an approved qualification can be revoked.",
   "availability_change_requires_approval": "This change affects scheduled classes and needs approval.",
   "scheduling_conflict": "The session conflicts with scheduling rules.",
+  "class_session_not_assignable": "This session can no longer take a tutor.",
   "student_unknown": "Choose an existing student.",
   "student_inactive": "This student is inactive. Choose another one.",
   "subject_unknown": "Choose an existing subject.",

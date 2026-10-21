@@ -23,6 +23,11 @@
 - ``GET /api/v1/class-sessions/{class_session_id}``:
   ``require("schedule.view")`` (Owners, Administrators, Academic
   Coordinators and Finance staff); every holder sees every session.
+- ``GET /api/v1/tutor-suggestions`` and ``GET
+  /api/v1/class-sessions/{class_session_id}/replacement-tutors`` (#51):
+  ``require("schedule.assign")`` (Owners, Administrators and Academic
+  Coordinators; ADR-0005 D9). The eligible tutors in workload order;
+  read-only and advisory.
 """
 
 import uuid
@@ -40,6 +45,8 @@ from app.core.errors import problem_response_doc
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
 from app.modules.scheduling.schemas import (
+    TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
+    TUTOR_SUGGESTIONS_MAX_LIMIT,
     ClassSessionCalendar,
     ClassSessionCreate,
     ClassSessionCreated,
@@ -48,14 +55,20 @@ from app.modules.scheduling.schemas import (
     SlotSuggestionRequest,
     SlotSuggestions,
     TutorOptions,
+    TutorSuggestionList,
+    TutorSuggestionQuery,
 )
 
 SCHEDULE_VIEW: Final = "schedule.view"
 SCHEDULE_MANAGE: Final = "schedule.manage"
 SCHEDULE_OVERRIDE: Final = "schedule.override"
+SCHEDULE_ASSIGN: Final = "schedule.assign"
 
 router = APIRouter(prefix="/api/v1/class-sessions", tags=["class-sessions"])
 options_router = APIRouter(prefix="/api/v1/schedule", tags=["class-sessions"])
+suggestions_router = APIRouter(
+    prefix="/api/v1/tutor-suggestions", tags=["class-sessions"]
+)
 
 TUTOR_OPTIONS_DEFAULT_LIMIT: Final = 20
 TUTOR_OPTIONS_MAX_LIMIT: Final = 50
@@ -182,6 +195,42 @@ async def get_class_session(
     return await service.get_class_session(uow.session, class_session_id)
 
 
+@router.get(
+    "/{class_session_id}/replacement-tutors",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session is completed, cancelled or skipped for a closure"
+            " (class_session_not_assignable)."
+        ),
+        422: problem_response_doc("limit outside 1-50 (validation_error)."),
+    },
+)
+async def list_replacement_tutors(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    class_session_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+    limit: Annotated[
+        int, Query(ge=1, le=TUTOR_SUGGESTIONS_MAX_LIMIT)
+    ] = TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
+) -> TutorSuggestionList:
+    """Replacement tutors for the session's own subject, time and
+    classroom, never its current tutor; the session itself counts for
+    nobody's overlap or workload.
+
+    A tutor is listed when they are an active tutor with an approved
+    qualification for the subject, available for the whole slot (a center
+    closure doesn't count against them) and without an overlapping offered,
+    confirmed or completed session. Order: scheduled minutes in the slot's
+    local ISO week, then on its local date (fewest first), then the tutors
+    who prefer the classroom, then name. Limits are shown, never applied.
+    Advisory and read-only: creating or offering re-checks everything."""
+    return await service.suggest_replacements(
+        uow.session, class_session_id, limit=limit
+    )
+
+
 @options_router.get(
     "/tutor-options",
     responses={
@@ -206,3 +255,36 @@ async def list_tutor_options(
     return await service.list_tutor_options(
         uow.session, q=(q or "").strip() or None, limit=limit
     )
+
+
+@suggestions_router.get(
+    "",
+    responses={
+        **PERMISSION_RESPONSES,
+        422: problem_response_doc(
+            "The query is not valid (validation_error): a missing or malformed"
+            " parameter, `limit` outside 1-50; the bounds (naive_datetime,"
+            " not_whole_minutes, ends_before_start, duration_out_of_range,"
+            " crosses_local_date); or the references (subject_unknown,"
+            " subject_inactive, classroom_unknown, classroom_inactive), all in"
+            " one response."
+        ),
+    },
+)
+async def list_tutor_suggestions(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    query: Annotated[TutorSuggestionQuery, Query()],
+    uow: UnitOfWorkDep,
+) -> TutorSuggestionList:
+    """The tutors who can teach a new slot (subject, start, end, optional
+    classroom), the first `limit` in ranking order, with how many are
+    eligible in all.
+
+    A tutor is listed when they are an active tutor with an approved
+    qualification for the subject, available for the whole slot (a center
+    closure doesn't count against them) and without an overlapping offered,
+    confirmed or completed session. Order: scheduled minutes in the slot's
+    local ISO week, then on its local date (fewest first), then the tutors
+    who prefer the classroom, then name. Limits are shown, never applied.
+    Advisory and read-only: creating or offering re-checks everything."""
+    return await service.suggest_for_slot(uow.session, query)

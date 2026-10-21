@@ -1537,6 +1537,25 @@
       "empty": "No other free times between {{from}} and {{to}}.",
       "slot": "{{date}}, {{start}} to {{end}}",
       "chosen": "Time changed to {{date}}, {{start}} to {{end}}. Review it and schedule the session."
+    },
+    "tutorSuggestions": {
+      "button": "Suggest tutors",
+      "heading": "Suggested tutors",
+      "intro": "Tutors qualified for the subject, available and free at this time, with the lightest week first. Choosing one sets the tutor; it doesn’t schedule the session.",
+      "loading": "Looking for tutors…",
+      "empty": "No tutor is qualified, available and free at this time.",
+      "shown_one": "{{count}} eligible tutor.",
+      "shown_other": "{{shown}} of {{count}} eligible tutors, lightest week first.",
+      "workload": "{{week}} this week · {{day}} that day",
+      "weeklyLimit": "limit {{duration}}/week",
+      "dailyLimit": "limit {{duration}}/day",
+      "prefersRoom": "Prefers this room",
+      "choose": "Choose",
+      "chooseTutor": "Choose {{name}}",
+      "chosen": "Tutor set to {{name}}. Review the form and schedule the session.",
+      "hours": "{{hours}} h",
+      "minutes": "{{minutes}} min",
+      "hoursMinutes": "{{hours}} h {{minutes}} min"
     }
   },
   "courses": {

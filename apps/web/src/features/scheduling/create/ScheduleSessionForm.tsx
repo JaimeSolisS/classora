@@ -17,10 +17,13 @@ import {
   type SlotSuggestions,
   type SubjectOption,
   type SuggestedSlot,
+  type TutorSuggestion,
+  type TutorSuggestionList,
 } from './api';
 import { ConflictPanel } from './ConflictPanel';
 import { OverrideDialog } from './OverrideDialog';
 import {
+  canSuggestTutors,
   EMPTY_SCHEDULE,
   FIELD_ORDER,
   isConflictCode,
@@ -28,6 +31,7 @@ import {
   overrideReasonError,
   serverErrors,
   sessionOverride,
+  SLOT_FIELDS,
   slotValues,
   subjectsByLevel,
   validateSchedule,
@@ -39,6 +43,10 @@ import {
 } from './rules';
 import { useSlotParts } from './slotParts';
 import { SuggestedSlots, type SuggestionsState } from './SuggestedSlots';
+import {
+  TutorSuggestions,
+  type TutorSuggestionsState,
+} from './TutorSuggestions';
 import { useWarningMessage } from './warningMessages';
 
 // The "Schedule a session" form (#48 F2, F3), without any API call: the
@@ -63,6 +71,15 @@ import { useWarningMessage } from './warningMessages';
 // moves the focus to the submit button and announces the new time in a
 // polite live region. The success panel lists the 201's workload warnings
 // (#50 C2).
+//
+// Suggested tutors (#51 G): with `onSuggestTutors` (the page passes it only
+// to holders of schedule.assign) a "Suggest tutors" button sits under the
+// Tutor picker, enabled once the subject, date, start and end are valid. The
+// panel lists the eligible tutors; "Choose" sets the Tutor picker (nothing
+// is submitted), closes the panel, moves the focus to the picker and
+// announces the tutor. Changing the subject, classroom, date or times
+// clears a shown panel, so stale suggestions are never applied. A 422 goes
+// onto the form's fields.
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -79,6 +96,8 @@ export interface ScheduleSessionFormProps {
   canOverride: boolean;
   /** Free times for the same values after a conflict (#50); none: no section. */
   onSuggest?: (values: ScheduleValues) => Promise<SlotSuggestions>;
+  /** The eligible tutors for the slot (#51; schedule.assign); none: no button. */
+  onSuggestTutors?: (values: ScheduleValues) => Promise<TutorSuggestionList>;
   /** The values to start from (stories). */
   initialValues?: ScheduleValues;
   /** The id of the page heading that names the form. */
@@ -94,6 +113,7 @@ export function ScheduleSessionForm({
   onSubmit,
   canOverride,
   onSuggest,
+  onSuggestTutors,
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
 }: ScheduleSessionFormProps) {
@@ -111,6 +131,9 @@ export function ScheduleSessionForm({
   const [suggestions, setSuggestions] = useState<SuggestionsState | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const suggestionRequest = useRef(0);
+  const [tutorSuggestions, setTutorSuggestions] =
+    useState<TutorSuggestionsState | null>(null);
+  const tutorRequest = useRef(0);
   const submitButton = useRef<HTMLButtonElement>(null);
   const warningMessage = useWarningMessage();
   const slotParts = useSlotParts(timeZone);
@@ -139,6 +162,59 @@ export function ScheduleSessionForm({
     value: ScheduleValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+    if (SLOT_FIELDS.has(key)) {
+      clearTutorSuggestions();
+    }
+  }
+
+  function clearTutorSuggestions() {
+    // A later answer of an earlier request is ignored.
+    tutorRequest.current += 1;
+    setTutorSuggestions(null);
+  }
+
+  function suggestTutors() {
+    if (!onSuggestTutors || !canSuggestTutors(values)) {
+      return;
+    }
+    tutorRequest.current += 1;
+    const request = tutorRequest.current;
+    setTutorSuggestions({ status: 'loading' });
+    onSuggestTutors(values).then(
+      (result) => {
+        if (request === tutorRequest.current) {
+          setTutorSuggestions({ status: 'loaded', result });
+        }
+      },
+      (error: unknown) => {
+        if (request !== tutorRequest.current) {
+          return;
+        }
+        const mapped =
+          error instanceof ApiError ? serverErrors(error.fieldErrors) : {};
+        if (Object.keys(mapped).length > 0) {
+          setTutorSuggestions(null);
+          setErrors(mapped);
+          focusFirst(mapped);
+        } else {
+          setTutorSuggestions({ status: 'error', error });
+        }
+      },
+    );
+  }
+
+  function chooseTutor(suggestion: TutorSuggestion) {
+    setValues((current) => ({ ...current, tutorId: suggestion.tutor.id }));
+    clearTutorSuggestions();
+    setAnnouncement(
+      t('scheduling.tutorSuggestions.chosen', {
+        name: suggestion.tutor.display_name,
+      }),
+    );
+    window.setTimeout(
+      () => document.getElementById(fieldId('tutor'))?.focus(),
+      0,
+    );
   }
 
   function focusFirst(found: ScheduleErrors) {
@@ -194,6 +270,7 @@ export function ScheduleSessionForm({
   async function submit() {
     setConflicts(null);
     clearSuggestions();
+    clearTutorSuggestions();
     setAnnouncement('');
     setFailure(null);
     const found = validateSchedule(values);
@@ -293,6 +370,7 @@ export function ScheduleSessionForm({
 
   function scheduleAnother() {
     setCreated(null);
+    clearTutorSuggestions();
     setAnnouncement('');
     setErrors({});
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
@@ -558,6 +636,29 @@ export function ScheduleSessionForm({
             </>,
           )}
         </div>
+        {onSuggestTutors ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  !canSuggestTutors(values) ||
+                  tutorSuggestions?.status === 'loading'
+                }
+                onClick={suggestTutors}
+              >
+                {t('scheduling.tutorSuggestions.button')}
+              </Button>
+            </div>
+            {tutorSuggestions ? (
+              <TutorSuggestions
+                state={tutorSuggestions}
+                onChoose={chooseTutor}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <fieldset className="flex flex-col gap-3">
           <legend className="text-sm font-medium">
             {t('scheduling.fields.when')}

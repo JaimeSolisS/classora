@@ -78,6 +78,7 @@
   "qualification_not_approved": "Solo se puede revocar una calificación aprobada.",
   "availability_change_requires_approval": "Este cambio afecta clases programadas y necesita aprobación.",
   "scheduling_conflict": "La sesión entra en conflicto con las reglas de programación.",
+  "class_session_not_assignable": "Esta sesión ya no puede recibir un tutor.",
   "student_unknown": "Elige un estudiante existente.",
   "student_inactive": "Este estudiante está inactivo. Elige otro.",
   "subject_unknown": "Elige una materia existente.",
