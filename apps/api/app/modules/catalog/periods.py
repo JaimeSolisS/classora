@@ -28,7 +28,16 @@ import uuid
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import ColumnElement, Select, func, literal_column, select
+from sqlalchemy import (
+    ColumnElement,
+    Date,
+    Select,
+    cast,
+    func,
+    literal_column,
+    not_,
+    select,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -65,7 +74,10 @@ from app.modules.catalog.schemas import (
 )
 
 # The inclusive bounds of daterange(), inlined (not a bind parameter) so the
-# expression matches ix_closures_active_range.
+# range expression is identical to the expression of ix_closures_active_range.
+# That partial index is ``WHERE is_active``: the filter must be the plain
+# ``is_active`` column (not ``is_active IS true``, which PostgreSQL cannot
+# prove implies the index predicate) for the planner to use the index (#204).
 _INCLUSIVE: ColumnElement[str] = literal_column("'[]'")
 
 
@@ -73,9 +85,9 @@ def _status_condition(
     column: InstrumentedAttribute[bool], status: CatalogStatus
 ) -> list[ColumnElement[bool]]:
     if status == "active":
-        return [column.is_(True)]
+        return [column.expression]
     if status == "inactive":
-        return [column.is_(False)]
+        return [not_(column)]
     return []
 
 
@@ -188,7 +200,7 @@ async def _ensure_no_overlap(
     a day with ``[starts_on, ends_on]``."""
     query = (
         select(AcademicPeriod.id)
-        .where(AcademicPeriod.is_active.is_(True))
+        .where(AcademicPeriod.is_active)
         .where(AcademicPeriod.period_type == period_type)
         .where(AcademicPeriod.starts_on <= ends_on)
         .where(AcademicPeriod.ends_on >= starts_on)
@@ -312,21 +324,36 @@ async def get_closure(session: AsyncSession, closure_id: uuid.UUID) -> ClosureDe
     return _closure_detail(closure)
 
 
+def _closures_between_query(start: date, end: date) -> Select[Closure]:
+    """The statement of :func:`closures_between` (EXPLAINed by a test)."""
+    return _closures_order(
+        select(Closure)
+        .where(Closure.is_active)
+        .where(_closure_range().op("&&")(func.daterange(start, end, _INCLUSIVE)))
+    )
+
+
+def _closed_on_query(local_date: date) -> Select[uuid.UUID]:
+    """The statement of :func:`is_center_closed_on` (EXPLAINed by a test).
+    The date is cast so the statement also compiles with literal binds."""
+    return (
+        select(Closure.id)
+        .where(Closure.is_active)
+        .where(_closure_range().op("@>")(cast(local_date, Date)))
+        .limit(1)
+    )
+
+
 async def closures_between(
     session: AsyncSession, start: date, end: date
 ) -> list[ClosureDetail]:
     """The active closures that share at least one day with ``[start, end]``
-    (inclusive), by ``starts_on``, ``ends_on``, ``id``. One statement.
-    ``start`` after ``end`` raises :class:`ValueError`."""
+    (inclusive), by ``starts_on``, ``ends_on``, ``id``. One statement, which
+    can use ``ix_closures_active_range``. ``start`` after ``end`` raises
+    :class:`ValueError`."""
     if start > end:
         raise ValueError("start must not be after end")
-    closures = await session.scalars(
-        _closures_order(
-            select(Closure)
-            .where(Closure.is_active.is_(True))
-            .where(_closure_range().op("&&")(func.daterange(start, end, _INCLUSIVE)))
-        )
-    )
+    closures = await session.scalars(_closures_between_query(start, end))
     return [_closure_detail(closure) for closure in closures]
 
 
@@ -338,13 +365,9 @@ async def check_closures(session: AsyncSession, local_date: date) -> ClosureChec
 
 
 async def is_center_closed_on(session: AsyncSession, local_date: date) -> bool:
-    """Whether an active closure contains the local date. One statement."""
-    found = await session.scalar(
-        select(Closure.id)
-        .where(Closure.is_active.is_(True))
-        .where(_closure_range().op("@>")(local_date))
-        .limit(1)
-    )
+    """Whether an active closure contains the local date. One statement,
+    which can use ``ix_closures_active_range``."""
+    found = await session.scalar(_closed_on_query(local_date))
     return found is not None
 
 
