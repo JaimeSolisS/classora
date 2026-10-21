@@ -38,7 +38,8 @@
     "students": "Estudiantes",
     "guardians": "Padres y tutores",
     "families": "Familias",
-    "tutors": "Tutores"
+    "tutors": "Tutores",
+    "schedule": "Programar"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -1329,6 +1330,73 @@
       "staff_qualification_approved": "Se aprobó tu calificación para {{subject_name}} ({{education_level_name}}).",
       "staff_qualification_rejected": "No se aprobó tu calificación para {{subject_name}} ({{education_level_name}}); consulta el motivo en tus calificaciones.",
       "staff_qualification_revoked": "Se revocó tu calificación para {{subject_name}} ({{education_level_name}}). Consulta el motivo en tus calificaciones."
+    }
+  },
+  "scheduling": {
+    "title": "Programar una sesión",
+    "fields": {
+      "student": "Estudiante",
+      "subject": "Materia",
+      "tutor": "Tutor",
+      "classroom": "Aula",
+      "when": "Fecha y hora",
+      "date": "Fecha",
+      "start": "Inicio",
+      "end": "Fin"
+    },
+    "studentHelp": "Busca un estudiante activo por nombre y elígelo.",
+    "studentChosen": "Elegido: {{name}}.",
+    "chooseSubject": "Elige una materia",
+    "noTutor": "Sin tutor por ahora",
+    "noClassroom": "Sin aula",
+    "zone": "Horas en la zona horaria del centro ({{zone}}).",
+    "submit": "Programar sesión",
+    "submitting": "Programando…",
+    "validation": {
+      "studentRequired": "Elige un estudiante.",
+      "subjectRequired": "Elige una materia.",
+      "dateRequired": "Escribe la fecha.",
+      "startRequired": "Escribe la hora de inicio.",
+      "endRequired": "Escribe la hora de fin.",
+      "endAfterStart": "El fin debe ser después del inicio, el mismo día."
+    },
+    "success": {
+      "heading": "Sesión programada",
+      "subject": "{{subject}} ({{level}})",
+      "when": "Cuándo",
+      "range": "{{start}} a {{end}}",
+      "state": "Estado",
+      "offered": "Ofrecida a {{tutor}}",
+      "unassigned": "Sin asignar",
+      "another": "Programar otra"
+    },
+    "severity": {
+      "hard": "No permitido",
+      "soft": "Requiere una excepción (próximamente)"
+    },
+    "reasons": {
+      "time_off": "tiempo libre",
+      "outside_weekly_availability": "fuera de su disponibilidad semanal",
+      "separator": ", "
+    },
+    "conflicts": {
+      "heading_one": "No se puede programar la sesión: 1 conflicto",
+      "heading_many": "No se puede programar la sesión: {{count}} conflictos",
+      "heading_other": "No se puede programar la sesión: {{count}} conflictos",
+      "keepForm": "Cambia el formulario e inténtalo de nuevo; no se guardó nada.",
+      "unknown": "Se incumple otra regla de programación.",
+      "tutor_overlap": "El tutor ya tiene una clase a esta hora.",
+      "room_overlap": "El aula ya está ocupada a esta hora.",
+      "student_overlap": "El estudiante ya tiene una clase a esta hora.",
+      "room_capacity_exceeded": "El aula es demasiado pequeña para esta clase.",
+      "tutor_unavailable": "El tutor no está disponible a esta hora ({{reasons}}).",
+      "room_unavailable": "El aula no está disponible a esta hora.",
+      "center_closed": "El centro está cerrado el {{date}}.",
+      "outside_operating_hours": "La hora está fuera del horario de atención del {{date}} ({{opens}} a {{closes}}).",
+      "outside_operating_hours_closed": "El centro cierra ese día de la semana ({{date}}).",
+      "tutor_not_qualified": "El tutor no está calificado para esta materia.",
+      "group_capacity_exceeded": "El grupo está lleno.",
+      "notice_window": "La sesión empieza muy pronto: necesita {{hours}} horas de anticipación."
     }
   }
 }

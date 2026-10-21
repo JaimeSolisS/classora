@@ -74,6 +74,7 @@ const API_CODES = [
   'subject_inactive',
   'qualification_not_approved',
   'availability_change_requires_approval',
+  'scheduling_conflict',
   'invalid_effective_from',
   'policy_version_in_effect',
 ];

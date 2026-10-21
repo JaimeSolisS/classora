@@ -143,6 +143,18 @@ unless a bullet says otherwise.
   required break between classes (limits will only produce warnings when
   scheduling) and preferred classrooms, edited by the tutor or staff.
 
+**Scheduling**
+
+- Staff schedule one-off individual sessions on the Schedule page (one
+  student, a subject, an optional tutor and classroom, a date and times in
+  the center's time zone). Before anything is saved the server checks
+  student, tutor and classroom overlaps, tutor availability and
+  qualification, classroom availability, center closures, operating hours
+  and booking notice, and lists every conflict. Soft conflicts can't be
+  overridden yet.
+- A session with a tutor is offered to that tutor; one without a tutor stays
+  unassigned (tutors can't accept offers yet).
+
 **Approvals**
 
 - The Approvals page is the shared list of requests waiting for a decision,
@@ -177,7 +189,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** class scheduling and courses, attendance, academic records
+**Not built yet:** recurring and group scheduling, the calendar and
+courses, attendance, academic records
 and documents, billing and payments, payroll, reporting and analytics, and
 deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

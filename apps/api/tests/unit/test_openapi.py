@@ -11,9 +11,16 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.core import openapi
 from app.core.config import env_var_names
-from app.core.errors import PROBLEM_JSON, ProblemDetails, problem_response
+from app.core.conventions import install_conventions
+from app.core.errors import (
+    PROBLEM_JSON,
+    ProblemDetails,
+    problem_response,
+)
 from app.core.logging import request_id_var
 from app.main import API_TITLE, API_VERSION, build_app, create_app
+from app.modules.scheduling.conflicts import Conflict
+from app.modules.scheduling.errors import SchedulingConflictError
 from tests.authz.csrf import PROD_APP_ORIGIN
 from tests.unit.conventions_app import build_test_app
 
@@ -80,6 +87,8 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/tutors/{user_id}/availability/exceptions",
         "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}",
         "/api/v1/tutors/{user_id}/availability/check",
+        "/api/v1/class-sessions",
+        "/api/v1/class-sessions/{class_session_id}",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",
@@ -168,7 +177,7 @@ def test_create_app_still_refuses_missing_configuration(no_configuration, capsys
 def test_problem_schemas_replace_fastapi_validation_schemas():
     schemas = openapi.build_document()["components"]["schemas"]
 
-    assert {"ProblemDetails", "FieldError"} <= set(schemas)
+    assert {"ProblemDetails", "FieldError", "SchedulingConflict"} <= set(schemas)
     assert "HTTPValidationError" not in schemas
     assert "ValidationError" not in schemas
     problem = schemas["ProblemDetails"]
@@ -181,11 +190,19 @@ def test_problem_schemas_replace_fastapi_validation_schemas():
         "request_id",
         "detail",
         "errors",
+        "conflicts",
     }
     assert problem["properties"]["errors"]["items"] == {
         "$ref": "#/components/schemas/FieldError"
     }
     assert set(schemas["FieldError"]["required"]) == {"path", "code", "message"}
+    # #48 B1: the ADR-0005 conflict list, one generic member.
+    assert problem["properties"]["conflicts"]["items"] == {
+        "$ref": "#/components/schemas/SchedulingConflict"
+    }
+    conflict = schemas["SchedulingConflict"]
+    assert set(conflict["required"]) == {"code", "severity", "details"}
+    assert conflict["properties"]["severity"]["enum"] == ["hard", "soft"]
 
 
 def test_ready_documents_its_503_as_problem_details():
@@ -272,6 +289,31 @@ def test_problem_model_validates_a_real_422(client: TestClient):
     assert response.status_code == 422
     body = response.json()
     assert body["errors"]
+    assert PROBLEMS.validate_python(body, strict=True) == body
+
+
+def test_problem_model_validates_a_real_409_scheduling_conflict():
+    # #48 B1: the app's own error handler renders the conflict list.
+    app = FastAPI()
+    install_conventions(app)
+
+    @app.get("/conflict")
+    async def conflict() -> None:
+        raise SchedulingConflictError(
+            [
+                Conflict("student_overlap", {"class_session_ids": ["x"]}).as_wire(),
+                Conflict("notice_window", {"booking_notice_hours": 24}).as_wire(),
+            ]
+        )
+
+    response = TestClient(app).get("/conflict")
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "scheduling_conflict"
+    assert body["detail"] == "The session conflicts with existing rules."
+    assert [c["severity"] for c in body["conflicts"]] == ["hard", "soft"]
+    assert "errors" not in body
     assert PROBLEMS.validate_python(body, strict=True) == body
 
 

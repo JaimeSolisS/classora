@@ -1770,6 +1770,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Class Session
+         * @description Schedule a one-off individual session. With a tutor it is created
+         *     `offered` to them, without one `unassigned`. Every rule is checked
+         *     first; `warnings` is always empty for now.
+         */
+        post: operations["create_class_session_api_v1_class_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Class Session
+         * @description One class session with its subject, tutor, classroom and students.
+         */
+        get: operations["get_class_session_api_v1_class_sessions__class_session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2183,6 +2225,144 @@ export interface components {
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * ClassSessionCreate
+         * @description A one-off individual session (``POST /api/v1/class-sessions``).
+         *
+         *     Groups and courses (#56, #65) extend ``kind``; overrides (#49) add an
+         *     ``override`` member, which is an unknown field until then.
+         */
+        ClassSessionCreate: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "individual";
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the session to; null creates it unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            ends_at: string;
+        };
+        /**
+         * ClassSessionCreated
+         * @description The created session and its warnings (always empty until #50).
+         */
+        ClassSessionCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Warnings */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * ClassSessionDetail
+         * @description One class session (``GET /api/v1/class-sessions/{id}``).
+         */
+        ClassSessionDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * ClassroomCreate
          * @description A new classroom (``POST /api/v1/classrooms``). It starts active;
@@ -3374,7 +3554,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.override" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -3453,6 +3633,8 @@ export interface components {
             detail?: string;
             /** Errors */
             errors?: components["schemas"]["FieldError"][];
+            /** Conflicts */
+            conflicts?: components["schemas"]["SchedulingConflict"][];
         };
         /**
          * QualificationCreate
@@ -3593,6 +3775,25 @@ export interface components {
         /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
         /**
+         * SchedulingConflict
+         * @description One broken scheduling rule (ADR-0005): its code, whether it is
+         *     ``hard`` (never allowed) or ``soft`` (allowed with an override), and
+         *     code-specific details.
+         */
+        SchedulingConflict: {
+            /** Code */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "hard" | "soft";
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * SchedulingPolicyCreate
          * @description A new version: every rule, the latest version it replaces and when it
          *     takes effect.
@@ -3718,6 +3919,83 @@ export interface components {
              * @description Versions no longer in force, newest first (at most 50).
              */
             history: components["schemas"]["SchedulingPolicyItem"][];
+        };
+        /**
+         * SchedulingWarning
+         * @description A rule that never blocks (ADR-0005 warnings; filled by #50).
+         */
+        SchedulingWarning: {
+            /** Code */
+            code: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SessionClassroom
+         * @description The session's classroom (an inactive room stays shown as such).
+         */
+        SessionClassroom: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** @enum {string} */
+        SessionKindCode: "individual" | "group" | "course";
+        /**
+         * SessionParticipant
+         * @description A student of the session.
+         */
+        SessionParticipant: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** @enum {string} */
+        SessionStateCode: "unassigned" | "offered" | "confirmed" | "completed" | "cancelled" | "skipped_closure" | "conflict";
+        /**
+         * SessionSubject
+         * @description The session's subject with its level's name. ``is_active`` is false
+         *     when the subject or its level is inactive.
+         */
+        SessionSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * SessionTutor
+         * @description The tutor the session is offered to, or who teaches it.
+         */
+        SessionTutor: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * SessionUser
@@ -10217,6 +10495,124 @@ export interface operations {
                 };
             };
             /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_class_session_api_v1_class_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. Nothing is created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_class_session_api_v1_class_sessions__class_session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;

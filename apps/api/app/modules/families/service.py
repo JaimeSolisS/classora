@@ -47,6 +47,10 @@ may be kept. ``422 education_level_unavailable`` otherwise.
 ID. No named event and no ``details`` key. A contacts-only change writes only
 contact events (the version bump changes no audited column).
 
+**References** (#48): :func:`student_references` gives other modules a
+student's id, display name and active flag, without any access check (the
+caller's own permission decides, e.g. ``schedule.view``).
+
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
 ``administration.service.center_today(session)`` (the center's time zone
 setting, #37); #35 uses both.
@@ -107,6 +111,7 @@ from app.modules.families.schemas import (
     StudentListItem,
     StudentLogin,
     StudentPersonal,
+    StudentReference,
     StudentStatus,
     StudentUpdate,
 )
@@ -134,6 +139,7 @@ __all__ = [
     "remove_family_student",
     "revoke_consent",
     "set_student_account",
+    "student_references",
     "unlink_guardian",
     "update_family",
     "update_guardian",
@@ -166,6 +172,32 @@ list_families = _groupings.list_families
 remove_family_guardian = _groupings.remove_guardian
 remove_family_student = _groupings.remove_student
 update_family = _groupings.update_family
+
+# --- References (#48) -------------------------------------------------------------
+
+
+async def student_references(
+    session: AsyncSession, ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, StudentReference]:
+    """The students with these ids, active or not (unknown ids are left
+    out). One statement (none for an empty collection)."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(
+            Student.id, Student.given_names, Student.family_names, Student.is_active
+        ).where(Student.id.in_(wanted))
+    )
+    return {
+        row.id: StudentReference(
+            id=row.id,
+            display_name=f"{row.given_names} {row.family_names}",
+            is_active=row.is_active,
+        )
+        for row in rows
+    }
+
 
 # --- Search expressions ----------------------------------------------------------
 
