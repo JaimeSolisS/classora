@@ -8,6 +8,8 @@ import {
   LEVEL_PREPARATORIA,
   LEVEL_SECUNDARIA,
   QUALIFICATIONS,
+  QUALIFICATIONS_WITH_REVOKED,
+  REVOKED_QUALIFICATION,
   SUBJECT_ALGEBRA,
   SUBJECT_CALCULO,
   SUBJECT_FISICA,
@@ -17,7 +19,9 @@ import { QualificationsSection } from './QualificationsSection';
 
 // The tutor profile's Qualifications section (#44 F4): every status as a
 // word, the teaching subjects, the empty state, and the request dialog
-// answering 409 qualification_exists. No request: every call is a stub.
+// answering 409 qualification_exists. #198 E4: a revoked row as a reviewer
+// sees it (Revoke on the approved row), and the revoke dialog answering 409
+// qualification_not_approved. No request: every call is a stub.
 
 const meta = {
   title: 'Tutors/QualificationsSection',
@@ -148,6 +152,66 @@ export const RequestDialogExists: Story = {
     );
     await expect(
       await dialog.findByText(i18n.t('errors:qualification_exists')),
+    ).toBeVisible();
+  },
+};
+
+export const WithRevoked: Story = {
+  args: {
+    state: { status: 'ready', items: QUALIFICATIONS_WITH_REVOKED },
+    canRequest: false,
+    canRevoke: true,
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.statuses.revoked')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(REVOKED_QUALIFICATION.revocation_reason!, {
+        exact: false,
+      }),
+    ).toBeVisible();
+    // Only the approved row can be revoked.
+    await expect(
+      canvas.getAllByRole('button', {
+        name: i18n.t('tutors.qualifications.revokeFor', {
+          subject: SUBJECT_ALGEBRA.name,
+        }),
+      }),
+    ).toHaveLength(1);
+    await expect(
+      canvas.getAllByRole('button', { name: /^(Revoke|Revocar) / }),
+    ).toHaveLength(1);
+  },
+};
+
+export const RevokeDialogNotApproved: Story = {
+  args: {
+    canRequest: false,
+    canRevoke: true,
+    initiallyRevokingId: QUALIFICATIONS[0]!.id,
+    onRevoke: fn(() =>
+      Promise.reject(
+        new ApiError({ code: 'qualification_not_approved', status: 409 }),
+      ),
+    ),
+  },
+  play: async ({ userEvent, args }) => {
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.type(
+      dialog.getByRole('textbox', {
+        name: i18n.t('tutors.qualifications.revokeReason'),
+      }),
+      'The certificate has expired.',
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('tutors.qualifications.revokeConfirm'),
+      }),
+    );
+    await waitFor(() => expect(args.onRevoke).toHaveBeenCalled());
+    await expect(
+      await dialog.findByText(i18n.t('errors:qualification_not_approved')),
     ).toBeVisible();
   },
 };

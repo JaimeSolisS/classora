@@ -105,6 +105,7 @@ Codes in use today:
 | `too_many_streams` | 429 | `GET /api/v1/notifications/stream` when the caller already holds 10 open streams in this API process; `Retry-After: 30`. The web app polls meanwhile (see Live notifications). |
 | `qualification_exists` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` when the tutor already has a `pending` or `approved` qualification for the subject; also the loser of two concurrent requests (see Tutor qualifications). |
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
+| `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1539,7 +1540,8 @@ documents with M5-08.
 Implemented by M3-08 (#44; spec §3 "subject + education-level
 qualifications, approved by an administrator", §16) in
 `apps/api/app/modules/staff/` (`qualifications.py`,
-`qualification_approval.py`). A tutor requests to teach a **subject**; a
+`qualification_approval.py`; revocation, M3-08b #198, in
+`qualification_revocation.py`). A tutor requests to teach a **subject**; a
 subject belongs to exactly one education level (#32), so the level follows
 from it.
 
@@ -1549,21 +1551,28 @@ from it.
 | `POST /api/v1/tutors/{user_id}/qualifications` | `require("tutor.view")`; only the tutor themselves | Body `{subject_id}` (unknown fields are `422`). `201` with the item. |
 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel` | `require("tutor.view")`; only the tutor themselves, only while `pending` | No body. `200` with the item. |
 | Approve / reject | `POST /api/v1/approval-requests/{id}/approve` and `/reject` | Holders of `qualification.review` (Owners, Administrators; not delegable). See Approval requests. |
+| `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` | `require("qualification.review")` (Owners, Administrators) | Body `{reason, version}` (`QualificationRevoke`, unknown fields are `422`). `200` with the item. No reauthentication (not in ADR-0007 D10). |
 
 - **Model** (`tutor_qualifications`, versioned, audited): `tutor_user_id`
   and `subject_id` (both `ON DELETE RESTRICT`), `status` (`pending`,
-  `approved`, `rejected`, `cancelled`), `decided_at` (set exactly for the
-  three final statuses), `decided_by_user_id`, `rejection_reason` (set
-  exactly for `rejected`, at most 1000 characters). The qualification keeps
+  `approved`, `rejected`, `cancelled`, `revoked`), `decided_at` (set
+  exactly for the four final statuses; a revoked row keeps its approval
+  decision), `decided_by_user_id`, `rejection_reason` (set exactly for
+  `rejected`, at most 1000 characters), and `revoked_at`,
+  `revoked_by_user_id` (`users`, `ON DELETE RESTRICT`) and
+  `revocation_reason` (at most 1000 characters), all three set exactly for
+  `revoked` (#198, migration 0027). The qualification keeps
   its own status, mirrored with its approval request in one transaction, so
   eligibility never reads the approval tables (ADR-0002).
 - **No duplicate active qualification:** the partial unique index
   `uq_tutor_qualifications_active` on `(tutor_user_id, subject_id) WHERE
-  status IN ('pending', 'approved')`. A rejected or cancelled qualification
-  doesn't block a new request for the same subject.
+  status IN ('pending', 'approved')`. A rejected, cancelled or revoked
+  qualification doesn't block a new request for the same subject.
 - **`QualificationItem`:** `id`, `subject_id`, `subject_name`,
   `education_level_id`, `education_level_name`, `subject_is_active`,
-  `status`, `requested_at`, `decided_at`, `rejection_reason`, `version`.
+  `status`, `requested_at`, `decided_at`, `rejection_reason`, `revoked_at`,
+  `revocation_reason`, `version`. `GET …/qualifications?status=revoked`
+  lists the revoked ones.
 - **Requesting:** only the tutor themselves (holding `tutor`, active);
   administrators don't request on a tutor's behalf. Order: `422` (body) →
   `404` (unknown tutor, or one the caller can't see) → `403
@@ -1586,25 +1595,50 @@ from it.
   decision fields and (on reject) the reason, and creates one notification
   for the tutor, all in the decision's transaction: of a concurrent approve
   and reject exactly one wins and exactly one notification exists.
-- **Notifications:** `staff.qualification_approved` and
-  `staff.qualification_rejected`, params `{subject_name,
-  education_level_name}`. The reason is not a param (the 200-character
-  param cap): the tutor reads it on their qualifications list. The web app
-  links both to the tutor's own `/tutors/<id>#qualifications`.
+- **Revoking (#198):** a holder of `qualification.review` withdraws an
+  **approved** qualification with a reason (trimmed, 1–1000 characters).
+  Order: `403 permission_denied` (a Coordinator, Finance, any tutor
+  including the tutor themselves, a Student or a Guardian) → `422` (body) →
+  `404` (the qualification, locked `FOR UPDATE`, is missing or isn't
+  `user_id`'s) → `409 version_conflict` (a stale `version`) → `409
+  qualification_not_approved` (pending ones are rejected through the
+  approval inbox; rejected, cancelled and revoked ones can't be revoked).
+  Then `status = 'revoked'`, `revoked_at`, `revoked_by_user_id` and
+  `revocation_reason` are set, the `version` is bumped, and the tutor's
+  notification is created in the same transaction: of two concurrent
+  revokes with one version, one gets `200`, the other `409
+  version_conflict`, and exactly one notification exists. Any approved
+  qualification can be revoked, whatever the tutor's current roles or state
+  and whatever the subject's or level's active state. Nothing is deleted.
+  **The `staff.qualification` approval request is not touched:** it stays
+  `approved` as the record of the original decision;
+  `tutor_qualifications.status` is the source of truth for eligibility.
+  After a revocation the tutor may request the same subject again (a new
+  `pending` row; the revoked row stays in the list). Class sessions are not
+  read or changed: M4 evaluates qualification live
+  (`staff.service.is_qualified`).
+- **Notifications:** `staff.qualification_approved`,
+  `staff.qualification_rejected` and `staff.qualification_revoked` (#198),
+  params `{subject_name, education_level_name}`. The reason is not a param
+  (the 200-character param cap): the tutor reads it on their qualifications
+  list. The web app links all three to the tutor's own
+  `/tutors/<id>#qualifications`.
 - **Only approved counts:** `TutorDetail.teaching_subjects` lists the
   approved qualifications (`subject_id`, `subject_name`,
   `education_level_id`, `education_level_name`, `subject_is_active`) by the
   level's order, then the subject name. For other modules
   `staff.service` exports `approved_subject_ids(session, tutor_user_id)`,
   `is_qualified(session, tutor_user_id, subject_id)` and
-  `qualified_tutor_ids(session, subject_id)`; pending, rejected and
-  cancelled never count. A later-deactivated subject keeps its approved
-  qualifications (shown with `subject_is_active: false`). Whether the user
-  still holds the `tutor` role is the caller's check (M4-06). Revoking an
-  approved qualification is #198.
+  `qualified_tutor_ids(session, subject_id)`; pending, rejected, cancelled
+  and revoked never count (a revocation takes effect at once). A
+  later-deactivated subject keeps its approved qualifications (shown with
+  `subject_is_active: false`). Whether the user still holds the `tutor` role
+  is the caller's check (M4-06).
 - **Audit:** automatic `tutor_qualifications` `create` (actor: the tutor)
   and `update` events (actor: the tutor for a cancel, the reviewer for a
-  decision), plus the approval request's own events.
+  decision or a revocation, with `status`, `revoked_at`,
+  `revoked_by_user_id` and `revocation_reason`), plus the approval request's
+  own events.
 
 ### Response headers
 

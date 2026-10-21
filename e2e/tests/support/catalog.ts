@@ -113,7 +113,7 @@ type Common = {
       teachingTitle: string;
       empty: string;
       statuses: Record<
-        'pending' | 'approved' | 'rejected' | 'cancelled',
+        'pending' | 'approved' | 'rejected' | 'cancelled' | 'revoked',
         string
       >;
       request: string;
@@ -122,6 +122,10 @@ type Common = {
       send: string;
       close: string;
       requested: string;
+      revokeFor: string;
+      revokeReason: string;
+      revokeConfirm: string;
+      revoked: string;
     };
   };
   catalog: {
@@ -335,6 +339,7 @@ type Common = {
       dev_demo: string;
       staff_qualification_approved: string;
       staff_qualification_rejected: string;
+      staff_qualification_revoked: string;
     };
   };
 };

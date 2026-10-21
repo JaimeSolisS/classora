@@ -83,6 +83,7 @@ export const NOTIFICATION_LINKS: Readonly<
 > = {
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
+  'staff.qualification_revoked': ownQualifications,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

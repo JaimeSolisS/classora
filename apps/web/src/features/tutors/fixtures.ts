@@ -98,6 +98,8 @@ function qualification(
     requested_at: '2026-10-01T15:00:00Z',
     decided_at: null,
     rejection_reason: null,
+    revoked_at: null,
+    revocation_reason: null,
     version: 1,
     ...overrides,
   };
@@ -142,6 +144,26 @@ export const QUALIFICATIONS: QualificationItem[] = [
       version: 2,
     },
   ),
+];
+
+/** A revoked qualification (#198): approved, then withdrawn. */
+export const REVOKED_QUALIFICATION: QualificationItem = qualification(
+  '00000000-0000-4000-8000-0000000000f5',
+  SUBJECT_CALCULO,
+  LEVEL_SECUNDARIA,
+  {
+    status: 'revoked',
+    decided_at: '2026-10-02T16:30:00Z',
+    revoked_at: '2026-10-05T19:00:00Z',
+    revocation_reason: 'The certificate has expired.',
+    version: 3,
+  },
+);
+
+/** QUALIFICATIONS plus the revoked one (#198 E4). */
+export const QUALIFICATIONS_WITH_REVOKED: QualificationItem[] = [
+  ...QUALIFICATIONS,
+  REVOKED_QUALIFICATION,
 ];
 
 /** As an Owner or Administrator sees it: every field editable. */

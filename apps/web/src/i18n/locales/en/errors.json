@@ -67,5 +67,6 @@
   "period_overlap": "Another active period of this type overlaps these dates.",
   "too_many_streams": "Too many tabs are receiving live notifications. Close one or try again later.",
   "qualification_exists": "There is already a pending or approved qualification for this subject.",
-  "subject_inactive": "This subject or its education level is inactive. Choose another one."
+  "subject_inactive": "This subject or its education level is inactive. Choose another one.",
+  "qualification_not_approved": "Only an approved qualification can be revoked."
 }
