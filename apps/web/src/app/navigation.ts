@@ -48,4 +48,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/families', labelKey: 'nav.families', permission: 'guardian.view' },
   // Tutors see only their own profile (#43 E1).
   { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
+  // Course templates (#64 G1): Finance Staff read them.
+  { to: '/courses', labelKey: 'nav.courses', permission: 'course.view' },
 ];

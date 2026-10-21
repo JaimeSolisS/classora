@@ -93,7 +93,7 @@ The candidate modules mirror the spec §12 domain inventory:
 | `staff` | Tutors, qualifications, availability, time off, teaching limits |
 | `catalog` | Subjects, education levels, academic periods, classrooms, holidays and closures |
 | `scheduling` | Class sessions, recurrence, enrollment, attendance, substitutions, booking requests, conflict detection |
-| `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria |
+| `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria (templates and snapshots: M4-19) |
 | `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes |
 | `billing` | Price catalog, charges, payments, allocations, packages and credits, discounts, refunds, tuition plans, receipts |
 | `payroll` | Compensation rates, teaching hours, payroll periods and lines, adjustments, payments, payslips |

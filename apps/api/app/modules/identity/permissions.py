@@ -83,6 +83,11 @@ TUTOR_MANAGE = "tutor.manage"
 # Tutor qualification requests (#44): who sees and decides the
 # staff.qualification approval requests.
 QUALIFICATION_REVIEW = "qualification.review"
+# Course templates (#64, owner decision E3 (a)): Finance Staff read them
+# (pricing later); tutors and families see a cohort's syllabus through the
+# cohort's record policies (#65, #67), not through these.
+COURSE_VIEW = "course.view"
+COURSE_MANAGE = "course.manage"
 
 
 @dataclass(frozen=True)
@@ -114,6 +119,8 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(TUTOR_VIEW),
     PermissionDef(TUTOR_MANAGE),
     PermissionDef(QUALIFICATION_REVIEW),
+    PermissionDef(COURSE_VIEW),
+    PermissionDef(COURSE_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -149,12 +156,21 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 TUTOR_VIEW,
                 TUTOR_MANAGE,
                 QUALIFICATION_REVIEW,
+                COURSE_VIEW,
+                COURSE_MANAGE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
-            {STUDENT_VIEW, STUDENT_MANAGE, GUARDIAN_VIEW, TUTOR_VIEW}
+            {
+                STUDENT_VIEW,
+                STUDENT_MANAGE,
+                GUARDIAN_VIEW,
+                TUTOR_VIEW,
+                COURSE_VIEW,
+                COURSE_MANAGE,
+            }
         ),
-        FINANCE_STAFF: frozenset({STUDENT_VIEW, GUARDIAN_VIEW}),
+        FINANCE_STAFF: frozenset({STUDENT_VIEW, GUARDIAN_VIEW, COURSE_VIEW}),
         # Record policies limit these to assigned students, self and linked
         # children (#21, #33-#35), and tutor.view to the tutor's own profile
         # (#43).

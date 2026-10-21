@@ -18,9 +18,9 @@ FAMILIES_GENERATOR = "families.demo_families"
 DEMO_FAMILIES_ROWS = 34
 
 REFERENCE_LINES = [
-    "identity.permissions: 23 inserted, 0 updated",
+    "identity.permissions: 25 inserted, 0 updated",
     "identity.roles: 7 inserted, 0 updated",
-    "identity.role_permissions: 53 inserted, 0 updated",
+    "identity.role_permissions: 60 inserted, 0 updated",
     "catalog.education_levels: 4 inserted, 0 updated",
 ]
 RERUN_REFERENCE_LINES = [

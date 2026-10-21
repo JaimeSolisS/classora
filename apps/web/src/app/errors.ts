@@ -77,6 +77,14 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['too_many_streams', 'too_many_streams'],
   ['qualification_exists', 'qualification_exists'],
   ['subject_inactive', 'subject_inactive'],
+  // Field-error codes of the course template rules (#64 F3).
+  ['subject_unknown', 'subject_unknown'],
+  ['duplicate_subject', 'duplicate_subject'],
+  ['duplicate_title', 'duplicate_title'],
+  ['module_subject_not_in_template', 'module_subject_not_in_template'],
+  ['planned_sessions_exceed_total', 'planned_sessions_exceed_total'],
+  ['module_index_invalid', 'module_index_invalid'],
+  ['item_unknown', 'item_unknown'],
   ['qualification_not_approved', 'qualification_not_approved'],
   [
     'availability_change_requires_approval',

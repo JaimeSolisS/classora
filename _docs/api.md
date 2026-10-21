@@ -99,7 +99,7 @@ Codes in use today:
 | `approval_action_unsupported` | 409 | `request-changes` on an approval type that doesn't support it (registrations don't; see Approval requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
-| `name_taken` | 409 | A catalog record (an education level, or a subject within its level) would get a name another record already has, ignoring case; inactive records count (see Academic catalog). |
+| `name_taken` | 409 | A catalog record (an education level, or a subject within its level), a classroom or a course template would get a name another record already has, ignoring case; inactive records count (see Academic catalog, Classrooms, Course templates). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
 | `too_many_streams` | 429 | `GET /api/v1/notifications/stream` when the caller already holds 10 open streams in this API process; `Retry-After: 30`. The web app polls meanwhile (see Live notifications). |
@@ -1829,6 +1829,116 @@ the time-zone change guard (#37).
   room, and the settings row's `create` on the first change and `update`
   with the changed limits (a change of only windows or rooms bumps its
   `version`, which is never audited, #22).
+
+### Course templates
+
+Implemented by M4-19 (#64; spec §3 structured course; owner decisions E1
+(a), E2 (a), E3 (a)) in the new `apps/api/app/modules/courses/` module
+(`models.py`, `schemas.py`, `templates.py`, `service.py`, `router.py`,
+`errors.py`). A course template is reusable syllabus content: a name,
+subjects, a duration, ordered modules, assessment definitions and
+completion criteria. Templates are created, edited and deactivated, never
+deleted. Cohorts (#65) are created from an immutable **snapshot** of a
+template, so later edits never change existing cohorts.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/course-templates` | `require("course.view")` | Query `status` (`active` (default), `inactive`, `all`), offset pagination. Sorted by name (not case-sensitive), then `id`. Items (`CourseTemplateSummary`): `id`, `name`, `subjects` (`id`, `name`, `level_name`, `is_active`), `session_count`, `session_minutes`, `total_minutes`, `module_count`, `is_active`, `version`, `updated_at`. At most three statements per page. |
+| `POST /api/v1/course-templates` | `require("course.manage")` | Body `CourseTemplateWrite` (below), without item ids. `201` with the detail. |
+| `GET /api/v1/course-templates/{template_id}` | `require("course.view")` | Active or inactive. `CourseTemplateDetail`: the summary fields plus `description`, `min_attendance_percent`, `modules`, `assessments`, `completion` and `created_at`. |
+| `PUT /api/v1/course-templates/{template_id}` | `require("course.manage")` | Body `CourseTemplateWrite` plus `version` (required): replaces the whole content. `200` with the detail. |
+| `PATCH /api/v1/course-templates/{template_id}` | `require("course.manage")` | Body exactly `{version, is_active}`: deactivate or reactivate. |
+
+`course.view` is held by Owners, Administrators, Academic Coordinators and
+Finance Staff; `course.manage` by Owners, Administrators and Academic
+Coordinators. Neither is delegable. Tutors, students and guardians will see
+a cohort's syllabus through the cohort (#65, #67). No reauthentication.
+
+- **Document** (`CourseTemplateWrite`, unknown fields are `422`): `name`
+  (trimmed, 1 to 100 characters, unique ignoring case, inactive templates
+  included: `409 name_taken`), `description?` (at most 2000 characters;
+  blank is `null`), `subject_ids` (1 to 10, no repeats), `session_count`
+  (1 to 200, ADR-0005 D4) and `session_minutes` (15 to 480; `total_minutes`
+  is their product), `min_attendance_percent?` (1 to 100, `null` = no
+  attendance criterion), `modules` (1 to 50: there are no drafts) and
+  `assessments` (0 to 30). **List order is position** (1-based in the
+  responses).
+- **Module:** `{id?, title, description?, subject_id?, planned_sessions?,
+  is_required, materials?}`. Titles (1 to 200 characters) are unique within
+  the template ignoring case. `subject_id`, when set, must be one of the
+  template's `subject_ids`. The set `planned_sessions` (1 to 200 each) add
+  up to at most `session_count`. `materials` is free-text materials
+  references (at most 2000 characters; no files or links: M5-08 adds library
+  resources).
+- **Assessment definition:** `{id?, title, module_index?, is_required,
+  min_score_percent?}`. `module_index` is the **0-based index of a module in
+  the same body** (`null` = the whole course), so new modules and the
+  assessments that point at them are saved together. Titles are unique
+  within the template ignoring case. Scores are recorded later (M5-13 links
+  evaluations to the definition ids of a cohort's snapshot).
+- **Completion criteria** (the detail's and the snapshot's `completion`):
+  `min_attendance_percent`, `required_module_ids` and
+  `required_assessment_ids` (the items with `is_required`, in position
+  order). A template without any criterion is valid. M5-18 evaluates them.
+- **Replacing (`PUT`):** modules and assessments with an `id` of this
+  template are kept and updated; items without `id` are created; stored items
+  left out are **deleted** (cohorts keep them in their snapshot). An `id` of
+  another template, an unknown one, or one repeated in a list is `422` on
+  `["body","modules",i,"id"]` (code `item_unknown`); any `id` in a `POST`
+  too. Only changed rows are written. Any change bumps the template
+  `version` exactly once (the template row is the version anchor of its
+  subjects, modules and assessments); a document that changes nothing returns
+  `200` with no new version. Removing a module while repointing its
+  assessment (to another module or the whole course) in the same body
+  succeeds.
+- **Subjects:** a subject the document adds must exist (`subject_unknown`)
+  and be active with an active level (`subject_inactive`), as `422` field
+  errors on `["body","subject_ids",i]` (several can fail at once). A subject
+  linked earlier and deactivated since may stay; it is shown with
+  `is_active: false`.
+- **Rule errors** are `422 validation_error` field errors with item
+  indexes: `too_short` / `too_long` (counts), `duplicate_subject`,
+  `duplicate_title` (`[…,i,"title"]`), `module_subject_not_in_template`
+  (`["body","modules",i,"subject_id"]`), `planned_sessions_exceed_total`
+  (`["body","modules"]`), `module_index_invalid`
+  (`["body","assessments",i,"module_index"]`), plus `subject_unknown`,
+  `subject_inactive` and `item_unknown`. All are reported together.
+- **Check order** of a write: `422` (the body's schema) → `404` → `409
+  version_conflict` → `422` (the rules above) → `409 name_taken`. The
+  template row is locked `FOR UPDATE`, so concurrent `PUT`s from one version
+  give one `200` and one `409 version_conflict`.
+- **Snapshots** (for #65): `courses.service.snapshot_course_template(session,
+  template_id)` locks the template `FOR SHARE` (a concurrent `PUT` waits until
+  the caller's transaction ends), raises the plain exceptions
+  `CourseTemplateNotFound` / `CourseTemplateInactive` (#65 maps them), and
+  returns a frozen `CourseTemplateSnapshot` (`id`, `template_id`,
+  `template_version`, `content`): the stored snapshot of the template's
+  current version, or a new one (one row per template and version; a
+  concurrent snapshot of the same version gives the same row). It flushes in
+  the caller's transaction and never commits.
+  `get_course_template_snapshot(session, snapshot_id)` reads one back
+  (`None` when unknown). `course_template_snapshots` rows are never updated
+  or deleted (trigger `course_template_snapshots_immutable`). No route
+  exposes snapshots yet.
+- **Snapshot content, schema version 1** (a contract: a change needs a new
+  `schema_version`, never an edit of stored rows): `name`, `description`,
+  `session_count`, `session_minutes`, `subjects` (`id`, `name`, `level_id`,
+  `level_name` at snapshot time), `modules` (`id`, `position`, `title`,
+  `description`, `subject_id`, `planned_sessions`, `is_required`,
+  `materials`), `assessments` (`id`, `position`, `title`, `module_id`,
+  `is_required`, `min_score_percent`) and `completion`. Ids are strings;
+  lists are in position order (subjects in catalog order). The same template
+  always gives the same content.
+- **No time-zone dependency:** templates store no instants (#37).
+- **No reference or demo templates.**
+- **Audit:** automatic only: `create`/`update`/`delete` of
+  `course_templates`, `course_template_subjects`, `course_template_modules`
+  and `course_template_assessments` with the changed fields, and one
+  `course_template_snapshots` `create` (its `content` is left out; the row is
+  the record). A change of the children only bumps the template's `version`
+  without a `course_templates` event (`version` and `updated_at` are never
+  audited, #22). `403`, `404`, `409`, `422` and a document that changes
+  nothing write no event.
 
 ### Response headers
 
