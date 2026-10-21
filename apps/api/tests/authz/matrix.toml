@@ -301,6 +301,16 @@ allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/replacement-tutors"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #51 H6: the placeholder id is no session: 404 for every allowed role.
+# Finance holds schedule.view but not schedule.assign. The 200 and 409 cases
+# are tested in tests/integration/test_replacement_tutors.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/classrooms"
 access = "authenticated"
 
@@ -790,6 +800,17 @@ permission = "catalog.manage"
 allow = ["owner", "administrator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutor-suggestions"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #51 H6: the matrix sends no query parameters (the harness has none): the
+# missing subject_id/starts_at/ends_at get 422 for every allowed role ("not
+# denied"). The 422 references and 200 cases are tested in
+# tests/integration/test_tutor_suggestions.py.
 
 [[route]]
 method = "GET"

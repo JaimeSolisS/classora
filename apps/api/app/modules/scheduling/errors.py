@@ -76,3 +76,13 @@ class SessionValidationError(AppError):
 
     def __init__(self, errors: Sequence[FieldError]) -> None:
         super().__init__(errors=errors)
+
+
+class ClassSessionNotAssignableError(AppError):
+    """``409 class_session_not_assignable`` (#51 E3): the session is
+    ``completed``, ``cancelled`` or ``skipped_closure`` (final, or holding
+    nothing), so no tutor can be suggested for it."""
+
+    status = 409
+    code = "class_session_not_assignable"
+    detail = "This session can no longer take a tutor."

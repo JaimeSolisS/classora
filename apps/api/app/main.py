@@ -90,6 +90,9 @@ from app.modules.identity.service import (
 from app.modules.identity.user_admin_router import router as user_admin_router
 from app.modules.scheduling.router import options_router as schedule_options_router
 from app.modules.scheduling.router import router as class_sessions_router
+from app.modules.scheduling.router import (
+    suggestions_router as tutor_suggestions_router,
+)
 from app.modules.staff.router import router as tutors_router
 from app.wiring import register_approval_wiring
 
@@ -189,6 +192,7 @@ def build_app(
     app.include_router(courses_router)
     app.include_router(class_sessions_router)
     app.include_router(schedule_options_router)
+    app.include_router(tutor_suggestions_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
         # The dev.demo notification type exists only with its route (#41 D1).

@@ -26,13 +26,16 @@ import {
   CREATED,
   CREATED_WITH_WARNINGS,
   NO_SUGGESTIONS,
+  NO_TUTOR_SUGGESTIONS,
   OVERRIDDEN,
   SOFT_CONFLICTS,
   SUBJECTS,
   SUGGESTIONS,
+  TUTOR_SUGGESTIONS,
   TUTORS,
 } from './fixtures';
 import {
+  canSuggestTutors,
   EMPTY_SCHEDULE,
   overrideAction,
   overrideCodes,
@@ -42,6 +45,7 @@ import {
   sessionOverride,
   slotValues,
   suggestionBody,
+  tutorSuggestionParams,
   validateOverrideReason,
   validateSchedule,
 } from './rules';
@@ -820,6 +824,192 @@ describe('workload warnings (#50 C2)', () => {
     expect(main().textContent).toContain('Avisos de carga de trabajo');
     expect(main().textContent).toContain(
       'Descanso demasiado corto: 1 minuto entre clases, se requieren 15.',
+    );
+  });
+});
+
+describe('suggested tutors (#51 G)', () => {
+  const SUGGEST_TUTORS = 'GET /api/v1/tutor-suggestions';
+  const ASSIGNER: SessionUserBody = {
+    ...SCHEDULER,
+    permissions: [...SCHEDULER.permissions, 'schedule.assign'],
+  };
+
+  function panel(): HTMLElement | undefined {
+    return [...main().querySelectorAll('section')].find(
+      (s) => s.querySelector('h2')?.textContent === 'Suggested tutors',
+    );
+  }
+
+  function fillSlot() {
+    choose('Subject', SUBJECTS[0]!.id);
+    choose('Classroom', CLASSROOMS[0]!.id);
+    typeInto(fieldByLabel(main(), 'Date'), '2031-01-06');
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '11:00');
+  }
+
+  it('sends the slot as instants in the center zone (Tijuana DST)', () => {
+    const values = {
+      ...EMPTY_SCHEDULE,
+      subjectId: 's',
+      date: '2026-03-09',
+      start: '16:00',
+      end: '17:00',
+    };
+    expect(tutorSuggestionParams(values, 'America/Tijuana')).toEqual({
+      subject_id: 's',
+      starts_at: '2026-03-09T23:00:00.000Z',
+      ends_at: '2026-03-10T00:00:00.000Z',
+    });
+    expect(
+      tutorSuggestionParams(
+        { ...values, date: '2026-03-06', classroomId: 'r' },
+        'America/Tijuana',
+      ),
+    ).toEqual({
+      subject_id: 's',
+      starts_at: '2026-03-07T00:00:00.000Z',
+      ends_at: '2026-03-07T01:00:00.000Z',
+      classroom_id: 'r',
+    });
+    expect(canSuggestTutors(values)).toBe(true);
+    expect(canSuggestTutors({ ...values, subjectId: '' })).toBe(false);
+    expect(canSuggestTutors({ ...values, end: '15:00' })).toBe(false);
+  });
+
+  it('is hidden without schedule.assign', async () => {
+    stub(SCHEDULER);
+    app = await renderApp('/schedule/new');
+    expect(buttonNamed(main(), 'Schedule session')).toBeDefined();
+    expect(
+      [...main().querySelectorAll('button')].some(
+        (b) => b.textContent === 'Suggest tutors',
+      ),
+    ).toBe(false);
+  });
+
+  it('lists the tutors in rank order and Choose fills the picker', async () => {
+    let query: URLSearchParams | undefined;
+    const api = stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: (request) => {
+        query = new URL(request.url).searchParams;
+        return jsonResponse(200, TUTOR_SUGGESTIONS);
+      },
+    });
+    app = await renderApp('/schedule/new');
+    const button = buttonNamed(main(), 'Suggest tutors');
+    expect(button.disabled).toBe(true);
+    fillSlot();
+    expect(button.disabled).toBe(false);
+
+    await click(button);
+    await settle();
+
+    expect(Object.fromEntries(query!)).toEqual({
+      subject_id: SUBJECTS[0]!.id,
+      starts_at: '2031-01-06T16:00:00.000Z',
+      ends_at: '2031-01-06T17:00:00.000Z',
+      classroom_id: CLASSROOMS[0]!.id,
+    });
+    const section = panel()!;
+    const rows = [...section.querySelectorAll('li')].map(
+      (li) => li.textContent,
+    );
+    expect(rows).toEqual([
+      'Diego TorresPrefers this room0 min this week · 0 min that dayChoose',
+      'Carmen Ruiz2 h 30 min this week · 1 h that day · limit 15 h/week · limit 4 h/dayChoose',
+      'Elena Vega5 h this week · 0 min that dayChoose',
+    ]);
+    expect(section.textContent).toContain('3 of 4 eligible tutors');
+
+    await click(buttonNamed(section, 'Choose Diego Torres'));
+
+    const tutor = [...main().querySelectorAll('label')]
+      .filter((l) => l.textContent === 'Tutor')
+      .map((l) => document.getElementById(l.htmlFor))[0] as HTMLSelectElement;
+    expect(tutor.value).toBe(TUTORS[1]!.id);
+    expect(panel()).toBeUndefined();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    expect(document.activeElement).toBe(tutor);
+    expect(main().querySelector('[aria-live="polite"]')?.textContent).toBe(
+      'Tutor set to Diego Torres. Review the form and schedule the session.',
+    );
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  it('clears a shown panel when the slot changes', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await click(buttonNamed(main(), 'Suggest tutors'));
+    await settle();
+    expect(panel()).toBeDefined();
+
+    typeInto(fieldByLabel(main(), 'End'), '11:30');
+
+    expect(panel()).toBeUndefined();
+    await click(buttonNamed(main(), 'Suggest tutors'));
+    await settle();
+    choose('Classroom', '');
+    expect(panel()).toBeUndefined();
+  });
+
+  it('shows the empty and error states, and a 422 on the fields', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, NO_TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await click(buttonNamed(main(), 'Suggest tutors'));
+    await settle();
+    expect(panel()!.textContent).toContain(
+      'No tutor is qualified, available and free at this time.',
+    );
+    app.unmount();
+
+    stub(ASSIGNER, { [SUGGEST_TUTORS]: () => problem(500, 'internal_error') });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await click(buttonNamed(main(), 'Suggest tutors'));
+    await settle();
+    expect(panel()!.querySelector('[role="alert"]')).not.toBeNull();
+    app.unmount();
+
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () =>
+        new Response(
+          JSON.stringify({
+            type: 'about:blank',
+            title: 'Unprocessable Content',
+            status: 422,
+            code: 'validation_error',
+            request_id: 'req-422',
+            errors: [
+              {
+                path: ['query', 'subject_id'],
+                code: 'subject_inactive',
+                message: 'x',
+              },
+            ],
+          }),
+          {
+            status: 422,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await click(buttonNamed(main(), 'Suggest tutors'));
+    await settle();
+    expect(panel()).toBeUndefined();
+    expect(main().textContent).toContain(
+      'This subject or its education level is inactive. Choose another one.',
     );
   });
 });

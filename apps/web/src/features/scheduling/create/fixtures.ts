@@ -5,11 +5,12 @@ import type {
   SchedulingWarning,
   SlotSuggestions,
   SubjectOption,
+  TutorSuggestionList,
 } from './api';
 import type { ScheduleValues } from './rules';
 
 // Sample data for the scheduling form's tests and stories (#48 F4, #49 F5,
-// #50 C3).
+// #50 C3, #51 G3).
 
 export const ANA: Option = {
   id: '00000000-0000-4000-8000-0000000004a1',
@@ -197,3 +198,45 @@ export const SUGGESTIONS: SlotSuggestions = {
 
 /** No free time in the default window. */
 export const NO_SUGGESTIONS: SlotSuggestions = { ...SUGGESTIONS, slots: [] };
+
+/** Three eligible tutors (#51 G3): one prefers the room, one has limits. */
+export const TUTOR_SUGGESTIONS: TutorSuggestionList = {
+  items: [
+    {
+      rank: 1,
+      tutor: { id: TUTORS[1]!.id, display_name: 'Diego Torres' },
+      weekly_minutes: 0,
+      daily_minutes: 0,
+      weekly_limit_minutes: null,
+      daily_limit_minutes: null,
+      prefers_classroom: true,
+    },
+    {
+      rank: 2,
+      tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
+      weekly_minutes: 150,
+      daily_minutes: 60,
+      weekly_limit_minutes: 900,
+      daily_limit_minutes: 240,
+      prefers_classroom: false,
+    },
+    {
+      rank: 3,
+      tutor: {
+        id: '00000000-0000-4000-8000-0000000004c3',
+        display_name: 'Elena Vega',
+      },
+      weekly_minutes: 300,
+      daily_minutes: 0,
+      weekly_limit_minutes: null,
+      daily_limit_minutes: null,
+      prefers_classroom: false,
+    },
+  ],
+  eligible_count: 4,
+};
+
+export const NO_TUTOR_SUGGESTIONS: TutorSuggestionList = {
+  items: [],
+  eligible_count: 0,
+};

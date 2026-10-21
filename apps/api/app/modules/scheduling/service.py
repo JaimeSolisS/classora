@@ -41,6 +41,12 @@ The calendar (#57, :mod:`~app.modules.scheduling.calendar_read`):
 :func:`list_calendar_sessions` (the range read with its read-time markers,
 :mod:`~app.modules.scheduling.markers`) and :func:`list_tutor_options`.
 
+Tutor suggestions (#51, :mod:`~app.modules.scheduling.tutor_suggestions`;
+the pure eligibility and workload ranking rule in
+:mod:`~app.modules.scheduling.eligibility`): :func:`suggest_tutors` (the one
+implementation, for #52 / #55 too), :func:`suggest_for_slot` and
+:func:`suggest_replacements` (the two routes' reads).
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -77,6 +83,9 @@ from app.modules.scheduling.conflicts import SOFT as SOFT
 from app.modules.scheduling.conflicts import WARNING as WARNING
 from app.modules.scheduling.conflicts import Conflict as Conflict
 from app.modules.scheduling.conflicts import sort_conflicts as sort_conflicts
+from app.modules.scheduling.errors import (
+    ClassSessionNotAssignableError as ClassSessionNotAssignableError,
+)
 from app.modules.scheduling.errors import (
     InvalidSessionTimesError as InvalidSessionTimesError,
 )
@@ -145,6 +154,15 @@ from app.modules.scheduling.times import (
 )
 from app.modules.scheduling.times import (
     validate_session_bounds as validate_session_bounds,
+)
+from app.modules.scheduling.tutor_suggestions import (
+    suggest_for_slot as suggest_for_slot,
+)
+from app.modules.scheduling.tutor_suggestions import (
+    suggest_replacements as suggest_replacements,
+)
+from app.modules.scheduling.tutor_suggestions import (
+    suggest_tutors as suggest_tutors,
 )
 from app.modules.scheduling.workload import BREAK_MAX as BREAK_MAX
 from app.modules.scheduling.workload import (

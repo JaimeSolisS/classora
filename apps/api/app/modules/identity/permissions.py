@@ -84,9 +84,12 @@ TUTOR_MANAGE = "tutor.manage"
 # staff.qualification approval requests.
 QUALIFICATION_REVIEW = "qualification.review"
 # Class sessions (#48; ADR-0005 D9): who reads every session and who
-# schedules them. schedule.assign is #52's.
+# schedules them. schedule.assign (#51, its first user; #52 reuses it): who
+# sees tutor eligibility and replacement suggestions and assigns tutors
+# (Owner, Administrator, Academic coordinator; not delegable).
 SCHEDULE_VIEW = "schedule.view"
 SCHEDULE_MANAGE = "schedule.manage"
+SCHEDULE_ASSIGN = "schedule.assign"
 # Course templates (#64, owner decision E3 (a)): Finance Staff read them
 # (pricing later); tutors and families see a cohort's syllabus through the
 # cohort's record policies (#65, #67), not through these.
@@ -125,6 +128,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(QUALIFICATION_REVIEW),
     PermissionDef(SCHEDULE_VIEW),
     PermissionDef(SCHEDULE_MANAGE),
+    PermissionDef(SCHEDULE_ASSIGN),
     PermissionDef(COURSE_VIEW),
     PermissionDef(COURSE_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
@@ -164,6 +168,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 QUALIFICATION_REVIEW,
                 SCHEDULE_VIEW,
                 SCHEDULE_MANAGE,
+                SCHEDULE_ASSIGN,
                 COURSE_VIEW,
                 COURSE_MANAGE,
             }
@@ -175,6 +180,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 GUARDIAN_VIEW,
                 TUTOR_VIEW,
                 SCHEDULE_VIEW,
+                SCHEDULE_ASSIGN,
                 COURSE_VIEW,
                 COURSE_MANAGE,
             }

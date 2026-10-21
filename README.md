@@ -163,6 +163,10 @@ unless a bullet says otherwise.
 - When a time conflicts, the page suggests the nearest free times;
   exceeding a tutor's daily or weekly teaching limit, or a too-short break,
   gives a warning but doesn't block.
+- The system suggests eligible tutors (qualified, available and free at that
+  time) ranked by weekly workload, including replacements for an existing
+  session; on the "Schedule a session" page, "Suggest tutors" fills in the
+  chosen one.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned (tutors can't accept offers yet).
 

@@ -1540,6 +1540,26 @@
       "empty": "No hay otros horarios libres entre el {{from}} y el {{to}}.",
       "slot": "{{date}}, {{start}} a {{end}}",
       "chosen": "Horario cambiado a {{date}}, {{start}} a {{end}}. Revísalo y programa la sesión."
+    },
+    "tutorSuggestions": {
+      "button": "Sugerir tutores",
+      "heading": "Tutores sugeridos",
+      "intro": "Tutores habilitados para la materia, disponibles y libres a esta hora, primero los de semana más ligera. Elegir uno asigna el tutor en el formulario; no programa la sesión.",
+      "loading": "Buscando tutores…",
+      "empty": "Ningún tutor está habilitado, disponible y libre a esta hora.",
+      "shown_one": "{{count}} tutor elegible.",
+      "shown_many": "{{shown}} de {{count}} tutores elegibles, primero la semana más ligera.",
+      "shown_other": "{{shown}} de {{count}} tutores elegibles, primero la semana más ligera.",
+      "workload": "{{week}} esta semana · {{day}} ese día",
+      "weeklyLimit": "límite {{duration}}/semana",
+      "dailyLimit": "límite {{duration}}/día",
+      "prefersRoom": "Prefiere esta aula",
+      "choose": "Elegir",
+      "chooseTutor": "Elegir a {{name}}",
+      "chosen": "Tutor cambiado a {{name}}. Revisa el formulario y programa la sesión.",
+      "hours": "{{hours}} h",
+      "minutes": "{{minutes}} min",
+      "hoursMinutes": "{{hours}} h {{minutes}} min"
     }
   },
   "courses": {

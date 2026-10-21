@@ -109,6 +109,7 @@ Codes in use today:
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
 | `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). See Class sessions. |
+| `class_session_not_assignable` | 409 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` for a session that is `completed`, `cancelled` or `skipped_closure`: it can no longer take a tutor (see Class sessions, "Tutor suggestions"). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1843,7 +1844,13 @@ and `suggestions.py` (pure rules), `workload_sessions.py` and
 `slot_search.py` (the reads). Only one-off **individual** sessions so far;
 groups, courses, recurrence and offers come with later M4 issues. The
 calendar's range read and tutor options (M4-12, #57) are in
-`calendar_read.py` and `markers.py`.
+`calendar_read.py` and `markers.py`. Tutor suggestions (M4-06, #51; spec
+§3, W1.3): `eligibility.py` (the pure rule) and `tutor_suggestions.py`.
+
+`schedule.assign` (M4-06, ADR-0005 D9; not delegable) is held by the Owner,
+Administrators and Academic coordinators: it covers seeing tutor
+eligibility and replacement suggestions, and (M4-07) offering a session to
+a tutor. Finance staff, tutors, students and guardians don't hold it.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -1852,6 +1859,8 @@ calendar's range read and tutor options (M4-12, #57) are in
 | `GET /api/v1/class-sessions?from=…&to=…` | `require("schedule.view")` (same four roles) | The calendar's range read (#57), below. |
 | `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements. |
 | `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
+| `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
+| `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
 
 **Body** (unknown fields are `422`):
 
@@ -2077,6 +2086,82 @@ whose username or display name contains `q` (not case-sensitive), by display
 name, inactive ones included (the UI labels them). No contact data, so
 Finance staff, who don't hold `tutor.view`, can filter the calendar by
 tutor. At most 3 statements.
+
+**Tutor suggestions** (#51). Both routes are read-only and **advisory**:
+nothing is assigned, offered, locked, audited or notified, and creating or
+offering a session re-runs every check. A tutor is **eligible** for a slot
+(subject, start, end, optional classroom) when they:
+
+1. hold an **approved** qualification for the subject (pending, rejected,
+   cancelled and revoked ones never count, checked live; a subject belongs
+   to one education level, so this is also the level check);
+2. hold the `tutor` role with an `active` account (suspended, archived and
+   pending invitees are left out);
+3. are **available** for the whole slot: their weekly windows and dated
+   exceptions (`time_off`, `outside_weekly_availability`; a tutor without
+   windows is never available). A center closure, operating hours, room
+   windows and the booking notice are **slot** conflicts, not tutor ones:
+   they never empty the list (the create reports them);
+4. have **no overlapping** session as tutor in `offered`, `confirmed` or
+   `completed` (`starts_at < end AND ends_at > start`; back-to-back is fine;
+   `unassigned`, `cancelled`, `skipped_closure` and `conflict` sessions
+   never block).
+
+Teaching limits, breaks, the student's overlap and level, and earlier
+declined offers are not applied.
+
+**Workload ranking rule.** For each eligible tutor, `weekly_minutes` is the
+sum of `scheduled_minutes` of their sessions in `offered`, `confirmed` or
+`completed` whose **local start date** (center zone) is in the ISO week
+(Monday to Sunday) of the slot's local date, and `daily_minutes` the same
+for the slot's local date (the bounds are local midnights, so a DST week has
+167 or 169 hours). Tutors are ordered by `weekly_minutes` ascending, then
+`daily_minutes` ascending, then those who prefer the slot's classroom first
+(#197 preferred classrooms; without a classroom nobody does), then display
+name (case-folded), then user id. The teaching limits are returned for
+display only: they never drop or reorder a tutor.
+
+`GET /api/v1/tutor-suggestions` query: `subject_id` (required), `starts_at`
+and `ends_at` (required instants with an offset; send `+` percent-encoded),
+`classroom_id` (optional), `limit` (1–50, default 10); unknown parameters
+are `422`. Order: `401`/`403` → `422` for a missing or malformed parameter or
+`limit` → `422` for the bounds, as the create (`naive_datetime`,
+`not_whole_minutes`, `ends_before_start`, `duration_out_of_range`,
+`crosses_local_date`; on `["query", "starts_at"]` or `["query",
+"ends_at"]`) → `422` for the references, all at once (`subject_unknown` /
+`subject_inactive` on `subject_id`, `classroom_unknown` /
+`classroom_inactive` on `classroom_id`) → `200`.
+
+`GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` query:
+`limit` (1–50, default 10). The slot is the session's own subject, times and
+classroom; the session itself is left out of the overlap and the workload,
+and its current tutor (an `offered`, `confirmed` or `conflict` session's
+`tutor_user_id`) is never listed. An `unassigned` session excludes nobody.
+A session whose subject became inactive still gets suggestions. Order:
+`401`/`403` → `422` (`limit`) → `404 not_found` → `409
+class_session_not_assignable` (`completed`, `cancelled`,
+`skipped_closure`) → `200`.
+
+Response (`TutorSuggestionList`):
+
+```json
+{"items": [{"rank": 1,
+            "tutor": {"id": "…", "display_name": "…"},
+            "weekly_minutes": 120, "daily_minutes": 60,
+            "weekly_limit_minutes": 900, "daily_limit_minutes": null,
+            "prefers_classroom": false}],
+ "eligible_count": 3}
+```
+
+`items` holds the first `limit` eligible tutors in ranking order (`rank`
+from 1); `eligible_count` counts them all. Nobody eligible is `200` with
+`items: []` and `eligible_count: 0`; ineligible tutors and their reasons are
+never listed. `scheduling.service.suggest_tutors` is the one implementation
+(for M4-07 offers and M4-10 substitutions too); it takes at most `8 + 6 × C`
+statements, `C` being the qualified active tutors (tutors without the
+qualification cost nothing). The web app's "Schedule a session" form has a
+"Suggest tutors" button for holders of `schedule.assign`; the replacement
+list has no screen yet (M4-07, M4-10, M4-12 use it).
 
 ### Course templates
 
