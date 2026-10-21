@@ -42,6 +42,7 @@ from app.modules.identity.models import (
     UserDelegation,
     UserRole,
 )
+from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
 from app.modules.staff.models import (
     TutorAvailabilityException,
     TutorAvailabilitySettings,
@@ -82,6 +83,8 @@ def test_the_guard_scans_the_real_audited_models():
         AcademicPeriod,
         ApprovalRequest,
         BusinessSettings,
+        ClassSession,
+        ClassSessionParticipant,
         Classroom,
         ClassroomAvailabilityWindow,
         Closure,
@@ -117,7 +120,8 @@ def test_the_guard_scans_the_real_audited_models():
     # Academic periods and closures (#38 D1), classrooms and their windows
     # (#39 C1), approval requests (#40 E1), tutor profiles (#43 D1),
     # qualifications (#44 E1), availability (#45 E1) and preferred
-    # classrooms (#197): the same.
+    # classrooms (#197), class sessions and their participants (#47 D6): the
+    # same.
     for unmasked in (
         ApprovalRequest,
         EducationLevel,
@@ -139,6 +143,8 @@ def test_the_guard_scans_the_real_audited_models():
         TutorAvailabilityWindow,
         TutorAvailabilityException,
         TutorPreferredClassroom,
+        ClassSession,
+        ClassSessionParticipant,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()
