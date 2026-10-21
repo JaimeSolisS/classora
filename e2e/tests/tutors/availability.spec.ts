@@ -83,7 +83,7 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
   await addWindow(page, 1, { weekday: '1', start: '16:00', end: '20:00' });
   await addWindow(page, 2, { weekday: '3', start: '16:00', end: '18:00' });
   await section
-    .getByRole('button', { name: common.tutors.availability.save })
+    .getByRole('button', { name: common.tutors.availability.save, exact: true })
     .click();
   await expect(
     section
