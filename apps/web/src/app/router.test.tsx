@@ -81,6 +81,7 @@ describe('route tree', () => {
       'tutors',
       'tutors/:userId',
       'settings',
+      'settings/scheduling-policies',
       'account/password',
       'privacy-notice',
       '*',
@@ -124,10 +125,12 @@ describe('route tree', () => {
     expect(children[25]!.handle).toEqual({ permission: 'tutor.view' });
     // #37 H3.
     expect(children[26]!.handle).toEqual({ permission: 'settings.manage' });
-    expect(children[27]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[28]!.id).toBe('privacy-notice');
+    // #61 F1.
+    expect(children[27]!.handle).toEqual({ permission: 'settings.manage' });
     expect(children[28]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[29]!.id).toBe('privacy-notice');
+    expect(children[29]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

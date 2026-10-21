@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { StoryRouter } from '@/test/StoryRouter';
 import { SETTINGS } from './fixtures';
 import { SettingsView } from './SettingsPage';
 
@@ -20,6 +21,13 @@ const meta = {
     onSubmit: fn(() => Promise.resolve()),
     onReload: fn(() => Promise.resolve()),
   },
+  // SettingsTabs (#61 F1) links need a router.
+  render: (args) => (
+    <StoryRouter
+      path="/settings"
+      routes={[{ path: '*', element: <SettingsView {...args} /> }]}
+    />
+  ),
 } satisfies Meta<typeof SettingsView>;
 
 export default meta;

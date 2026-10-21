@@ -11,18 +11,35 @@
   without a row is closed. Not versioned: it is edited only through the
   settings ``PATCH``, whose ``business_settings.version`` covers it.
 
-Both are :class:`~app.core.audit.Audited` with nothing excluded or masked
-(#22); none of their columns is personal data.
+- ``scheduling_policies`` (#61): the center's scheduling policy as
+  append-only, **effective-dated** versions (notice windows, the offer
+  response time and the makeup rules). A version is in force from its unique
+  ``effective_from`` until the next version's. Migration 0030 inserts version
+  1 (effective from 2000-01-01, so a policy applies to every instant). Rows
+  are never updated: not versioned; only an upcoming version may be deleted.
+  Not a time-zone dependency (#37 D): its instants are moments chosen by an
+  administrator, not occurrences computed from local time.
+
+All three are :class:`~app.core.audit.Audited` with nothing excluded or
+masked (#22); none of their columns is personal data.
 
 The contact patterns are the #31 ones, copied verbatim (ADR-0002: no import of
 identity's models); ``tests/unit/test_business_settings_schemas.py`` keeps
 them equal.
 """
 
-from datetime import time
+from datetime import datetime, time
 from typing import Final
 
-from sqlalchemy import Boolean, CheckConstraint, SmallInteger, String, Time, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    SmallInteger,
+    String,
+    Time,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -40,6 +57,14 @@ PHONE_PATTERN: Final = r"^\+?[0-9][0-9 ().-]{5,30}[0-9]$"
 
 FIRST_WEEKDAY: Final = 1
 LAST_WEEKDAY: Final = 7
+
+# Scheduling policy ranges (#61 A1), inclusive.
+NOTICE_HOURS_MIN: Final = 0
+NOTICE_HOURS_MAX: Final = 336
+RESPONSE_HOURS_MIN: Final = 1
+RESPONSE_HOURS_MAX: Final = 168
+MAKEUP_WINDOW_DAYS_MIN: Final = 1
+MAKEUP_WINDOW_DAYS_MAX: Final = 365
 
 
 class BusinessSettings(Audited, VersionedMixin, Model):
@@ -88,3 +113,42 @@ class OperatingHours(Audited, Model):
     weekday: Mapped[int] = mapped_column(SmallInteger, unique=True)
     opens_at: Mapped[time] = mapped_column(Time(timezone=False))
     closes_at: Mapped[time] = mapped_column(Time(timezone=False))
+
+
+def _between(column: str, low: int, high: int) -> str:
+    return f"{column} BETWEEN {low} AND {high}"
+
+
+class SchedulingPolicy(Audited, Model):
+    __tablename__ = "scheduling_policies"
+    __table_args__ = (
+        CheckConstraint(
+            _between("booking_notice_hours", NOTICE_HOURS_MIN, NOTICE_HOURS_MAX),
+            name="booking_notice_hours_range",
+        ),
+        CheckConstraint(
+            _between("change_notice_hours", NOTICE_HOURS_MIN, NOTICE_HOURS_MAX),
+            name="change_notice_hours_range",
+        ),
+        CheckConstraint(
+            _between("response_hours", RESPONSE_HOURS_MIN, RESPONSE_HOURS_MAX),
+            name="response_hours_range",
+        ),
+        CheckConstraint(
+            _between(
+                "makeup_window_days", MAKEUP_WINDOW_DAYS_MIN, MAKEUP_WINDOW_DAYS_MAX
+            ),
+            name="makeup_window_days_range",
+        ),
+    )
+
+    effective_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), unique=True
+    )
+    booking_notice_hours: Mapped[int] = mapped_column(SmallInteger)
+    change_notice_hours: Mapped[int] = mapped_column(SmallInteger)
+    response_hours: Mapped[int] = mapped_column(SmallInteger)
+    makeup_after_on_time: Mapped[bool] = mapped_column(Boolean)
+    makeup_after_late: Mapped[bool] = mapped_column(Boolean)
+    makeup_after_no_show: Mapped[bool] = mapped_column(Boolean)
+    makeup_window_days: Mapped[int] = mapped_column(SmallInteger)

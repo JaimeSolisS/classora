@@ -568,6 +568,29 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/scheduling-policies"
+access = "authenticated"
+# Every signed-in role reads the policy (#61 E2): nothing in it is personal.
+
+[[route]]
+method = "POST"
+path = "/api/v1/scheduling-policies"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/scheduling-policies/{policy_id}"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# The placeholder id is no policy version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/students"
 access = "permission"
 permission = "student.view"

@@ -16,7 +16,11 @@ import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
 from app.modules.administration.models import ApprovalRequest
-from app.modules.administration.settings_models import BusinessSettings, OperatingHours
+from app.modules.administration.settings_models import (
+    BusinessSettings,
+    OperatingHours,
+    SchedulingPolicy,
+)
 from app.modules.catalog.models import (
     AcademicPeriod,
     Classroom,
@@ -94,6 +98,7 @@ def test_the_guard_scans_the_real_audited_models():
         OperatingHours,
         PrivacyNoticeAcceptance,
         RegistrationRequest,
+        SchedulingPolicy,
         Student,
         StudentEmergencyContact,
         StudentGuardian,

@@ -1203,6 +1203,112 @@
       "addressTooLong": "Use at most 300 characters.",
       "timeRequired": "Enter a time.",
       "closesAfterOpens": "Closing time must be after opening time."
+    },
+    "tabs": {
+      "label": "Settings sections",
+      "general": "General",
+      "schedulingPolicies": "Scheduling policies"
+    },
+    "schedulingPolicies": {
+      "title": "Scheduling policies",
+      "help": "Rules for cancellations, no-shows, makeups, offers and bookings. A change applies from the moment it takes effect; earlier classes keep the rules that were in force then.",
+      "loading": "Loading the scheduling policy…",
+      "current": {
+        "title": "In force now",
+        "since": "In force since {{date}}."
+      },
+      "rules": {
+        "changeNotice": "Cancellations and reschedules less than {{duration}} before the class are late.",
+        "changeNoticeNone": "Cancellations and reschedules before the class are never late.",
+        "noShow": "A cancellation at or after the start is a no-show.",
+        "response": "Tutors have {{duration}} to answer an offer.",
+        "booking": "Bookings need {{duration}} of notice.",
+        "bookingNone": "Bookings need no notice.",
+        "makeups": "Makeups: allowed after {{cases}}, within {{duration}}.",
+        "makeupsNone": "Makeups: not allowed after a family's cancellation or a no-show.",
+        "excused": "Changes made by the tutor or the center are excused, and a makeup is allowed."
+      },
+      "cases": {
+        "onTime": "an on-time cancellation",
+        "late": "a late cancellation",
+        "noShow": "a no-show"
+      },
+      "units": {
+        "hour": "1 hour",
+        "hours": "{{count}} hours",
+        "day": "1 day",
+        "days": "{{count}} days"
+      },
+      "form": {
+        "title": "Change policy",
+        "help": "Prefilled from the latest version. Saving publishes a new version; versions are never edited.",
+        "makeups": "Makeups",
+        "save": "Save",
+        "saving": "Saving…"
+      },
+      "fields": {
+        "changeNoticeHours": "Cancellation notice (hours)",
+        "changeNoticeHelp": "For a family's cancellations and reschedules. 0 means a change before the start is never late.",
+        "bookingNoticeHours": "Booking notice (hours)",
+        "bookingNoticeHelp": "0 means bookings need no notice.",
+        "responseHours": "Offer response time (hours)",
+        "makeupWindowDays": "Makeup window (days)",
+        "makeupAfterOnTime": "Allow a makeup after an on-time cancellation",
+        "makeupAfterLate": "Allow a makeup after a late cancellation",
+        "makeupAfterNoShow": "Allow a makeup after a no-show"
+      },
+      "labels": {
+        "changeNoticeHours": "Cancellation notice",
+        "bookingNoticeHours": "Booking notice",
+        "responseHours": "Offer response time",
+        "makeupAfterOnTime": "Makeup after on-time cancellation",
+        "makeupAfterLate": "Makeup after late cancellation",
+        "makeupAfterNoShow": "Makeup after no-show",
+        "makeupWindowDays": "Makeup window"
+      },
+      "takesEffect": {
+        "legend": "Takes effect",
+        "now": "Immediately",
+        "date": "From date",
+        "dateLabel": "Start date",
+        "dateHelp": "From the start of this day in the center's time zone ({{zone}})."
+      },
+      "saved": "Saved.",
+      "deleted": "Deleted.",
+      "reload": "Reload",
+      "yes": "Yes",
+      "no": "No",
+      "change": "{{label}}: {{before}} → {{after}}",
+      "value": "{{label}}: {{value}}",
+      "upcoming": {
+        "title": "Upcoming changes",
+        "empty": "No upcoming changes.",
+        "takesEffect": "Takes effect",
+        "changes": "Changed values",
+        "noChanges": "No changes",
+        "actions": "Actions",
+        "delete": "Delete",
+        "deleteFor": "Delete the change from {{date}}"
+      },
+      "deleteDialog": {
+        "title": "Delete this change?",
+        "body": "The change from {{date}} will not take effect.",
+        "confirm": "Delete change"
+      },
+      "history": {
+        "title": "History",
+        "empty": "No earlier versions.",
+        "from": "Effective from",
+        "until": "Until",
+        "values": "Rules"
+      },
+      "validation": {
+        "noticeRange": "Enter a whole number from 0 to 336.",
+        "responseRange": "Enter a whole number from 1 to 168.",
+        "windowRange": "Enter a whole number from 1 to 365.",
+        "dateRequired": "Choose a date.",
+        "dateAfterToday": "Choose a date after today."
+      }
     }
   },
   "notifications": {

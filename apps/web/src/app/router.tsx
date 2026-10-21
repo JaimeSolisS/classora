@@ -9,6 +9,7 @@ import { PeriodsPage } from '@/features/catalog/PeriodsPage';
 import { ChangePasswordPage } from '@/features/account/password/ChangePasswordPage';
 import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
+import { SchedulingPoliciesPage } from '@/features/settings/SchedulingPoliciesPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { FamiliesPage } from '@/features/families/FamiliesPage';
 import { FamilyDetailPage } from '@/features/families/FamilyDetailPage';
@@ -231,6 +232,11 @@ export const routes: RouteObject[] = [
           {
             path: 'settings',
             element: <SettingsPage />,
+            handle: { permission: 'settings.manage' },
+          },
+          {
+            path: 'settings/scheduling-policies',
+            element: <SchedulingPoliciesPage />,
             handle: { permission: 'settings.manage' },
           },
           // Any signed-in user (#30 K1): no permission.
