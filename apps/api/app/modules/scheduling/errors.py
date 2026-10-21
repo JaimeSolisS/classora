@@ -133,3 +133,17 @@ class ReassignmentStillNeededError(AppError):
     status = 409
     code = "reassignment_still_needed"
     detail = "The session still has no tutor. Offer it to a tutor first."
+
+
+class SeriesNotOfferableError(AppError):
+    """``409 series_not_offerable`` (#233 C2 step 6): ``details.reason`` is
+    ``assigned`` (the series already has a tutor, pending or accepted) or
+    ``ended`` (no occurrence on or after the offer's ``from_date`` is still
+    to come)."""
+
+    status = 409
+    code = "series_not_offerable"
+    detail = "This series can't be offered to a tutor now."
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(details={"reason": reason})

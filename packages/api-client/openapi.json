@@ -9438,7 +9438,7 @@
             }
           },
           "409": {
-            "description": "An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created.",
+            "description": "An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable, details.reason = ended).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9466,7 +9466,7 @@
           "class-series"
         ],
         "summary": "Get Class Series",
-        "description": "One class series with its rule, references and the occurrences that\nstart now or later.",
+        "description": "One class series with its rule, references, tutor assignment and the\noccurrences that start now or later.",
         "operationId": "get_class_series_api_v1_class_series__class_series_id__get",
         "parameters": [
           {
@@ -9513,6 +9513,100 @@
           },
           "404": {
             "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-series/{class_series_id}/offers": {
+      "post": {
+        "tags": [
+          "class-series"
+        ],
+        "summary": "Offer Class Series",
+        "description": "Offer a series without a tutor to one, from a local date (default:\nthe later of its start and today): every `unassigned` occurrence from\nthat date that has not started becomes `offered` to them in one offer,\nand the tutor is notified. Occurrences created later join the offer;\nonce accepted they are created `confirmed`. Each covered occurrence is\nchecked for the new tutor: overlap (hard), availability, qualification,\noperating hours and the room's availability; there is no override, so\nany conflict refuses the offer. Offering closes the inbox items of the\nseries' earlier declined or expired offers. `warnings` is always\nempty.",
+        "operationId": "offer_class_series_api_v1_class_series__class_series_id__offers_post",
+        "parameters": [
+          {
+            "name": "class_series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Series Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSeriesOfferCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOfferCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The series changed since it was read (version_conflict); it already has a tutor (series_not_offerable, details.reason = assigned) or no occurrence from `from_date` is still to come (series_not_offerable, details.reason = ended); or the tutor breaks scheduling rules on an occurrence (scheduling_conflict, every conflict of every covered occurrence with `details.occurrence_start` and `details.date`). Nothing is changed.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -10328,13 +10422,34 @@
             ],
             "title": "Decline Note"
           },
+          "series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferSeries"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The series of a series offer; null for a session offer."
+          },
+          "session_count": {
+            "type": "integer",
+            "title": "Session Count",
+            "description": "How many sessions the offer covers."
+          },
           "sessions": {
             "items": {
               "$ref": "#/components/schemas/OfferSession"
             },
             "type": "array",
             "title": "Sessions",
-            "description": "The covered sessions, by start."
+            "description": "The covered sessions, by start: every one for a session offer, the first 10 for a series offer."
+          },
+          "sessions_truncated": {
+            "type": "boolean",
+            "title": "Sessions Truncated",
+            "description": "More sessions are covered than `sessions` lists."
           }
         },
         "type": "object",
@@ -10348,10 +10463,13 @@
           "respond_by",
           "responded_at",
           "decline_note",
-          "sessions"
+          "series",
+          "session_count",
+          "sessions",
+          "sessions_truncated"
         ],
         "title": "AssignmentOfferItem",
-        "description": "One assignment offer (#52 G1)."
+        "description": "One assignment offer (#52 G1; a series offer, #233 F1)."
       },
       "AssignmentOfferPage": {
         "properties": {
@@ -11096,6 +11214,19 @@
           },
           "recurrence": {
             "$ref": "#/components/schemas/SeriesRecurrence"
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "With a tutor: an earlier deadline for the series offer, after now and no later than the default; truncated to whole minutes."
           }
         },
         "additionalProperties": false,
@@ -11193,6 +11324,17 @@
             "title": "Last Occurrence On",
             "description": "The local date of the last occurrence; null: open-ended."
           },
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesAssignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tutor assignment; null when the series has no tutor."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -11239,6 +11381,7 @@
           "recurrence",
           "rrule",
           "last_occurrence_on",
+          "assignment",
           "version",
           "created_at",
           "updated_at",
@@ -11329,6 +11472,17 @@
             "title": "Last Occurrence On",
             "description": "The local date of the last occurrence; null: open-ended."
           },
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesAssignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tutor assignment; null when the series has no tutor."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -11367,6 +11521,7 @@
           "recurrence",
           "rrule",
           "last_occurrence_on",
+          "assignment",
           "version",
           "created_at",
           "updated_at",
@@ -11374,6 +11529,54 @@
         ],
         "title": "ClassSeriesDetail",
         "description": "One class series (``GET /api/v1/class-series/{id}``). The web app\nnever parses ``rrule``: it reads ``recurrence``."
+      },
+      "ClassSeriesOfferCreate": {
+        "properties": {
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The series' version, as last read."
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date",
+            "description": "The local date the offer covers from (not before today); default: the later of the series' start and today."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "An earlier deadline for the tutor's answer, after now and no later than the default; truncated to whole minutes."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tutor_user_id",
+          "version"
+        ],
+        "title": "ClassSeriesOfferCreate",
+        "description": "Offer a series without a tutor to one\n(``POST /api/v1/class-series/{id}/offers``, #233 C2). No ``override``\n(M4-09c): any conflict refuses the offer."
       },
       "ClassSessionCalendar": {
         "properties": {
@@ -14682,7 +14885,108 @@
       },
       "OfferScopeCode": {
         "type": "string",
-        "const": "session"
+        "enum": [
+          "session",
+          "series"
+        ]
+      },
+      "OfferSeries": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/OfferSessionSubject"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "description": "ISO weekdays (1 = Monday)."
+          },
+          "interval": {
+            "type": "integer",
+            "title": "Interval"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone"
+          },
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date",
+            "description": "The local date the offer covers from."
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "last_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Occurrence On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "weekdays",
+          "interval",
+          "start_time",
+          "duration_minutes",
+          "time_zone",
+          "from_date",
+          "until",
+          "count",
+          "last_occurrence_on"
+        ],
+        "title": "OfferSeries",
+        "description": "The series a series offer is for (#233 F1): its rule and the local\ndate the offer covers from. Times are local in ``time_zone``."
       },
       "OfferSession": {
         "properties": {
@@ -15399,6 +15703,14 @@
             "format": "uuid",
             "title": "Id"
           },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "session",
+              "series"
+            ],
+            "title": "Scope"
+          },
           "tutor": {
             "$ref": "#/components/schemas/SessionTutor"
           },
@@ -15411,11 +15723,12 @@
         "type": "object",
         "required": [
           "id",
+          "scope",
           "tutor",
           "respond_by"
         ],
         "title": "PendingOffer",
-        "description": "The pending offer of an ``offered`` session (#52 G3)."
+        "description": "The pending offer of an ``offered`` session (#52 G3): its own, or the\nseries offer that covers it (#233 F2)."
       },
       "PeriodType": {
         "type": "string",
@@ -16126,6 +16439,62 @@
           "weekly_limit_exceeded",
           "break_too_short"
         ]
+      },
+      "SeriesAssignment": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted"
+            ],
+            "title": "Status"
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/SessionTutor"
+          },
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date",
+            "description": "The local date it covers from."
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id",
+            "description": "The series offer; null for a series assigned before offers."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "tutor",
+          "from_date",
+          "offer_id",
+          "respond_by"
+        ],
+        "title": "SeriesAssignment",
+        "description": "The series' tutor assignment (#233 F2): ``pending`` while its series\noffer waits for an answer (``respond_by`` set), ``accepted`` after."
       },
       "SeriesOccurrence": {
         "properties": {

@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0035"
+HEAD = "0036"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -122,6 +122,15 @@ SERIES_SESSION_COLUMNS = [
     "conflict_codes",
 ]
 """The class_sessions columns revision 0035 adds (#53 B4)."""
+SERIES_OFFER_COLUMNS = {
+    "assignment_offers": {"class_series_id", "from_date"},
+    "class_series": {"assignment_status", "assignment_from"},
+}
+"""The columns revision 0036 adds (#233 A1, A2)."""
+SERIES_OFFER_INDEXES = {
+    "ix_assignment_offers_class_series_id",
+    "uq_assignment_offers_pending_series",
+}
 
 PROCRASTINATE_TABLES = [
     "procrastinate_events",
@@ -251,6 +260,9 @@ def test_history_is_linear_with_one_head():
     series = script.get_revision("0035")
     assert series.down_revision == "0034"
     assert Path(series.path).name == "0035_scheduling_class_series.py"
+    series_offers = script.get_revision("0036")
+    assert series_offers.down_revision == "0035"
+    assert Path(series_offers.path).name == "0036_scheduling_series_offers.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -4067,10 +4079,25 @@ def test_0030_adds_exactly_the_session_tables_and_downgrade_drops_them(
     assert version_nums(fresh_database_url) == [HEAD]
 
 
+def _of_0036(diff: Any) -> bool:
+    """A metadata difference that revision 0036 adds to existing tables (its
+    columns, indexes and foreign key); every caller of
+    :func:`_of_later_revision` is at an earlier revision."""
+    if diff[0] == "add_column":
+        return diff[3].name in SERIES_OFFER_COLUMNS.get(diff[2], set())
+    if diff[0] == "add_index":
+        return diff[1].name in SERIES_OFFER_INDEXES
+    if diff[0] == "add_fk":
+        return diff[1].name == "fk_assignment_offers_class_series_id_class_series"
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
-    their foreign key and unique constraint."""
+    their foreign key and unique constraint; and 0036's objects."""
+    if _of_0036(diff):
+        return True
     if diff[0] == "add_table":
         return diff[1].name in tables
     if diff[0] == "add_index":
@@ -4736,33 +4763,45 @@ def test_assignment_offers_columns_constraints_and_indexes(fresh_database_url):
         "respond_by": ("timestamp with time zone", "NO", None, None),
         "responded_at": ("timestamp with time zone", "YES", None, None),
         "decline_note": ("character varying", "YES", 500, None),
+        # 0036 (#233 A1)
+        "class_series_id": ("uuid", "YES", None, None),
+        "from_date": ("date", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     assert set(constraints) == {
         "pk_assignment_offers",
         "fk_assignment_offers_tutor_user_id_users",
         "fk_assignment_offers_offered_by_user_id_users",
+        "fk_assignment_offers_class_series_id_class_series",
         "ck_assignment_offers_scope_valid",
         "ck_assignment_offers_status_valid",
         "ck_assignment_offers_respond_by_after_offered",
         "ck_assignment_offers_responded_iff_answered",
         "ck_assignment_offers_decline_note_only_declined",
+        "ck_assignment_offers_series_iff_series_id",
+        "ck_assignment_offers_series_iff_from_date",
     }
     for name in (
         "fk_assignment_offers_tutor_user_id_users",
         "fk_assignment_offers_offered_by_user_id_users",
+        "fk_assignment_offers_class_series_id_class_series",
     ):
         assert "ON DELETE RESTRICT" in constraints[name]
+    assert "'series'" in constraints["ck_assignment_offers_scope_valid"]
     indexes = _indexes(fresh_database_url, table)
     assert set(indexes) == {
         "pk_assignment_offers",
         "ix_assignment_offers_tutor_user_id_status",
         "ix_assignment_offers_pending_respond_by",
+        "ix_assignment_offers_class_series_id",
+        "uq_assignment_offers_pending_series",
     }
-    assert (
-        "WHERE ((status)::text = 'pending'::text)"
-        in indexes["ix_assignment_offers_pending_respond_by"]
-    )
+    for name in (
+        "ix_assignment_offers_pending_respond_by",
+        "uq_assignment_offers_pending_series",
+    ):
+        assert "WHERE ((status)::text = 'pending'::text)" in indexes[name]
+    assert "UNIQUE" in indexes["uq_assignment_offers_pending_series"]
 
     sessions = "assignment_offer_sessions"
     assert set(_constraints(fresh_database_url, sessions)) == {
@@ -4814,14 +4853,17 @@ def _insert_offer(dsn: str, user_id: Any, **columns: Any) -> Any:
         "respond_by": datetime(2031, 1, 3, 12, tzinfo=UTC),
         "responded_at": None,
         "decline_note": None,
+        "class_series_id": None,
+        "from_date": None,
     } | columns
     [row] = run_sql(
         dsn,
         "INSERT INTO assignment_offers (scope, tutor_user_id, status, offered_at,"
-        " offered_by_user_id, respond_by, responded_at, decline_note)"
+        " offered_by_user_id, respond_by, responded_at, decline_note,"
+        " class_series_id, from_date)"
         " VALUES (:scope, :u, :status, :offered_at, :u,"
         " :respond_by, :responded_at,"
-        " :decline_note) RETURNING id",
+        " :decline_note, :class_series_id, :from_date) RETURNING id",
         {"u": user_id, **values},
     )
     return row.id
@@ -4847,7 +4889,7 @@ def _insert_offer(dsn: str, user_id: Any, **columns: Any) -> Any:
             },
             "decline_note_only_declined",
         ),
-        ({"scope": "series"}, "scope_valid"),
+        ({"scope": "other"}, "scope_valid"),
         (
             {"status": "draft", "responded_at": datetime(2031, 1, 2, 12, tzinfo=UTC)},
             "status_valid",
@@ -4974,7 +5016,8 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
     assert set(_columns(fresh_database_url, "class_sessions")) - columns_before == set(
         SERIES_SESSION_COLUMNS
     )
-    assert metadata_diff(fresh_database_url) == []
+    # Only 0036's objects differ.
+    assert [d for d in metadata_diff(fresh_database_url) if not _of_0036(d)] == []
     [row] = run_sql(
         fresh_database_url,
         "SELECT series_id, original_start, is_exception, conflict_codes"
@@ -5016,6 +5059,9 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         "count": ("smallint", "YES", None, None),
         "rrule": ("text", "NO", None, None),
         "last_occurrence_on": ("date", "YES", None, None),
+        # 0036 (#233 A2)
+        "assignment_status": ("character varying", "YES", 20, None),
+        "assignment_from": ("date", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     foreign_keys = {
@@ -5036,6 +5082,9 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
                 "interval_range",
                 "count_range",
                 "until_or_count",
+                "assignment_status_valid",
+                "assignment_iff_tutor",
+                "assignment_from_iff_status",
             )
         ),
     }
@@ -5142,3 +5191,160 @@ def test_the_occurrence_columns_are_checked(fresh_database_url):
         original_start=start + timedelta(days=2),
         is_exception=True,
     )
+
+
+# --- 0036: series offers (#233 A) -----------------------------------------------------
+
+
+def _user_row(dsn: str) -> uuid.UUID:
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES (:u, 'Tutora', 'active') RETURNING id",
+        {"u": f"series.tutor.{uuid.uuid4().hex[:8]}"},
+    )
+    return uuid.UUID(str(user.id))
+
+
+def test_0036_backfills_series_and_downgrade_removes_series_offers(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "0035")
+    subject = _subject_row(fresh_database_url)
+    tutor = _user_row(fresh_database_url)
+    with_tutor = _series(fresh_database_url, subject, tutor_user_id=None)
+    run_sql(
+        fresh_database_url,
+        "UPDATE class_series SET tutor_user_id = :t WHERE id = :id",
+        {"t": tutor, "id": with_tutor},
+    )
+    without_tutor = _series(fresh_database_url, subject)
+    offers_before = set(_columns(fresh_database_url, "assignment_offers"))
+    series_before = set(_columns(fresh_database_url, "class_series"))
+
+    command.upgrade(config, "0036")
+
+    assert metadata_diff(fresh_database_url) == []
+    for table, added in SERIES_OFFER_COLUMNS.items():
+        before = offers_before if table == "assignment_offers" else series_before
+        assert set(_columns(fresh_database_url, table)) - before == added
+    rows = {
+        row.id: (row.assignment_status, row.assignment_from)
+        for row in run_sql(
+            fresh_database_url,
+            "SELECT id, assignment_status, assignment_from FROM class_series",
+        )
+    }
+    assert rows == {
+        with_tutor: ("pending", date(2031, 1, 6)),
+        without_tutor: (None, None),
+    }
+    # A series offer and its covered row, then the downgrade deletes both.
+    offer = _insert_offer(
+        fresh_database_url,
+        tutor,
+        scope="series",
+        class_series_id=with_tutor,
+        from_date=date(2031, 1, 6),
+    )
+    _, session_id = _offer_refs(fresh_database_url)
+    run_sql(
+        fresh_database_url,
+        "INSERT INTO assignment_offer_sessions (offer_id, class_session_id)"
+        " VALUES (:o, :s)",
+        {"o": offer, "s": session_id},
+    )
+
+    command.downgrade(config, "0035")
+
+    assert version_nums(fresh_database_url) == ["0035"]
+    assert set(_columns(fresh_database_url, "assignment_offers")) == offers_before
+    assert set(_columns(fresh_database_url, "class_series")) == series_before
+    [left] = run_sql(
+        fresh_database_url,
+        "SELECT (SELECT count(*) FROM assignment_offers) AS offers,"
+        " (SELECT count(*) FROM assignment_offer_sessions) AS rows",
+    )
+    assert (left.offers, left.rows) == (0, 0)
+    with pytest.raises(IntegrityError, match="ck_assignment_offers_scope_valid"):
+        run_sql(
+            fresh_database_url,
+            "INSERT INTO assignment_offers (scope, tutor_user_id, offered_at,"
+            " offered_by_user_id, respond_by) VALUES ('series', :u,"
+            " '2031-01-01T12:00:00Z', :u, '2031-01-03T12:00:00Z')",
+            {"u": tutor},
+        )
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_series_offer_rows_are_checked(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = _subject_row(fresh_database_url)
+    tutor, _ = _offer_refs(fresh_database_url)
+    series = _series(fresh_database_url, subject)
+    monday = date(2031, 1, 6)
+
+    with pytest.raises(IntegrityError, match="series_iff_series_id"):
+        _insert_offer(fresh_database_url, tutor, scope="series", from_date=monday)
+    with pytest.raises(IntegrityError, match="series_iff_from_date"):
+        _insert_offer(fresh_database_url, tutor, scope="series", class_series_id=series)
+    with pytest.raises(IntegrityError, match="series_iff_series_id"):
+        _insert_offer(fresh_database_url, tutor, class_series_id=series)
+    with pytest.raises(IntegrityError, match="series_iff_from_date"):
+        _insert_offer(fresh_database_url, tutor, from_date=monday)
+    series_offer = {"scope": "series", "class_series_id": series, "from_date": monday}
+    _insert_offer(fresh_database_url, tutor, **series_offer)
+    with pytest.raises(
+        IntegrityError, match="uq_assignment_offers_pending_series"
+    ) as exc:
+        _insert_offer(fresh_database_url, tutor, **series_offer)
+    assert _sqlstate(exc.value) == "23505"
+    # Answered series offers don't count.
+    _insert_offer(
+        fresh_database_url,
+        tutor,
+        status="declined",
+        responded_at=datetime(2031, 1, 2, 12, tzinfo=UTC),
+        **series_offer,
+    )
+
+
+def test_the_series_assignment_is_tied_to_the_tutor(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    subject = _subject_row(fresh_database_url)
+    tutor = _user_row(fresh_database_url)
+    monday = date(2031, 1, 6)
+    insert = (
+        "INSERT INTO class_series (kind, subject_id, tutor_user_id, starts_on,"
+        " start_time, duration_minutes, time_zone, weekdays, interval, rrule,"
+        " assignment_status, assignment_from) VALUES ('individual', :s, :t,"
+        " :d, '16:00', 60, 'America/Mexico_City', '{1}', 1, 'FREQ=WEEKLY',"
+        " :status, :from_date)"
+    )
+
+    def insert_series(tutor_id: Any, status: Any, from_date: Any) -> None:
+        run_sql(
+            fresh_database_url,
+            insert,
+            {
+                "s": subject,
+                "t": tutor_id,
+                "d": monday,
+                "status": status,
+                "from_date": from_date,
+            },
+        )
+
+    with pytest.raises(IntegrityError, match="assignment_iff_tutor"):
+        insert_series(tutor, None, None)
+    with pytest.raises(IntegrityError, match="assignment_iff_tutor"):
+        insert_series(None, "accepted", monday)
+    with pytest.raises(IntegrityError, match="assignment_from_iff_status"):
+        insert_series(tutor, "pending", None)
+    with pytest.raises(IntegrityError, match="assignment_status_valid"):
+        insert_series(tutor, "declined", monday)
+    insert_series(tutor, "pending", monday)
+    insert_series(tutor, "accepted", monday)
+    insert_series(None, None, None)

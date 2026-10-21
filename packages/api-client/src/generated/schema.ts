@@ -2054,12 +2054,41 @@ export interface paths {
         };
         /**
          * Get Class Series
-         * @description One class series with its rule, references and the occurrences that
-         *     start now or later.
+         * @description One class series with its rule, references, tutor assignment and the
+         *     occurrences that start now or later.
          */
         get: operations["get_class_series_api_v1_class_series__class_series_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-series/{class_series_id}/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Offer Class Series
+         * @description Offer a series without a tutor to one, from a local date (default:
+         *     the later of its start and today): every `unassigned` occurrence from
+         *     that date that has not started becomes `offered` to them in one offer,
+         *     and the tutor is notified. Occurrences created later join the offer;
+         *     once accepted they are created `confirmed`. Each covered occurrence is
+         *     checked for the new tutor: overlap (hard), availability, qualification,
+         *     operating hours and the room's availability; there is no override, so
+         *     any conflict refuses the offer. Offering closes the inbox items of the
+         *     series' earlier declined or expired offers. `warnings` is always
+         *     empty.
+         */
+        post: operations["offer_class_series_api_v1_class_series__class_series_id__offers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2345,7 +2374,7 @@ export interface components {
         };
         /**
          * AssignmentOfferItem
-         * @description One assignment offer (#52 G1).
+         * @description One assignment offer (#52 G1; a series offer, #233 F1).
          */
         AssignmentOfferItem: {
             /**
@@ -2371,11 +2400,23 @@ export interface components {
             responded_at: string | null;
             /** Decline Note */
             decline_note: string | null;
+            /** @description The series of a series offer; null for a session offer. */
+            series: components["schemas"]["OfferSeries"] | null;
+            /**
+             * Session Count
+             * @description How many sessions the offer covers.
+             */
+            session_count: number;
             /**
              * Sessions
-             * @description The covered sessions, by start.
+             * @description The covered sessions, by start: every one for a session offer, the first 10 for a series offer.
              */
             sessions: components["schemas"]["OfferSession"][];
+            /**
+             * Sessions Truncated
+             * @description More sessions are covered than `sessions` lists.
+             */
+            sessions_truncated: boolean;
         };
         /**
          * AssignmentOfferPage
@@ -2733,6 +2774,11 @@ export interface components {
              */
             duration_minutes: number;
             recurrence: components["schemas"]["SeriesRecurrence"];
+            /**
+             * Respond By
+             * @description With a tutor: an earlier deadline for the series offer, after now and no later than the default; truncated to whole minutes.
+             */
+            respond_by?: string | null;
         };
         /**
          * ClassSeriesCreated
@@ -2781,6 +2827,8 @@ export interface components {
              * @description The local date of the last occurrence; null: open-ended.
              */
             last_occurrence_on: string | null;
+            /** @description The tutor assignment; null when the series has no tutor. */
+            assignment: components["schemas"]["SeriesAssignment"] | null;
             /** Version */
             version: number;
             /**
@@ -2852,6 +2900,8 @@ export interface components {
              * @description The local date of the last occurrence; null: open-ended.
              */
             last_occurrence_on: string | null;
+            /** @description The tutor assignment; null when the series has no tutor. */
+            assignment: components["schemas"]["SeriesAssignment"] | null;
             /** Version */
             version: number;
             /**
@@ -2869,6 +2919,34 @@ export interface components {
              * @description The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon).
              */
             occurrences: components["schemas"]["SeriesOccurrence"][];
+        };
+        /**
+         * ClassSeriesOfferCreate
+         * @description Offer a series without a tutor to one
+         *     (``POST /api/v1/class-series/{id}/offers``, #233 C2). No ``override``
+         *     (M4-09c): any conflict refuses the offer.
+         */
+        ClassSeriesOfferCreate: {
+            /**
+             * Tutor User Id
+             * Format: uuid
+             */
+            tutor_user_id: string;
+            /**
+             * Version
+             * @description The series' version, as last read.
+             */
+            version: number;
+            /**
+             * From Date
+             * @description The local date the offer covers from (not before today); default: the later of the series' start and today.
+             */
+            from_date?: string | null;
+            /**
+             * Respond By
+             * @description An earlier deadline for the tutor's answer, after now and no later than the default; truncated to whole minutes.
+             */
+            respond_by?: string | null;
         };
         /**
          * ClassSessionCalendar
@@ -4367,8 +4445,50 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
-        /** @constant */
-        OfferScopeCode: "session";
+        /** @enum {string} */
+        OfferScopeCode: "session" | "series";
+        /**
+         * OfferSeries
+         * @description The series a series offer is for (#233 F1): its rule and the local
+         *     date the offer covers from. Times are local in ``time_zone``.
+         */
+        OfferSeries: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            subject: components["schemas"]["OfferSessionSubject"];
+            /**
+             * Weekdays
+             * @description ISO weekdays (1 = Monday).
+             */
+            weekdays: number[];
+            /** Interval */
+            interval: number;
+            /**
+             * Start Time
+             * @description The local start time, HH:MM.
+             */
+            start_time: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Time Zone */
+            time_zone: string;
+            /**
+             * From Date
+             * Format: date
+             * @description The local date the offer covers from.
+             */
+            from_date: string;
+            /** Until */
+            until: string | null;
+            /** Count */
+            count: number | null;
+            /** Last Occurrence On */
+            last_occurrence_on: string | null;
+        };
         /**
          * OfferSession
          * @description A session the offer covers.
@@ -4687,7 +4807,8 @@ export interface components {
         };
         /**
          * PendingOffer
-         * @description The pending offer of an ``offered`` session (#52 G3).
+         * @description The pending offer of an ``offered`` session (#52 G3): its own, or the
+         *     series offer that covers it (#233 F2).
          */
         PendingOffer: {
             /**
@@ -4695,6 +4816,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "session" | "series";
             tutor: components["schemas"]["SessionTutor"];
             /**
              * Respond By
@@ -5095,6 +5221,32 @@ export interface components {
         };
         /** @enum {string} */
         SchedulingWarningCode: "daily_limit_exceeded" | "weekly_limit_exceeded" | "break_too_short";
+        /**
+         * SeriesAssignment
+         * @description The series' tutor assignment (#233 F2): ``pending`` while its series
+         *     offer waits for an answer (``respond_by`` set), ``accepted`` after.
+         */
+        SeriesAssignment: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted";
+            tutor: components["schemas"]["SessionTutor"];
+            /**
+             * From Date
+             * Format: date
+             * @description The local date it covers from.
+             */
+            from_date: string;
+            /**
+             * Offer Id
+             * @description The series offer; null for a series assigned before offers.
+             */
+            offer_id: string | null;
+            /** Respond By */
+            respond_by: string | null;
+        };
         /**
          * SeriesOccurrence
          * @description One occurrence row of a series.
@@ -12863,7 +13015,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created. */
+            /** @description An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable, details.reason = ended). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12923,6 +13075,77 @@ export interface operations {
             };
             /** @description No such class series (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    offer_class_series_api_v1_class_series__class_series_id__offers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSeriesOfferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOfferCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class series (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The series changed since it was read (version_conflict); it already has a tutor (series_not_offerable, details.reason = assigned) or no occurrence from `from_date` is still to come (series_not_offerable, details.reason = ended); or the tutor breaks scheduling rules on an occurrence (scheduling_conflict, every conflict of every covered occurrence with `details.occurrence_start` and `details.date`). Nothing is changed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

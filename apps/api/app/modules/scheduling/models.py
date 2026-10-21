@@ -59,7 +59,10 @@ database agree (the integration drift test reads them back). See
   ``start_time`` (whole minutes), ``duration_minutes`` (15-480) and the
   ``time_zone`` it was created in (ADR-0004, ADR-0005 D4).
   ``last_occurrence_on`` is the local date of a finite series' last
-  occurrence (``NULL``: open-ended). ``Audited``, versioned.
+  occurrence (``NULL``: open-ended). ``assignment_status`` (``pending`` |
+  ``accepted``) and the local ``assignment_from`` date are the series' tutor
+  assignment (#233 A2): both are set exactly when ``tutor_user_id`` is.
+  ``Audited``, versioned.
 - ``class_series_participants``: the students of a series (the #47
   participants pattern); the series ``version`` covers them. ``Audited``.
 - ``class_sessions`` occurrence columns (#53 B4): ``series_id`` and
@@ -70,7 +73,9 @@ database agree (the integration drift test reads them back). See
   materialization idempotent (ADR-0005 D4).
 
 - ``assignment_offers`` (#52 A1; ADR-0005 D3): one offer of sessions to a
-  tutor. ``scope`` (``session`` only; M4-07b adds ``series``), ``status``
+  tutor. ``scope`` (``session``, or ``series`` with ``class_series_id``
+  and the local ``from_date`` it covers from, #233 A1; at most one
+  ``pending`` series offer per series), ``status``
   (``pending`` → ``accepted`` | ``declined`` | ``expired`` |
   ``withdrawn``), ``offered_at`` / ``offered_by_user_id``, ``respond_by``
   (after ``offered_at``), ``responded_at`` (set exactly when no longer
@@ -324,6 +329,16 @@ class ClassSessionOverride(Model):
     )
 
 
+SERIES_ASSIGNMENT_PENDING: Final = "pending"
+SERIES_ASSIGNMENT_ACCEPTED: Final = "accepted"
+SERIES_ASSIGNMENT_STATUSES: Final = (
+    SERIES_ASSIGNMENT_PENDING,
+    SERIES_ASSIGNMENT_ACCEPTED,
+)
+"""``class_series.assignment_status`` (#233 A2): ``NULL`` exactly when the
+series has no tutor."""
+
+
 class ClassSeries(Audited, VersionedMixin, Model):
     """A recurring series (#53 B2; ADR-0005 D4). See the module docstring."""
 
@@ -344,6 +359,18 @@ class ClassSeries(Audited, VersionedMixin, Model):
         CheckConstraint('"interval" BETWEEN 1 AND 4', name="interval_range"),
         CheckConstraint('"count" BETWEEN 1 AND 200', name="count_range"),
         CheckConstraint('until_on IS NULL OR "count" IS NULL', name="until_or_count"),
+        CheckConstraint(
+            f"assignment_status IN ({_quoted(SERIES_ASSIGNMENT_STATUSES)})",
+            name="assignment_status_valid",
+        ),
+        CheckConstraint(
+            "(tutor_user_id IS NULL) = (assignment_status IS NULL)",
+            name="assignment_iff_tutor",
+        ),
+        CheckConstraint(
+            "(assignment_status IS NULL) = (assignment_from IS NULL)",
+            name="assignment_from_iff_status",
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -356,6 +383,8 @@ class ClassSeries(Audited, VersionedMixin, Model):
         nullable=True,
         index=True,
     )
+    assignment_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    assignment_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     classroom_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("classrooms.id", ondelete="RESTRICT"),
@@ -395,8 +424,10 @@ class ClassSeriesParticipant(Audited, Model):
 
 # --- Assignment offers (#52 A) ---------------------------------------------------
 
-OFFER_SCOPES: Final = ("session",)
-"""The offer scopes (M4-07b adds ``series``)."""
+OFFER_SCOPE_SESSION: Final = "session"
+OFFER_SCOPE_SERIES: Final = "series"
+OFFER_SCOPES: Final = (OFFER_SCOPE_SESSION, OFFER_SCOPE_SERIES)
+"""The offer scopes (#52 ``session``; #233 ``series``)."""
 
 OFFER_PENDING: Final = "pending"
 OFFER_ACCEPTED: Final = "accepted"
@@ -431,15 +462,36 @@ class AssignmentOffer(Audited, VersionedMixin, Model):
             "decline_note IS NULL OR status = 'declined'",
             name="decline_note_only_declined",
         ),
+        CheckConstraint(
+            "(scope = 'series') = (class_series_id IS NOT NULL)",
+            name="series_iff_series_id",
+        ),
+        CheckConstraint(
+            "(scope = 'series') = (from_date IS NOT NULL)",
+            name="series_iff_from_date",
+        ),
         Index("ix_assignment_offers_tutor_user_id_status", "tutor_user_id", "status"),
         Index(
             "ix_assignment_offers_pending_respond_by",
             "respond_by",
             postgresql_where=text("status = 'pending'"),
         ),
+        Index(
+            "uq_assignment_offers_pending_series",
+            "class_series_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
     )
 
     scope: Mapped[str] = mapped_column(String(20))
+    class_series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_series.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    from_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     tutor_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )

@@ -69,3 +69,40 @@ export function offerClassSession(
     }),
   );
 }
+
+// The series of an occurrence (#233 G2): its assignment, and the offer of
+// the series from a date.
+
+export type ClassSeriesDetail = components['schemas']['ClassSeriesDetail'];
+export type ClassSeriesOfferCreate =
+  components['schemas']['ClassSeriesOfferCreate'];
+
+export function seriesKey(id: string) {
+  return ['scheduling', 'series', id] as const;
+}
+
+export function fetchClassSeries(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ClassSeriesDetail> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/class-series/{class_series_id}', {
+        params: { path: { class_series_id: id } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function offerClassSeries(
+  id: string,
+  body: ClassSeriesOfferCreate,
+): Promise<AssignmentOfferCreated> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-series/{class_series_id}/offers', {
+      params: { path: { class_series_id: id } },
+      body,
+    }),
+  );
+}

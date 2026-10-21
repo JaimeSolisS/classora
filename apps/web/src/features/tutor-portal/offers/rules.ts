@@ -70,3 +70,49 @@ export function deadlineText(
 ): string {
   return formatInstant(respondBy, { timeZone, language, style: 'dateTime' });
 }
+
+/** The series of a series offer (#233 F1). */
+export interface OfferSeriesRule {
+  weekdays: readonly number[];
+  interval: number;
+  start_time: string;
+  duration_minutes: number;
+  from_date: string;
+  until: string | null;
+  count: number | null;
+}
+
+/**
+ * A local wall-clock time `HH:MM` plus `minutes`, as `HH:MM` (a series
+ * occurrence never crosses the local date, so 24:00 is the latest end).
+ */
+export function addMinutesToTime(hhmm: string, minutes: number): string {
+  const [hours = 0, mins = 0] = hhmm.split(':').map(Number);
+  const total = hours * 60 + mins + minutes;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** A local `HH:MM` in the language's clock style ("16:00" / "4:00 PM"). */
+export function localTimeText(hhmm: string, language: Language): string {
+  const [hours = 0, minutes = 0] = hhmm.split(':').map(Number);
+  if (language === 'es') {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+  const suffix = hours >= 12 && hours < 24 ? 'PM' : 'AM';
+  const twelve = hours % 12 === 0 ? 12 : hours % 12;
+  return `${twelve}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+
+/** Weekday names joined as a list in the language ("Monday and Wednesday"). */
+export function weekdayList(
+  weekdays: readonly number[],
+  name: (weekday: number) => string,
+  language: Language,
+): string {
+  return new Intl.ListFormat(language, {
+    style: 'long',
+    type: 'conjunction',
+  }).format([...weekdays].sort((a, b) => a - b).map(name));
+}

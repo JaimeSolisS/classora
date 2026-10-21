@@ -55,7 +55,16 @@ type Common = {
       filters: { student: string };
     };
     states: Record<string, string>;
-    session: { title: string; history: string; noTutor: string };
+    session: {
+      title: string;
+      history: string;
+      noTutor: string;
+      seriesOfferedTo: string;
+    };
+    offer: {
+      submit: string;
+      series: Record<'series' | 'session', string>;
+    };
   };
   offers: {
     title: string;
@@ -66,6 +75,7 @@ type Common = {
     >;
     card: { note: string };
     accept: { title: string; submit: string; action: string };
+    series: { scheduled_other: string; acceptTitle: string };
     decline: {
       title: string;
       note: string;

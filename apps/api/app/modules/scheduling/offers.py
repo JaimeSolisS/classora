@@ -11,6 +11,16 @@ session to ``offered``, and accepting, declining, expiring or withdrawing an
 offer moves its still-``offered`` sessions out of ``offered`` in the same
 transaction. The integration tests assert it after every path.
 
+**Series offers (#233 A3).** The invariant holds for both scopes: a series
+writer that creates ``offered`` rows attaches them to the series' pending
+offer in the same transaction (``offer_records.attach_to_pending_series_
+offer``). The series row carries the assignment and agrees with its offers:
+``assignment_status = 'pending'`` **iff** the series has exactly one
+``pending`` series-scope offer, with the series' tutor and ``from_date =
+assignment_from``; ``'accepted'`` **iff** its latest series-scope offer is
+``accepted``, with the series' tutor. Declining, expiring or withdrawing a
+series offer clears the series' tutor and assignment.
+
 **Lock order (A4).** Every offer writer (create, accept, decline, expire,
 withdraw, and the reassignment item's "Mark resolved") locks the covered
 ``class_sessions`` rows ``FOR UPDATE`` in ascending id **first**, **then**
@@ -18,6 +28,23 @@ the ``assignment_offers`` row ``FOR UPDATE``. Writers therefore queue on the
 session rows and can't deadlock; a second pending offer for a session can't
 be created because its creator waits on the same session row and then sees
 it ``offered``.
+
+**Series lock order (#233 B3).** Every series-scope writer takes, in this
+order:
+
+1. ``lock_students`` for the series' participants and the center zone
+   ``FOR SHARE``: only the writers that create rows or check slots (the
+   series offer route and materialization);
+2. the group row ``FOR UPDATE`` (once #56 adds groups, for a group series);
+3. the **series row ``FOR UPDATE``**;
+4. the covered ``class_sessions`` rows ``FOR UPDATE``, by ascending id;
+5. the offer row ``FOR UPDATE``.
+
+Accepting, declining, expiring and withdrawing a series offer, and "Mark
+resolved" on its inbox item, start at step 3. Like the nightly
+materialization, they take the series row before the sessions and the
+offer, so an answer and a materialization run serialize on the series and
+can't deadlock.
 
 **Statuses (B1).** ``pending → accepted | declined | expired | withdrawn``;
 the other four are final.

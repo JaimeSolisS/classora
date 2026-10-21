@@ -11,6 +11,10 @@ on the session row lock (the offer lock order) and then sees A's result.
   mixed.
 - **Two staff offering one unassigned session**: one ``ok``, one
   ``version_conflict``.
+- **Series offers (#233 I3)**: accept vs decline, accept vs the expiry run
+  (both orders), accept vs ``materialize_series(mode="extend")`` (both
+  orders: no ``offered`` row is ever left without a pending offer, and no
+  deadlock), and two staff offering one series.
 
 Each case runs 5 times, on new references.
 """
@@ -18,8 +22,9 @@ Each case runs 5 times, on new references.
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +34,14 @@ from app.core.errors import AppError
 from app.core.models import StaleVersionError
 from app.core.uow import UnitOfWork
 from app.modules.scheduling import service as scheduling
-from app.modules.scheduling.schemas import AssignmentOfferCreate, ClassSessionCreate
+from app.modules.scheduling.schemas import (
+    AssignmentOfferCreate,
+    ClassSeriesCreate,
+    ClassSeriesOfferCreate,
+    ClassSessionCreate,
+    SeriesRecurrence,
+)
+from tests.conftest import frozen_clock
 from tests.integration.conftest import run_sql_async, short_lived_engine
 from tests.integration.test_class_session_create_concurrency import (
     START,
@@ -221,5 +233,194 @@ async def test_two_staff_offering_one_session_one_wins(seeded_url):
             "SELECT count(*) AS n FROM assignment_offer_sessions"
             " WHERE class_session_id = :id",
             {"id": session_id},
+        )
+        assert rows[0].n == 1
+
+
+# --- Series offers (#233 D4, I3) -----------------------------------------------------
+
+SERIES_NOW = datetime(2031, 1, 3, 12, 0, tzinfo=ZoneInfo("America/Mexico_City"))
+"""A Friday; the series' first Monday is 2031-01-06."""
+HORIZON = 12
+
+
+def _series_body(refs: dict[str, uuid.UUID], *, tutor: bool) -> ClassSeriesCreate:
+    return ClassSeriesCreate(
+        kind="individual",
+        student_id=refs["student"],
+        subject_id=refs["subject"],
+        tutor_user_id=refs["tutor"] if tutor else None,
+        classroom_id=refs["room"],
+        starts_on=date(2031, 1, 6),
+        start_time=time(16),
+        duration_minutes=60,
+        recurrence=SeriesRecurrence(weekdays=[1, 3]),
+    )
+
+
+async def _series(
+    url: str, refs: dict[str, uuid.UUID], *, tutor: bool = True
+) -> tuple[uuid.UUID, Any]:
+    """A series created at :data:`SERIES_NOW`: ``(series id, its offer row or
+    None)``."""
+
+    async def _create(session: AsyncSession) -> Any:
+        return await scheduling.create_class_series(
+            session,
+            _series_body(refs, tutor=tutor),
+            horizon_weeks=HORIZON,
+            actor_id=refs["tutor"],
+        )
+
+    with frozen_clock(SERIES_NOW):
+        created = await _in_uow(url, _create)
+    offers = await run_sql_async(
+        url,
+        "SELECT id, respond_by FROM assignment_offers WHERE class_series_id = :id",
+        {"id": created.id},
+    )
+    return created.id, (offers[0] if offers else None)
+
+
+async def _series_end(url: str, series_id: uuid.UUID) -> tuple[Any, set[str], int]:
+    """``(offer statuses, row states, offered rows without a pending
+    offer)``."""
+    offers = await run_sql_async(
+        url,
+        "SELECT status FROM assignment_offers WHERE class_series_id = :id",
+        {"id": series_id},
+    )
+    rows = await run_sql_async(
+        url,
+        "SELECT state FROM class_sessions WHERE series_id = :id",
+        {"id": series_id},
+    )
+    [uncovered] = await run_sql_async(
+        url,
+        "SELECT count(*) AS n FROM class_sessions s WHERE s.series_id = :id"
+        " AND s.state = 'offered' AND NOT EXISTS (SELECT 1 FROM"
+        " assignment_offer_sessions x JOIN assignment_offers o ON o.id = x.offer_id"
+        " WHERE x.class_session_id = s.id AND o.status = 'pending')",
+        {"id": series_id},
+    )
+    return (
+        tuple(sorted(o.status for o in offers)),
+        {r.state for r in rows},
+        int(uncovered.n),
+    )
+
+
+async def test_accept_and_decline_of_one_series_offer_one_wins(seeded_url):
+    for _ in range(REPEATS):
+        refs = await _references(seeded_url)
+        series_id, offer = await _series(seeded_url, refs)
+
+        outcomes = await race(
+            seeded_url,
+            _answer(offer.id, refs["tutor"], accept=True),
+            _answer(offer.id, refs["tutor"], accept=False),
+        )
+
+        assert outcomes == ["ok", "offer_not_pending"]
+        assert await _series_end(seeded_url, series_id) == (
+            ("accepted",),
+            {"confirmed"},
+            0,
+        )
+
+
+@pytest.mark.parametrize("expiry_first", [False, True])
+async def test_accept_and_expiry_of_a_series_offer_never_mix(seeded_url, expiry_first):
+    for _ in range(REPEATS):
+        refs = await _references(seeded_url)
+        series_id, offer = await _series(seeded_url, refs)
+        expire = _expire_at_deadline(offer)
+        accept = _answer(offer.id, refs["tutor"], accept=True)
+        first, second = (expire, accept) if expiry_first else (accept, expire)
+
+        outcomes = await race(seeded_url, first, second)
+
+        end = await _series_end(seeded_url, series_id)
+        if expiry_first:
+            assert outcomes == ["ok", "offer_not_pending"]
+            assert end == (("expired",), {"unassigned"}, 0)
+        else:
+            assert outcomes == ["ok", "skipped"]
+            assert end == (("accepted",), {"confirmed"}, 0)
+
+
+def _extend(series_id: uuid.UUID) -> Change:
+    async def _run(session: AsyncSession) -> None:
+        # Tuesday: the week-13 Monday enters the horizon.
+        await scheduling.materialize_series(
+            session,
+            series_id,
+            now=SERIES_NOW + timedelta(days=4),
+            horizon_weeks=HORIZON,
+            mode="extend",
+        )
+
+    return _run
+
+
+@pytest.mark.parametrize("extend_first", [False, True])
+async def test_accept_and_materialization_leave_no_uncovered_offered_row(
+    seeded_url, extend_first
+):
+    for _ in range(REPEATS):
+        refs = await _references(seeded_url)
+        series_id, offer = await _series(seeded_url, refs)
+        extend = _extend(series_id)
+        accept = _answer(offer.id, refs["tutor"], accept=True)
+        first, second = (extend, accept) if extend_first else (accept, extend)
+
+        outcomes = await race(seeded_url, first, second)
+
+        assert outcomes == ["ok", "ok"]
+        assert await _series_end(seeded_url, series_id) == (
+            ("accepted",),
+            {"confirmed"},
+            0,
+        )
+        rows = await run_sql_async(
+            seeded_url,
+            "SELECT count(*) AS n FROM class_sessions WHERE series_id = :id",
+            {"id": series_id},
+        )
+        assert rows[0].n == 25
+
+
+def _offer_series_to(
+    series_id: uuid.UUID, tutor: uuid.UUID, actor: uuid.UUID
+) -> Change:
+    async def _run(session: AsyncSession) -> None:
+        with frozen_clock(SERIES_NOW):
+            await scheduling.offer_class_series(
+                session,
+                series_id,
+                ClassSeriesOfferCreate(tutor_user_id=tutor, version=1),
+                actor_id=actor,
+            )
+
+    return _run
+
+
+async def test_two_staff_offering_one_series_one_wins(seeded_url):
+    for _ in range(REPEATS):
+        refs = await _references(seeded_url)
+        series_id, _ = await _series(seeded_url, refs, tutor=False)
+
+        outcomes = await race(
+            seeded_url,
+            _offer_series_to(series_id, refs["tutor"], refs["tutor"]),
+            _offer_series_to(series_id, refs["other_tutor"], refs["tutor"]),
+        )
+
+        assert outcomes[0] == "ok"
+        assert outcomes[1] in {"version_conflict", "series_not_offerable"}
+        rows = await run_sql_async(
+            seeded_url,
+            "SELECT count(*) AS n FROM assignment_offers WHERE class_series_id = :id",
+            {"id": series_id},
         )
         assert rows[0].n == 1

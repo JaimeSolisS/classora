@@ -55,6 +55,18 @@ constraint ``uq_class_sessions_series_original_start`` is the backstop: a
 violation (which the lock rules out) rolls back that series' transaction and
 the next run retries it.
 
+**Initial state (#233 B1, B2).** A clean occurrence takes
+:func:`occurrence_initial_state` for its local date: ``unassigned`` (no
+tutor) when the series has no tutor or the date is before
+``assignment_from``; ``offered`` while the series offer is ``pending``;
+``confirmed`` once it is ``accepted`` (ADR-0005 D3: no further offer). Every
+row (``skipped_closure`` and ``conflict`` ones too) is created and checked
+with :func:`assigned_tutor` for its date. In extend mode the new ``offered``
+rows join the pending series offer (``offer_records.
+attach_to_pending_series_offer``), whose ``respond_by`` never moves; in
+create mode the series create makes the offer over them right after
+(``series_offers.offer_new_series``).
+
 **Existing rows are never updated** here, whatever their state
 (``conflict``, ``skipped_closure``, exceptions, past, ``completed``,
 ``cancelled``): closures added or removed later are #232's.
@@ -66,6 +78,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Final, Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,11 +98,13 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.models import (
+    SERIES_ASSIGNMENT_ACCEPTED,
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
     ClassSessionParticipant,
 )
+from app.modules.scheduling.offer_records import attach_to_pending_series_offer
 from app.modules.scheduling.recurrence import Occurrence, expand, horizon_end
 from app.modules.scheduling.sessions import flush_class_sessions
 from app.modules.scheduling.states import SessionState
@@ -125,14 +140,47 @@ class _Planned:
     codes: list[str] = field(default_factory=list)
 
 
-def occurrence_initial_state(series: ClassSeries) -> SessionState:
-    """The state a clean occurrence of ``series`` is created in: ``offered``
-    with a tutor, ``unassigned`` without one (the #48 E1 rule). The single
-    seam where #233 adds ``confirmed`` once a series assignment is
-    accepted."""
-    if series.tutor_user_id is None:
+def assignment_applies(series: ClassSeries, local_date: date) -> bool:
+    """Whether the series' tutor assignment covers an occurrence on
+    ``local_date``: the series has a tutor and ``local_date`` is on or after
+    ``assignment_from`` (the same date is covered)."""
+    return (
+        series.tutor_user_id is not None
+        and series.assignment_from is not None
+        and local_date >= series.assignment_from
+    )
+
+
+def occurrence_initial_state(series: ClassSeries, local_date: date) -> SessionState:
+    """The state a clean occurrence of ``series`` on ``local_date`` is
+    created in (#233 B1; ADR-0005 D3):
+
+    - no tutor, or ``local_date`` before ``assignment_from``: ``unassigned``;
+    - ``assignment_status = 'pending'``: ``offered`` (the caller attaches the
+      row to the pending series offer, :func:`~app.modules.scheduling.
+      offer_records.attach_to_pending_series_offer`);
+    - ``assignment_status = 'accepted'``: ``confirmed``, with no offer.
+    """
+    if not assignment_applies(series, local_date):
         return SessionState.UNASSIGNED
+    if series.assignment_status == SERIES_ASSIGNMENT_ACCEPTED:
+        return SessionState.CONFIRMED
     return SessionState.OFFERED
+
+
+def assigned_tutor(series: ClassSeries, local_date: date) -> uuid.UUID | None:
+    """The tutor an occurrence on ``local_date`` is created (and checked)
+    with: the series' tutor when its assignment covers the date, else
+    none."""
+    return series.tutor_user_id if assignment_applies(series, local_date) else None
+
+
+def occurrence_local_date(row: ClassSession, zone: str) -> date:
+    """The local date of an occurrence row's rule instant
+    (``original_start``) in the series zone."""
+    # Every row of a series has an original start (a CHECK).
+    assert row.original_start is not None  # noqa: S101
+    return row.original_start.astimezone(ZoneInfo(zone)).date()
 
 
 async def series_participant_ids(
@@ -301,7 +349,6 @@ async def materialize_series(
         if mode == "extend"
         else []
     )
-    clean_state = occurrence_initial_state(series)
     planned: list[_Planned] = []
     refused: list[SchedulingConflict] = []
     for occurrence in occurrences:
@@ -322,7 +369,7 @@ async def materialize_series(
                     kind=series.kind,
                     student_ids=tuple(student_ids),
                     subject_id=series.subject_id,
-                    tutor_user_id=series.tutor_user_id,
+                    tutor_user_id=assigned_tutor(series, occurrence.local_date),
                     classroom_id=series.classroom_id,
                     starts_at=occurrence.starts_at,
                     ends_at=occurrence.ends_at,
@@ -337,11 +384,23 @@ async def materialize_series(
         if codes:
             planned.append(_Planned(occurrence, SessionState.CONFLICT, codes))
         else:
-            planned.append(_Planned(occurrence, clean_state))
+            planned.append(
+                _Planned(
+                    occurrence, occurrence_initial_state(series, occurrence.local_date)
+                )
+            )
     if refused:
         raise SchedulingConflictError(refused)
 
     rows = await _insert(session, series, planned, student_ids, mode=mode)
+    if mode == "extend":
+        # B2: new offered rows join the pending series offer (in create
+        # mode the series offer is made after this, with every row).
+        await attach_to_pending_series_offer(
+            session,
+            series,
+            [row for row in rows if row.state == SessionState.OFFERED],
+        )
     for row in rows:
         if row.state == SessionState.CONFLICT:
             await administration.create_approval_request(
@@ -373,7 +432,7 @@ async def _insert(
     rows: list[ClassSession] = []
     for item in planned:
         occurrence = item.occurrence
-        tutor = series.tutor_user_id
+        tutor = assigned_tutor(series, occurrence.local_date)
         row = ClassSession(
             kind=series.kind,
             state=item.state.value,

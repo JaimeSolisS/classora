@@ -45,17 +45,29 @@ task in :mod:`~app.modules.scheduling.tasks`): the same as a decline with
 ``expired`` and ``scheduling.offer_expired``, after re-checking under the
 locks that the offer is still pending and overdue (else nothing changes).
 
-**Withdraw** (:func:`withdraw_pending_offers`): a seam for the later paths
-that cancel or substitute an ``offered`` session (#55, #58, M4-07b): the
-covering pending offers become ``withdrawn``, without an inbox item or a
-notification. The caller holds the session locks and moves the sessions.
+**Series offers** (#233 D; the route is in
+:mod:`~app.modules.scheduling.series_offers`): the answer and expiry paths
+take the series row ``FOR UPDATE`` first (the #233 B3 order). Accepting
+confirms the covered rows still ``offered`` and marks the series
+``accepted``; declining or expiring returns them to ``unassigned``, clears
+the series' tutor and assignment, and always raises one inbox item and the
+staff notifications (with the series params), even when no row was
+covered.
 
-A decline or expiry whose sessions are all no longer ``offered`` (moved by
-a later path) changes only the offer: there is nothing to reassign, so no
-inbox item or notification is made.
+**Withdraw** (:func:`withdraw_pending_offers`): a seam for the later paths
+that cancel or substitute an ``offered`` session (#55, #58): the covering
+pending **session-scope** offers become ``withdrawn``, without an inbox item
+or a notification. The caller holds the session locks and moves the
+sessions. :func:`withdraw_series_offer` (#54, #55) withdraws a series'
+pending series offer from the series row on.
+
+A session-scope decline or expiry whose sessions are all no longer
+``offered`` (moved by a later path) changes only the offer: there is
+nothing to reassign, so no inbox item or notification is made.
 
 **Reads** (:func:`list_my_offers`, :func:`list_session_offers`): a page of
-offers in at most six statements whatever its size.
+offers in at most seven statements whatever its size (#233 F1: a series
+offer lists its first ten sessions, with ``session_count``).
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -93,9 +105,12 @@ from app.modules.scheduling.models import (
     OFFER_DECLINED,
     OFFER_EXPIRED,
     OFFER_PENDING,
+    OFFER_SCOPE_SESSION,
     OFFER_WITHDRAWN,
+    SERIES_ASSIGNMENT_ACCEPTED,
     AssignmentOffer,
     AssignmentOfferSession,
+    ClassSeries,
     ClassSession,
     ClassSessionParticipant,
 )
@@ -109,6 +124,7 @@ from app.modules.scheduling.offer_records import (
     insert_offer,
     notify_offer_closed,
     notify_offer_received,
+    pending_series_offer,
 )
 from app.modules.scheduling.offers import (
     ANSWERED_STATUSES,
@@ -119,6 +135,7 @@ from app.modules.scheduling.offers import (
     resolve_respond_by,
 )
 from app.modules.scheduling.overrides import evaluate_override, record_session_override
+from app.modules.scheduling.recurrence import first_covered_start
 from app.modules.scheduling.schemas import (
     AssignmentOfferCreate,
     AssignmentOfferCreated,
@@ -126,6 +143,7 @@ from app.modules.scheduling.schemas import (
     AssignmentOfferPage,
     ClassSessionOffers,
     OfferPerson,
+    OfferSeries,
     OfferSession,
     OfferSessionClassroom,
     OfferSessionParticipant,
@@ -142,6 +160,8 @@ REASSIGNMENT_TYPE: Final = "scheduling.offer_reassignment"
 TUTOR_ROLE: Final = "tutor"
 ACTIVE: Final = "active"
 CLOSED_STATUSES: Final = (OFFER_DECLINED, OFFER_EXPIRED)
+OFFER_ITEM_SESSIONS_MAX: Final = 10
+"""A series offer item lists at most this many covered sessions (#233 F1)."""
 
 
 # --- Locks (A4) ----------------------------------------------------------------------
@@ -174,6 +194,42 @@ async def lock_sessions(
         .execution_options(populate_existing=True)
     )
     return list(rows)
+
+
+async def lock_series(session: AsyncSession, class_series_id: uuid.UUID) -> ClassSeries:
+    """The series row ``FOR UPDATE`` (#233 B3 step 3), re-read."""
+    series = await session.scalar(
+        select(ClassSeries)
+        .where(ClassSeries.id == class_series_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if series is None:
+        raise RecordNotFoundError()
+    return series
+
+
+async def _lock_for_answer(
+    session: AsyncSession, offer_id: uuid.UUID, class_series_id: uuid.UUID | None
+) -> tuple[ClassSeries | None, list[ClassSession], AssignmentOffer]:
+    """The lock order of an answer, expiry or withdrawal: for a series offer
+    the series row first (#233 B3), then the covered sessions by id, then
+    the offer."""
+    series = (
+        None if class_series_id is None else await lock_series(session, class_series_id)
+    )
+    sessions = await lock_sessions(
+        session, await covered_session_ids(session, offer_id)
+    )
+    return series, sessions, await _lock_offer(session, offer_id)
+
+
+def clear_series_assignment(series: ClassSeries) -> None:
+    """The series has no tutor any more (#233 D3, B6): its later
+    occurrences are created ``unassigned``."""
+    series.tutor_user_id = None
+    series.assignment_status = None
+    series.assignment_from = None
 
 
 async def _lock_offer(session: AsyncSession, offer_id: uuid.UUID) -> AssignmentOffer:
@@ -237,7 +293,8 @@ async def _close_reassignment_item(
     session: AsyncSession, class_session_id: uuid.UUID, *, by_user_id: uuid.UUID
 ) -> None:
     """E2 auto-close: cancel the open reassignment item of the session's
-    latest declined or expired offer, if it is still open."""
+    latest declined or expired **session-scope** offer, if it is still open.
+    The items of series offers are closed by the series route (#233 C3)."""
     latest = await session.scalar(
         select(AssignmentOffer.id)
         .join(
@@ -245,14 +302,21 @@ async def _close_reassignment_item(
             AssignmentOfferSession.offer_id == AssignmentOffer.id,
         )
         .where(AssignmentOfferSession.class_session_id == class_session_id)
+        .where(AssignmentOffer.scope == OFFER_SCOPE_SESSION)
         .where(AssignmentOffer.status.in_(CLOSED_STATUSES))
         .order_by(AssignmentOffer.responded_at.desc(), AssignmentOffer.id.desc())
         .limit(1)
     )
-    if latest is None:
-        return
+    if latest is not None:
+        await close_reassignment_item_of(session, latest, by_user_id=by_user_id)
+
+
+async def close_reassignment_item_of(
+    session: AsyncSession, offer_id: uuid.UUID, *, by_user_id: uuid.UUID
+) -> None:
+    """Cancel the reassignment item of ``offer_id`` if it is still open."""
     request_id = await administration.approval_request_id_for_subject(
-        session, request_type=REASSIGNMENT_TYPE, subject_id=latest
+        session, request_type=REASSIGNMENT_TYPE, subject_id=offer_id
     )
     if request_id is None:
         return
@@ -351,10 +415,13 @@ async def _close_offer(
     status: str,
     now: datetime,
     note: str | None = None,
+    series: ClassSeries | None = None,
 ) -> None:
     """Decline or expire: the still-offered sessions → ``unassigned``, the
     offer ``status``, then (when a session went back) the reassignment item
-    and the staff notifications."""
+    and the staff notifications. A series offer (#233 D3) also clears the
+    series' tutor and always raises the item and the notifications: the
+    series itself needs a tutor again."""
     returned: list[ClassSession] = []
     for row in sessions:
         if (
@@ -370,20 +437,25 @@ async def _close_offer(
             returned.append(row)
     _finish(offer, status, now)
     offer.decline_note = note
+    if series is not None:
+        clear_series_assignment(series)
     await session.flush()
-    if not returned:
+    first = min(returned, key=lambda r: (r.starts_at, r.id)) if returned else None
+    if first is not None:
+        subject_id, first_start = first.subject_id, first.starts_at
+    elif series is not None:
+        subject_id = series.subject_id
+        first_start = _series_first_start(series, offer, now) or offer.respond_by
+    else:
         return
-    first = min(returned, key=lambda r: (r.starts_at, r.id))
     await administration.create_approval_request(
         session,
         request_type=REASSIGNMENT_TYPE,
         subject_id=offer.id,
         requester_user_id=None,
-        priority=reassignment_priority(first.starts_at, now),
+        priority=reassignment_priority(first_start, now),
     )
-    subject = (await catalog.subject_references(session, [first.subject_id]))[
-        first.subject_id
-    ]
+    subject = (await catalog.subject_references(session, [subject_id]))[subject_id]
     tutor = (await identity.get_account_references(session, [offer.tutor_user_id]))[
         offer.tutor_user_id
     ]
@@ -395,11 +467,42 @@ async def _close_offer(
             if status == OFFER_DECLINED
             else OFFER_EXPIRED_NOTIFICATION
         ),
-        class_session_id=first.id,
+        class_session_id=None if first is None else first.id,
         subject_name=subject.name,
-        starts_at=first.starts_at,
+        starts_at=first_start,
         tutor_name=tutor.display_name,
+        occurrence_count=len(returned),
     )
+
+
+def _series_first_start(
+    series: ClassSeries, offer: AssignmentOffer, now: datetime
+) -> datetime | None:
+    """B4 for the offer's ``from_date``: the next rule occurrence it covers."""
+    assert offer.from_date is not None  # noqa: S101 - a series offer has one
+    return first_covered_start(
+        series.rrule,
+        starts_on=series.starts_on,
+        start_time=series.start_time,
+        zone=series.time_zone,
+        from_date=offer.from_date,
+        now=now,
+    )
+
+
+async def _offer_target(
+    session: AsyncSession, offer_id: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID | None] | None:
+    """``(tutor_user_id, class_series_id)`` of an offer (unlocked; both never
+    change), or ``None`` when there is no such offer."""
+    found = (
+        await session.execute(
+            select(
+                AssignmentOffer.tutor_user_id, AssignmentOffer.class_series_id
+            ).where(AssignmentOffer.id == offer_id)
+        )
+    ).first()
+    return None if found is None else (found[0], found[1])
 
 
 async def answer_offer(
@@ -410,16 +513,12 @@ async def answer_offer(
     accept: bool,
     note: str | None = None,
 ) -> AssignmentOfferItem:
-    """``POST /api/v1/assignment-offers/{id}/accept|decline`` (D1-D3)."""
-    found = await session.scalar(
-        select(AssignmentOffer.tutor_user_id).where(AssignmentOffer.id == offer_id)
-    )
-    if found is None or found != caller_id:
+    """``POST /api/v1/assignment-offers/{id}/accept|decline`` (D1-D3; a
+    series offer, #233 D)."""
+    found = await _offer_target(session, offer_id)
+    if found is None or found[0] != caller_id:
         raise RecordNotFoundError()
-    sessions = await lock_sessions(
-        session, await covered_session_ids(session, offer_id)
-    )
-    offer = await _lock_offer(session, offer_id)
+    series, sessions, offer = await _lock_for_answer(session, offer_id, found[1])
     if offer.status != OFFER_PENDING:
         raise OfferNotPendingError(offer.status)
     now = clock.now()
@@ -438,10 +537,19 @@ async def answer_offer(
                     expected_version=row.version,
                 )
         _finish(offer, OFFER_ACCEPTED, now)
+        if series is not None:
+            # D2: later occurrences are created confirmed (B1).
+            series.assignment_status = SERIES_ASSIGNMENT_ACCEPTED
         await session.flush()
     else:
         await _close_offer(
-            session, offer, sessions, status=OFFER_DECLINED, now=now, note=note
+            session,
+            offer,
+            sessions,
+            status=OFFER_DECLINED,
+            now=now,
+            note=note,
+            series=series,
         )
     [item] = await offer_items(session, [offer])
     return item
@@ -468,13 +576,15 @@ async def expire_offer(
     """E3, one offer: under the lock order, re-check that it is still pending
     and overdue at ``now`` (else ``False``, nothing changes: a concurrent
     answer won, or a re-run), then close it as ``expired``."""
-    sessions = await lock_sessions(
-        session, await covered_session_ids(session, offer_id)
-    )
-    offer = await _lock_offer(session, offer_id)
+    found = await _offer_target(session, offer_id)
+    if found is None:  # pragma: no cover - offers are never deleted
+        return False
+    series, sessions, offer = await _lock_for_answer(session, offer_id, found[1])
     if offer.status != OFFER_PENDING or not is_overdue(offer.respond_by, now):
         return False
-    await _close_offer(session, offer, sessions, status=OFFER_EXPIRED, now=now)
+    await _close_offer(
+        session, offer, sessions, status=OFFER_EXPIRED, now=now, series=series
+    )
     return True
 
 
@@ -484,11 +594,13 @@ async def withdraw_pending_offers(
     *,
     by_user_id: uuid.UUID | None,
 ) -> list[uuid.UUID]:
-    """E4 seam (#55, #58, M4-07b): mark the pending offers covering these
-    sessions ``withdrawn`` (no inbox item, no notification) and return their
-    ids. The caller has locked the sessions (the lock order) and moves them
-    out of ``offered`` itself. ``by_user_id`` is the audit actor of the
-    caller's Unit of Work; it is not stored on the offer."""
+    """E4 seam (#55, #58): mark the pending **session-scope** offers covering
+    these sessions ``withdrawn`` (no inbox item, no notification) and return
+    their ids. The caller has locked the sessions (the lock order) and moves
+    them out of ``offered`` itself. Series-scope offers are left alone
+    (:func:`withdraw_series_offer` withdraws one; #233 B6). ``by_user_id``
+    is the audit actor of the caller's Unit of Work; it is not stored on the
+    offer."""
     del by_user_id
     if not class_session_ids:
         return []
@@ -501,6 +613,7 @@ async def withdraw_pending_offers(
             )
             .where(AssignmentOfferSession.class_session_id.in_(class_session_ids))
             .where(AssignmentOffer.status == OFFER_PENDING)
+            .where(AssignmentOffer.scope == OFFER_SCOPE_SESSION)
             .distinct()
             .order_by(AssignmentOffer.id)
         )
@@ -514,6 +627,44 @@ async def withdraw_pending_offers(
     return offer_ids
 
 
+async def withdraw_series_offer(
+    session: AsyncSession, class_series_id: uuid.UUID, *, by_user_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    """#233 B6 seam (#54 cancellations, #55): withdraw the series' pending
+    series offer under the lock order from the series row: the offer becomes
+    ``withdrawn``, its still-``offered`` sessions go back to ``unassigned``
+    (the tutor cleared) and the series loses its tutor and assignment. No
+    inbox item and no notification. Returns the offer id, or ``None`` (and
+    changes nothing) when no offer is pending. ``by_user_id`` is the audit
+    actor of the caller's Unit of Work; it is not stored."""
+    del by_user_id
+    series = await lock_series(session, class_series_id)
+    pending = await pending_series_offer(session, class_series_id)
+    if pending is None:
+        return None
+    sessions = await lock_sessions(
+        session, await covered_session_ids(session, pending.id)
+    )
+    offer = await _lock_offer(session, pending.id)
+    if offer.status != OFFER_PENDING:  # pragma: no cover - the series lock
+        return None
+    for row in sessions:
+        if (
+            row.state == SessionState.OFFERED
+            and row.tutor_user_id == offer.tutor_user_id
+        ):
+            await transition_class_session(
+                session,
+                row.id,
+                to_state=SessionState.UNASSIGNED,
+                expected_version=row.version,
+            )
+    _finish(offer, OFFER_WITHDRAWN, clock.now())
+    clear_series_assignment(series)
+    await session.flush()
+    return offer.id
+
+
 # --- Reads (G) -----------------------------------------------------------------------
 
 
@@ -524,9 +675,11 @@ def _utc(value: datetime) -> datetime:
 async def offer_items(
     session: AsyncSession, offers: Sequence[AssignmentOffer]
 ) -> list[AssignmentOfferItem]:
-    """The items of ``offers``, in their order: at most five statements (the
-    covered sessions with their students, then the students, subjects,
-    classrooms and accounts by reference)."""
+    """The items of ``offers``, in their order: at most six statements (the
+    first covered sessions of each offer with their students and the
+    per-offer count, the series of the series offers, then the students,
+    subjects, classrooms and accounts by reference). A series offer lists
+    its first :data:`OFFER_ITEM_SESSIONS_MAX` sessions by start (#233 F1)."""
     if not offers:
         return []
     students = (
@@ -534,20 +687,49 @@ async def offer_items(
         .where(ClassSessionParticipant.class_session_id == ClassSession.id)
         .scalar_subquery()
     )
+    ranked = (
+        select(
+            AssignmentOfferSession.offer_id,
+            AssignmentOfferSession.class_session_id,
+            func.row_number()
+            .over(
+                partition_by=AssignmentOfferSession.offer_id,
+                order_by=(ClassSession.starts_at, ClassSession.id),
+            )
+            .label("position"),
+            func.count()
+            .over(partition_by=AssignmentOfferSession.offer_id)
+            .label("total"),
+        )
+        .join(ClassSession, ClassSession.id == AssignmentOfferSession.class_session_id)
+        .where(AssignmentOfferSession.offer_id.in_([offer.id for offer in offers]))
+        .subquery()
+    )
     rows = (
         await session.execute(
-            select(AssignmentOfferSession.offer_id, ClassSession, students)
-            .join(
-                ClassSession, ClassSession.id == AssignmentOfferSession.class_session_id
-            )
-            .where(AssignmentOfferSession.offer_id.in_([offer.id for offer in offers]))
+            select(ranked.c.offer_id, ClassSession, students, ranked.c.total)
+            .join(ClassSession, ClassSession.id == ranked.c.class_session_id)
+            .where(ranked.c.position <= OFFER_ITEM_SESSIONS_MAX)
             .order_by(ClassSession.starts_at, ClassSession.id)
         )
     ).all()
+    series_ids = {o.class_series_id for o in offers if o.class_series_id is not None}
+    series_by_id = (
+        {
+            series.id: series
+            for series in await session.scalars(
+                select(ClassSeries).where(ClassSeries.id.in_(series_ids))
+            )
+        }
+        if series_ids
+        else {}
+    )
     student_ids = {sid for row in rows for sid in (row[2] or ())}
     student_refs = await families.student_references(session, student_ids)
     subjects = await catalog.subject_references(
-        session, {row[1].subject_id for row in rows}
+        session,
+        {row[1].subject_id for row in rows}
+        | {series.subject_id for series in series_by_id.values()},
     )
     rooms = await catalog.classroom_references(
         session, {row[1].classroom_id for row in rows if row[1].classroom_id}
@@ -557,7 +739,9 @@ async def offer_items(
         {o.tutor_user_id for o in offers} | {o.offered_by_user_id for o in offers},
     )
     by_offer: dict[uuid.UUID, list[OfferSession]] = {}
-    for offer_id, row, ids in rows:
+    totals: dict[uuid.UUID, int] = {}
+    for offer_id, row, ids, total in rows:
+        totals[offer_id] = int(total)
         subject = subjects[row.subject_id]
         room = rooms.get(row.classroom_id) if row.classroom_id else None
         names = sorted(
@@ -589,10 +773,32 @@ async def offer_items(
         account = accounts[user_id]
         return OfferPerson(id=account.id, display_name=account.display_name)
 
+    def series_of(offer: AssignmentOffer) -> OfferSeries | None:
+        series = series_by_id.get(offer.class_series_id)  # type: ignore[arg-type]
+        if series is None or offer.from_date is None:
+            return None
+        subject = subjects[series.subject_id]
+        return OfferSeries(
+            id=series.id,
+            kind=series.kind,  # type: ignore[arg-type]
+            subject=OfferSessionSubject(
+                name=subject.name, education_level_name=subject.education_level_name
+            ),
+            weekdays=list(series.weekdays),
+            interval=series.interval,
+            start_time=series.start_time.strftime("%H:%M"),
+            duration_minutes=series.duration_minutes,
+            time_zone=series.time_zone,
+            from_date=offer.from_date,
+            until=series.until_on,
+            count=series.count,
+            last_occurrence_on=series.last_occurrence_on,
+        )
+
     return [
         AssignmentOfferItem(
             id=offer.id,
-            scope="session",
+            scope=offer.scope,  # type: ignore[arg-type]
             status=offer.status,  # type: ignore[arg-type]
             tutor=person(offer.tutor_user_id),
             offered_at=_utc(offer.offered_at),
@@ -602,7 +808,11 @@ async def offer_items(
             if offer.responded_at is None
             else _utc(offer.responded_at),
             decline_note=offer.decline_note,
+            series=series_of(offer),
+            session_count=totals.get(offer.id, 0),
             sessions=by_offer.get(offer.id, []),
+            sessions_truncated=totals.get(offer.id, 0)
+            > len(by_offer.get(offer.id, [])),
         )
         for offer in offers
     ]
@@ -625,7 +835,7 @@ async def list_my_offers(
     offset: int,
 ) -> AssignmentOfferPage:
     """``GET /api/v1/assignment-offers`` (G2): only the caller's offers;
-    ``pending`` by deadline, otherwise newest first. At most six
+    ``pending`` by deadline, otherwise newest first. At most seven
     statements (the total rides on the page query)."""
     conditions = [
         AssignmentOffer.tutor_user_id == caller_id,

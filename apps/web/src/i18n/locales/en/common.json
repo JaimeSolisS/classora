@@ -299,7 +299,11 @@
       "qualification": "{{tutor}} — {{subject}} ({{level}})",
       "reassignmentDeclined": "Declined by {{tutor}} · {{subject}} · {{when}}",
       "reassignmentExpired": "Expired, offered to {{tutor}} · {{subject}} · {{when}}",
-      "occurrenceConflict": "Series occurrence {{when}} — {{students}} · {{subject}}: {{codes}}"
+      "occurrenceConflict": "Series occurrence {{when}} — {{students}} · {{subject}}: {{codes}}",
+      "seriesReassignmentDeclined_one": "Declined by {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} session)",
+      "seriesReassignmentDeclined_other": "Declined by {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)",
+      "seriesReassignmentExpired_one": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} session)",
+      "seriesReassignmentExpired_other": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)"
     },
     "list": {
       "title": "Requests",
@@ -1362,7 +1366,10 @@
       "staff_qualification_revoked": "Your qualification for {{subject_name}} ({{education_level_name}}) was revoked. See the reason in your qualifications.",
       "scheduling_offer_received": "You have a new session offer: {{subject_name}}, {{starts_at}}. Answer by {{respond_by}}.",
       "scheduling_offer_declined": "{{tutor_name}} declined {{subject_name}}, {{starts_at}}. Offer it to another tutor.",
-      "scheduling_offer_expired": "The offer of {{subject_name}}, {{starts_at}} to {{tutor_name}} expired without an answer. Offer it to another tutor."
+      "scheduling_offer_expired": "The offer of {{subject_name}}, {{starts_at}} to {{tutor_name}} expired without an answer. Offer it to another tutor.",
+      "scheduling_offer_received_series": "Weekly series offered: {{subject_name}}, from {{from_date}}. Answer by {{respond_by}}.",
+      "scheduling_offer_declined_series": "{{tutor_name}} declined the weekly series {{subject_name}} from {{from_date}}. Offer it to another tutor.",
+      "scheduling_offer_expired_series": "The weekly series {{subject_name}} from {{from_date}} offered to {{tutor_name}} expired without an answer. Offer it to another tutor."
     }
   },
   "scheduling": {
@@ -1605,6 +1612,16 @@
       "validation": {
         "tutorRequired": "Choose a tutor.",
         "deadlineIncomplete": "Give both a date and a time, or leave both empty."
+      },
+      "series": {
+        "scope": "Offer",
+        "session": "This session only",
+        "series": "This and following sessions",
+        "help": "Offers the weekly series from this session’s date: every unassigned session from then on, and the sessions added later. A series offer can’t override rules.",
+        "conflictsHeading_one": "The series can’t be offered: 1 conflict",
+        "conflictsHeading_other": "The series can’t be offered: {{count}} conflicts",
+        "noDate": "Other",
+        "noOverride": "A series offer can’t override rules. Choose another tutor, offer from a later date, or offer this session only."
       }
     },
     "session": {
@@ -1621,7 +1638,15 @@
       "noOffers": "No offers yet.",
       "offeredBy": "Offered by {{name}} on {{when}}",
       "respondedAt": "Answered on {{when}}",
-      "respondBy": "Answer by {{when}}"
+      "respondBy": "Answer by {{when}}",
+      "seriesOfferedTo": "Weekly series offered to {{tutor}}.",
+      "pendingSeriesOfferText": "{{tutor}}, with the weekly series; answer by {{when}}",
+      "series": "Series",
+      "partOfSeries": "Part of a weekly series",
+      "seriesNoTutor": "no tutor",
+      "seriesPending": "offered to {{tutor}}, answer by {{when}}",
+      "seriesPendingNoDeadline": "offered to {{tutor}}",
+      "seriesAccepted": "{{tutor}} from {{date}}"
     }
   },
   "courses": {
@@ -1807,6 +1832,25 @@
       "submit": "Decline",
       "action": "Decline",
       "for": "Decline {{offer}}"
+    },
+    "series": {
+      "label": "weekly series {{subject}} from {{date}}",
+      "heading": "Weekly series: {{subject}} ({{level}})",
+      "every": "Every {{days}}, {{start}}–{{end}}",
+      "everyWeeks_one": "Every {{count}} week on {{days}}, {{start}}–{{end}}",
+      "everyWeeks_other": "Every {{count}} weeks on {{days}}, {{start}}–{{end}}",
+      "from": "From {{date}}",
+      "until": "until {{date}}",
+      "count_one": "{{count}} session in all",
+      "count_other": "{{count}} sessions in all",
+      "noEnd": "No end date",
+      "scheduled_one": "{{count}} session scheduled so far; later sessions are added automatically.",
+      "scheduled_other": "{{count}} sessions scheduled so far; later sessions are added automatically.",
+      "sessions": "Scheduled sessions",
+      "more_one": "and {{count}} more",
+      "more_other": "and {{count}} more",
+      "acceptTitle": "Accept this weekly series?",
+      "acceptDescription": "You will teach the {{offer}}. All its current and future sessions from that date are confirmed once you accept."
     }
   }
 }

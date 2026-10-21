@@ -1,7 +1,7 @@
 import type { FieldError } from '@classora/api-client';
 import { localDateTimeToInstant } from '@/lib/time';
 import type { SessionOverride } from '../create/rules';
-import type { AssignmentOfferCreate } from './api';
+import type { AssignmentOfferCreate, ClassSeriesOfferCreate } from './api';
 
 // The rules of the "Offer to a tutor" form (#52 H2), without React: the
 // values, the client checks, the body (an optional earlier deadline as a
@@ -105,4 +105,41 @@ export function offerServerErrors(
     }
   }
   return errors;
+}
+
+/** Whom the panel offers to (#233 G2): this session, or the series from it. */
+export type OfferScope = 'session' | 'series';
+
+/**
+ * The body of "This and following sessions" (#233 C2): the series version
+ * and this occurrence's local date; never an override (E3).
+ */
+export function seriesOfferBody(
+  values: OfferValues,
+  seriesVersion: number,
+  fromDate: string,
+  timeZone: string,
+): ClassSeriesOfferCreate {
+  const respondBy = respondByInstant(values, timeZone);
+  return {
+    tutor_user_id: values.tutorId,
+    version: seriesVersion,
+    from_date: fromDate,
+    ...(respondBy ? { respond_by: respondBy } : {}),
+  };
+}
+
+/** A series 409's conflicts grouped by local date, in date order. */
+export function conflictsByDate<T extends { details: Record<string, unknown> }>(
+  conflicts: readonly T[],
+): { date: string; conflicts: T[] }[] {
+  const groups = new Map<string, T[]>();
+  for (const conflict of conflicts) {
+    const date =
+      typeof conflict.details.date === 'string' ? conflict.details.date : '';
+    groups.set(date, [...(groups.get(date) ?? []), conflict]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => ({ date, conflicts: list }));
 }

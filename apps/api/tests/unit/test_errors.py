@@ -229,6 +229,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/tutor-suggestions",
         "/api/v1/class-series",
         "/api/v1/class-series/{class_series_id}",
+        "/api/v1/class-series/{class_series_id}/offers",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",

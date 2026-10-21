@@ -8,15 +8,19 @@ import { useCan } from '@/features/auth/useSession';
 import { CALENDAR_KEY } from '@/features/calendar/api';
 import { fetchTutorOptions, SCHEDULE_OPTIONS_KEY } from '../create/api';
 import type { SchedulingWarning } from '../create/api';
+import { toLocalDate } from '@/lib/time';
 import {
+  fetchClassSeries,
   fetchClassSession,
   fetchReplacementTutors,
   fetchSessionOffers,
+  offerClassSeries,
   offerClassSession,
+  seriesKey,
   sessionKey,
 } from './api';
 import { OfferPanel } from './OfferPanel';
-import { offerBody } from './rules';
+import { offerBody, seriesOfferBody } from './rules';
 import { SessionDetailView, type SessionState } from './SessionDetailView';
 
 // /schedule/sessions/:id (#52 H2), for schedule.view holders: the session,
@@ -24,7 +28,10 @@ import { SessionDetailView, type SessionState } from './SessionDetailView';
 // "Offer to a tutor" panel while the session is unassigned (the #51
 // replacement suggestions, the #49 override for schedule.override holders).
 // Linked from the #48 success panel, the reassignment inbox item and the
-// offer notifications.
+// offer notifications. An occurrence of a series (#233 G2) also reads the
+// series: its assignment is shown, and while the series has no tutor the
+// panel can offer "This and following sessions" (the series from this
+// occurrence's local date, with the series version).
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -37,6 +44,7 @@ export function SessionPage() {
   const [offered, setOffered] = useState<{
     tutorName: string;
     warnings: readonly SchedulingWarning[];
+    series?: boolean;
   } | null>(null);
   const session = useQuery({
     queryKey: [...sessionKey(sessionId), 'detail'],
@@ -46,6 +54,12 @@ export function SessionPage() {
     queryKey: [...sessionKey(sessionId), 'offers'],
     queryFn: ({ signal }) => fetchSessionOffers(sessionId, signal),
   });
+  const seriesId = session.data?.series_id ?? null;
+  const series = useQuery({
+    queryKey: seriesKey(seriesId ?? ''),
+    queryFn: ({ signal }) => fetchClassSeries(seriesId ?? '', signal),
+    enabled: seriesId !== null,
+  });
   const showPanel = canAssign && session.data?.state === 'unassigned';
   const tutors = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'tutors'],
@@ -54,7 +68,7 @@ export function SessionPage() {
   });
 
   let state: SessionState;
-  const failed = [session, offers].find((query) => query.isError);
+  const failed = [session, offers, series].find((query) => query.isError);
   if (failed) {
     state = {
       status: 'error',
@@ -62,6 +76,9 @@ export function SessionPage() {
       onRetry: () => {
         void session.refetch();
         void offers.refetch();
+        if (seriesId) {
+          void series.refetch();
+        }
       },
     };
   } else if (!session.data || !offers.data) {
@@ -75,10 +92,29 @@ export function SessionPage() {
   }
 
   const detail = session.data;
+  const seriesDetail = seriesId ? series.data : undefined;
+  const seriesChoice =
+    detail && seriesDetail && seriesDetail.assignment === null
+      ? {
+          onSubmit: (values: Parameters<typeof offerBody>[0]) =>
+            offerClassSeries(
+              seriesDetail.id,
+              seriesOfferBody(
+                values,
+                seriesDetail.version,
+                toLocalDate(
+                  detail.original_start ?? detail.starts_at,
+                  timeZone,
+                ),
+                timeZone,
+              ),
+            ),
+        }
+      : undefined;
   const offerPanel =
-    showPanel && detail && tutors.data ? (
+    showPanel && detail && tutors.data && (!seriesId || seriesDetail) ? (
       <OfferPanel
-        key={detail.version}
+        key={`${detail.version}-${seriesDetail?.version ?? ''}`}
         tutors={tutors.data}
         timeZone={timeZone}
         canOverride={canOverride}
@@ -89,12 +125,17 @@ export function SessionPage() {
             offerBody(values, detail.version, timeZone, override),
           )
         }
+        series={seriesChoice}
         onOffered={(created) => {
           setOffered({
             tutorName: created.offer.tutor.display_name,
             warnings: created.warnings,
+            series: created.offer.scope === 'series',
           });
           void client.invalidateQueries({ queryKey: sessionKey(sessionId) });
+          if (seriesId) {
+            void client.invalidateQueries({ queryKey: seriesKey(seriesId) });
+          }
           void client.invalidateQueries({ queryKey: CALENDAR_KEY });
         }}
       />
@@ -118,6 +159,7 @@ export function SessionPage() {
         timeZone={timeZone}
         offerPanel={offerPanel}
         offered={offered}
+        series={seriesDetail ?? null}
       />
     </div>
   );

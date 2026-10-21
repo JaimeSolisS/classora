@@ -10,15 +10,20 @@ can't be sent back for changes, and dismissing one needs a reason.
 - **Approve ("Mark resolved")**: allowed only once no covered session is
   still ``unassigned`` (``409 reassignment_still_needed`` otherwise; the
   item stays pending). The sessions are locked first (the offer lock
-  order).
+  order). For a **series** offer (#233 E2) the series must also have a
+  tutor again; the series row is locked before the sessions.
 - **Reject ("Dismiss")**: closes the item; the session is unchanged
   (cancelling sessions belongs to #55 / #58).
 - **Auto-close**: offering the session again cancels the item
-  (``offer_flow``).
+  (``offer_flow``); for a series offer, offering the series again
+  (``series_offers``).
 
 ``summaries``: ``{class_session_id, subject_name, starts_at, tutor_name,
-outcome (declined | expired), decline_note, session_state}`` by offer id,
-in four statements whatever the page size.
+outcome (declined | expired), decline_note, session_state, class_series_id,
+from_date, occurrence_count}`` by offer id, in four statements whatever the
+page size. The three series keys are ``null`` for a session offer; for a
+series offer without a covered session, ``class_session_id``,
+``starts_at`` and ``session_state`` are ``null``.
 
 Exported by ``scheduling.service``; ``app.wiring`` registers it.
 """
@@ -38,11 +43,13 @@ from app.modules.scheduling.errors import ReassignmentStillNeededError
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
+    ClassSeries,
     ClassSession,
 )
 from app.modules.scheduling.offer_flow import (
     REASSIGNMENT_TYPE,
     covered_session_ids,
+    lock_series,
     lock_sessions,
 )
 from app.modules.scheduling.offer_records import SCHEDULE_ASSIGN, rfc3339
@@ -64,10 +71,18 @@ class OfferReassignmentHandler:
         request: administration.ApprovalRequestView,
         principal: Principal,
     ) -> None:
+        series_id = await session.scalar(
+            select(AssignmentOffer.class_series_id).where(
+                AssignmentOffer.id == request.subject_id
+            )
+        )
+        series = None if series_id is None else await lock_series(session, series_id)
         sessions = await lock_sessions(
             session, await covered_session_ids(session, request.subject_id)
         )
         if any(row.state == SessionState.UNASSIGNED for row in sessions):
+            raise ReassignmentStillNeededError()
+        if series is not None and series.tutor_user_id is None:
             raise ReassignmentStillNeededError()
 
     async def reject(
@@ -98,13 +113,19 @@ class OfferReassignmentHandler:
         ids = set(subject_ids)
         if not ids:
             return {}
-        offers = {
-            offer.id: offer
-            for offer in await session.scalars(
-                select(AssignmentOffer).where(AssignmentOffer.id.in_(ids))
+        found = (
+            await session.execute(
+                select(AssignmentOffer, ClassSeries.subject_id)
+                .outerjoin(
+                    ClassSeries, ClassSeries.id == AssignmentOffer.class_series_id
+                )
+                .where(AssignmentOffer.id.in_(ids))
             )
-        }
+        ).all()
+        offers = {offer.id: offer for offer, _ in found}
+        series_subjects = {offer.id: subject for offer, subject in found if subject}
         first: dict[uuid.UUID, ClassSession] = {}
+        covered: dict[uuid.UUID, int] = {}
         for offer_id, row in (
             await session.execute(
                 select(AssignmentOfferSession.offer_id, ClassSession)
@@ -117,8 +138,10 @@ class OfferReassignmentHandler:
             )
         ).all():
             first[offer_id] = row  # the earliest wins (descending order)
+            covered[offer_id] = covered.get(offer_id, 0) + 1
         subjects = await catalog.subject_references(
-            session, {row.subject_id for row in first.values()}
+            session,
+            {row.subject_id for row in first.values()} | set(series_subjects.values()),
         )
         accounts = await identity.get_account_references(
             session, {offer.tutor_user_id for offer in offers.values()}
@@ -127,17 +150,31 @@ class OfferReassignmentHandler:
         for offer_id, offer in offers.items():
             earliest = first.get(offer_id)
             account = accounts.get(offer.tutor_user_id)
-            if earliest is None or account is None:  # pragma: no cover
+            subject_id = (
+                earliest.subject_id
+                if earliest is not None
+                else series_subjects.get(offer_id)
+            )
+            if subject_id is None or account is None:  # pragma: no cover
                 continue
-            subject = subjects.get(earliest.subject_id)
+            subject = subjects.get(subject_id)
             summaries[offer_id] = {
-                "class_session_id": str(earliest.id),
+                "class_session_id": None if earliest is None else str(earliest.id),
                 "subject_name": "" if subject is None else subject.name,
-                "starts_at": rfc3339(earliest.starts_at),
+                "starts_at": None if earliest is None else rfc3339(earliest.starts_at),
                 "tutor_name": account.display_name,
                 "outcome": offer.status,
                 "decline_note": offer.decline_note,
-                "session_state": earliest.state,
+                "session_state": None if earliest is None else earliest.state,
+                "class_series_id": None
+                if offer.class_series_id is None
+                else str(offer.class_series_id),
+                "from_date": None
+                if offer.from_date is None
+                else offer.from_date.isoformat(),
+                "occurrence_count": None
+                if offer.class_series_id is None
+                else covered.get(offer_id, 0),
             }
         return summaries
 

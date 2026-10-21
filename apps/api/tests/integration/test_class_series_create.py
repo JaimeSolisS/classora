@@ -515,7 +515,7 @@ def test_the_create_writes_only_the_automatic_create_events(
     assert {e.request_id for e in all_events} == {series_event.request_id}
 
 
-def test_the_read_matches_the_create_in_at_most_seven_statements(
+def test_the_read_matches_the_create_in_at_most_eight_statements(
     module_seeded_url, client, refs
 ):
     tl = timeline()
@@ -535,7 +535,7 @@ def test_the_read_matches_the_create_in_at_most_seven_statements(
     assert code_of(read) == (200, None)
     expected = {k: v for k, v in created.items() if k != "warnings"}
     assert read.json() == expected
-    assert count <= 7
+    assert count <= 8
     assert detail.model_dump(mode="json") == expected
 
 

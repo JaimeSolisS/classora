@@ -16,6 +16,7 @@ from app.modules.scheduling.recurrence import (
     RecurrenceFields,
     build_rrule,
     expand,
+    first_covered_start,
     horizon_end,
     last_occurrence_on,
     validate_recurrence,
@@ -361,3 +362,111 @@ def test_a_finite_rule_without_occurrences_is_rejected():
         last_occurrence_on(fields((1,), until_on=date(2026, 11, 3)), date(2026, 11, 3))
 
     assert (caught.value.field, caught.value.reason) == ("recurrence", "no_occurrences")
+
+
+# --- first_covered_start (#233 B4) ---------------------------------------------------
+
+
+def covered(
+    rule: RecurrenceFields,
+    *,
+    starts_on: date,
+    from_date: date,
+    now: datetime,
+    zone: str = MEXICO_CITY,
+    start_time: time = time(16),
+) -> datetime | None:
+    return first_covered_start(
+        build_rrule(rule),
+        starts_on=starts_on,
+        start_time=start_time,
+        zone=zone,
+        from_date=from_date,
+        now=now,
+    )
+
+
+def test_the_first_covered_start_is_the_first_occurrence_from_the_date():
+    # Monday 2026-10-26 and Wednesday 2026-10-28, weekly, open-ended.
+    rule = fields((1, 3))
+    now = utc(2026, 10, 20, 12)
+    assert covered(
+        rule, starts_on=date(2026, 10, 26), from_date=date(2026, 10, 26), now=now
+    ) == utc(2026, 10, 26, 22)
+    # From a Tuesday: the Wednesday.
+    assert covered(
+        rule, starts_on=date(2026, 10, 26), from_date=date(2026, 10, 27), now=now
+    ) == utc(2026, 10, 28, 22)
+    # Far beyond any horizon (open-ended).
+    assert covered(
+        rule, starts_on=date(2026, 10, 26), from_date=date(2028, 1, 1), now=now
+    ) == utc(2028, 1, 3, 22)
+
+
+def test_the_from_date_itself_is_covered_but_a_started_occurrence_is_not():
+    rule = fields((1,))
+    monday = date(2026, 10, 26)
+    # 16:00 local is 22:00Z: at 21:59Z it is still to come, at 22:00Z not.
+    assert covered(
+        rule, starts_on=monday, from_date=monday, now=utc(2026, 10, 26, 21, 59)
+    ) == utc(2026, 10, 26, 22)
+    assert covered(
+        rule, starts_on=monday, from_date=monday, now=utc(2026, 10, 26, 22)
+    ) == utc(2026, 11, 2, 22)
+
+
+def test_a_finite_rule_ends():
+    monday = date(2026, 10, 26)
+    now = utc(2026, 10, 20)
+    assert covered(
+        fields((1,), count=2), starts_on=monday, from_date=date(2026, 11, 2), now=now
+    ) == utc(2026, 11, 2, 22)
+    assert (
+        covered(
+            fields((1,), count=2),
+            starts_on=monday,
+            from_date=date(2026, 11, 3),
+            now=now,
+        )
+        is None
+    )
+    assert (
+        covered(
+            fields((1,), until_on=date(2026, 11, 9)),
+            starts_on=monday,
+            from_date=date(2026, 11, 10),
+            now=now,
+        )
+        is None
+    )
+
+
+def test_an_interval_keeps_the_rule_weeks():
+    # Every 2 weeks from Monday 2026-10-26: 11-09 is a rule week, 11-02 not.
+    assert covered(
+        fields((1,), interval=2),
+        starts_on=date(2026, 10, 26),
+        from_date=date(2026, 10, 27),
+        now=utc(2026, 10, 20),
+    ) == utc(2026, 11, 9, 22)
+
+
+def test_the_first_covered_start_follows_the_dst_rule_in_tijuana():
+    # Sunday 2026-11-01: 01:30 happens twice; fold=0 takes the first (PDT).
+    assert covered(
+        fields((7,)),
+        starts_on=date(2026, 10, 25),
+        from_date=date(2026, 11, 1),
+        now=utc(2026, 10, 30),
+        zone=TIJUANA,
+        start_time=time(1, 30),
+    ) == utc(2026, 11, 1, 8, 30)
+    # Sunday 2027-03-14: 02:30 doesn't exist; it moves forward to 03:30 PDT.
+    assert covered(
+        fields((7,)),
+        starts_on=date(2027, 3, 7),
+        from_date=date(2027, 3, 8),
+        now=utc(2027, 3, 1),
+        zone=TIJUANA,
+        start_time=time(2, 30),
+    ) == utc(2027, 3, 14, 10, 30)

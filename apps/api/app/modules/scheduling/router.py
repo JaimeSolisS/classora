@@ -36,6 +36,10 @@
   scheduling_conflict`` listing every occurrence's conflicts → ``201``.
 - ``GET /api/v1/class-series/{class_series_id}`` (#53 I):
   ``require("schedule.view")``; every holder sees every series.
+- ``POST /api/v1/class-series/{class_series_id}/offers`` (#233 C2):
+  ``require("schedule.assign")``; offers a series without a tutor from a
+  local date (:mod:`~app.modules.scheduling.series_offers` gives the
+  order).
 - Assignment offers (#52; :mod:`~app.modules.scheduling.offer_flow` gives
   the orders): ``POST /api/v1/class-sessions/{class_session_id}/offers``
   (``require("schedule.assign")``; an ``override`` needs
@@ -76,6 +80,7 @@ from app.modules.scheduling.schemas import (
     ClassSeriesCreate,
     ClassSeriesCreated,
     ClassSeriesDetail,
+    ClassSeriesOfferCreate,
     ClassSessionCalendar,
     ClassSessionCreate,
     ClassSessionCreated,
@@ -338,7 +343,9 @@ async def list_tutor_suggestions(
             "An occurrence breaks scheduling rules (scheduling_conflict):"
             " `conflicts` lists every conflict of every occurrence in the"
             " horizon, each with `details.occurrence_start` and `details.date`,"
-            " by occurrence. Nothing is created."
+            " by occurrence. Nothing is created. With a tutor, a series with no"
+            " occurrence still to come can't be offered (series_not_offerable,"
+            " details.reason = ended)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
@@ -348,9 +355,10 @@ async def list_tutor_suggestions(
             " weekday_out_of_range, weekdays_duplicate, interval_out_of_range,"
             " until_and_count, count_out_of_range, until_before_start,"
             " no_occurrences); starts_on_in_past; crosses_local_date on"
-            " start_time; or the references (student_unknown, student_inactive,"
+            " start_time; the references (student_unknown, student_inactive,"
             " subject_unknown, subject_inactive, tutor_unknown, tutor_inactive,"
-            " classroom_unknown, classroom_inactive), all in one response."
+            " classroom_unknown, classroom_inactive), all in one response; or"
+            " `respond_by` (respond_by_requires_tutor, respond_by_invalid)."
         ),
     },
 )
@@ -368,7 +376,10 @@ async def create_class_series(
     are `offered` to them, without one `unassigned`. `warnings` is always
     empty for now."""
     return await service.create_class_series(
-        uow.session, body, horizon_weeks=settings.scheduling_horizon_weeks
+        uow.session,
+        body,
+        horizon_weeks=settings.scheduling_horizon_weeks,
+        actor_id=principal.user_id,
     )
 
 
@@ -384,9 +395,53 @@ async def get_class_series(
     class_series_id: uuid.UUID,
     uow: UnitOfWorkDep,
 ) -> ClassSeriesDetail:
-    """One class series with its rule, references and the occurrences that
-    start now or later."""
+    """One class series with its rule, references, tutor assignment and the
+    occurrences that start now or later."""
     return await service.get_class_series(uow.session, class_series_id)
+
+
+@series_router.post(
+    "/{class_series_id}/offers",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class series (not_found)."),
+        409: problem_response_doc(
+            "The series changed since it was read (version_conflict); it already"
+            " has a tutor (series_not_offerable, details.reason = assigned) or no"
+            " occurrence from `from_date` is still to come (series_not_offerable,"
+            " details.reason = ended); or the tutor breaks scheduling rules on an"
+            " occurrence (scheduling_conflict, every conflict of every covered"
+            " occurrence with `details.occurrence_start` and `details.date`)."
+            " Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field (an `override` included), a naive `respond_by`;"
+            " from_date_in_past; the tutor (tutor_unknown, tutor_inactive) or"
+            " `respond_by` (respond_by_invalid), in one response."
+        ),
+    },
+)
+async def offer_class_series(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    class_series_id: uuid.UUID,
+    body: ClassSeriesOfferCreate,
+    uow: UnitOfWorkDep,
+) -> AssignmentOfferCreated:
+    """Offer a series without a tutor to one, from a local date (default:
+    the later of its start and today): every `unassigned` occurrence from
+    that date that has not started becomes `offered` to them in one offer,
+    and the tutor is notified. Occurrences created later join the offer;
+    once accepted they are created `confirmed`. Each covered occurrence is
+    checked for the new tutor: overlap (hard), availability, qualification,
+    operating hours and the room's availability; there is no override, so
+    any conflict refuses the offer. Offering closes the inbox items of the
+    series' earlier declined or expired offers. `warnings` is always
+    empty."""
+    return await service.offer_class_series(
+        uow.session, class_series_id, body, actor_id=principal.user_id
+    )
 
 
 @router.post(

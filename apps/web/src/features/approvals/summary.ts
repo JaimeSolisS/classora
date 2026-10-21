@@ -123,13 +123,18 @@ function isRegistration(subject: unknown): subject is RegistrationSubject {
 }
 
 interface ReassignmentSubject {
-  class_session_id: string;
+  /** Null only for a series offer that covered no session (#233 E2). */
+  class_session_id: string | null;
   subject_name: string;
-  starts_at: string;
+  starts_at: string | null;
   tutor_name: string;
   outcome: 'declined' | 'expired';
   decline_note: string | null;
-  session_state: string;
+  session_state: string | null;
+  /** Set for a series offer (#233 E2). */
+  class_series_id?: string | null;
+  from_date?: string | null;
+  occurrence_count?: number | null;
 }
 
 function isReassignment(subject: unknown): subject is ReassignmentSubject {
@@ -137,10 +142,13 @@ function isReassignment(subject: unknown): subject is ReassignmentSubject {
     return false;
   }
   const value = subject as Record<string, unknown>;
+  const series = typeof value.class_series_id === 'string';
   return (
-    typeof value.class_session_id === 'string' &&
+    (typeof value.class_session_id === 'string' ||
+      (series && value.class_session_id === null)) &&
     typeof value.subject_name === 'string' &&
-    typeof value.starts_at === 'string' &&
+    (typeof value.starts_at === 'string' ||
+      (series && value.starts_at === null)) &&
     typeof value.tutor_name === 'string' &&
     (value.outcome === 'declined' || value.outcome === 'expired')
   );
@@ -159,13 +167,16 @@ export function reassignmentSubject(
 /** The session page a reassignment item links to (#52 H3), or null. */
 export function reassignmentLink(item: ApprovalRequestItem): string | null {
   const subject = reassignmentSubject(item);
-  return subject
+  return subject?.class_session_id
     ? `/schedule/sessions/${encodeURIComponent(subject.class_session_id)}`
     : null;
 }
 
 /** Formats an instant for a summary (the center zone, from useFormatters). */
 export type InstantFormatter = (instant: string) => string;
+
+/** Formats a local date (`YYYY-MM-DD`) for a summary (from useFormatters). */
+export type DateFormatter = (localDate: string) => string;
 
 const ACTION_LABELS = {
   approve: 'approvals.actions.approve',
@@ -228,7 +239,9 @@ export function registrationSubject(
  * One line naming what the request is about: for a registration "display
  * name (username) · requested role"; for a tutor qualification "tutor —
  * subject (level)"; for an offer reassignment (#52) "Declined by tutor ·
- * subject · date time" (or "Expired …"); for a series occurrence in conflict
+ * subject · date time" (or "Expired …"), and for a series offer (#233 G3)
+ * "Declined by tutor · subject · weekly series from date (n sessions)";
+ * for a series occurrence in conflict
  * (#53) "Series occurrence <date, time> — <students> · <subject>: <codes>";
  * for an unknown type the type code.
  */
@@ -236,6 +249,7 @@ export function approvalSummary(
   item: ApprovalRequestItem,
   t: TFunction,
   formatInstant: InstantFormatter = (instant) => instant,
+  formatDate: DateFormatter = (localDate) => localDate,
 ) {
   const registration = registrationSubject(item);
   if (registration) {
@@ -254,7 +268,20 @@ export function approvalSummary(
     });
   }
   const reassignment = reassignmentSubject(item);
-  if (reassignment) {
+  if (reassignment?.class_series_id && reassignment.from_date) {
+    return t(
+      reassignment.outcome === 'declined'
+        ? 'approvals.summary.seriesReassignmentDeclined'
+        : 'approvals.summary.seriesReassignmentExpired',
+      {
+        tutor: reassignment.tutor_name,
+        subject: reassignment.subject_name,
+        date: formatDate(reassignment.from_date),
+        count: reassignment.occurrence_count ?? 0,
+      },
+    );
+  }
+  if (reassignment?.starts_at) {
     return t(
       reassignment.outcome === 'declined'
         ? 'approvals.summary.reassignmentDeclined'
@@ -285,9 +312,10 @@ export function itemName(
   item: ApprovalRequestItem,
   t: TFunction,
   formatInstant?: InstantFormatter,
+  formatDate?: DateFormatter,
 ): string {
   return (
     registrationSubject(item)?.username ??
-    approvalSummary(item, t, formatInstant)
+    approvalSummary(item, t, formatInstant, formatDate)
   );
 }
