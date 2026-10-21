@@ -7297,6 +7297,110 @@
           }
         }
       }
+    },
+    "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke": {
+      "post": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Revoke Qualification",
+        "description": "A reviewer withdraws an approved qualification with a reason. The row\nstays as revoked, stops counting for eligibility at once, and the tutor\nis notified. The approval request stays approved.",
+        "operationId": "revoke_qualification_api_v1_tutors__user_id__qualifications__qualification_id__revoke_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "qualification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Qualification Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationRevoke"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such qualification, or it isn't this tutor's (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The qualification changed since it was loaded (version_conflict), or it isn't approved (qualification_not_approved).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10782,6 +10886,31 @@
             "title": "Rejection Reason",
             "description": "The reviewer's reason; set only for rejected."
           },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "When the approval was revoked; set only for revoked."
+          },
+          "revocation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revocation Reason",
+            "description": "The reviewer's revocation reason; set only for revoked."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -10799,10 +10928,37 @@
           "requested_at",
           "decided_at",
           "rejection_reason",
+          "revoked_at",
+          "revocation_reason",
           "version"
         ],
         "title": "QualificationItem",
         "description": "One qualification of a tutor, with its subject and level names."
+      },
+      "QualificationRevoke": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why the qualification is revoked; the tutor sees it."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "The version the caller loaded."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason",
+          "version"
+        ],
+        "title": "QualificationRevoke",
+        "description": "A reviewer withdraws an approved qualification (#198 B1)."
       },
       "QualificationStatus": {
         "type": "string",
@@ -10810,7 +10966,8 @@
           "pending",
           "approved",
           "rejected",
-          "cancelled"
+          "cancelled",
+          "revoked"
         ]
       },
       "QualificationStatusFilter": {
@@ -10820,7 +10977,8 @@
           "pending",
           "approved",
           "rejected",
-          "cancelled"
+          "cancelled",
+          "revoked"
         ]
       },
       "ReauthenticateRequest": {

@@ -1,11 +1,12 @@
 """The staff module's public API (ADR-0002): tutor profiles (#43) and
 tutor qualifications (#44, implemented in
 :mod:`app.modules.staff.qualifications`; the approval handler in
-:mod:`app.modules.staff.qualification_approval`).
+:mod:`app.modules.staff.qualification_approval`; revocation, #198, in
+:mod:`app.modules.staff.qualification_revocation`).
 
 For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
 :func:`is_qualified` and :func:`qualified_tutor_ids` count **approved**
-qualifications only.
+qualifications only (a revoked one stops counting at once).
 
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
 through ``identity.service`` (:func:`identity.list_role_members`,
@@ -51,6 +52,9 @@ from app.modules.staff.qualification_approval import (
 from app.modules.staff.qualification_approval import (
     register_qualification_notifications as register_qualification_notifications,
 )
+from app.modules.staff.qualification_revocation import (
+    revoke_qualification as revoke_qualification,
+)
 from app.modules.staff.qualifications import (
     approved_subject_ids as approved_subject_ids,
 )
@@ -81,6 +85,7 @@ __all__ = [
     "qualified_tutor_ids",
     "register_qualification_notifications",
     "request_qualification",
+    "revoke_qualification",
     "update_tutor",
 ]
 

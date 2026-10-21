@@ -64,7 +64,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0026"
+HEAD = "0027"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -196,6 +196,12 @@ def test_history_is_linear_with_one_head():
     tutor_profiles = script.get_revision("0025")
     assert tutor_profiles.down_revision == "0024"
     assert Path(tutor_profiles.path).name == "0025_staff_tutor_profiles.py"
+    qualifications = script.get_revision("0026")
+    assert qualifications.down_revision == "0025"
+    assert Path(qualifications.path).name == "0026_staff_tutor_qualifications.py"
+    revocation = script.get_revision("0027")
+    assert revocation.down_revision == "0026"
+    assert Path(revocation.path).name == "0027_staff_qualification_revocation.py"
 
 
 def test_alembic_ini_has_no_database_url():
@@ -3197,6 +3203,10 @@ def test_tutor_qualifications_columns_constraints_and_indexes(fresh_database_url
         "decided_at": ("timestamp with time zone", "YES", None, None),
         "decided_by_user_id": ("uuid", "YES", None, None),
         "rejection_reason": ("character varying", "YES", 1000, None),
+        # 0027 (#198 A1).
+        "revoked_at": ("timestamp with time zone", "YES", None, None),
+        "revoked_by_user_id": ("uuid", "YES", None, None),
+        "revocation_reason": ("character varying", "YES", 1000, None),
     }
     constraints = _constraints(fresh_database_url, table)
     assert set(constraints) == {
@@ -3204,11 +3214,17 @@ def test_tutor_qualifications_columns_constraints_and_indexes(fresh_database_url
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_subject_id_subjects",
         f"fk_{table}_decided_by_user_id_users",
+        f"fk_{table}_revoked_by_user_id_users",
         f"ck_{table}_status_valid",
         f"ck_{table}_decided_iff_final",
         f"ck_{table}_reason_iff_rejected",
+        f"ck_{table}_revocation_iff_revoked",
     }
-    for fk in ("tutor_user_id_users", "subject_id_subjects"):
+    for fk in (
+        "tutor_user_id_users",
+        "subject_id_subjects",
+        "revoked_by_user_id_users",
+    ):
         assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_{fk}"]
     indexes = _indexes(fresh_database_url, table)
     assert set(indexes) == {
@@ -3222,6 +3238,8 @@ def test_tutor_qualifications_columns_constraints_and_indexes(fresh_database_url
     assert "(tutor_user_id, subject_id)" in active
     assert "'pending'" in active and "'approved'" in active
     assert "'rejected'" not in active and "'cancelled'" not in active
+    # #198 A2: the index is not changed; revoked rows are outside it.
+    assert "'revoked'" not in active
 
 
 def _qualification_subject(dsn: str) -> Any:
@@ -3312,7 +3330,7 @@ def test_rejected_and_cancelled_rows_do_not_block_a_new_request(fresh_database_u
         ("cancelled", False, None, "decided_iff_final"),
         ("pending", True, None, "decided_iff_final"),
         ("approved", True, "No.", "reason_iff_rejected"),
-        ("revoked", False, None, "status_valid"),
+        ("expired", False, None, "status_valid"),
     ],
 )
 def test_invalid_tutor_qualifications_are_rejected(
@@ -3329,3 +3347,155 @@ def test_invalid_tutor_qualifications_are_rejected(
             decided=decided,
             reason=reason,
         )
+
+
+# --- 0027: revoked tutor qualifications (#198 A) --------------------------------------
+
+
+def _revocable(dsn: str) -> tuple[Any, Any]:
+    """A tutor with an approved qualification: (tutor id, qualification id)."""
+    tutor = _recipient(dsn)
+    subject = _qualification_subject(dsn)
+    _qualification(dsn, tutor, subject, "approved")
+    [row] = run_sql(
+        dsn,
+        "SELECT id FROM tutor_qualifications WHERE tutor_user_id = :tutor",
+        {"tutor": tutor},
+    )
+    return tutor, row.id
+
+
+REVOKE_SQL = (
+    "UPDATE tutor_qualifications SET status = :status,"
+    " decided_at = CASE WHEN :decided THEN decided_at END,"
+    " revoked_at = CASE WHEN :revoked_at THEN now() END,"
+    " revoked_by_user_id = :by, revocation_reason = :reason"
+    " WHERE id = :id"
+)
+
+
+def _revoke(
+    dsn: str,
+    qualification_id: Any,
+    by: Any,
+    *,
+    status: str = "revoked",
+    decided: bool = True,
+    revoked_at: bool = True,
+    reason: str | None = "Outdated.",
+) -> None:
+    run_sql(
+        dsn,
+        REVOKE_SQL,
+        {
+            "status": status,
+            "decided": decided,
+            "revoked_at": revoked_at,
+            "by": by,
+            "reason": reason,
+            "id": qualification_id,
+        },
+    )
+
+
+def test_0027_adds_exactly_the_revocation_columns_and_downgrade_restores_0026(
+    fresh_database_url,
+):
+    config = alembic_config(fresh_database_url)
+    table = "tutor_qualifications"
+    command.upgrade(config, "0026")
+    columns = _columns(fresh_database_url, table)
+    constraints = _constraints(fresh_database_url, table)
+    indexes = _indexes(fresh_database_url, table)
+    command.upgrade(config, "0027")
+
+    assert set(_columns(fresh_database_url, table)) - set(columns) == {
+        "revoked_at",
+        "revoked_by_user_id",
+        "revocation_reason",
+    }
+    assert set(_constraints(fresh_database_url, table)) - set(constraints) == {
+        f"fk_{table}_revoked_by_user_id_users",
+        f"ck_{table}_revocation_iff_revoked",
+    }
+    assert _indexes(fresh_database_url, table) == indexes
+
+    command.downgrade(config, "0026")
+
+    assert version_nums(fresh_database_url) == ["0026"]
+    assert _columns(fresh_database_url, table) == columns
+    assert _constraints(fresh_database_url, table) == constraints
+    assert _indexes(fresh_database_url, table) == indexes
+    command.upgrade(config, "head")
+    assert version_nums(fresh_database_url) == [HEAD]
+
+
+def test_0027_downgrade_refuses_while_revoked_rows_exist(fresh_database_url):
+    config = alembic_config(fresh_database_url)
+    command.upgrade(config, "head")
+    tutor, qualification = _revocable(fresh_database_url)
+    _revoke(fresh_database_url, qualification, tutor)
+
+    with pytest.raises(Exception, match="revoked rows"):
+        command.downgrade(config, "0026")
+
+    assert version_nums(fresh_database_url) == [HEAD]
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT status FROM tutor_qualifications WHERE id = :id",
+        {"id": qualification},
+    )
+    assert row.status == "revoked"
+
+
+def test_a_revoked_row_keeps_its_decision_and_a_new_request_is_accepted(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor, qualification = _revocable(fresh_database_url)
+    reviewer = _recipient(fresh_database_url)
+    _revoke(fresh_database_url, qualification, reviewer)
+    [row] = run_sql(
+        fresh_database_url,
+        "SELECT subject_id, decided_at, rejection_reason FROM tutor_qualifications"
+        " WHERE id = :id",
+        {"id": qualification},
+    )
+    assert row.decided_at is not None and row.rejection_reason is None
+
+    # A2: a revoked row plus a new pending row for the same tutor and subject.
+    _qualification(fresh_database_url, tutor, row.subject_id, "pending")
+
+    [count] = run_sql(
+        fresh_database_url,
+        "SELECT count(*) AS n FROM tutor_qualifications"
+        " WHERE tutor_user_id = :tutor AND subject_id = :subject",
+        {"tutor": tutor, "subject": row.subject_id},
+    )
+    assert count.n == 2
+    with pytest.raises(IntegrityError, match="fk_tutor_qualifications_revoked_by"):
+        run_sql(
+            fresh_database_url, "DELETE FROM users WHERE id = :id", {"id": reviewer}
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"reason": None}, "revocation_iff_revoked"),
+        ({"revoked_at": False}, "revocation_iff_revoked"),
+        ({"by": None}, "revocation_iff_revoked"),
+        ({"status": "approved"}, "revocation_iff_revoked"),
+        ({"status": "approved", "reason": None, "by": None}, "revocation_iff_revoked"),
+        ({"decided": False}, "decided_iff_final"),
+    ],
+)
+def test_invalid_revoked_tutor_qualifications_are_rejected(
+    fresh_database_url, overrides, constraint
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    tutor, qualification = _revocable(fresh_database_url)
+    values: dict[str, Any] = {"by": tutor, **overrides}
+
+    with pytest.raises(IntegrityError, match=f"ck_tutor_qualifications_{constraint}"):
+        _revoke(fresh_database_url, qualification, **values)

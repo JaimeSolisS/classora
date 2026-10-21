@@ -730,6 +730,16 @@ allow = ["owner", "administrator", "academic_coordinator", "tutor"]
 # and no qualification: 404 for every allowed role.
 
 [[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke"
+access = "permission"
+permission = "qualification.review"
+allow = ["owner", "administrator"]
+# #198: reviewers revoke an approved qualification. A valid body for the
+# placeholder ids, which are no qualification: 404 for every allowed role.
+json = { reason = "Outdated certificate.", version = 2 }
+
+[[route]]
 method = "GET"
 path = "/api/v1/users"
 access = "permission"
