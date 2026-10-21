@@ -1,29 +1,35 @@
 import { expect, test, type Page } from '@playwright/test';
-import { api } from '../support/api';
+import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, errors, fill } from '../support/catalog';
 
 // Business settings (#37 I1): the demo Owner's shared session (no login, so
-// no login budget) renames the center and opens Sunday, sees both kept after
-// a reload, then picks another time zone: the reauthentication dialog
-// appears, and after "Cancel" the stored zone is still Mexico City. Finally
-// the name and a closed Sunday are restored.
+// no login budget) renames the center and opens Sunday 07:00–08:00, sees
+// both kept after a reload, then picks another time zone: the
+// reauthentication dialog appears, and after "Cancel" the stored zone is
+// still Mexico City. Finally the name and a closed Sunday are restored; a
+// `finally` restores the original name and hours through the API if the
+// UI restore did not complete (#249).
 //
 // The settings record is a singleton: this is the only spec that edits it,
 // in one serial test, and it never changes the time zone, because every spec
 // runs in America/Mexico_City (_docs/testing-guidelines.md, E2E data rules).
+// Sunday is closed for every other spec; this test opens it only 07:00–08:00,
+// a window no other spec schedules in (they use Sunday at or after 09:00).
 // The shared session is never reauthenticated (tests that confirm a
 // password sign in on their own, #28 H2), so the zone change always asks
 // for the password here.
 //
-// Scheduling policies (#61 H1): the same test opens the "Scheduling
+// Scheduling policies (#61 H1): a second test opens the "Scheduling
 // policies" tab, checks the version in force (24 h notice, 48 h to answer
 // an offer), publishes a version "From date" today + 60 days with a 12-hour
 // cancellation notice, sees it under "Upcoming changes" and deletes it. It
-// never publishes an immediate version, so no other spec sees a changed
-// policy (_docs/testing-guidelines.md, E2E data rules).
+// never edits the settings record and never publishes an immediate version,
+// so it may run on another worker and no other spec sees a changed policy
+// (_docs/testing-guidelines.md, E2E data rules).
 
 const DEFAULT_ZONE = 'America/Mexico_City';
+const TEST_TIMEOUT_MS = 90_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 403
 // reauth_required before the dialog.
@@ -31,6 +37,44 @@ const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of 403/;
 
 const sunday = common.settings.weekdays.sunday;
+
+type OperatingHours = { weekday: number; opens_at: string; closes_at: string };
+type BusinessSettings = {
+  center_name: string;
+  operating_hours: OperatingHours[];
+  version: number;
+};
+
+async function loadSettings(page: Page): Promise<BusinessSettings> {
+  const result = await api(page, '/api/v1/business-settings');
+  expect(result.status).toBe(200);
+  return result.body as BusinessSettings;
+}
+
+/** Puts back the original name and hours through the API (never the zone),
+ * when the UI restore did not complete. */
+async function restoreSettingsViaApi(page: Page, original: BusinessSettings) {
+  const current = await loadSettings(page);
+  if (
+    current.center_name === original.center_name &&
+    JSON.stringify(current.operating_hours) ===
+      JSON.stringify(original.operating_hours)
+  ) {
+    return;
+  }
+  const me = await api(page, '/api/v1/auth/me');
+  expect(me.status).toBe(200);
+  const restored = await api(page, '/api/v1/business-settings', {
+    method: 'PATCH',
+    json: {
+      version: current.version,
+      center_name: original.center_name,
+      operating_hours: original.operating_hours,
+    },
+    headers: { 'X-CSRF-Token': csrfTokenOf(me) },
+  });
+  expect(restored.status).toBe(200);
+}
 
 function nameField(page: Page) {
   return page
@@ -71,7 +115,7 @@ function centerDatePlus(days: number): string {
   );
 }
 
-async function editSchedulingPolicy(page: Page) {
+async function openSchedulingPolicies(page: Page) {
   const policies = common.settings.schedulingPolicies;
   const main = page.getByRole('main');
   await main
@@ -82,6 +126,11 @@ async function editSchedulingPolicy(page: Page) {
   await expect(
     main.getByRole('heading', { level: 1, name: policies.title }),
   ).toBeVisible();
+}
+
+async function editSchedulingPolicy(page: Page) {
+  const policies = common.settings.schedulingPolicies;
+  const main = page.getByRole('main');
   const hours = (count: number) => fill(policies.units.hours, { count });
   const current = main.getByRole('region', { name: policies.current.title });
   await expect(current).toContainText(
@@ -147,10 +196,7 @@ async function openSettings(page: Page) {
   await expect(nameField(page)).toBeVisible();
 }
 
-test('editing the business settings', async ({ page }, testInfo) => {
-  const suffix = `${testInfo.workerIndex}${Date.now().toString(36)}`;
-  const newName = `Classora E2E ${suffix}`;
-  await recordCspViolations(page);
+function trackConsoleErrors(page: Page): string[] {
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   page.on('console', (message) => {
@@ -161,53 +207,90 @@ test('editing the business settings', async ({ page }, testInfo) => {
       consoleErrors.push(message.text());
     }
   });
+  return consoleErrors;
+}
+
+test('editing the business settings', async ({ page }, testInfo) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const suffix = `${testInfo.workerIndex}${Date.now().toString(36)}`;
+  const newName = `Classora E2E ${suffix}`;
+  await recordCspViolations(page);
+  const consoleErrors = trackConsoleErrors(page);
   const main = page.getByRole('main');
 
   // 1. Settings from the navigation, with the stored values.
   await page.goto('/');
   await openSettings(page);
+  const original = await loadSettings(page);
   const originalName = await nameField(page).inputValue();
+  expect(originalName).toBe(original.center_name);
   await expect(zoneSelect(page)).toHaveValue(DEFAULT_ZONE);
   await expect(sundayOpen(page)).not.toBeChecked();
   await expect(sundayTime(page, 'dayOpensAt')).toBeDisabled();
 
-  // 2. A new name and Sunday open 10:00-13:00.
-  await nameField(page).fill(newName);
-  await sundayOpen(page).click();
-  await sundayTime(page, 'dayOpensAt').fill('10:00');
-  await sundayTime(page, 'dayClosesAt').fill('13:00');
-  await saveAndWait(page);
+  let uiRestored = false;
+  try {
+    // 2. A new name and Sunday open 07:00-08:00 (the window only this spec
+    // uses, _docs/testing-guidelines.md, E2E data rules).
+    await nameField(page).fill(newName);
+    await sundayOpen(page).click();
+    await sundayTime(page, 'dayOpensAt').fill('07:00');
+    await sundayTime(page, 'dayClosesAt').fill('08:00');
+    await saveAndWait(page);
 
-  // 3. Kept after a reload.
-  await page.reload();
-  await expect(nameField(page)).toHaveValue(newName);
-  await expect(sundayOpen(page)).toBeChecked();
-  await expect(sundayTime(page, 'dayOpensAt')).toHaveValue('10:00');
-  await expect(sundayTime(page, 'dayClosesAt')).toHaveValue('13:00');
+    // 3. Kept after a reload.
+    await page.reload();
+    await expect(nameField(page)).toHaveValue(newName);
+    await expect(sundayOpen(page)).toBeChecked();
+    await expect(sundayTime(page, 'dayOpensAt')).toHaveValue('07:00');
+    await expect(sundayTime(page, 'dayClosesAt')).toHaveValue('08:00');
 
-  // 4. Another zone asks for the password; "Cancel" changes nothing.
-  await zoneSelect(page).selectOption('America/Cancun');
-  await main.getByRole('button', { name: common.settings.save }).click();
-  const dialog = page.getByRole('dialog', { name: common.auth.reauth.title });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: common.auth.reauth.cancel }).click();
-  await expect(dialog).toBeHidden();
-  await expect(main.getByRole('alert')).toContainText(errors.reauth_required);
-  await page.reload();
-  await expect(zoneSelect(page)).toHaveValue(DEFAULT_ZONE);
-  const stored = await api(page, '/api/v1/business-settings');
-  expect((stored.body as { time_zone: string }).time_zone).toBe(DEFAULT_ZONE);
+    // 4. Another zone asks for the password; "Cancel" changes nothing.
+    await zoneSelect(page).selectOption('America/Cancun');
+    await main.getByRole('button', { name: common.settings.save }).click();
+    const dialog = page.getByRole('dialog', { name: common.auth.reauth.title });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('button', { name: common.auth.reauth.cancel })
+      .click();
+    await expect(dialog).toBeHidden();
+    await expect(main.getByRole('alert')).toContainText(errors.reauth_required);
+    await page.reload();
+    await expect(zoneSelect(page)).toHaveValue(DEFAULT_ZONE);
+    const stored = await api(page, '/api/v1/business-settings');
+    expect((stored.body as { time_zone: string }).time_zone).toBe(DEFAULT_ZONE);
 
-  // 5. Restore the name and a closed Sunday.
-  await nameField(page).fill(originalName);
-  await sundayOpen(page).click();
-  await expect(sundayTime(page, 'dayOpensAt')).toBeDisabled();
-  await saveAndWait(page);
-  await page.reload();
-  await expect(nameField(page)).toHaveValue(originalName);
-  await expect(sundayOpen(page)).not.toBeChecked();
+    // 5. Restore the name and a closed Sunday.
+    await nameField(page).fill(originalName);
+    await sundayOpen(page).click();
+    await expect(sundayTime(page, 'dayOpensAt')).toBeDisabled();
+    await saveAndWait(page);
+    await page.reload();
+    await expect(nameField(page)).toHaveValue(originalName);
+    await expect(sundayOpen(page)).not.toBeChecked();
+    uiRestored = true;
+  } finally {
+    if (!uiRestored) {
+      await restoreSettingsViaApi(page, original);
+    }
+  }
 
-  // 6. Scheduling policies (#61 H1): an upcoming version, then deleted.
+  expect(consoleErrors).toEqual([]);
+  expect(await cspViolations(page)).toEqual([]);
+});
+
+test('publishing and deleting an upcoming scheduling policy', async ({
+  page,
+}) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  await recordCspViolations(page);
+  const consoleErrors = trackConsoleErrors(page);
+
+  // Settings from the navigation, then the "Scheduling policies" tab
+  // (#61 H1): an upcoming version, then deleted.
+  await page.goto('/');
+  await openSettings(page);
+  await openSchedulingPolicies(page);
   await editSchedulingPolicy(page);
 
   expect(consoleErrors).toEqual([]);
