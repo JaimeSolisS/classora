@@ -94,3 +94,12 @@ def editable_fields(
     if principal.user_id == target_user_id:
         return SELF_FIELDS
     return NO_FIELDS
+
+
+def can_edit_availability(principal: Principal, target_user_id: uuid.UUID) -> bool:
+    """Whether the caller may change the tutor's availability (#45): the
+    tutor themselves or a holder of ``tutor.manage``; an Academic
+    Coordinator views only."""
+    if not can_view_tutor(principal, target_user_id):
+        return False
+    return principal.has(TUTOR_MANAGE) or principal.user_id == target_user_id

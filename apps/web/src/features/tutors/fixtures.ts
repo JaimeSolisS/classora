@@ -1,10 +1,12 @@
 import type {
+  AvailabilityException,
   CatalogOption,
   QualificationItem,
   TeachingSubject,
   TutorDetail,
   TutorListItem,
   TutorListPage,
+  TutorAvailability,
 } from './api';
 
 // Sample tutor profiles for the tests and stories (#43). Placeholder
@@ -206,4 +208,45 @@ export const NEW_TUTOR: TutorDetail = {
     'professional_experience',
   ],
   teaching_subjects: [],
+};
+
+// --- Availability (#45) ------------------------------------------------------
+
+export const EXCEPTIONS: AvailabilityException[] = [
+  {
+    id: '00000000-0000-4000-8000-0000000000f1',
+    kind: 'unavailable',
+    starts_on: '2026-12-21',
+    ends_on: '2026-12-31',
+    starts_at: null,
+    ends_at: null,
+    note: 'Vacaciones',
+    created_at: '2026-10-01T15:00:00Z',
+  },
+  {
+    id: '00000000-0000-4000-8000-0000000000f2',
+    kind: 'available',
+    starts_on: '2027-01-09',
+    ends_on: '2027-01-09',
+    starts_at: '10:00',
+    ends_at: '12:00',
+    note: null,
+    created_at: '2026-10-02T15:00:00Z',
+  },
+];
+
+export const AVAILABILITY: TutorAvailability = {
+  weekly: [
+    { weekday: 1, starts_at: '16:00', ends_at: '20:00' },
+    { weekday: 3, starts_at: '16:00', ends_at: '18:00' },
+    { weekday: 3, starts_at: '18:00', ends_at: '19:00' },
+  ],
+  exceptions: EXCEPTIONS,
+  version: 2,
+};
+
+export const NO_AVAILABILITY: TutorAvailability = {
+  weekly: [],
+  exceptions: [],
+  version: 0,
 };

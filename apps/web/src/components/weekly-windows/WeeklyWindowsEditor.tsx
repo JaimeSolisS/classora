@@ -18,7 +18,7 @@ import {
 // The weekly windows editor (#39 D3, D6; shared with #45 tutor
 // availability): a fieldset of rows, each a weekday select, a start and an
 // end time (`type="time"`, 15-minute step) and "Remove"; "Add window" below
-// (disabled at 28 rows). Controlled: the parent keeps the rows and passes
+// (disabled at 28 rows, or `max`). Controlled: the parent keeps the rows and passes
 // the errors of each row (message keys, from `validateWindows` or the
 // server). Every control names its row ("Window 2 start time"). Focus moves
 // to the new row's weekday after "Add window" and to "Add window" after a
@@ -36,6 +36,10 @@ export interface WeeklyWindowsEditorProps {
   legend?: string;
   /** The help under the legend; the default explains "no windows". */
   help?: string;
+  /** The text without rows; the default says "available at any time". */
+  emptyText?: string;
+  /** The most rows (the API's limit); 28 (rooms) by default. */
+  max?: number;
 }
 
 export function WeeklyWindowsEditor({
@@ -46,12 +50,14 @@ export function WeeklyWindowsEditor({
   disabled = false,
   legend,
   help,
+  emptyText,
+  max = WINDOWS_MAX,
 }: WeeklyWindowsEditorProps) {
   const { t } = useTranslation();
   const focusNext = useRef<string | null>(null);
   const helpId = `${id}-help`;
   const limitId = `${id}-limit`;
-  const full = rows.length >= WINDOWS_MAX;
+  const full = rows.length >= max;
 
   // After an add or a remove, move focus once the rows are rendered.
   useEffect(() => {
@@ -98,7 +104,7 @@ export function WeeklyWindowsEditor({
         {help ?? t('weeklyWindows.help')}
       </p>
       {rows.length === 0 ? (
-        <p className="text-sm">{t('weeklyWindows.empty')}</p>
+        <p className="text-sm">{emptyText ?? t('weeklyWindows.empty')}</p>
       ) : (
         <ol className="flex flex-col gap-3">
           {rows.map((row, index) => {
@@ -221,7 +227,7 @@ export function WeeklyWindowsEditor({
         </Button>
         {full ? (
           <p id={limitId} className="text-sm text-muted-foreground">
-            {t('weeklyWindows.limit', { max: WINDOWS_MAX })}
+            {t('weeklyWindows.limit', { max })}
           </p>
         ) : null}
       </div>

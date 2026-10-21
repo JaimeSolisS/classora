@@ -1,5 +1,5 @@
-"""Tutor profile bodies (#43 C1-C3) and tutor qualifications (#44 B3, D1;
-revocation #198 B1, B3).
+"""Tutor profile bodies (#43 C1-C3), tutor qualifications (#44 B3, D1;
+revocation #198 B1, B3) and tutor availability (#45 C).
 
 The contact fields are the account's (``users.email``/``phone``, #31) with
 the #31 formats; ``display_name`` is the account's too. Only
@@ -8,7 +8,7 @@ come from ``catalog.service``.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal, cast
 
 from pydantic import (
@@ -17,9 +17,20 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationError,
+    ValidationInfo,
     field_validator,
 )
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
+from app.modules.catalog.schemas import (
+    WINDOW_OVERLAP_MESSAGE,
+    AvailabilityWindow,
+    LocalDate,
+    LocalTime,
+    range_error,
+    window_overlaps,
+)
 from app.modules.identity.schemas import (
     ContactEmail,
     ContactPhone,
@@ -27,6 +38,9 @@ from app.modules.identity.schemas import (
     UserState,
 )
 from app.modules.staff.models import (
+    AVAILABILITY_WINDOWS_MAX,
+    EXCEPTION_MAX_SPAN_DAYS,
+    EXCEPTION_NOTE_MAX_LENGTH,
     EXPERIENCE_MAX_LENGTH,
     REVOCATION_REASON_MAX_LENGTH,
 )
@@ -181,3 +195,161 @@ class QualificationRevoke(BaseModel):
         ),
     ] = Field(description="Why the qualification is revoked; the tutor sees it.")
     version: int = Field(ge=1, description="The version the caller loaded.")
+
+
+# --- Tutor availability (#45) --------------------------------------------------------
+
+type ExceptionKind = Literal["unavailable", "available"]
+type AvailabilityReason = Literal[
+    "center_closed", "time_off", "outside_weekly_availability"
+]
+
+
+def _no_window_overlaps(value: list[AvailabilityWindow]) -> list[AvailabilityWindow]:
+    # 422 on each overlapping item (["body", "windows", <index>,
+    # "starts_at"]), as for classrooms (#39 B5).
+    overlaps = window_overlaps(value)
+    if overlaps:
+        raise ValidationError.from_exception_data(
+            "AvailabilityWindows",
+            [
+                InitErrorDetails(
+                    type=PydanticCustomError("window_overlap", WINDOW_OVERLAP_MESSAGE),
+                    loc=(index, "starts_at"),
+                    input=value[index].starts_at,
+                )
+                for index in overlaps
+            ],
+        )
+    return value
+
+
+class WeeklyAvailabilityUpdate(BaseModel):
+    """The tutor's full list of weekly windows
+    (``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears
+    them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(
+        ge=0,
+        description=("The availability version the caller loaded (0: never changed)."),
+    )
+    windows: list[AvailabilityWindow] = Field(
+        max_length=AVAILABILITY_WINDOWS_MAX,
+        description=(
+            "At most 42 windows; windows of one weekday may touch but not"
+            " overlap. Local wall-clock times of the center."
+        ),
+    )
+
+    _windows = field_validator("windows")(_no_window_overlaps)
+
+
+def _blank_note_to_none(value: Any) -> Any:
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+ExceptionNote = Annotated[
+    Annotated[str, StringConstraints(max_length=EXCEPTION_NOTE_MAX_LENGTH)] | None,
+    BeforeValidator(_blank_note_to_none),
+]
+
+
+class AvailabilityExceptionCreate(BaseModel):
+    """A new exception (``POST …/availability/exceptions``): time off
+    (``unavailable``: the whole day without times, or those hours) or extra
+    availability (``available``: always with times) on each day of the
+    inclusive range."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ExceptionKind
+    starts_on: LocalDate
+    ends_on: LocalDate = Field(
+        description="On or after starts_on, at most 366 days later (inclusive)."
+    )
+    starts_at: LocalTime | None = Field(
+        default=None,
+        validate_default=True,
+        description="Required for available; omit both times for a whole day.",
+    )
+    ends_at: LocalTime | None = Field(
+        default=None,
+        validate_default=True,
+        description="After starts_at (same day); set together with starts_at.",
+    )
+    note: ExceptionNote = Field(
+        default=None, description="At most 200 characters; blank clears it."
+    )
+
+    @field_validator("ends_on")
+    @classmethod
+    def _range(cls, value: date, info: ValidationInfo) -> date:
+        starts_on = info.data.get("starts_on")
+        if isinstance(starts_on, date):
+            message = range_error(starts_on, value, EXCEPTION_MAX_SPAN_DAYS)
+            if message is not None:
+                raise ValueError(message)
+        return value
+
+    @field_validator("starts_at")
+    @classmethod
+    def _hours_for_available(cls, value: str | None, info: ValidationInfo) -> Any:
+        if value is None and info.data.get("kind") == "available":
+            raise ValueError("Extra availability needs a start and an end time.")
+        return value
+
+    @field_validator("ends_at")
+    @classmethod
+    def _hours(cls, value: str | None, info: ValidationInfo) -> Any:
+        if "starts_at" not in info.data:
+            return value  # starts_at already failed
+        starts_at = info.data["starts_at"]
+        if (starts_at is None) != (value is None):
+            raise ValueError("Set both times or neither.")
+        if starts_at is not None and value is not None and value <= starts_at:
+            raise ValueError("The end time must be after the start time.")
+        return value
+
+
+class AvailabilityExceptionItem(BaseModel):
+    """One exception. ``starts_at``/``ends_at`` are null for a whole day."""
+
+    id: uuid.UUID
+    kind: ExceptionKind
+    starts_on: date
+    ends_on: date
+    starts_at: str | None = Field(description="HH:MM, or null for a whole day.")
+    ends_at: str | None = Field(description="HH:MM, or null for a whole day.")
+    note: str | None
+    created_at: datetime
+
+
+class TutorAvailabilityDetail(BaseModel):
+    """A tutor's availability in the center's local wall-clock time."""
+
+    weekly: list[AvailabilityWindow] = Field(
+        description="The weekly windows by weekday, then start."
+    )
+    exceptions: list[AvailabilityExceptionItem] = Field(
+        description="By starts_on, then starts_at (whole days first)."
+    )
+    version: int = Field(
+        description=("The weekly availability's version; 0 while it was never changed.")
+    )
+
+
+class AvailabilityCheck(BaseModel):
+    """Whether the tutor is available for a local interval, and why not."""
+
+    available: bool
+    reasons: list[AvailabilityReason] = Field(
+        description=(
+            "Every reason that applies, in this order: center_closed,"
+            " time_off, outside_weekly_availability. Empty when available."
+        )
+    )

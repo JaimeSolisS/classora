@@ -106,6 +106,7 @@ Codes in use today:
 | `qualification_exists` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` when the tutor already has a `pending` or `approved` qualification for the subject; also the loser of two concurrent requests (see Tutor qualifications). |
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
+| `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1561,7 +1562,7 @@ from it.
   `rejected`, at most 1000 characters), and `revoked_at`,
   `revoked_by_user_id` (`users`, `ON DELETE RESTRICT`) and
   `revocation_reason` (at most 1000 characters), all three set exactly for
-  `revoked` (#198, migration 0027). The qualification keeps
+  `revoked` (#198, migration 0028). The qualification keeps
   its own status, mirrored with its approval request in one transaction, so
   eligibility never reads the approval tables (ADR-0002).
 - **No duplicate active qualification:** the partial unique index
@@ -1639,6 +1640,77 @@ from it.
   decision or a revocation, with `status`, `revoked_at`,
   `revoked_by_user_id` and `revocation_reason`), plus the approval request's
   own events.
+
+### Tutor availability
+
+Implemented by M3-09 (#45; spec §3, §16; ADR-0004) in
+`apps/api/app/modules/staff/` (`availability.py`: the pure rules;
+`tutor_availability.py`: the routes' service; `assignment_impact.py`: the
+M4-18 seam). Teaching limits, breaks and preferred rooms are #197.
+
+**Local wall-clock rule:** every availability value is a local `DATE` or
+`TIME` of the center (`business_settings.time_zone`), never an instant. A
+weekly window 16:00–20:00 means 16:00–20:00 local time on that weekday,
+before and after a DST change. So availability is not "scheduled data" for
+the time-zone change guard (#37).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/tutors/{user_id}/availability` | `require("tutor.view")` + the tutor profile record policy | `TutorAvailabilityDetail`: `weekly` (windows by weekday, then start; `HH:MM`), `exceptions` (by `starts_on`, whole days first, then `starts_at`), `version` (`0` while the weekly windows never changed). |
+| `PUT /api/v1/tutors/{user_id}/availability/weekly` | `require("tutor.view")`; the tutor themselves or `tutor.manage` | Body `{version, windows: [{weekday, starts_at, ends_at}]}`, at most 42 windows, the classroom window checks (`window_overlap` on the later item's `starts_at`). Replaces the windows; `200` with the detail. |
+| `POST /api/v1/tutors/{user_id}/availability/exceptions` | as above | Body `{kind, starts_on, ends_on, starts_at?, ends_at?, note?}`. `201` with the `AvailabilityExceptionItem`. |
+| `DELETE /api/v1/tutors/{user_id}/availability/exceptions/{exception_id}` | as above | `204`. An id of another tutor's exception is `404`. |
+| `GET /api/v1/tutors/{user_id}/availability/check` | `require("tutor.view")` + the record policy | Query `date` (`YYYY-MM-DD`), `start`, `end` (`HH:MM`, `start < end`; else `422`). `{available, reasons}`. |
+
+- **Edit rights:** the tutor themselves and holders of `tutor.manage`
+  (Owners, Administrators). An Academic Coordinator reads and checks but
+  gets `403 permission_denied` on writes; a caller who can't see the tutor
+  gets `404` everywhere (as a missing tutor or a user without the `tutor`
+  role).
+- **Weekly windows** (`tutor_availability_windows`): ISO weekday,
+  `[starts_at, ends_at)`, whole minutes, never across midnight; windows of
+  one weekday may touch but never overlap (`ex_tutor_windows_no_overlap`).
+  The `PUT` order is `422` → `404` → `403` → `409 version_conflict` → the
+  impact check → the update. Only the windows that changed are deleted and
+  inserted. The `version` lives on `tutor_availability_settings`, created by
+  the first change (from `version` 0); a concurrent first change that loses
+  is `409 version_conflict`. A body that changes nothing keeps the version.
+- **Exceptions** (`tutor_availability_exceptions`): `kind` `unavailable`
+  (time off: the whole day when both times are omitted, otherwise those
+  hours of each day) or `available` (extra hours of each day; times are
+  required). Inclusive dates at most 366 days apart; times both or neither,
+  `starts_at < ends_at`; `note` up to 200 characters (trimmed; blank is
+  none). Exceptions may overlap. They are created and deleted, never
+  edited, and don't change the weekly `version`.
+- **Precedence and the check** (`availability.evaluate`), every applicable
+  reason in this order:
+  1. `center_closed`: an active closure contains the date (#38);
+  2. `time_off`: an `unavailable` exception on that date is whole-day, or
+     its hours overlap `[start, end)` (touching doesn't overlap);
+     `unavailable` wins over `available`;
+  3. `outside_weekly_availability`: `[start, end)` is not covered by the
+     union of that weekday's windows and the date's `available` hours
+     (touching ranges join). A tutor without windows is never available.
+- **For M4:** `staff.service.is_tutor_available(session, tutor_user_id,
+  local_date, start, end)` and `is_tutor_available_at(session,
+  tutor_user_id, starts_at, ends_at)` return `AvailabilityResult(available,
+  reasons)`. The second converts the instants with the center zone into
+  local pieces (`availability.to_local_intervals`): a piece per local day
+  (a piece to midnight ends at "24:00", which no window covers); a DST gap
+  stays one piece (01:30–03:30 wall time for one real hour); the repeated
+  hour of a DST overlap gives two pieces, both checked. It is available only
+  if every piece is; reasons are merged. Neither checks the tutor role.
+- **Impact seam (M4-18 #63):** the weekly `PUT` (only when it takes weekly
+  time away: `removed_windows` is what the old windows covered and the new
+  ones don't), an `unavailable` exception `POST` and an `available`
+  exception `DELETE` (both as `added_unavailability`) ask
+  `AvailabilityImpactSource.affected_session_ids`. A non-empty answer is
+  `409 availability_change_requires_approval` and nothing changes. Until M4
+  the app wires `NoAssignmentImpact` (always empty, no SQL).
+- **Audit:** all three tables are audited: `create`/`delete` per changed
+  window, `create`/`delete` per exception, and the settings row's `create`
+  on the first change (later changes only bump its `version`, which is
+  never audited, #22).
 
 ### Response headers
 

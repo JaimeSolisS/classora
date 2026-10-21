@@ -101,6 +101,11 @@ reject them, with a reason, on the Approvals page, and the tutor is notified
 of the decision. They can later revoke an approved qualification, with a
 reason the tutor sees. Only approved qualifications count as the tutor's
 teaching subjects.
+Tutors publish their weekly availability and exceptions (time off and extra
+availability on given dates) in the center's local time on their profile;
+Owners and administrators can edit it too, and academic coordinators view
+it. The API answers whether a tutor is available at a given time, taking
+center closures into account.
 Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.
@@ -296,6 +301,47 @@ at most) for tutors, students and guardians; `/api/v1/auth/me` then answers
 `401 session_expired`, so log in again. Details: [`_docs/api.md`](_docs/api.md) and
 [`_docs/security-headers.md`](_docs/security-headers.md).
 
+### Native local stack
+
+For day-to-day work, and for several git worktrees side by side, the API,
+worker and web app can run directly on the host against one shared PostgreSQL
+container, with no image builds:
+
+```bash
+make db-shared                    # start the shared PostgreSQL server (127.0.0.1:55432; idempotent)
+make db-create NAME=<name>        # create a database and role <name> ([a-z0-9_]+); prints its URLs
+make api-native                   # migrations, then the API with reload on API_PORT
+make worker-native                # the background worker
+make web-native                   # Vite with hot reload on WEB_PORT
+make seed-demo                    # demo data into the same database
+make db-drop NAME=<name>          # drop the database and role
+make db-shared-down               # stop the server (V=1 also deletes its volume)
+```
+
+Run `api-native`, `worker-native` and `web-native` in separate terminals (stop
+each with Ctrl-C before `make db-drop`). They read the same keys as Compose
+from the checkout's `.env` (`ENV_FILE=<path>` picks another file), and a
+variable set in the shell wins over the file. Set `DATABASE_URL` and
+`DATABASE_DIRECT_URL` both to the URL `make db-create` prints (there is no
+PgBouncer), and `API_PORT`, `WEB_PORT` and `APP_ORIGIN`
+(`http://127.0.0.1:<WEB_PORT>`) to ports no other stack uses. The web server
+proxies to `API_PROXY_TARGET`, by default `http://127.0.0.1:<API_PORT>`. For
+example, two worktrees, each with its own database:
+
+```bash
+# worktree A (.env):  API_PORT=8101  WEB_PORT=5274  APP_ORIGIN=http://127.0.0.1:5274
+#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://wt_a:classora_local_only@127.0.0.1:55432/wt_a
+# worktree B (.env):  API_PORT=8102  WEB_PORT=5275  APP_ORIGIN=http://127.0.0.1:5275
+#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://wt_b:classora_local_only@127.0.0.1:55432/wt_b
+make db-shared && make db-create NAME=wt_a   # in A (B: NAME=wt_b)
+make api-native                              # then worker-native, web-native, seed-demo
+```
+
+Browsers share cookies between ports of `127.0.0.1`, so sign in to two stacks
+from separate browser profiles (or separate `curl` cookie files). The native
+stack is not the reference: the Docker stack (`make dev`, `make e2e`) and the
+Docker-based CI jobs are, and CI is the parity check on every pull request.
+
 ## Configuration
 
 `.env.example` documents every variable with safe local placeholders; copy it
@@ -339,7 +385,7 @@ make test              # all tests: API (unit + integration) then web (Vitest)
 make test-api          # all API tests with a coverage report
 make test-web          # web and API client tests (Vitest, no Docker needed; includes the es/en translation-key check)
 make test-unit         # API unit tests only (no Docker needed)
-make test-integration  # API integration tests only
+make test-integration  # API integration tests except the migration checks (SHARD=K/N runs one CI shard)
 make test-migrations   # API migration checks only (upgrade, round trip, no model drift)
 ```
 
@@ -435,7 +481,9 @@ command:
 | CI job | Local command |
 | --- | --- |
 | `api-lint` | `make lint-api` |
-| `api-test` | `make test-unit`, `make test-migrations`, `make test-integration` |
+| `api-unit` | `make test-unit` |
+| `api-migrations` | `make test-migrations` |
+| `api-integration (K/4)` | `make test-integration SHARD=K/4` (four parallel shards; the test files are dealt round-robin by path) |
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |

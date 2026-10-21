@@ -1594,6 +1594,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tutors/{user_id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Availability
+         * @description The tutor's weekly windows and exceptions, in the center's local
+         *     wall-clock time.
+         */
+        get: operations["get_availability_api_v1_tutors__user_id__availability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Weekly Availability
+         * @description Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0
+         *     is a tutor whose availability never changed. A body that changes nothing
+         *     keeps the version.
+         */
+        put: operations["replace_weekly_availability_api_v1_tutors__user_id__availability_weekly_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Availability Exception
+         * @description Add time off (``unavailable``, whole days or hours) or extra
+         *     availability (``available``, hours) on each day of an inclusive range.
+         */
+        post: operations["create_availability_exception_api_v1_tutors__user_id__availability_exceptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Availability Exception
+         * @description Delete one of the tutor's exceptions.
+         */
+        delete: operations["delete_availability_exception_api_v1_tutors__user_id__availability_exceptions__exception_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Availability
+         * @description Whether the tutor is available on the local date from ``start`` to
+         *     ``end`` (the center's wall-clock time), center closures included, with
+         *     every reason they are not.
+         */
+        get: operations["check_availability_api_v1_tutors__user_id__availability_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1802,6 +1908,97 @@ export interface components {
             /** Request Id */
             request_id: string | null;
         };
+        /**
+         * AvailabilityCheck
+         * @description Whether the tutor is available for a local interval, and why not.
+         */
+        AvailabilityCheck: {
+            /** Available */
+            available: boolean;
+            /**
+             * Reasons
+             * @description Every reason that applies, in this order: center_closed, time_off, outside_weekly_availability. Empty when available.
+             */
+            reasons: components["schemas"]["AvailabilityReason"][];
+        };
+        /**
+         * AvailabilityExceptionCreate
+         * @description A new exception (``POST …/availability/exceptions``): time off
+         *     (``unavailable``: the whole day without times, or those hours) or extra
+         *     availability (``available``: always with times) on each day of the
+         *     inclusive range.
+         */
+        AvailabilityExceptionCreate: {
+            kind: components["schemas"]["ExceptionKind"];
+            /**
+             * Starts On
+             * Format: date
+             * @description A calendar date, YYYY-MM-DD (no time zone).
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             * @description On or after starts_on, at most 366 days later (inclusive).
+             */
+            ends_on: string;
+            /**
+             * Starts At
+             * @description Required for available; omit both times for a whole day.
+             */
+            starts_at?: string | null;
+            /**
+             * Ends At
+             * @description After starts_at (same day); set together with starts_at.
+             */
+            ends_at?: string | null;
+            /**
+             * Note
+             * @description At most 200 characters; blank clears it.
+             */
+            note?: string | null;
+        };
+        /**
+         * AvailabilityExceptionItem
+         * @description One exception. ``starts_at``/``ends_at`` are null for a whole day.
+         */
+        AvailabilityExceptionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ExceptionKind"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /**
+             * Starts At
+             * @description HH:MM, or null for a whole day.
+             */
+            starts_at: string | null;
+            /**
+             * Ends At
+             * @description HH:MM, or null for a whole day.
+             */
+            ends_at: string | null;
+            /** Note */
+            note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        AvailabilityReason: "center_closed" | "time_off" | "outside_weekly_availability";
         /**
          * AvailabilityWindow
          * @description One weekly window, ``[starts_at, ends_at)`` in local time on an ISO
@@ -2319,6 +2516,8 @@ export interface components {
             /** Id */
             id?: string | null;
         };
+        /** @enum {string} */
+        ExceptionKind: "unavailable" | "available";
         /**
          * FamilyCreate
          * @description A new family (``POST /api/v1/families``): active, with no members.
@@ -3635,6 +3834,27 @@ export interface components {
         /** @enum {string} */
         Theme: "light" | "dark" | "system";
         /**
+         * TutorAvailabilityDetail
+         * @description A tutor's availability in the center's local wall-clock time.
+         */
+        TutorAvailabilityDetail: {
+            /**
+             * Weekly
+             * @description The weekly windows by weekday, then start.
+             */
+            weekly: components["schemas"]["AvailabilityWindow"][];
+            /**
+             * Exceptions
+             * @description By starts_on, then starts_at (whole days first).
+             */
+            exceptions: components["schemas"]["AvailabilityExceptionItem"][];
+            /**
+             * Version
+             * @description The weekly availability's version; 0 while it was never changed.
+             */
+            version: number;
+        };
+        /**
          * TutorDetail
          * @description One tutor profile, with what the caller may edit.
          */
@@ -3895,6 +4115,24 @@ export interface components {
             email?: string | null;
             /** Phone */
             phone?: string | null;
+        };
+        /**
+         * WeeklyAvailabilityUpdate
+         * @description The tutor's full list of weekly windows
+         *     (``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears
+         *     them.
+         */
+        WeeklyAvailabilityUpdate: {
+            /**
+             * Version
+             * @description The availability version the caller loaded (0: never changed).
+             */
+            version: number;
+            /**
+             * Windows
+             * @description At most 42 windows; windows of one weekday may touch but not overlap. Local wall-clock times of the center.
+             */
+            windows: components["schemas"]["AvailabilityWindow"][];
         };
     };
     responses: never;
@@ -9155,6 +9393,337 @@ export interface operations {
             };
             /** @description The qualification changed since it was loaded (version_conflict), or it isn't approved (qualification_not_approved). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_availability_api_v1_tutors__user_id__availability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorAvailabilityDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    replace_weekly_availability_api_v1_tutors__user_id__availability_weekly_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyAvailabilityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorAvailabilityDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_availability_exception_api_v1_tutors__user_id__availability_exceptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilityExceptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityExceptionItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_availability_exception_api_v1_tutors__user_id__availability_exceptions__exception_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                exception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor or exception of this tutor, or the caller may not see the tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    check_availability_api_v1_tutors__user_id__availability_check_get: {
+        parameters: {
+            query: {
+                /** @description The local date, YYYY-MM-DD. */
+                date: string;
+                /** @description Local start time, HH:MM. */
+                start: string;
+                /** @description Local end time, HH:MM, after start. */
+                end: string;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityCheck"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

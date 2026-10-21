@@ -7401,6 +7401,465 @@
           }
         }
       }
+    },
+    "/api/v1/tutors/{user_id}/availability": {
+      "get": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Get Availability",
+        "description": "The tutor's weekly windows and exceptions, in the center's local\nwall-clock time.",
+        "operationId": "get_availability_api_v1_tutors__user_id__availability_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorAvailabilityDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/weekly": {
+      "put": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Replace Weekly Availability",
+        "description": "Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0\nis a tutor whose availability never changed. A body that changes nothing\nkeeps the version.",
+        "operationId": "replace_weekly_availability_api_v1_tutors__user_id__availability_weekly_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeeklyAvailabilityUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorAvailabilityDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/exceptions": {
+      "post": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Create Availability Exception",
+        "description": "Add time off (``unavailable``, whole days or hours) or extra\navailability (``available``, hours) on each day of an inclusive range.",
+        "operationId": "create_availability_exception_api_v1_tutors__user_id__availability_exceptions_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvailabilityExceptionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityExceptionItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}": {
+      "delete": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Delete Availability Exception",
+        "description": "Delete one of the tutor's exceptions.",
+        "operationId": "delete_availability_exception_api_v1_tutors__user_id__availability_exceptions__exception_id__delete",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "exception_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Exception Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor or exception of this tutor, or the caller may not see the tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/check": {
+      "get": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Check Availability",
+        "description": "Whether the tutor is available on the local date from ``start`` to\n``end`` (the center's wall-clock time), center closures included, with\nevery reason they are not.",
+        "operationId": "check_availability_api_v1_tutors__user_id__availability_check_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "The local date, YYYY-MM-DD.",
+              "title": "Date"
+            },
+            "description": "The local date, YYYY-MM-DD."
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "description": "Local start time, HH:MM.",
+              "title": "Start"
+            },
+            "description": "Local start time, HH:MM."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "description": "Local end time, HH:MM, after start.",
+              "title": "End"
+            },
+            "description": "Local end time, HH:MM, after start."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7899,6 +8358,181 @@
         ],
         "title": "AuditEventListItem",
         "description": "One audit event; the actor and the record are given by id."
+      },
+      "AvailabilityCheck": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityReason"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Every reason that applies, in this order: center_closed, time_off, outside_weekly_availability. Empty when available."
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "reasons"
+        ],
+        "title": "AvailabilityCheck",
+        "description": "Whether the tutor is available for a local interval, and why not."
+      },
+      "AvailabilityExceptionCreate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ExceptionKind"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "A calendar date, YYYY-MM-DD (no time zone)."
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On",
+            "description": "On or after starts_on, at most 366 days later (inclusive)."
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "description": "A local wall-clock time, HH:MM (24-hour)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At",
+            "description": "Required for available; omit both times for a whole day."
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "description": "A local wall-clock time, HH:MM (24-hour)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At",
+            "description": "After starts_at (same day); set together with starts_at."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "At most 200 characters; blank clears it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "AvailabilityExceptionCreate",
+        "description": "A new exception (``POST …/availability/exceptions``): time off\n(``unavailable``: the whole day without times, or those hours) or extra\navailability (``available``: always with times) on each day of the\ninclusive range."
+      },
+      "AvailabilityExceptionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExceptionKind"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At",
+            "description": "HH:MM, or null for a whole day."
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At",
+            "description": "HH:MM, or null for a whole day."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "starts_on",
+          "ends_on",
+          "starts_at",
+          "ends_at",
+          "note",
+          "created_at"
+        ],
+        "title": "AvailabilityExceptionItem",
+        "description": "One exception. ``starts_at``/``ends_at`` are null for a whole day."
+      },
+      "AvailabilityReason": {
+        "type": "string",
+        "enum": [
+          "center_closed",
+          "time_off",
+          "outside_weekly_availability"
+        ]
       },
       "AvailabilityWindow": {
         "properties": {
@@ -9054,6 +9688,13 @@
         ],
         "title": "EmergencyContactUpdate",
         "description": "An emergency contact in a ``PATCH``: with the ``id`` of one of this\nstudent's contacts to keep (and update) it, without one to add it."
+      },
+      "ExceptionKind": {
+        "type": "string",
+        "enum": [
+          "unavailable",
+          "available"
+        ]
       },
       "FamilyCreate": {
         "properties": {
@@ -11949,6 +12590,39 @@
           "system"
         ]
       },
+      "TutorAvailabilityDetail": {
+        "properties": {
+          "weekly": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityWindow"
+            },
+            "type": "array",
+            "title": "Weekly",
+            "description": "The weekly windows by weekday, then start."
+          },
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityExceptionItem"
+            },
+            "type": "array",
+            "title": "Exceptions",
+            "description": "By starts_on, then starts_at (whole days first)."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The weekly availability's version; 0 while it was never changed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "weekly",
+          "exceptions",
+          "version"
+        ],
+        "title": "TutorAvailabilityDetail",
+        "description": "A tutor's availability in the center's local wall-clock time."
+      },
       "TutorDetail": {
         "properties": {
           "user_id": {
@@ -12535,6 +13209,33 @@
         ],
         "title": "UserUpdate",
         "description": "A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not\nsent stay unchanged; ``\"\"`` or ``null`` clears ``email`` or ``phone``. The\nusername never changes (ADR-0007 D7)."
+      },
+      "WeeklyAvailabilityUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version",
+            "description": "The availability version the caller loaded (0: never changed)."
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityWindow"
+            },
+            "type": "array",
+            "maxItems": 42,
+            "title": "Windows",
+            "description": "At most 42 windows; windows of one weekday may touch but not overlap. Local wall-clock times of the center."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "windows"
+        ],
+        "title": "WeeklyAvailabilityUpdate",
+        "description": "The tutor's full list of weekly windows\n(``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears\nthem."
       }
     }
   }

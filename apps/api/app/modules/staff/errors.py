@@ -10,6 +10,8 @@ data, so no submitted value reaches a response. Cancelling a qualification
 that is no longer pending reuses the approval inbox's ``409
 approval_transition_invalid`` (``administration.service``).
 
+Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`.
+
 Revoking (#198) adds ``409 qualification_not_approved``; a stale ``version``
 is the shared ``409 version_conflict``.
 """
@@ -68,6 +70,19 @@ class QualificationNotApprovedError(AppError):
     status = 409
     code = "qualification_not_approved"
     detail = "Only an approved qualification can be revoked."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AvailabilityChangeRequiresApprovalError(AppError):
+    """The availability change affects scheduled sessions (#45 D2; the
+    ``assignment_impact`` seam): nothing changes. M4-18 (#63) turns this
+    into an approval request; clients treat it as "needs approval"."""
+
+    status = 409
+    code = "availability_change_requires_approval"
+    detail = "This change affects scheduled classes and needs approval."
 
     def __init__(self) -> None:
         super().__init__()

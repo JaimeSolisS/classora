@@ -2,8 +2,8 @@
 
 - Read relevant sections of `_docs/spec.md` and `_docs/architecture.md`.
 - Follow `_docs/process.md`; GitHub Issues are the only active backlog.
-- Work on exactly one groomed issue at a time unless orchestrator explicitly
-  manages independently approved work.
+- Each agent works on exactly one groomed issue; the orchestrator keeps at most
+  two issues in flight, each in its own worktree (`_docs/process.md`).
 - Do not implement extra features, adjust acceptance criteria during coding,
   or introduce Redis/Celery/RDS without a new approved ADR.
 - Use tests, migrations and authorization checks suited to the change.

@@ -35,7 +35,8 @@ const THEMES = ['light', 'dark'] as const;
 // /families, /families/new and the detail of a family the scan creates with
 // that student and guardian (#172 J2), /tutors and the profile of a tutor
 // the scan invites through the API first (#43 F2; an invitation only, no
-// redemption; scanned once its Qualifications section loaded, #44 G2), and
+// redemption; scanned once its Qualifications and Availability sections
+// loaded, #44 G2, #45 G2), and
 // the open notification panel
 // (#41 F2, its own test below)
 // are behind the guard: scanned signed in
@@ -257,6 +258,21 @@ for (const theme of THEMES) {
           await expect(
             page.getByRole('main').getByText(common.consent.active),
           ).toBeVisible();
+        }
+        if (route.createsTutor) {
+          // The Qualifications and Availability sections (#44 G2, #45 G2)
+          // load after the heading.
+          const main = page.getByRole('main');
+          await expect(
+            main
+              .locator('#qualifications')
+              .getByText(common.tutors.qualifications.empty),
+          ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+          await expect(
+            main
+              .locator('#availability')
+              .getByText(common.tutors.availability.exceptionsEmpty),
+          ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
         }
         if (route.waitForField) {
           await expect(

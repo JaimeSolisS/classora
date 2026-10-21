@@ -9,6 +9,8 @@ Every test also starts with Factory Boy and Faker reseeded to
 
 The ``clock`` fixture freezes ``app.core.clock.now`` for time travel (#25).
 
+``--shard=K/N`` (``tests/sharding.py``) splits the selected files for CI.
+
 Also isolates every test from the developer's shell: the variables that
 ``Settings`` reads are removed and the cached settings are cleared, so tests
 set exactly the configuration they need.
@@ -29,6 +31,9 @@ from app.modules.identity.service import register_student_login_gate
 from app.wiring import register_approval_wiring
 from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.factories.base import reseed
+
+# --shard=K/N for the sharded CI integration jobs (#217).
+pytest_plugins = ["tests.sharding"]
 
 FACTORY_SEED = 20261017
 

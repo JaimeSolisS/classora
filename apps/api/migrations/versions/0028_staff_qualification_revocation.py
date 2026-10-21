@@ -1,7 +1,7 @@
 """Staff: revoked tutor qualifications.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0028
+Revises: 0027
 Create Date: 2026-10-20
 
 M3-08b (#198; spec §3, §16). A reviewer withdraws an approved
@@ -30,8 +30,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0027"
-down_revision: str | Sequence[str] | None = "0026"
+revision: str = "0028"
+down_revision: str | Sequence[str] | None = "0027"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -81,7 +81,7 @@ def downgrade() -> None:
         "DO $$ BEGIN"
         " IF EXISTS (SELECT 1 FROM tutor_qualifications WHERE status = 'revoked')"
         " THEN RAISE EXCEPTION"
-        " 'tutor_qualifications has revoked rows: downgrading 0027 would lose them';"
+        " 'tutor_qualifications has revoked rows: downgrading 0028 would lose them';"
         " END IF; END $$"
     )
     op.drop_constraint(op.f(REVOCATION_IFF_REVOKED), TABLE, type_="check")

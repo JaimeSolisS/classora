@@ -10,11 +10,17 @@ import { Button } from '@/components/ui/button';
 import { canAccess } from '@/features/auth/access';
 import { useSession } from '@/features/auth/useSession';
 import { StateBadge } from '@/features/users/admin/StateBadge';
+import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import {
+  availabilityKey,
   cancelQualification,
+  createAvailabilityException,
+  deleteAvailabilityException,
+  fetchAvailability,
   fetchQualifications,
   fetchTutor,
   qualificationsKey,
+  replaceWeeklyAvailability,
   requestQualification,
   revokeQualification,
   tutorDetailKey,
@@ -23,6 +29,7 @@ import {
   type TutorDetail,
   type TutorUpdate,
 } from './api';
+import { AvailabilitySection } from './AvailabilitySection';
 import { QualificationsSection } from './QualificationsSection';
 import { TutorForm } from './TutorForm';
 
@@ -39,6 +46,10 @@ import { TutorForm } from './TutorForm';
 // refreshes the list and the profile (its teaching subjects). A
 // `#qualifications` hash (the notifications' link) scrolls to it once the
 // page has loaded.
+//
+// Then the Availability section (#45 F1): the availability query; the
+// tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
+// edit it. After a change the query is refetched.
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -99,6 +110,7 @@ export function TutorDetailPage() {
       onReload={reload}
     >
       <TutorQualifications tutor={detail.data} />
+      <TutorAvailability tutor={detail.data} />
     </TutorDetailView>
   );
 }
@@ -174,6 +186,59 @@ function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
             queryKey: tutorDetailKey(tutor.user_id),
           }),
         ]);
+      }}
+    />
+  );
+}
+
+/** The Availability section with its query and actions. */
+function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
+  const queryClient = useQueryClient();
+  const timeZone = useCenterTimeZone();
+  const key = availabilityKey(tutor.user_id);
+  const availability = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => fetchAvailability(tutor.user_id, signal),
+  });
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: key });
+  }
+
+  return (
+    <AvailabilitySection
+      state={
+        availability.isError
+          ? {
+              status: 'error',
+              error: availability.error,
+              onRetry: () => void availability.refetch(),
+            }
+          : availability.data
+            ? { status: 'ready', availability: availability.data }
+            : { status: 'loading' }
+      }
+      // Self or tutor.manage: exactly the callers with editable fields (#43).
+      canEdit={tutor.editable_fields.length > 0}
+      timeZone={timeZone}
+      onSaveWeekly={async (version, windows) => {
+        const saved = await replaceWeeklyAvailability(tutor.user_id, {
+          version,
+          windows,
+        });
+        queryClient.setQueryData(key, saved);
+      }}
+      onReload={refresh}
+      onAddException={async (body) => {
+        await createAvailabilityException(tutor.user_id, body);
+        await refresh();
+      }}
+      onDeleteException={async (item) => {
+        try {
+          await deleteAvailabilityException(tutor.user_id, item.id);
+        } finally {
+          await refresh();
+        }
       }}
     />
   );
