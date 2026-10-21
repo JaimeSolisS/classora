@@ -74,6 +74,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke",
         "/api/v1/tutors/{user_id}/availability",
         "/api/v1/tutors/{user_id}/availability/weekly",
+        "/api/v1/tutors/{user_id}/availability/settings",
         "/api/v1/tutors/{user_id}/availability/exceptions",
         "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}",
         "/api/v1/tutors/{user_id}/availability/check",

@@ -32,16 +32,29 @@ never edited; they don't touch the weekly ``version``.
 non-empty answer is ``409 availability_change_requires_approval`` and
 nothing changes.
 
+**Settings ``PATCH``** (#197; after the body's ``422``): ``404`` → ``403``
+→ ``409 version_conflict`` (the same locked settings row and ``version`` as
+the weekly ``PUT``) → ``422`` when the weekly limit would fall below the
+daily one once combined with the stored limits → ``422`` when a newly
+chosen classroom is unknown or inactive (``catalog.service``; a stored room
+deactivated later may stay) → the update. The limits are configuration only
+(warnings in M4-05), so there is no impact check. The changed limits are
+the settings row's ``update`` event; preferred rooms are created and
+deleted. A body that changes nothing changes no version and writes no
+event.
+
 **For other modules** (M4-03 #48, M4-05, M4-06): :func:`is_tutor_available`
 (local date and times) and :func:`is_tutor_available_at` (instants, split
 into local pieces in the center zone). Neither checks the tutor role or the
-account state.
+account state. :func:`teaching_limits` and :func:`preferred_classroom_ids`
+(#197) read the configuration for workload warnings and suggestions.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
@@ -52,7 +65,7 @@ from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
 from app.core.models import StaleVersionError, ensure_version
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
-from app.modules.catalog.schemas import AvailabilityWindow
+from app.modules.catalog.schemas import AvailabilityWindow, ClassroomReference
 from app.modules.identity.schemas import RoleMember
 from app.modules.staff.assignment_impact import AvailabilityImpactSource
 from app.modules.staff.availability import (
@@ -65,7 +78,11 @@ from app.modules.staff.availability import (
     to_local_intervals,
     uncovered_ranges,
 )
-from app.modules.staff.errors import AvailabilityChangeRequiresApprovalError
+from app.modules.staff.errors import (
+    AvailabilityChangeRequiresApprovalError,
+    PreferredClassroomUnavailableError,
+    WeeklyLimitBelowDailyError,
+)
 from app.modules.staff.models import (
     AVAILABLE,
     SETTINGS_USER_ID_UNIQUE,
@@ -73,6 +90,7 @@ from app.modules.staff.models import (
     TutorAvailabilityException,
     TutorAvailabilitySettings,
     TutorAvailabilityWindow,
+    TutorPreferredClassroom,
 )
 from app.modules.staff.permissions import can_edit_availability
 from app.modules.staff.qualifications import visible_tutor
@@ -80,11 +98,39 @@ from app.modules.staff.schemas import (
     AvailabilityCheck,
     AvailabilityExceptionCreate,
     AvailabilityExceptionItem,
+    AvailabilitySettingsUpdate,
+    TeachingLimitsDetail,
     TutorAvailabilityDetail,
     WeeklyAvailabilityUpdate,
 )
 
 type WindowKey = tuple[int, time, time]
+
+LIMIT_FIELDS = (
+    "daily_limit_minutes",
+    "weekly_limit_minutes",
+    "required_break_minutes",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TeachingLimits:
+    """A tutor's teaching limits in minutes (#197); ``None`` is no limit
+    (no break). For M4-05 workload warnings: exceeding them never blocks."""
+
+    daily_limit_minutes: int | None = None
+    weekly_limit_minutes: int | None = None
+    required_break_minutes: int | None = None
+
+
+def _limits_of(settings: TutorAvailabilitySettings | None) -> TeachingLimits:
+    if settings is None:
+        return TeachingLimits()
+    return TeachingLimits(
+        daily_limit_minutes=settings.daily_limit_minutes,
+        weekly_limit_minutes=settings.weekly_limit_minutes,
+        required_break_minutes=settings.required_break_minutes,
+    )
 
 
 def _hhmm(value: time | None) -> str | None:
@@ -184,12 +230,48 @@ async def _settings(
     return settings
 
 
-def _detail(
+async def _preferred_rows(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[TutorPreferredClassroom]:
+    return list(
+        await session.scalars(
+            select(TutorPreferredClassroom)
+            .where(TutorPreferredClassroom.tutor_user_id == tutor_user_id)
+            .order_by(TutorPreferredClassroom.id)
+        )
+    )
+
+
+async def _preferred_classrooms(
+    session: AsyncSession, classroom_ids: Sequence[uuid.UUID]
+) -> list[ClassroomReference]:
+    """The rooms by name (case-insensitive), then id; through
+    ``catalog.service``."""
+    references = await catalog.classroom_references(session, classroom_ids)
+    return sorted(
+        (references[room] for room in classroom_ids if room in references),
+        key=lambda room: (room.name.casefold(), str(room.id)),
+    )
+
+
+async def _detail(
+    session: AsyncSession,
+    user_id: uuid.UUID,
     settings: TutorAvailabilitySettings | None,
     windows: Iterable[WindowKey],
-    exceptions: Iterable[TutorAvailabilityException],
+    exceptions: Iterable[TutorAvailabilityException] | None = None,
 ) -> TutorAvailabilityDetail:
+    if exceptions is None:
+        exceptions = await _exceptions(session, user_id)
+    rooms = [row.classroom_id for row in await _preferred_rows(session, user_id)]
+    limits = _limits_of(settings)
     return TutorAvailabilityDetail(
+        limits=TeachingLimitsDetail(
+            daily_limit_minutes=limits.daily_limit_minutes,
+            weekly_limit_minutes=limits.weekly_limit_minutes,
+            required_break_minutes=limits.required_break_minutes,
+        ),
+        preferred_classrooms=await _preferred_classrooms(session, rooms),
         weekly=[
             AvailabilityWindow(
                 weekday=weekday,
@@ -255,10 +337,11 @@ async def get_availability(
 ) -> TutorAvailabilityDetail:
     """The tutor's weekly windows, exceptions and weekly ``version``."""
     await visible_tutor(session, principal, user_id)
-    return _detail(
+    return await _detail(
+        session,
+        user_id,
         await _settings(session, user_id),
         [_key(window) for window in await _windows(session, user_id)],
-        await _exceptions(session, user_id),
     )
 
 
@@ -346,6 +429,29 @@ async def check_availability(
     return AvailabilityCheck(available=result.available, reasons=list(result.reasons))
 
 
+async def teaching_limits(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> TeachingLimits:
+    """The tutor's teaching limits (#197; M4-05 warnings); all ``None`` when
+    never set. One statement."""
+    return _limits_of(await _settings(session, tutor_user_id))
+
+
+async def preferred_classroom_ids(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> tuple[uuid.UUID, ...]:
+    """The tutor's preferred classrooms (#197; M4-05, M4-06 suggestions) in
+    the order they were chosen. Rooms deactivated later are included: the
+    caller filters with ``catalog.service.active_classroom_ids``. One
+    statement."""
+    found = await session.scalars(
+        select(TutorPreferredClassroom.classroom_id)
+        .where(TutorPreferredClassroom.tutor_user_id == tutor_user_id)
+        .order_by(TutorPreferredClassroom.id)
+    )
+    return tuple(found)
+
+
 # --- Writes --------------------------------------------------------------------------
 
 
@@ -372,7 +478,7 @@ async def replace_weekly_availability(
     deletes = [window for window in current if _key(window) not in wanted]
     insert_keys = sorted(wanted - current_keys)
     if not deletes and not insert_keys:
-        return _detail(settings, current_keys, await _exceptions(session, user_id))
+        return await _detail(session, user_id, settings, current_keys)
 
     removed = uncovered_ranges(
         [_rule_window(key) for key in current_keys],
@@ -406,7 +512,7 @@ async def replace_weekly_availability(
     )
     if insert_keys:
         await _flush(session)
-    return _detail(settings, wanted, await _exceptions(session, user_id))
+    return await _detail(session, user_id, settings, wanted)
 
 
 async def create_exception(
@@ -462,3 +568,83 @@ async def delete_exception(
         )
     await session.delete(row)
     await _flush(session)
+
+
+async def update_availability_settings(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    user_id: uuid.UUID,
+    body: AvailabilitySettingsUpdate,
+) -> TutorAvailabilityDetail:
+    """Change the teaching limits and preferred classrooms (see the module
+    docstring for the order)."""
+    await _editable_tutor(session, principal, user_id)
+    settings = await _settings(session, user_id, for_update=True)
+    if settings is None:
+        if body.version != 0:
+            raise StaleVersionError()
+    else:
+        ensure_version(settings, body.version)
+
+    sent = body.model_fields_set
+    current = _limits_of(settings)
+    limit_changes = {
+        field: getattr(body, field)
+        for field in LIMIT_FIELDS
+        if field in sent and getattr(body, field) != getattr(current, field)
+    }
+    wanted = TeachingLimits(
+        **{
+            field: limit_changes.get(field, getattr(current, field))
+            for field in LIMIT_FIELDS
+        }
+    )
+    if (
+        wanted.daily_limit_minutes is not None
+        and wanted.weekly_limit_minutes is not None
+        and wanted.weekly_limit_minutes < wanted.daily_limit_minutes
+    ):
+        raise WeeklyLimitBelowDailyError()
+
+    rows = await _preferred_rows(session, user_id)
+    stored = {row.classroom_id for row in rows}
+    deletes: list[TutorPreferredClassroom] = []
+    inserts: list[uuid.UUID] = []
+    if "preferred_classroom_ids" in sent and body.preferred_classroom_ids is not None:
+        chosen = body.preferred_classroom_ids
+        deletes = [row for row in rows if row.classroom_id not in set(chosen)]
+        inserts = [room for room in chosen if room not in stored]
+        # Only new choices must be active: a stored room deactivated later
+        # may stay until it is removed.
+        if inserts and len(await catalog.active_classroom_ids(session, inserts)) != len(
+            inserts
+        ):
+            raise PreferredClassroomUnavailableError()
+
+    windows = [_key(window) for window in await _windows(session, user_id)]
+    if not limit_changes and not deletes and not inserts:
+        return await _detail(session, user_id, settings, windows)
+
+    # The settings row first (see replace_weekly_availability).
+    if settings is None:
+        settings = TutorAvailabilitySettings(user_id=user_id, **limit_changes)
+        session.add(settings)
+    else:
+        for field, value in limit_changes.items():
+            setattr(settings, field, value)
+        settings.updated_at = func.now()
+    await _flush(session)
+    await session.refresh(settings)
+
+    for row in deletes:
+        await session.delete(row)
+    if deletes:
+        await _flush(session)
+    session.add_all(
+        TutorPreferredClassroom(tutor_user_id=user_id, classroom_id=room)
+        for room in inserts
+    )
+    if inserts:
+        await _flush(session)
+    return await _detail(session, user_id, settings, windows)

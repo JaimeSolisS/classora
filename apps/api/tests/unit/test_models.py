@@ -51,7 +51,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # classrooms and classroom_availability_windows in catalog, M3-03;
     # approval_requests, M3-04; notifications, M3-05; tutor_profiles in
     # staff, M3-07; tutor_qualifications in staff, M3-08;
-    # tutor_availability_settings, _windows and _exceptions in staff, M3-09);
+    # tutor_availability_settings, _windows and _exceptions in staff, M3-09;
+    # tutor_preferred_classrooms in staff, M3-09b);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -69,6 +70,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "tutor_availability_settings",
         "tutor_availability_windows",
         "tutor_availability_exceptions",
+        "tutor_preferred_classrooms",
         "users",
         "roles",
         "permissions",

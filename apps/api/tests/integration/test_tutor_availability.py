@@ -59,6 +59,12 @@ CONFLICT = (409, "version_conflict")
 REQUIRES_APPROVAL = (409, "availability_change_requires_approval")
 INVALID = (422, "validation_error")
 
+NO_LIMITS = {
+    "daily_limit_minutes": None,
+    "weekly_limit_minutes": None,
+    "required_break_minutes": None,
+}
+
 TABLES = (
     "tutor_availability_settings",
     "tutor_availability_windows",
@@ -191,6 +197,8 @@ def test_a_tutor_without_availability_reads_version_0(client, tutor):
     assert detail(client, cookie, person.id) == {
         "weekly": [],
         "exceptions": [],
+        "limits": NO_LIMITS,
+        "preferred_classrooms": [],
         "version": 0,
     }
 
@@ -202,7 +210,13 @@ def test_a_tutor_replaces_and_clears_their_weekly_windows(
 
     created = put_weekly(client, cookie, person.id, 0, list(reversed(AFTERNOONS)))
     assert code_of(created) == OK, created.text
-    assert created.json() == {"weekly": AFTERNOONS, "exceptions": [], "version": 1}
+    assert created.json() == {
+        "weekly": AFTERNOONS,
+        "exceptions": [],
+        "limits": NO_LIMITS,
+        "preferred_classrooms": [],
+        "version": 1,
+    }
     assert detail(client, cookie, person.id) == created.json()
 
     changed = put_weekly(
@@ -222,7 +236,13 @@ def test_a_tutor_replaces_and_clears_their_weekly_windows(
 
     cleared = put_weekly(client, cookie, person.id, 2, [])
     assert code_of(cleared) == OK
-    assert cleared.json() == {"weekly": [], "exceptions": [], "version": 3}
+    assert cleared.json() == {
+        "weekly": [],
+        "exceptions": [],
+        "limits": NO_LIMITS,
+        "preferred_classrooms": [],
+        "version": 3,
+    }
     assert row_counts(module_seeded_url, person.id) == (1, 0, 0)
 
 

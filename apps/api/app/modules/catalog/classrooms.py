@@ -16,9 +16,9 @@ changed are deleted and inserted (a changed window is a delete plus an
 insert), so the audit trail shows real changes. The classroom ``version``
 covers its windows: any change bumps it once.
 
-**Other modules** (#45 preferred rooms, M4 scheduling) use
-:func:`get_classroom`, :func:`active_classroom_ids` and
-:func:`is_classroom_available`.
+**Other modules** (#197 preferred rooms, M4 scheduling) use
+:func:`get_classroom`, :func:`classroom_references`,
+:func:`active_classroom_ids` and :func:`is_classroom_available`.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -48,6 +48,7 @@ from app.modules.catalog.schemas import (
     CatalogStatus,
     ClassroomCreate,
     ClassroomDetail,
+    ClassroomReference,
     ClassroomUpdate,
 )
 
@@ -162,6 +163,24 @@ async def get_classroom(
         raise RecordNotFoundError()
     windows = await _windows_of(session, [classroom.id])
     return _detail(classroom, windows[classroom.id])
+
+
+async def classroom_references(
+    session: AsyncSession, ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, ClassroomReference]:
+    """The classrooms with these ids, active or not (unknown ids are left
+    out). One statement (none for an empty collection)."""
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(Classroom.id, Classroom.name, Classroom.is_active).where(
+            Classroom.id.in_(set(ids))
+        )
+    )
+    return {
+        row.id: ClassroomReference(id=row.id, name=row.name, is_active=row.is_active)
+        for row in rows
+    }
 
 
 async def active_classroom_ids(

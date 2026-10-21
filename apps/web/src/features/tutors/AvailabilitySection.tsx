@@ -43,9 +43,15 @@ import { useFormatters } from '@/lib/formatters';
 import type {
   AvailabilityException,
   AvailabilityExceptionCreate,
+  AvailabilitySettingsUpdate,
   ExceptionKind,
   TutorAvailability,
 } from './api';
+import {
+  AvailabilitySettingsForm,
+  AvailabilitySettingsList,
+  type ClassroomOptionsState,
+} from './AvailabilitySettingsForm';
 import {
   AVAILABILITY_WINDOWS_MAX,
   EMPTY_EXCEPTION,
@@ -68,7 +74,10 @@ import {
 // day" — forced off for extra availability —, times, note). Errors:
 // version_conflict with "Reload", availability_change_requires_approval
 // and anything else in an alert region, field errors on their fields.
-// Presentational: the page passes the query state and the actions.
+// Between the weekly windows and the exceptions, the teaching limits and
+// preferred classrooms (#197, AvailabilitySettingsForm), saved with the
+// same `version`. Presentational: the page passes the query state and the
+// actions.
 
 export type AvailabilityState =
   | { status: 'loading' }
@@ -85,6 +94,11 @@ export interface AvailabilitySectionProps {
   onSaveWeekly: (version: number, windows: WeeklyWindow[]) => Promise<void>;
   /** Refetches the availability after a version conflict. */
   onReload: () => Promise<void>;
+  /** The active classrooms, the preferred-room choices (editors only). */
+  classrooms: ClassroomOptionsState;
+  /** Saves the limits and preferred classrooms; rejects with the error to
+   * show. */
+  onSaveSettings: (body: AvailabilitySettingsUpdate) => Promise<void>;
   /** Adds an exception; rejects with the error to show in the dialog. */
   onAddException: (body: AvailabilityExceptionCreate) => Promise<void>;
   /** Deletes an exception; rejects with the error to show. */
@@ -99,6 +113,8 @@ export function AvailabilitySection({
   timeZone,
   onSaveWeekly,
   onReload,
+  classrooms,
+  onSaveSettings,
   onAddException,
   onDeleteException,
   initiallyAdding = false,
@@ -145,6 +161,16 @@ export function AvailabilitySection({
           />
         ) : (
           <WeeklyList windows={state.availability.weekly} />
+        )}
+        {canEdit ? (
+          <AvailabilitySettingsForm
+            availability={state.availability}
+            classrooms={classrooms}
+            onSave={onSaveSettings}
+            onReload={onReload}
+          />
+        ) : (
+          <AvailabilitySettingsList availability={state.availability} />
         )}
         <ExceptionsTable
           items={state.availability.exceptions}

@@ -41,6 +41,9 @@ local wall-clock times of the center:
   or ``tutor.manage`` (an Academic Coordinator gets ``403``). A change that
   affects scheduled sessions is ``409 availability_change_requires_approval``
   (the M4-18 seam, ``staff/assignment_impact.py``).
+- ``PATCH …/availability/settings`` (#197): the teaching limits and
+  preferred classrooms, same edit rights; no impact check (limits are
+  warnings only).
 
 The search text ``q`` is a query parameter: the access log line has no query
 string (#9), so it is never logged.
@@ -70,6 +73,7 @@ from app.modules.staff.schemas import (
     AvailabilityCheck,
     AvailabilityExceptionCreate,
     AvailabilityExceptionItem,
+    AvailabilitySettingsUpdate,
     QualificationCreate,
     QualificationItem,
     QualificationRevoke,
@@ -328,7 +332,7 @@ async def get_availability(
     uow: UnitOfWorkDep,
 ) -> TutorAvailabilityDetail:
     """The tutor's weekly windows and exceptions, in the center's local
-    wall-clock time."""
+    wall-clock time, with the teaching limits and preferred classrooms."""
     return await service.get_availability(
         uow.session, principal=principal, user_id=user_id
     )
@@ -365,6 +369,42 @@ async def replace_weekly_availability(
     keeps the version."""
     return await service.replace_weekly_availability(
         uow.session, principal=principal, user_id=user_id, body=body, impact=impact
+    )
+
+
+@router.patch(
+    "/{user_id}/availability/settings",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: AVAILABILITY_EDITORS_ONLY,
+        404: NOT_FOUND,
+        409: problem_response_doc(
+            "The availability changed since it was loaded, or another first"
+            " change created it (version_conflict)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid: a missing or negative version, a daily"
+            " limit outside 15-1440, a weekly limit outside 15-10080 or below"
+            " the daily limit (weekly_below_daily, also against the stored"
+            " daily limit), a break outside 0-240, more than 10 classrooms, a"
+            " classroom twice (duplicate_classroom), an unknown or inactive"
+            " new classroom (classroom_unavailable), null classrooms, an"
+            " unknown field (validation_error)."
+        ),
+    },
+)
+async def update_availability_settings(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    body: AvailabilitySettingsUpdate,
+    uow: UnitOfWorkDep,
+) -> TutorAvailabilityDetail:
+    """Change the tutor's teaching limits (minutes; null clears one) and
+    preferred classrooms (the list sent replaces the stored one). Limits only
+    produce warnings when scheduling. ``version`` is the availability's; a
+    body that changes nothing keeps it."""
+    return await service.update_availability_settings(
+        uow.session, principal=principal, user_id=user_id, body=body
     )
 
 

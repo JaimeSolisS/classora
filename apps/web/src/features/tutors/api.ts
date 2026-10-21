@@ -277,3 +277,45 @@ export async function deleteAvailabilityException(
     ),
   );
 }
+
+// --- Teaching limits and preferred classrooms (#197) --------------------------
+
+export type AvailabilitySettingsUpdate =
+  components['schemas']['AvailabilitySettingsUpdate'];
+export type ClassroomReference = components['schemas']['ClassroomReference'];
+
+/** PATCH the teaching limits and preferred classrooms with the loaded
+ * `version` (only the changed fields). */
+export function updateAvailabilitySettings(
+  userId: string,
+  body: AvailabilitySettingsUpdate,
+): Promise<TutorAvailability> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/tutors/{user_id}/availability/settings', {
+      params: { path: { user_id: userId } },
+      body,
+    }),
+  );
+}
+
+export const ACTIVE_CLASSROOM_OPTIONS_KEY = [
+  ...TUTORS_QUERY_KEY,
+  'classroom-options',
+] as const;
+
+/** The active classrooms (up to 100, by name): the preferred-room choices. */
+export async function fetchActiveClassroomOptions(
+  signal: AbortSignal,
+): Promise<CatalogOption[]> {
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/classrooms', {
+        params: { query: { status: 'active', limit: 100 } },
+        signal,
+      }),
+    { signal },
+  );
+  return page.items
+    .filter((item) => item.is_active)
+    .map(({ id, name }) => ({ id, name }));
+}

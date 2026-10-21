@@ -597,6 +597,37 @@
         "endsAfterStart": "The end time must be after the start time.",
         "noteTooLong": "Use at most 200 characters.",
         "invalid": "Check this field."
+      },
+      "settings": {
+        "limitsTitle": "Teaching limits",
+        "limitsHelp": "Maximum teaching time and the break between classes. Limits only produce warnings when scheduling; they never block a class.",
+        "daily": "Daily maximum",
+        "weekly": "Weekly maximum",
+        "break": "Required break between classes",
+        "noLimit": "No limit",
+        "noBreak": "No break",
+        "hoursLabel": "Hours",
+        "minutesLabel": "Minutes",
+        "hours": "{{count}} h",
+        "minutes": "{{count}} min",
+        "hoursMinutes": "{{hours}} h {{minutes}} min",
+        "roomsTitle": "Preferred classrooms",
+        "roomsHelp": "Up to {{max}} classrooms. Preferences guide scheduling but don't restrict it.",
+        "roomsEmpty": "No preferred classrooms.",
+        "roomsLoading": "Loading classrooms…",
+        "noRooms": "There are no active classrooms.",
+        "inactiveRoom": "{{name}} (inactive)",
+        "save": "Save limits and classrooms",
+        "saved": "Limits and classrooms saved.",
+        "validation": {
+          "dailyRange": "Enter between 15 minutes and 24 hours (minutes 0-59).",
+          "weeklyRange": "Enter between 15 minutes and 168 hours (minutes 0-59).",
+          "weeklyBelowDaily": "The weekly maximum can't be below the daily maximum.",
+          "breakRange": "Enter between 0 and 240 minutes.",
+          "tooManyRooms": "Choose at most 10 classrooms.",
+          "roomUnavailable": "A chosen classroom is no longer available. Reload and choose again.",
+          "invalid": "Check this field."
+        }
       }
     }
   },

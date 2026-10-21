@@ -105,7 +105,9 @@ Tutors publish their weekly availability and exceptions (time off and extra
 availability on given dates) in the center's local time on their profile;
 Owners and administrators can edit it too, and academic coordinators view
 it. The API answers whether a tutor is available at a given time, taking
-center closures into account.
+center closures into account. The same section holds each tutor's daily
+and weekly teaching limits, the required break between classes (limits
+will only produce warnings when scheduling) and preferred classrooms.
 Every user must accept a versioned privacy notice before using the app, and
 again whenever a new version is published; the current text is a draft
 pending legal review.

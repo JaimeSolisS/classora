@@ -143,6 +143,17 @@ type Common = {
       endsOn: string;
       noteLabel: string;
       send: string;
+      settings: {
+        daily: string;
+        weekly: string;
+        break: string;
+        noLimit: string;
+        noBreak: string;
+        hoursLabel: string;
+        minutesLabel: string;
+        save: string;
+        saved: string;
+      };
     };
   };
   catalog: {

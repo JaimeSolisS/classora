@@ -740,6 +740,16 @@ allow = ["owner", "administrator", "academic_coordinator", "tutor"]
 # allowed role.
 
 [[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}/availability/settings"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #197: the tutor themselves or tutor.manage edit. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role.
+json = { version = 0, daily_limit_minutes = 240 }
+
+[[route]]
 method = "PUT"
 path = "/api/v1/tutors/{user_id}/availability/weekly"
 access = "permission"

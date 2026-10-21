@@ -242,11 +242,40 @@ export const AVAILABILITY: TutorAvailability = {
     { weekday: 3, starts_at: '18:00', ends_at: '19:00' },
   ],
   exceptions: EXCEPTIONS,
+  limits: {
+    daily_limit_minutes: 240,
+    weekly_limit_minutes: 1200,
+    required_break_minutes: 15,
+  },
+  preferred_classrooms: [
+    {
+      id: '00000000-0000-4000-8000-0000000000c1',
+      name: 'Aula 1',
+      is_active: true,
+    },
+    {
+      id: '00000000-0000-4000-8000-0000000000c3',
+      name: 'Aula Vieja',
+      is_active: false,
+    },
+  ],
   version: 2,
 };
+
+/** The active classrooms offered as preferred rooms (#197). */
+export const CLASSROOM_OPTIONS: CatalogOption[] = [
+  { id: '00000000-0000-4000-8000-0000000000c1', name: 'Aula 1' },
+  { id: '00000000-0000-4000-8000-0000000000c2', name: 'Aula 2' },
+];
 
 export const NO_AVAILABILITY: TutorAvailability = {
   weekly: [],
   exceptions: [],
+  limits: {
+    daily_limit_minutes: null,
+    weekly_limit_minutes: null,
+    required_break_minutes: null,
+  },
+  preferred_classrooms: [],
   version: 0,
 };

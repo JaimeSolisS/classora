@@ -1,15 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
-import { inviteTutorViaApi } from '../support/tutors';
+import { createClassroomViaApi, inviteTutorViaApi } from '../support/tutors';
 
 // Tutor availability (#45 G1). The demo Owner (the shared state; tutor.manage)
 // invites a tutor through the API, opens their profile, sets Monday
 // 16:00–20:00 and Wednesday 16:00–18:00 (saved), adds time off for a date
 // range (listed), deletes it (gone), and reloads: the windows persist.
+// #197 D1: it also sets a daily limit of 4 h, a weekly limit of 20 h, a
+// 15 min break and a preferred classroom created through the API (saved,
+// and shown after the reload).
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
-// no registration (an invitation only, with the shared Owner session).
+// no registration (an invitation and a classroom only, with the shared
+// Owner session).
 
 const NOTE = 'Vacaciones E2E';
 
@@ -67,6 +71,8 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
     username: `e2e.tutor.availability.${suffix}`,
     displayName: `E2E Tutor Disponibilidad ${suffix}`,
   });
+  const roomName = `E2E Aula ${suffix}`;
+  await createClassroomViaApi(page, roomName);
   await page.goto(`/tutors/${tutorId}`);
   const section = availability(page);
   await expect(
@@ -91,7 +97,27 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
       .filter({ hasText: common.tutors.availability.saved }),
   ).toBeVisible();
 
-  // 2. Time off for a date range: listed.
+  // 2. Teaching limits and a preferred classroom (#197): saved.
+  const settings = common.tutors.availability.settings;
+  const limit = (name: string) => section.getByRole('group', { name });
+  const daily = limit(settings.daily);
+  await daily.getByLabel(settings.noLimit, { exact: true }).uncheck();
+  await daily.getByLabel(settings.hoursLabel, { exact: true }).fill('4');
+  const weekly = limit(settings.weekly);
+  await weekly.getByLabel(settings.noLimit, { exact: true }).uncheck();
+  await weekly.getByLabel(settings.hoursLabel, { exact: true }).fill('20');
+  const pause = limit(settings.break);
+  await pause.getByLabel(settings.noBreak, { exact: true }).uncheck();
+  await pause.getByLabel(settings.minutesLabel, { exact: true }).fill('15');
+  await section.getByLabel(roomName, { exact: true }).check();
+  await section
+    .getByRole('button', { name: settings.save, exact: true })
+    .click();
+  await expect(
+    section.getByRole('status').filter({ hasText: settings.saved }),
+  ).toBeVisible();
+
+  // 3. Time off for a date range: listed.
   await section
     .getByRole('button', { name: common.tutors.availability.add })
     .click();
@@ -119,7 +145,7 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
     }),
   ).toBeVisible();
 
-  // 3. Delete it: gone.
+  // 4. Delete it: gone.
   await timeOff
     .getByRole('button', {
       name: new RegExp(common.tutors.availability.delete),
@@ -138,7 +164,7 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
     section.getByText(common.tutors.availability.exceptionsEmpty),
   ).toBeVisible();
 
-  // 4. Reload: the windows persist.
+  // 5. Reload: the windows, limits and classroom persist.
   await page.reload();
   const day = (number: number) =>
     availability(page).getByLabel(
@@ -155,6 +181,20 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
   await expect(day(2)).toHaveValue('3');
   await expect(time(common.weeklyWindows.endsAtLabel, 2)).toHaveValue('18:00');
   await expect(day(3)).toHaveCount(0);
+  const after = (name: string) =>
+    availability(page).getByRole('group', { name });
+  await expect(
+    after(settings.daily).getByLabel(settings.hoursLabel, { exact: true }),
+  ).toHaveValue('4');
+  await expect(
+    after(settings.weekly).getByLabel(settings.hoursLabel, { exact: true }),
+  ).toHaveValue('20');
+  await expect(
+    after(settings.break).getByLabel(settings.minutesLabel, { exact: true }),
+  ).toHaveValue('15');
+  await expect(
+    availability(page).getByLabel(roomName, { exact: true }),
+  ).toBeChecked();
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);
