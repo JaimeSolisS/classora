@@ -366,3 +366,91 @@ Deployments remain separate GitHub Issues: immutable image digest to ECR, auto D
 4. Groom and implement the **foundation** issue; independently QA it; close only after PASS and README review.
 
 **Key distinction from the prompt-driven guide:** implementation instructions live in individual issues and are executed by role-specific agents. The root README rule applies after **every issue** in exactly the same way as it applies after **every prompt** in the prompt-driven workflow.
+
+## 12. How delivery got faster (plain-language summary)
+
+This section explains, without technical background, how Classora work was delivered at first and how it has been delivered since the workflow change of 2026-10-20 ([#216](https://github.com/JaimeSolisS/classora/issues/216), [#217](https://github.com/JaimeSolisS/classora/issues/217), auto-merge). The rules themselves live in [`_docs/process.md`](../process.md); this is only the story and the numbers.
+
+### The words used here
+
+- **Issue:** one piece of work on the to-do list (for example "tutor availability"), kept on GitHub.
+- **PM (Product Manager):** the agent that turns an issue into a clear checklist of what "done" means before anyone builds it.
+- **Engineer:** the agent that builds the change and writes the automatic tests for it.
+- **QA (Quality Assurance):** a separate agent that checks every item on the checklist and says PASS or FAIL; it never fixes code itself.
+- **CI (Continuous Integration):** GitHub's robot that re-runs all automatic checks on every proposed change, so nothing broken slips in. Its work is split into "jobs" (batches of checks).
+- **Pull request (PR):** a proposed change waiting to be accepted into the shared code.
+- **Merge:** accepting the change into the shared code (`develop`), so it becomes part of the product.
+- **Worktree:** a separate copy of the project folder, so two pieces of work can sit side by side without touching each other.
+- **Automatic tests / test suite:** small programs that check the product still behaves correctly; the "suite" is the whole collection, and the "API tests" are the ones for the server part of the app (the API is how the screens talk to the server).
+- **Flaky test:** a check that sometimes fails for no real reason and passes when run again.
+- **README / README check:** the README is the project's front-page instructions; after every issue someone confirms whether it needs updating, so it never goes out of date.
+- **Database / database server:** the database is where the app keeps its data; the database server is the program that holds one or more databases.
+- **Docker:** a tool that packages the whole app into a sealed box so it runs the same on every computer; reliable, but heavy to build.
+
+### Before: one issue at a time
+
+At first, the team worked like a single-lane road: the next issue could not start until the previous one had merged.
+
+1. PM groomed the issue, the Engineer built it, then the PR was opened and CI ran.
+2. QA checked it; on FAIL the Engineer fixed it and QA checked again.
+3. Only after the merge did the next issue start.
+
+Where the waiting came from:
+
+- **Everything was in a queue.** While QA checked one issue, nobody built the next one.
+- **Heavy local setup.** Every Engineer and QA agent built its own full copy of the application in Docker. Each copy took several minutes and several GB of disk; once the disk filled up and Docker crashed ([#44](https://github.com/JaimeSolisS/classora/issues/44)).
+- **One long CI job.** All API tests ran one after another in a single job of about 12 minutes; once it hit its 15-minute limit ([#207](https://github.com/JaimeSolisS/classora/issues/207)).
+- **Flaky tests cost a full re-run.** A random failure meant running every test again.
+
+### Now: two lanes, lighter setup, faster checks
+
+- **Overlapping issues.** As soon as one issue is handed to QA, the next issue's Engineer may start. At most two issues are in flight, each in its own worktree.
+- **Light local setup.** Agents run the app directly on the computer, sharing one database server, each with its own database ([#216](https://github.com/JaimeSolisS/classora/issues/216)). Starting it takes seconds instead of minutes.
+- **Parallel CI.** The API tests are split into several jobs that run at the same time ([#217](https://github.com/JaimeSolisS/classora/issues/217)), and every test now runs exactly once per PR.
+- **Auto-merge.** Once QA says PASS and the README check is recorded, GitHub merges by itself the moment CI is green; nobody has to wait around to press the button.
+- **Flakes fixed on first sighting.** A flaky test gets its own issue the first time it appears, and only the failed job is re-run ([#215](https://github.com/JaimeSolisS/classora/issues/215)).
+- **Heavy work one at a time.** The machine has 8 GB of memory, so at most two agents do heavy work at once and the heaviest commands take turns.
+
+What did **not** change:
+
+- Every issue still gets its **own QA PASS**, its **own green CI** and its **own README check**. QA still found real problems under the new flow: on #44, a security checker flagged an issue and a website-certificate setting was broken; on #45, an automatic test that clicks through the screens like a user was looking for the wrong button.
+- The Docker-based checks still run in CI on **every** PR, so the lighter local setup never replaces the reference checks.
+
+### Before vs now at a glance
+
+```mermaid
+flowchart LR
+  subgraph Before["Before: one lane"]
+    direction LR
+    A1[Groom + build issue A] --> A2[CI + QA issue A] --> A3[Merge A] --> B1[Groom + build issue B] --> B2[CI + QA issue B] --> B3[Merge B]
+  end
+  subgraph Now["Now: two overlapping lanes"]
+    direction LR
+    C1[Groom + build issue A] --> C2[CI + QA issue A] --> C3[Auto-merge A]
+    C1 --> D1[Groom + build issue B] --> D2[CI + QA issue B] --> D3[Auto-merge B]
+  end
+```
+
+In the "Now" lane, issue B is being built while issue A is in QA; each still has its own QA and merge.
+
+### Measured times
+
+| Measure | Before | Now | Improvement |
+| --- | --- | --- | --- |
+| Time per merged issue (average gap between merges) | ~100 min | ~69 min | ~31 min less (≈ 31% faster) |
+| Whole CI run | ~12 min (12m04s) | ~6.5 min (4m41s–6m49s, median ~6m22s) | ~5.5 min less (≈ 46% faster) |
+| Local app setup per agent | several minutes (own Docker copy) | ~35 s (app run directly on the computer) | minutes → seconds |
+| PR open → merge (median) | ~32 min | ~78 min | not comparable (see below) |
+
+How it was measured (from GitHub timestamps, except the owner's pause, which comes from the team's run log; nothing estimated):
+
+- **Before:** the seven M3 issues #37–#43, merged between 07:08 and 17:09 UTC on 2026-10-20 (PRs #201, #203, #205, #206, #209, #211, #210): 6 gaps in ~10 h 01 min ≈ 100 min each (median gap ~75 min). CI: develop run 39512878314, whole run 12m04s, of which the single API test job took 11m46s.
+- **Now:** #44 (PR #212, the last issue on the old flow), then #45 (PR #221), #198 (PR #223) and #197 (PR #225), merged between 23:31 on 2026-10-20 and 03:39 UTC on 2026-10-21: 248 min, minus a 42-minute pause by the owner to free memory (02:17–02:59 UTC, from the run log), = ~206 active min for 3 issues ≈ 69 min each. CI after the split: all successful runs between 01:18 and 03:30 UTC on 2026-10-21 took 4m41s–6m49s (median ~6m22s), for example develop runs 39528596766 (4m41s) and 39537494359 (6m26s) and the PR runs of the delivered issues 39527214503, 39527882830, 39531516787, 39531896544 and 39538404189 (5m38s–6m49s). Local setup: ~35 s from creating the database to the app running with sample data (QA of #197).
+- Times come from PR `createdAt`/`mergedAt` (`gh pr view <n> --json createdAt,mergedAt`) and CI run durations (`gh run view <id>`).
+
+Honest caveats:
+
+- **Small sample:** 3 issues after versus 6 gaps before.
+- **Overloaded machine:** the 8 GB computer was at times heavily overloaded during the new-flow issues, which slowed them; the "heavy work one at a time" rule came from this.
+- **Extra work in the same window:** the team also delivered four process issues in parallel (#213, #215, #216, #217), which the per-issue figure does not count.
+- **PR open → merge** got longer because issues now overlap: a PR stays open while QA works and while the next issue is being built, so this figure no longer measures waiting time the way it did before.
