@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { checkCatalogs, formatProblems, type Catalogs } from './check';
+import {
+  checkCatalogs,
+  findDuplicateKeys,
+  formatProblems,
+  type Catalogs,
+} from './check';
 
 // Every catalog file on disk, so a namespace added in one language only is
 // found too (the app bundle imports them explicitly in index.ts).
 const files = import.meta.glob<unknown>('./locales/*/*.json', {
   eager: true,
   import: 'default',
+});
+
+// The same files as raw text: JSON.parse hides a repeated key.
+const rawFiles = import.meta.glob<string>('./locales/*/*.json', {
+  eager: true,
+  import: 'default',
+  query: '?raw',
 });
 
 function realCatalogs(): Catalogs {
@@ -26,6 +38,20 @@ describe('translation catalogs', () => {
     const problems = checkCatalogs(catalogs);
     // The message lists every problem with language, namespace and key.
     expect(problems, `\n${formatProblems(problems)}\n`).toEqual([]);
+  });
+
+  it('repeat no key within the same object', () => {
+    expect(Object.keys(rawFiles).length).toBeGreaterThan(0);
+    const duplicates = Object.entries(rawFiles).flatMap(([path, text]) => {
+      const [, language, namespace] = /\/locales\/([^/]+)\/([^/]+)\.json$/.exec(
+        path,
+      )!;
+      return findDuplicateKeys(text).map(
+        (key) => `${language}/${namespace}: ${key}`,
+      );
+    });
+    // The message names the file and the key path, e.g. en/errors: x.
+    expect(duplicates, `\n${duplicates.join('\n')}\n`).toEqual([]);
   });
 
   it('give the language endonyms identically in both languages', () => {
@@ -150,5 +176,42 @@ describe('checkCatalogs', () => {
         key: 'items',
       }),
     ]);
+  });
+});
+
+describe('findDuplicateKeys', () => {
+  it('reports a top-level duplicate', () => {
+    expect(findDuplicateKeys('{"a": "1", "b": "2", "a": "3"}')).toEqual(['a']);
+  });
+
+  it('reports a nested duplicate with its dotted path', () => {
+    const text = '{"x": "0", "a": {"b": "1", "c": {"d": "2"}, "b": "3"}}';
+    expect(findDuplicateKeys(text)).toEqual(['a.b']);
+  });
+
+  it('does not report the same key in sibling objects', () => {
+    const text = '{"a": {"x": "1"}, "b": {"x": "2"}, "x": {"x": "3"}}';
+    expect(findDuplicateKeys(text)).toEqual([]);
+  });
+
+  it('handles keys and values with escaped quotes and backslashes', () => {
+    const text = String.raw`{"q\"k": "v\"", "b\\": "\\", "q\"k": "w", "b\\": "x"}`;
+    expect(findDuplicateKeys(text)).toEqual(['q"k', 'b\\']);
+  });
+
+  it('reports a key repeated three times once', () => {
+    expect(findDuplicateKeys('{"a": "1", "a": "2", "a": "3"}')).toEqual(['a']);
+  });
+
+  it('walks arrays without reporting indices', () => {
+    const text =
+      '{"a": [{"k": "1", "k": "2"}, {"k": "3"}, ["x", "y"]], "b": "z"}';
+    expect(findDuplicateKeys(text)).toEqual(['a.k']);
+  });
+
+  it('returns nothing for a clean file', () => {
+    const text =
+      '{\n  "a": {"b": "1", "c": "{\\"b\\": 2}"},\n  "d": ["a", "a"]\n}';
+    expect(findDuplicateKeys(text)).toEqual([]);
   });
 });
