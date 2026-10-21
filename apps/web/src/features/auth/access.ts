@@ -1,4 +1,4 @@
-import type { PermissionCode, SessionUser } from './session';
+import type { PermissionCode, RoleCode, SessionUser } from './session';
 
 // Route and navigation access (#28 F). UX only: hiding a page or a link
 // proves nothing; the API checks every request (spec §16, architecture §8).
@@ -7,7 +7,9 @@ import type { PermissionCode, SessionUser } from './session';
 // is `authenticated`, and a route that `require`s a permission declares
 // `handle: { permission }`. A page that serves holders of any of several
 // permissions (the approval inbox, #40 F1: one review permission per approval
-// type) declares `handle: { anyPermission: [...] }`.
+// type) declares `handle: { anyPermission: [...] }`. A page for one role
+// only (the tutor's "My offers", #52 H1) declares `handle: { role }`; the API
+// still filters by record policy.
 
 /** What a route (its `handle`) or a navigation item requires. */
 export interface AccessRequirement {
@@ -15,6 +17,8 @@ export interface AccessRequirement {
   permission?: PermissionCode;
   /** At least one of these must be held (an empty list allows no one). */
   anyPermission?: readonly PermissionCode[];
+  /** The user must hold this role (#52 H1). */
+  role?: RoleCode;
 }
 
 function holds(user: SessionUser, permission: unknown): boolean {
@@ -30,7 +34,8 @@ function holds(user: SessionUser, permission: unknown): boolean {
  * least one held entry; when both are given, both apply. Fails closed: a
  * permission that is not a string, or that the user's permissions do not list
  * (including a code that is not in the catalog), is denied, and an
- * `anyPermission` that is not a non-empty array is denied.
+ * `anyPermission` that is not a non-empty array is denied. `role` must be one
+ * of the user's roles (a value that is not a string is denied).
  */
 export function canAccess(
   user: SessionUser | null | undefined,
@@ -42,11 +47,21 @@ export function canAccess(
   if (requirement === undefined || requirement === null) {
     return true;
   }
-  const { permission, anyPermission } = requirement as {
+  const { permission, anyPermission, role } = requirement as {
     permission?: unknown;
     anyPermission?: unknown;
+    role?: unknown;
   };
   if (permission !== undefined && !holds(user, permission)) {
+    return false;
+  }
+  if (
+    role !== undefined &&
+    !(
+      typeof role === 'string' &&
+      (user.roles as readonly string[]).includes(role)
+    )
+  ) {
     return false;
   }
   if (anyPermission !== undefined) {
@@ -71,6 +86,10 @@ export function routeRequirement(handle: unknown): AccessRequirement | null {
   if ('anyPermission' in handle) {
     requirement.anyPermission =
       handle.anyPermission as readonly PermissionCode[];
+  }
+  if ('role' in handle) {
+    // Passed on unchecked: canAccess denies anything that is not a held role.
+    requirement.role = handle.role as RoleCode;
   }
   return Object.keys(requirement).length > 0 ? requirement : null;
 }

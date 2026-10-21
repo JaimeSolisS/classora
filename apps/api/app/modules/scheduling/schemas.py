@@ -22,6 +22,7 @@ from datetime import date, datetime
 from typing import Any, Final, Literal
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -33,7 +34,10 @@ from pydantic import (
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from app.modules.scheduling.conflicts import HARD, SOFT
-from app.modules.scheduling.models import OVERRIDE_REASON_MAX_LENGTH
+from app.modules.scheduling.models import (
+    DECLINE_NOTE_MAX_LENGTH,
+    OVERRIDE_REASON_MAX_LENGTH,
+)
 
 OVERRIDE_CODES_MAX: Final = len(SOFT)
 
@@ -145,6 +149,15 @@ class ClassSessionCreate(ClassSessionSlot):
             " schedule.override). Null or absent: every conflict blocks."
         ),
     )
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "With a tutor only (#52): an earlier deadline for the tutor's"
+            " answer, after now and no later than the default (the scheduling"
+            " policy's response time, but never after the start); truncated to"
+            " whole minutes. Null or absent: the default."
+        ),
+    )
 
 
 class SessionSubject(BaseModel):
@@ -209,6 +222,14 @@ class SessionOverrideItem(BaseModel):
     created_at: datetime
 
 
+class PendingOffer(BaseModel):
+    """The pending offer of an ``offered`` session (#52 G3)."""
+
+    id: uuid.UUID
+    tutor: SessionTutor
+    respond_by: datetime
+
+
 class ClassSessionDetail(BaseModel):
     """One class session (``GET /api/v1/class-sessions/{id}``)."""
 
@@ -229,6 +250,9 @@ class ClassSessionDetail(BaseModel):
     updated_at: datetime
     overrides: list[SessionOverrideItem] = Field(
         description="The overrides of its soft conflicts, oldest first."
+    )
+    pending_offer: PendingOffer | None = Field(
+        description=("The pending offer of an `offered` session (#52); null otherwise.")
     )
 
 
@@ -512,3 +536,145 @@ class TutorSuggestionList(BaseModel):
 
     items: list[TutorSuggestion]
     eligible_count: int
+
+
+# --- Assignment offers (#52 C, D, G) ----------------------------------------------
+
+type OfferScopeCode = Literal["session"]
+type OfferStatusCode = Literal[
+    "pending", "accepted", "declined", "expired", "withdrawn"
+]
+type OfferStatusFilter = Literal["pending", "answered", "all"]
+
+OFFERS_DEFAULT_LIMIT: Final = 20
+OFFERS_MAX_LIMIT: Final = 100
+
+
+class AssignmentOfferCreate(BaseModel):
+    """Offer an ``unassigned`` session to a tutor
+    (``POST /api/v1/class-sessions/{id}/offers``, #52 C2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tutor_user_id: uuid.UUID
+    version: int = Field(description="The session's version, as last read.")
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "An earlier deadline for the tutor's answer, after now and no later"
+            " than the default; truncated to whole minutes."
+        ),
+    )
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts with a reason (needs"
+            " schedule.override)."
+        ),
+    )
+
+
+def _check_note(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    note = value.strip()
+    if len(note) > DECLINE_NOTE_MAX_LENGTH:
+        raise PydanticCustomError(
+            "decline_note_too_long", "The note is at most 500 characters."
+        )
+    return note or None
+
+
+class AssignmentOfferDecline(BaseModel):
+    """The optional body of a decline (#52 D3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(
+        default=None,
+        description=(
+            "Why the tutor declines, for the staff: trimmed, at most 500"
+            " characters; empty is no note."
+        ),
+    )
+
+    _note = field_validator("note", mode="before")(_check_note)
+
+
+class OfferPerson(BaseModel):
+    """A user named on an offer."""
+
+    id: uuid.UUID
+    display_name: str
+
+
+class OfferSessionSubject(BaseModel):
+    """The subject of an offered session."""
+
+    name: str
+    education_level_name: str
+
+
+class OfferSessionClassroom(BaseModel):
+    """The classroom of an offered session."""
+
+    name: str
+
+
+class OfferSessionParticipant(BaseModel):
+    """A student of an offered session."""
+
+    display_name: str
+
+
+class OfferSession(BaseModel):
+    """A session the offer covers."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    subject: OfferSessionSubject
+    classroom: OfferSessionClassroom | None
+    participants: list[OfferSessionParticipant] = Field(
+        description="The students, by display name."
+    )
+
+
+class AssignmentOfferItem(BaseModel):
+    """One assignment offer (#52 G1)."""
+
+    id: uuid.UUID
+    scope: OfferScopeCode
+    status: OfferStatusCode
+    tutor: OfferPerson
+    offered_at: datetime
+    offered_by: OfferPerson
+    respond_by: datetime
+    responded_at: datetime | None
+    decline_note: str | None
+    sessions: list[OfferSession] = Field(description="The covered sessions, by start.")
+
+
+class AssignmentOfferCreated(BaseModel):
+    """The new offer and the tutor's workload warnings (#52 C2 step 12)."""
+
+    offer: AssignmentOfferItem
+    warnings: list[SchedulingWarning] = Field(
+        description="The tutor's workload warnings for the session. They never block."
+    )
+
+
+class AssignmentOfferPage(BaseModel):
+    """A page of the caller's offers (#52 G2)."""
+
+    items: list[AssignmentOfferItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class ClassSessionOffers(BaseModel):
+    """A session's offer history, newest first (#52 G3)."""
+
+    items: list[AssignmentOfferItem]

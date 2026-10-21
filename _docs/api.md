@@ -53,6 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`. Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -110,6 +111,13 @@ Codes in use today:
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
 | `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). See Class sessions. |
 | `class_session_not_assignable` | 409 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` for a session that is `completed`, `cancelled` or `skipped_closure`: it can no longer take a tutor (see Class sessions, "Tutor suggestions"). |
+| `class_session_not_offerable` | 409 | Offering a session that is not `unassigned` (`details.state`), or one that has begun (`details.reason = "started"`; also a create with a tutor whose start is not after now). See Assignment offers. |
+| `offer_not_pending` | 409 | Accepting or declining an offer that was already answered, expired or withdrawn; `details.status` is its status (see Assignment offers). |
+| `offer_expired` | 409 | Accepting or declining an offer at or after its `respond_by`; the expiry task closes it within five minutes (see Assignment offers). |
+| `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned`; the item stays pending (see Assignment offers). |
+| `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
+| `respond_by_requires_tutor` | 422 | `POST /api/v1/class-sessions` with `respond_by` but no `tutor_user_id`; the field error is on `["body","respond_by"]`. |
+| `decline_note_too_long` | 422 | A decline note over 500 characters once trimmed; the field error is on `["body","note"]` (see Assignment offers). |
 | `period_overlap` | 409 | An academic period that is (or becomes) active would share at least one day with another active period of the same type (see Academic periods and closures). |
 | `education_level_unavailable` | 422 | A student profile picks an education level that is unknown or inactive (an already assigned inactive level may be kept); the field error is on `["body","education_level_id"]` (see Students). |
 | `emergency_contact_unknown` | 422 | A student `PATCH` sends an emergency contact `id` that is not one of this student's contacts, or the same `id` twice; the field error is on `["body","emergency_contacts",i,"id"]` (see Students). |
@@ -1842,7 +1850,8 @@ Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
 Workload warnings and suggested times: M4-05 (#50; spec §3), `workload.py`
 and `suggestions.py` (pure rules), `workload_sessions.py` and
 `slot_search.py` (the reads). Only one-off **individual** sessions so far;
-groups, courses, recurrence and offers come with later M4 issues. The
+groups, courses and recurrence come with later M4 issues. Offers (M4-07,
+#52): see Assignment offers below. The
 calendar's range read and tutor options (M4-12, #57) are in
 `calendar_read.py` and `markers.py`. Tutor suggestions (M4-06, #51; spec
 §3, W1.3): `eligibility.py` (the pure rule) and `tutor_suggestions.py`.
@@ -1861,6 +1870,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
 | `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
+| `POST`/`GET /api/v1/class-sessions/{class_session_id}/offers` | `schedule.assign` / `schedule.view` | Offer an `unassigned` session to a tutor; the session's offer history (M4-07, see Assignment offers). |
 
 **Body** (unknown fields are `422`):
 
@@ -1868,7 +1878,8 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 {"kind": "individual", "student_id": "…", "subject_id": "…",
  "tutor_user_id": "…" | null, "classroom_id": "…" | null,
  "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00",
- "override": {"codes": ["outside_operating_hours"], "reason": "…"} | null}
+ "override": {"codes": ["outside_operating_hours"], "reason": "…"} | null,
+ "respond_by": "2026-11-09T12:00:00-06:00" | null}
 ```
 
 `starts_at`/`ends_at` are instants with an offset; responses give them in
@@ -1877,8 +1888,11 @@ education_level_name, is_active}, tutor {id, display_name} | null,
 classroom {id, name, is_active} | null, participants [{student_id,
 display_name, is_active}], starts_at, ends_at, scheduled_minutes, version,
 created_at, updated_at, overrides [{id, codes, reason, actor {id,
-display_name}, created_at}]}` (overrides oldest first, `[]` when none); a
-subject is shown inactive when it or its level is.
+display_name}, created_at}]}, pending_offer {id, tutor {id, display_name},
+respond_by} | null}` (overrides oldest first, `[]` when none; `pending_offer`
+is the pending offer of an `offered` session, M4-07); a subject is shown
+inactive when it or its level is. `respond_by` is taken only with a tutor
+(see Assignment offers).
 
 **Order of the create:**
 
@@ -1902,7 +1916,8 @@ subject is shown inactive when it or its level is.
    (the subject or its level; `subject_id`); `tutor_unknown` (no such user,
    or not a tutor), `tutor_inactive` (any state but `active`, a pending
    invitee included; `tutor_user_id`); `classroom_unknown`,
-   `classroom_inactive` (`classroom_id`);
+   `classroom_inactive` (`classroom_id`); then `422` for `respond_by`
+   (`respond_by_requires_tutor` without a tutor, `respond_by_invalid`; M4-07);
 7. every conflict check below, then the override decision (below): `409
    scheduling_conflict` with **all** of them, hard first, then in this
    table's order, unless there is none or the override covers them;
@@ -1912,8 +1927,14 @@ subject is shown inactive when it or its level is.
    `class_session_ids` is `[]`). Just before, the tutor's workload warnings
    are computed (below; at most two statements with a tutor, none
    without);
+   With a tutor, a start that is not after now is `409
+   class_session_not_offerable` (`details.reason = "started"`; reachable
+   with an overridden `notice_window`), right after the override decision;
 9. with overridden conflicts, the override row and its audit event, in the
-   same transaction.
+   same transaction;
+10. with a tutor (M4-07), the `pending` offer and the tutor's
+    `scheduling.offer_received` notification, in the same transaction (see
+    Assignment offers).
 
 **Conflicts.** The tutor checks run only with a tutor, the room checks
 only with a room. Local values are in the center zone; a local end at
@@ -2160,8 +2181,131 @@ never listed. `scheduling.service.suggest_tutors` is the one implementation
 (for M4-07 offers and M4-10 substitutions too); it takes at most `8 + 6 × C`
 statements, `C` being the qualified active tutors (tutors without the
 qualification cost nothing). The web app's "Schedule a session" form has a
-"Suggest tutors" button for holders of `schedule.assign`; the replacement
-list has no screen yet (M4-07, M4-10, M4-12 use it).
+"Suggest tutors" button for holders of `schedule.assign`; the session page
+(`/schedule/sessions/:id`, M4-07) uses the replacement list in its "Offer to
+a tutor" panel.
+
+### Assignment offers
+
+Implemented by M4-07 (#52; spec §3, §9, §15 W1.3–W1.4; ADR-0005 D2, D3,
+D9) in `apps/api/app/modules/scheduling/`: `offers.py` (the pure rules, the
+invariant and the lock order), `offer_flow.py` (writes and reads),
+`offer_records.py` (storing offers, notifications), `offer_approval.py`
+(the inbox type) and `tasks.py` (the expiry task). One-off sessions only;
+series-assignment offers are M4-07b (#233).
+
+**Model.** `assignment_offers` (audited, versioned): `scope` (`session`),
+`tutor_user_id`, `status` (`pending` → `accepted` | `declined` | `expired`
+| `withdrawn`; the other four are final), `offered_at`,
+`offered_by_user_id`, `respond_by` (after `offered_at`), `responded_at`
+(set exactly when not `pending`), `decline_note` (only `declined`, at most
+500 characters). `assignment_offer_sessions` (audited): the covered
+sessions, one row per offer and session (a session offer has exactly one).
+**Invariant:** a session is `offered` iff exactly one `pending` offer
+covers it, made to the session's tutor. **Lock order:** every offer writer
+locks the covered sessions `FOR UPDATE` (ascending id), then the offer
+`FOR UPDATE`.
+
+**Deadline.** `respond_by` defaults to the scheduling policy's
+`response_hours` (48 by default) after `offered_at`, but never after the
+session's start (`min(offered_at + response_hours, starts_at)`; the policy
+version in force at `offered_at`). An earlier one may be requested: after
+now and no later than the default, else `422 respond_by_invalid`. Both are
+truncated to whole minutes; a naive value is `422`. An offer is overdue
+from `respond_by` on (`now >= respond_by`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/class-sessions` (extended) | `schedule.manage` | With a tutor: the session is created `offered` with its pending offer (optional `respond_by`) and the tutor is notified. |
+| `POST /api/v1/class-sessions/{class_session_id}/offers` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator); an `override` also needs `schedule.override` | Offer an `unassigned` session; `201` with `{offer: AssignmentOfferItem, warnings}`. |
+| `GET /api/v1/class-sessions/{class_session_id}/offers` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `{items: [AssignmentOfferItem]}`, newest first, decline notes included; `404` for an unknown session. |
+| `GET /api/v1/assignment-offers?status=pending\|answered\|all&limit&offset` | `authenticated()`; only the caller's own offers | Default `pending` (by `respond_by`); `answered` (the four final statuses) and `all` newest first. `limit` 1–100 (default 20), `offset`; `{items, total, limit, offset}`. Anyone without offers gets an empty page. At most 6 statements. |
+| `POST /api/v1/assignment-offers/{offer_id}/accept` | `authenticated()`; only the offered tutor | `200` with the `AssignmentOfferItem`. |
+| `POST /api/v1/assignment-offers/{offer_id}/decline` | `authenticated()`; only the offered tutor | Optional body `{note}` (trimmed, empty is none, at most 500: `422 decline_note_too_long`). `200` with the item. |
+
+`AssignmentOfferItem`: `{id, scope, status, tutor {id, display_name},
+offered_at, offered_by {id, display_name}, respond_by, responded_at,
+decline_note, sessions [{id, state, starts_at, ends_at, subject {name,
+education_level_name}, classroom {name} | null, participants
+[{display_name}]}]}`.
+
+**Offering an `unassigned` session** (body `{tutor_user_id, version,
+respond_by?, override?}`, unknown fields `422`). Order: `401`/`403`
+(`schedule.assign`) → `422` schema → `403 permission_denied` for an
+`override` without `schedule.override` → the session `FOR UPDATE` (`404
+not_found`) → `409 version_conflict` → `409 class_session_not_offerable`
+(`details.state` unless `unassigned`; `details.reason = "started"` when
+`starts_at <= now`) → the zone `FOR SHARE` → `422` for the tutor
+(`tutor_unknown`, `tutor_inactive`) and `respond_by` (`respond_by_invalid`)
+in one response → the checks → the override decision (`409
+scheduling_conflict` with every conflict unless none, or all soft and
+listed) → the workload warnings → `unassigned → offered` (an `EXCLUDE` race
+→ `409` with one `tutor_overlap`) → the override record, the offer, the
+tutor's notification, and the session's open reassignment item is
+cancelled → `201`. **Checked again:** `tutor_overlap` (hard),
+`tutor_unavailable`, `tutor_not_qualified`, `center_closed`,
+`outside_operating_hours`, `room_unavailable` (soft), with the create's
+check functions. **Not re-checked:** `student_overlap`, `room_overlap`,
+capacity (unchanged inputs, held by their writers' locks) and
+`notice_window` (applied when the slot was booked; a late reassignment
+stays possible without an override). Whether the tutor declined the
+session before is not checked; teaching limits are warnings only.
+
+**Answering** (the offered tutor only). Order: `401` → an unknown offer,
+or one offered to someone else, is `404 not_found` (never `403`: staff,
+other tutors, students and guardians all get `404`) → the lock order →
+`409 offer_not_pending` (`details.status`) → `409 offer_expired` when
+overdue → the change → `200`. **Accept:** every covered `offered` session
+becomes `confirmed`; qualification and availability are not re-checked; no
+notification. **Decline:** every covered `offered` session goes back to
+`unassigned` (the tutor cleared; the room and students stay held), the
+note is stored, and the reassignment item and the staff notifications
+follow. A double answer, or a concurrent accept and decline, gives exactly
+one `200`; the other is `409 offer_not_pending`.
+
+**Expiry.** The periodic task `scheduling:expire_offers` (every five
+minutes, `*/5 * * * *`, fixed `periodic_id` and `queueing_lock`
+`scheduling-expire-offers`, ADR-0003) takes the `pending` offers with
+`respond_by <= now`, oldest first, at most 200 per run, each in its own
+transaction: under the lock order it re-checks that the offer is still
+pending and overdue (else it skips it: a concurrent answer wins, and a
+second run changes nothing), moves the still-`offered` sessions to
+`unassigned`, marks the offer `expired`, and makes the reassignment item
+and the `scheduling.offer_expired` notifications. A session no longer
+`offered` (moved by another path) is left alone; the offer still expires,
+and with nothing to reassign no item or notification is made. Audit events
+of the task have no actor. It logs the counts (expired, skipped).
+
+**Reassignment inbox item** (approval type `scheduling.offer_reassignment`,
+review permission `schedule.assign`; no request-changes; dismissing needs a
+reason). One per declined or expired offer (the subject is the offer),
+requester `null`, priority `high` when the first covered session starts
+within 24 hours, otherwise `normal`. Summary: `{class_session_id,
+subject_name, starts_at, tutor_name, outcome (declined | expired),
+decline_note, session_state}`. **Approve** ("Mark resolved") is `409
+reassignment_still_needed` while a covered session is still `unassigned`;
+**Reject** ("Dismiss") closes it and leaves the session as it is. Offering
+the session again cancels the open item of its latest declined or expired
+offer (resolved by the offering user).
+
+**Notifications** (in-app): `scheduling.offer_received` to the tutor
+`{offer_id, subject_name, starts_at, respond_by}`;
+`scheduling.offer_declined` / `scheduling.offer_expired` to every active
+holder of `schedule.assign` (role grants plus delegations;
+`identity.service.active_user_ids_with_permission`) `{offer_id,
+class_session_id, subject_name, starts_at, tutor_name}`. Instants are RFC
+3339 in UTC. The decline note is never a param.
+
+**Withdraw seam.** `scheduling.service.withdraw_pending_offers(session,
+class_session_ids, by_user_id=…)` marks the covering pending offers
+`withdrawn` (no item, no notification) for the later paths that cancel or
+substitute an `offered` session (M4-10, M4-13, M4-07b); the caller holds
+the session locks and moves the sessions. No route.
+
+**Family visibility.** `scheduling.states.FAMILY_VISIBLE_STATES` =
+`{confirmed, completed}` (`is_family_visible`): students and guardians see a
+session only once a tutor accepted it; the family views and their record
+policy are M4-22 (#67).
 
 ### Course templates
 

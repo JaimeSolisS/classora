@@ -40,7 +40,8 @@
     "families": "Familias",
     "tutors": "Tutores",
     "schedule": "Agenda",
-    "courses": "Cursos"
+    "courses": "Cursos",
+    "offers": "Mis ofertas"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -289,11 +290,14 @@
     },
     "types": {
       "identity_registration": "Solicitud de cuenta",
-      "staff_qualification": "Calificación de tutor"
+      "staff_qualification": "Calificación de tutor",
+      "scheduling_offer_reassignment": "Sesión por reasignar"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
-      "qualification": "{{tutor}} — {{subject}} ({{level}})"
+      "qualification": "{{tutor}} — {{subject}} ({{level}})",
+      "reassignmentDeclined": "Rechazada por {{tutor}} · {{subject}} · {{when}}",
+      "reassignmentExpired": "Vencida, ofrecida a {{tutor}} · {{subject}} · {{when}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -317,7 +321,11 @@
       "requestChanges": "Pedir cambios",
       "approveFor": "Aprobar a {{name}}",
       "rejectFor": "Rechazar a {{name}}",
-      "requestChangesFor": "Pedir cambios a {{name}}"
+      "requestChangesFor": "Pedir cambios a {{name}}",
+      "markResolved": "Marcar como resuelta",
+      "dismiss": "Descartar",
+      "markResolvedFor": "Marcar como resuelta: {{name}}",
+      "dismissFor": "Descartar: {{name}}"
     },
     "dialog": {
       "approveTitle": "Aprobar: {{summary}}",
@@ -340,6 +348,14 @@
       "approved": "Aprobada.",
       "rejected": "Rechazada.",
       "changesRequested": "Cambios solicitados."
+    },
+    "reassignment": {
+      "openSession": "Abrir la sesión",
+      "note": "Nota del tutor: {{note}}",
+      "resolveTitle": "Marcar como resuelta: {{summary}}",
+      "dismissTitle": "Descartar: {{summary}}",
+      "resolveConfirm": "¿Marcar este elemento como resuelto? La sesión ya debe tener tutor de nuevo, o ya no necesitarlo.",
+      "dismissConfirm": "¿Descartar este elemento? La sesión no cambia."
     }
   },
   "users": {
@@ -1330,7 +1346,10 @@
       "dev_demo": "Notificación de prueba: {{label}}",
       "staff_qualification_approved": "Se aprobó tu calificación para {{subject_name}} ({{education_level_name}}).",
       "staff_qualification_rejected": "No se aprobó tu calificación para {{subject_name}} ({{education_level_name}}); consulta el motivo en tus calificaciones.",
-      "staff_qualification_revoked": "Se revocó tu calificación para {{subject_name}} ({{education_level_name}}). Consulta el motivo en tus calificaciones."
+      "staff_qualification_revoked": "Se revocó tu calificación para {{subject_name}} ({{education_level_name}}). Consulta el motivo en tus calificaciones.",
+      "scheduling_offer_received": "Tienes una nueva oferta de sesión: {{subject_name}}, {{starts_at}}. Responde antes del {{respond_by}}.",
+      "scheduling_offer_declined": "{{tutor_name}} rechazó {{subject_name}}, {{starts_at}}. Ofrécela a otro tutor.",
+      "scheduling_offer_expired": "La oferta de {{subject_name}}, {{starts_at}} a {{tutor_name}} venció sin respuesta. Ofrécela a otro tutor."
     }
   },
   "scheduling": {
@@ -1369,7 +1388,8 @@
       "state": "Estado",
       "offered": "Ofrecida a {{tutor}}",
       "unassigned": "Sin asignar",
-      "another": "Programar otra"
+      "another": "Programar otra",
+      "openSession": "Abrir la sesión"
     },
     "severity": {
       "hard": "No permitido",
@@ -1560,6 +1580,39 @@
       "hours": "{{hours}} h",
       "minutes": "{{minutes}} min",
       "hoursMinutes": "{{hours}} h {{minutes}} min"
+    },
+    "offer": {
+      "heading": "Ofrecer a un tutor",
+      "intro": "El tutor recibe una notificación y responde en Mis ofertas. Todas las reglas se revisan de nuevo para el tutor que elijas.",
+      "chooseTutor": "Elige un tutor",
+      "deadline": "Plazo anterior (opcional)",
+      "deadlineHelp": "Déjalo vacío para el plazo predeterminado (el tiempo de respuesta de la política de programación, nunca después del inicio). Horas en {{zone}}.",
+      "deadlineDate": "Fecha",
+      "deadlineTime": "Hora",
+      "submit": "Ofrecer la sesión",
+      "submitting": "Ofreciendo…",
+      "overrideAction": "Hacer una excepción y ofrecer",
+      "overrideDescription": "La sesión se ofrece a pesar de estas reglas. El motivo se guarda en el registro de auditoría.",
+      "validation": {
+        "tutorRequired": "Elige un tutor.",
+        "deadlineIncomplete": "Indica una fecha y una hora, o deja ambas vacías."
+      }
+    },
+    "session": {
+      "title": "Sesión",
+      "backToCalendar": "Volver al calendario",
+      "offeredTo": "Ofrecida a {{tutor}}.",
+      "summary": "Resumen",
+      "state": "Estado",
+      "zone": "({{zone}})",
+      "noTutor": "Sin tutor",
+      "pendingOffer": "Oferta pendiente",
+      "pendingOfferText": "{{tutor}}, responde antes del {{when}}",
+      "history": "Historial de ofertas",
+      "noOffers": "Aún no hay ofertas.",
+      "offeredBy": "Ofrecida por {{name}} el {{when}}",
+      "respondedAt": "Respondida el {{when}}",
+      "respondBy": "Responder antes del {{when}}"
     }
   },
   "courses": {
@@ -1696,6 +1749,57 @@
         "nameTaken": "Otra plantilla de curso ya tiene este nombre, quizá una inactiva."
       },
       "assessmentRequired": "Obligatoria"
+    }
+  },
+  "offers": {
+    "title": "Mis ofertas",
+    "intro": "Sesiones que el centro te ofrece. Acepta o rechaza cada una antes de su plazo; una sesión rechazada o sin respuesta vuelve al personal para ofrecerla a otra persona.",
+    "zone": "Las horas están en la zona horaria del centro ({{zone}}).",
+    "emptyPending": "No hay ofertas esperando tu respuesta.",
+    "emptyAnswered": "Aún no hay ofertas respondidas.",
+    "accepted": "Aceptada: {{offer}}. Ahora está en Respondidas.",
+    "declined": "Rechazada: {{offer}}. Ahora está en Respondidas.",
+    "cancel": "Cancelar",
+    "tabs": {
+      "label": "Ofertas",
+      "pending": "Pendientes",
+      "answered": "Respondidas"
+    },
+    "card": {
+      "label": "{{subject}}, {{date}}, {{start}}",
+      "subject": "{{subject}} ({{level}})",
+      "when": "{{date}}, {{start}}–{{end}}",
+      "classroom": "Aula",
+      "noClassroom": "Sin aula",
+      "students": "Estudiantes",
+      "answerBy": "Responde antes del {{when}}",
+      "dueSoon": "Vence pronto",
+      "answeredAt": "Respondida el {{when}}",
+      "note": "Nota: {{note}}"
+    },
+    "status": {
+      "pending": "Pendiente",
+      "accepted": "Aceptada",
+      "declined": "Rechazada",
+      "expired": "Vencida",
+      "withdrawn": "Retirada"
+    },
+    "accept": {
+      "title": "¿Aceptar esta sesión?",
+      "description": "Impartirás {{offer}}. Queda confirmada en cuanto la aceptas.",
+      "submit": "Aceptar",
+      "action": "Aceptar",
+      "for": "Aceptar {{offer}}"
+    },
+    "decline": {
+      "title": "Rechazar esta sesión",
+      "description": "Rechazar {{offer}}. El personal la ofrecerá a otra persona.",
+      "note": "Nota para el personal (opcional)",
+      "counter": "{{length}} de {{max}} caracteres",
+      "submitting": "Rechazando…",
+      "submit": "Rechazar",
+      "action": "Rechazar",
+      "for": "Rechazar {{offer}}"
     }
   }
 }

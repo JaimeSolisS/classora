@@ -76,6 +76,11 @@ export const CREATED: ClassSessionCreated = {
   created_at: '2026-10-21T12:00:00Z',
   updated_at: '2026-10-21T12:00:00Z',
   overrides: [],
+  pending_offer: {
+    id: '00000000-0000-4000-8000-0000000005f1',
+    tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
+    respond_by: '2026-10-23T12:00:00Z',
+  },
   warnings: [],
 };
 
@@ -84,6 +89,7 @@ export const UNASSIGNED: ClassSessionCreated = {
   state: 'unassigned',
   tutor: null,
   classroom: null,
+  pending_offer: null,
 };
 
 /** One hard and two soft conflicts, as the server sorts them. */

@@ -5,7 +5,8 @@ import type { AccessRequirement } from '@/features/auth/access';
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
 // UX only: the API checks every request. Feature issues add their own items
-// here, with the `permission` (or `anyPermission`) their route requires.
+// here, with the `permission` (or `anyPermission`, or `role`) their route
+// requires.
 
 export interface NavItem extends AccessRequirement {
   to: string;
@@ -53,4 +54,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // The calendar (#57 D1): every schedule.view holder (Coordinators and
   // Finance too). "Schedule a session" (/schedule/new) is linked from it.
   { to: '/schedule', labelKey: 'nav.schedule', permission: 'schedule.view' },
+  // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
+  { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
 ];

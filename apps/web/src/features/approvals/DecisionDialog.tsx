@@ -18,7 +18,13 @@ import {
   type ApprovalAction,
   type ApprovalRequestItem,
 } from './api';
-import { approvalSummary, registrationSubject } from './summary';
+import { useFormatters } from '@/lib/formatters';
+import {
+  actionLabelKey,
+  approvalSummary,
+  reassignmentSubject,
+  registrationSubject,
+} from './summary';
 
 // The confirmation of a decision (#40 F4; moved from #169 G3). Approve asks
 // for confirmation; Reject and Request changes have a reason field, required
@@ -81,12 +87,6 @@ const TITLE_KEYS = {
   request_changes: 'approvals.dialog.requestChangesTitle',
 } as const;
 
-const CONFIRM_KEYS = {
-  approve: 'approvals.actions.approve',
-  reject: 'approvals.actions.reject',
-  request_changes: 'approvals.actions.requestChanges',
-} as const;
-
 const SENDING_KEYS = {
   approve: 'approvals.dialog.approving',
   reject: 'approvals.dialog.rejecting',
@@ -118,14 +118,22 @@ function DecisionDialogContent({
   // The element focused before the dialog opened (it opens without a
   // trigger), to give focus back on close.
   const returnFocus = useRef<Element | null>(null);
+  const { formatInstant } = useFormatters();
   const { item, action } = pending;
-  const summary = approvalSummary(item, t);
+  const summary = approvalSummary(item, t, (instant) =>
+    formatInstant(instant, 'dateTime'),
+  );
   const registration = registrationSubject(item);
+  const reassignment = reassignmentSubject(item);
   const withReason = action !== 'approve';
   const required = reasonRequired(item.request_type, action);
 
   let description: string;
-  if (action === 'approve') {
+  if (reassignment && action === 'approve') {
+    description = t('approvals.reassignment.resolveConfirm');
+  } else if (reassignment && action === 'reject') {
+    description = t('approvals.reassignment.dismissConfirm');
+  } else if (action === 'approve') {
     description = registration
       ? t('approvals.dialog.registrationApprove', {
           name: registration.display_name,
@@ -182,7 +190,16 @@ function DecisionDialogContent({
       onInteractOutside={(event) => event.preventDefault()}
     >
       <DialogHeader>
-        <DialogTitle>{t(TITLE_KEYS[action], { summary })}</DialogTitle>
+        <DialogTitle>
+          {reassignment && action !== 'request_changes'
+            ? t(
+                action === 'approve'
+                  ? 'approvals.reassignment.resolveTitle'
+                  : 'approvals.reassignment.dismissTitle',
+                { summary },
+              )
+            : t(TITLE_KEYS[action], { summary })}
+        </DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       {withReason ? (
@@ -227,7 +244,7 @@ function DecisionDialogContent({
           {sending ? (
             <Spinner label={t(SENDING_KEYS[action])} showLabel />
           ) : (
-            t(CONFIRM_KEYS[action])
+            t(actionLabelKey(item.request_type, action))
           )}
         </Button>
       </DialogFooter>

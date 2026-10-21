@@ -86,3 +86,50 @@ class ClassSessionNotAssignableError(AppError):
     status = 409
     code = "class_session_not_assignable"
     detail = "This session can no longer take a tutor."
+
+
+# --- Assignment offers (#52) -----------------------------------------------------
+
+
+class ClassSessionNotOfferableError(AppError):
+    """``409 class_session_not_offerable`` (#52 C2): the session can't be
+    offered now. ``details`` is ``{"state": <state>}`` when it is not
+    ``unassigned``, or ``{"reason": "started"}`` when it has already begun."""
+
+    status = 409
+    code = "class_session_not_offerable"
+    detail = "This session can't be offered to a tutor now."
+
+    def __init__(self, *, state: str | None = None, started: bool = False) -> None:
+        details = {"reason": "started"} if started else {"state": state or ""}
+        super().__init__(details=details)
+
+
+class OfferNotPendingError(AppError):
+    """``409 offer_not_pending`` (#52 D1): the offer was already answered,
+    expired or withdrawn; ``details`` is ``{"status": <status>}``."""
+
+    status = 409
+    code = "offer_not_pending"
+    detail = "This offer has already been answered."
+
+    def __init__(self, offer_status: str) -> None:
+        super().__init__(details={"status": offer_status})
+
+
+class OfferExpiredError(AppError):
+    """``409 offer_expired`` (#52 B3, D1): the deadline has passed (the
+    expiry task closes the offer within five minutes)."""
+
+    status = 409
+    code = "offer_expired"
+    detail = "The deadline to answer this offer has passed."
+
+
+class ReassignmentStillNeededError(AppError):
+    """``409 reassignment_still_needed`` (#52 E2): "Mark resolved" while a
+    session of the declined or expired offer is still ``unassigned``."""
+
+    status = 409
+    code = "reassignment_still_needed"
+    detail = "The session still has no tutor. Offer it to a tutor first."

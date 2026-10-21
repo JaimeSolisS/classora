@@ -93,5 +93,12 @@
   "invalid_effective_from": "Una política nueva debe entrar en vigor ahora o después, y después de todos los cambios próximos. Elige una fecha posterior.",
   "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página.",
   "range_invalid": "El final del periodo debe ser posterior a su inicio.",
-  "range_too_long": "Elige un periodo de 45 días como máximo."
+  "range_too_long": "Elige un periodo de 45 días como máximo.",
+  "offer_not_pending": "Esta oferta ya fue respondida.",
+  "offer_expired": "El plazo para responder esta oferta ya terminó.",
+  "class_session_not_offerable": "Esta sesión no se puede ofrecer a un tutor ahora. Recarga la página.",
+  "reassignment_still_needed": "La sesión aún no tiene tutor. Ofrécela primero a un tutor.",
+  "respond_by_invalid": "El plazo debe ser posterior a ahora y no más tarde que el plazo predeterminado.",
+  "respond_by_requires_tutor": "Un plazo necesita un tutor que responda.",
+  "decline_note_too_long": "La nota puede tener como máximo 500 caracteres."
 }

@@ -194,17 +194,20 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     """A Procrastinate ``App`` on ``connector`` with every task registered.
 
     Core and module tasks (the hourly purges of rate-limit counters, #27, and
-    of sessions, #25) are registered in every environment. The demo tasks
+    of sessions, #25; the five-minute offer expiry, #52) are registered in
+    every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
     # Imported here: task modules import this module for ids_only.
     from app.core import demo_jobs, ratelimit_tasks
     from app.modules.identity import tasks as identity_tasks
+    from app.modules.scheduling import tasks as scheduling_tasks
 
     app = App(connector=connector)
     ratelimit_tasks.register(app)
     identity_tasks.register(app)
+    scheduling_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

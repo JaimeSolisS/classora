@@ -92,6 +92,10 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ],
   ['scheduling_conflict', 'scheduling_conflict'],
   ['class_session_not_assignable', 'class_session_not_assignable'],
+  ['class_session_not_offerable', 'class_session_not_offerable'],
+  ['offer_not_pending', 'offer_not_pending'],
+  ['offer_expired', 'offer_expired'],
+  ['reassignment_still_needed', 'reassignment_still_needed'],
   ['invalid_effective_from', 'invalid_effective_from'],
   ['policy_version_in_effect', 'policy_version_in_effect'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
