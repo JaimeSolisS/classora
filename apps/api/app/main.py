@@ -59,6 +59,9 @@ from app.modules.administration.notifications_dev import (
 from app.modules.administration.notifications_router import (
     router as notifications_router,
 )
+from app.modules.administration.policies_router import (
+    router as scheduling_policies_router,
+)
 from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
@@ -172,6 +175,7 @@ def build_app(
     app.include_router(approvals_router)
     app.include_router(notifications_router)
     app.include_router(business_settings_router)
+    app.include_router(scheduling_policies_router)
     app.include_router(catalog_router)
     app.include_router(periods_router)
     app.include_router(classrooms_router)

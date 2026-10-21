@@ -1204,6 +1204,112 @@
       "addressTooLong": "Usa como máximo 300 caracteres.",
       "timeRequired": "Escribe una hora.",
       "closesAfterOpens": "La hora de cierre debe ser posterior a la de apertura."
+    },
+    "tabs": {
+      "label": "Secciones de configuración",
+      "general": "General",
+      "schedulingPolicies": "Políticas de agenda"
+    },
+    "schedulingPolicies": {
+      "title": "Políticas de agenda",
+      "help": "Reglas de cancelaciones, inasistencias, reposiciones, ofertas y reservas. Un cambio se aplica desde que entra en vigor; las clases anteriores conservan las reglas vigentes en su momento.",
+      "loading": "Cargando la política de agenda…",
+      "current": {
+        "title": "Vigente ahora",
+        "since": "Vigente desde el {{date}}."
+      },
+      "rules": {
+        "changeNotice": "Las cancelaciones y reprogramaciones con menos de {{duration}} de anticipación son tardías.",
+        "changeNoticeNone": "Las cancelaciones y reprogramaciones antes de la clase nunca son tardías.",
+        "noShow": "Una cancelación al inicio de la clase o después es una inasistencia.",
+        "response": "Los tutores tienen {{duration}} para responder una oferta.",
+        "booking": "Las reservas necesitan {{duration}} de anticipación.",
+        "bookingNone": "Las reservas no necesitan anticipación.",
+        "makeups": "Reposiciones: permitidas tras {{cases}}, dentro de {{duration}}.",
+        "makeupsNone": "Reposiciones: no se permiten tras una cancelación de la familia ni tras una inasistencia.",
+        "excused": "Los cambios del tutor o del centro son justificados y permiten una reposición."
+      },
+      "cases": {
+        "onTime": "una cancelación a tiempo",
+        "late": "una cancelación tardía",
+        "noShow": "una inasistencia"
+      },
+      "units": {
+        "hour": "1 hora",
+        "hours": "{{count}} horas",
+        "day": "1 día",
+        "days": "{{count}} días"
+      },
+      "form": {
+        "title": "Cambiar la política",
+        "help": "Con los valores de la versión más reciente. Al guardar se publica una versión nueva; las versiones nunca se editan.",
+        "makeups": "Reposiciones",
+        "save": "Guardar",
+        "saving": "Guardando…"
+      },
+      "fields": {
+        "changeNoticeHours": "Anticipación para cancelar (horas)",
+        "changeNoticeHelp": "Para cancelaciones y reprogramaciones de la familia. 0 significa que un cambio antes del inicio nunca es tardío.",
+        "bookingNoticeHours": "Anticipación para reservar (horas)",
+        "bookingNoticeHelp": "0 significa que las reservas no necesitan anticipación.",
+        "responseHours": "Tiempo para responder una oferta (horas)",
+        "makeupWindowDays": "Plazo de reposición (días)",
+        "makeupAfterOnTime": "Permitir reposición tras una cancelación a tiempo",
+        "makeupAfterLate": "Permitir reposición tras una cancelación tardía",
+        "makeupAfterNoShow": "Permitir reposición tras una inasistencia"
+      },
+      "labels": {
+        "changeNoticeHours": "Anticipación para cancelar",
+        "bookingNoticeHours": "Anticipación para reservar",
+        "responseHours": "Tiempo para responder",
+        "makeupAfterOnTime": "Reposición tras cancelación a tiempo",
+        "makeupAfterLate": "Reposición tras cancelación tardía",
+        "makeupAfterNoShow": "Reposición tras inasistencia",
+        "makeupWindowDays": "Plazo de reposición"
+      },
+      "takesEffect": {
+        "legend": "Entra en vigor",
+        "now": "De inmediato",
+        "date": "Desde una fecha",
+        "dateLabel": "Fecha de inicio",
+        "dateHelp": "Desde el inicio de este día en la zona horaria del centro ({{zone}})."
+      },
+      "saved": "Guardado.",
+      "deleted": "Eliminado.",
+      "reload": "Recargar",
+      "yes": "Sí",
+      "no": "No",
+      "change": "{{label}}: {{before}} → {{after}}",
+      "value": "{{label}}: {{value}}",
+      "upcoming": {
+        "title": "Cambios próximos",
+        "empty": "No hay cambios próximos.",
+        "takesEffect": "Entra en vigor",
+        "changes": "Valores cambiados",
+        "noChanges": "Sin cambios",
+        "actions": "Acciones",
+        "delete": "Eliminar",
+        "deleteFor": "Eliminar el cambio del {{date}}"
+      },
+      "deleteDialog": {
+        "title": "¿Eliminar este cambio?",
+        "body": "El cambio del {{date}} no entrará en vigor.",
+        "confirm": "Eliminar cambio"
+      },
+      "history": {
+        "title": "Historial",
+        "empty": "No hay versiones anteriores.",
+        "from": "Vigente desde",
+        "until": "Hasta",
+        "values": "Reglas"
+      },
+      "validation": {
+        "noticeRange": "Escribe un número entero de 0 a 336.",
+        "responseRange": "Escribe un número entero de 1 a 168.",
+        "windowRange": "Escribe un número entero de 1 a 365.",
+        "dateRequired": "Elige una fecha.",
+        "dateAfterToday": "Elige una fecha posterior a hoy."
+      }
     }
   },
   "notifications": {

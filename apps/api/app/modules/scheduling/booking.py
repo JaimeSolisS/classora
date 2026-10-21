@@ -51,6 +51,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.core import clock
 from app.core.authz import RecordNotFoundError
 from app.core.errors import FieldError
 from app.modules.administration import service as administration
@@ -60,6 +61,7 @@ from app.modules.identity import service as identity
 from app.modules.scheduling.capacity import capacity_violations
 from app.modules.scheduling.conflicts import (
     CENTER_CLOSED,
+    NOTICE_WINDOW,
     OUTSIDE_OPERATING_HOURS,
     ROOM_OVERLAP,
     ROOM_UNAVAILABLE,
@@ -406,6 +408,20 @@ async def _center_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict
     return conflicts
 
 
+async def _notice_conflicts(session: AsyncSession, slot: _Slot) -> list[Conflict]:
+    """D10: the booking notice of the policy in force now (#61); a start in
+    the past breaks it too, and exactly the notice is fine."""
+    now = clock.now()
+    policy = await administration.get_scheduling_policy(session, now)
+    if not administration.violates_booking_notice(
+        policy, starts_at=slot.starts_at, at=now
+    ):
+        return []
+    return [
+        Conflict(NOTICE_WINDOW, {"booking_notice_hours": policy.booking_notice_hours})
+    ]
+
+
 async def find_conflicts(
     session: AsyncSession, body: ClassSessionCreate, zone: str
 ) -> list[Conflict]:
@@ -424,6 +440,7 @@ async def find_conflicts(
             Conflict(ROOM_UNAVAILABLE, {"classroom_id": str(body.classroom_id)})
         )
     conflicts += await _center_conflicts(session, slot)
+    conflicts += await _notice_conflicts(session, slot)
     return sort_conflicts(conflicts)
 
 

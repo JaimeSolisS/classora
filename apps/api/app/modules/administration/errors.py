@@ -80,3 +80,32 @@ class TooManyStreamsError(AppError):
     def __init__(self) -> None:
         super().__init__()
         self.headers = {"Retry-After": str(STREAM_RETRY_AFTER_SECONDS)}
+
+
+# --- Scheduling policy (#61) ---------------------------------------------------------
+
+
+class InvalidEffectiveFromError(AppError):
+    """A new scheduling policy version would take effect in the past, or not
+    after every existing version (#61 D2)."""
+
+    status = 422
+    code = "invalid_effective_from"
+    detail = (
+        "A new policy must take effect now or later, and after every upcoming change."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PolicyVersionInEffectError(AppError):
+    """Only an upcoming scheduling policy version can be deleted; this one is
+    in force or in the past (#61 D3)."""
+
+    status = 409
+    code = "policy_version_in_effect"
+    detail = "This policy is already in effect, so it can't be deleted."
+
+    def __init__(self) -> None:
+        super().__init__()

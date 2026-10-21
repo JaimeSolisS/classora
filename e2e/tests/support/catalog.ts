@@ -334,6 +334,20 @@ type Common = {
       | 'sunday',
       string
     >;
+    tabs: { label: string; general: string; schedulingPolicies: string };
+    schedulingPolicies: {
+      title: string;
+      current: { title: string };
+      rules: { changeNotice: string; response: string };
+      units: { hours: string };
+      form: { save: string };
+      fields: { changeNoticeHours: string };
+      takesEffect: { date: string; dateLabel: string };
+      saved: string;
+      deleted: string;
+      upcoming: { title: string; empty: string; deleteFor: string };
+      deleteDialog: { title: string; confirm: string };
+    };
   };
   relationships: Record<string, string>;
   approvals: {

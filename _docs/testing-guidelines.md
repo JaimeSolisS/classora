@@ -370,6 +370,11 @@ follows these rules.
   test that restores what it changed. The shared demo Owner session is
   never reauthenticated, so a zone change there always asks for the
   password.
+- The scheduling policy (#61) applies to every spec: specs never publish an
+  immediate scheduling-policy version, so version 1's defaults (24 h
+  notice, 48 h to answer an offer) hold everywhere. Only
+  `e2e/tests/settings/settings.spec.ts` creates an upcoming version (from
+  today + 60 days) and deletes it again in the same test.
 - Notifications (#41): specs create them through the local/DEV route
   `POST /api/v1/dev/notifications` (`createDemoNotificationViaApi` in
   `e2e/tests/support/notifications.ts`), always for the shared `demo.owner`

@@ -27,7 +27,8 @@ const THEMES = ['light', 'dark'] as const;
 // levels page and the seeded "Primaria" level's page (opened from the list),
 // /catalog/periods and /catalog/closures (#38 F2), /catalog/classrooms
 // (#39 E2),
-// /settings (once its form loaded, #37 I2),
+// /settings (once its form loaded, #37 I2), /settings/scheduling-policies
+// (once its form loaded, #61 H2),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -102,6 +103,12 @@ const ROUTES: ScannedRoute[] = [
     path: '/settings',
     signedIn: true,
     waitForField: common.settings.brand.centerName,
+  },
+  {
+    name: 'settings-scheduling-policies',
+    path: '/settings/scheduling-policies',
+    signedIn: true,
+    waitForField: common.settings.schedulingPolicies.fields.changeNoticeHours,
   },
   {
     name: 'catalog-level',

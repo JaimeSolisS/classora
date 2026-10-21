@@ -15,6 +15,13 @@ import { common, errors, fill } from '../support/catalog';
 // The shared session is never reauthenticated (tests that confirm a
 // password sign in on their own, #28 H2), so the zone change always asks
 // for the password here.
+//
+// Scheduling policies (#61 H1): the same test opens the "Scheduling
+// policies" tab, checks the version in force (24 h notice, 48 h to answer
+// an offer), publishes a version "From date" today + 60 days with a 12-hour
+// cancellation notice, sees it under "Upcoming changes" and deletes it. It
+// never publishes an immediate version, so no other spec sees a changed
+// policy (_docs/testing-guidelines.md, E2E data rules).
 
 const DEFAULT_ZONE = 'America/Mexico_City';
 
@@ -55,6 +62,75 @@ async function saveAndWait(page: Page) {
   const main = page.getByRole('main');
   await main.getByRole('button', { name: common.settings.save }).click();
   await expect(main.getByRole('status')).toHaveText(common.settings.saved);
+}
+
+/** `YYYY-MM-DD` in the center zone, `days` after today. */
+function centerDatePlus(days: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_ZONE }).format(
+    new Date(Date.now() + days * 86_400_000),
+  );
+}
+
+async function editSchedulingPolicy(page: Page) {
+  const policies = common.settings.schedulingPolicies;
+  const main = page.getByRole('main');
+  await main
+    .getByRole('navigation', { name: common.settings.tabs.label })
+    .getByRole('link', { name: common.settings.tabs.schedulingPolicies })
+    .click();
+  await expect(page).toHaveURL('/settings/scheduling-policies');
+  await expect(
+    main.getByRole('heading', { level: 1, name: policies.title }),
+  ).toBeVisible();
+  const hours = (count: number) => fill(policies.units.hours, { count });
+  const current = main.getByRole('region', { name: policies.current.title });
+  await expect(current).toContainText(
+    fill(policies.rules.changeNotice, { duration: hours(24) }),
+  );
+  await expect(current).toContainText(
+    fill(policies.rules.response, { duration: hours(48) }),
+  );
+  const upcoming = main.getByRole('region', { name: policies.upcoming.title });
+  const before = await api(page, '/api/v1/scheduling-policies');
+  const startingUpcoming = (before.body as { upcoming: unknown[] }).upcoming
+    .length;
+
+  // A version from today + 60 days with a 12-hour cancellation notice.
+  await main
+    .getByLabel(policies.fields.changeNoticeHours, { exact: true })
+    .fill('12');
+  await main
+    .getByRole('radio', { name: policies.takesEffect.date, exact: true })
+    .check();
+  await main
+    .getByLabel(policies.takesEffect.dateLabel, { exact: true })
+    .fill(centerDatePlus(60));
+  await main.getByRole('button', { name: policies.form.save }).click();
+  await expect(main.getByRole('status')).toHaveText(policies.saved);
+  const rows = upcoming.getByRole('row');
+  await expect(rows).toHaveCount(startingUpcoming + 2); // header + new row
+  await expect(upcoming).toContainText(`${hours(24)} → ${hours(12)}`);
+
+  // Delete it again.
+  await upcoming.getByRole('button').last().click();
+  const dialog = page.getByRole('dialog', {
+    name: policies.deleteDialog.title,
+  });
+  await dialog
+    .getByRole('button', { name: policies.deleteDialog.confirm })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(main.getByRole('status')).toHaveText(policies.deleted);
+  if (startingUpcoming === 0) {
+    await expect(upcoming).toContainText(policies.upcoming.empty);
+  }
+  const after = await api(page, '/api/v1/scheduling-policies');
+  expect((after.body as { upcoming: unknown[] }).upcoming).toHaveLength(
+    startingUpcoming,
+  );
+  await expect(current).toContainText(
+    fill(policies.rules.changeNotice, { duration: hours(24) }),
+  );
 }
 
 async function openSettings(page: Page) {
@@ -130,6 +206,9 @@ test('editing the business settings', async ({ page }, testInfo) => {
   await page.reload();
   await expect(nameField(page)).toHaveValue(originalName);
   await expect(sundayOpen(page)).not.toBeChecked();
+
+  // 6. Scheduling policies (#61 H1): an upcoming version, then deleted.
+  await editSchedulingPolicy(page);
 
   expect(consoleErrors).toEqual([]);
   expect(await cspViolations(page)).toEqual([]);

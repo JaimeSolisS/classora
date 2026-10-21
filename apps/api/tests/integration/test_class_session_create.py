@@ -36,6 +36,7 @@ from app.modules.staff.models import (
     TutorAvailabilityWindow,
     TutorQualification,
 )
+from tests.conftest import frozen_clock
 from tests.factories.families import persist_student
 from tests.factories.scheduling import (
     add_participant,
@@ -527,6 +528,46 @@ def test_a_revoked_qualification_no_longer_counts(
     codes = assert_refused(module_seeded_url, client, cookie, body(setup))
 
     assert codes == [("tutor_not_qualified", "soft")]
+
+
+def test_notice_window(module_seeded_url, client, setup):
+    # The default policy (#61): 24 hours of booking notice.
+    now = at(date(2031, 2, 3), "10:00")
+    tuesday = date(2031, 2, 4)
+    owner = create_user(module_seeded_url, roles=(OWNER,))
+
+    def at_minute(start: datetime) -> dict[str, Any]:
+        return body(
+            setup,
+            student_id=new_student(module_seeded_url),
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+        )
+
+    with frozen_clock(now):
+        cookie = sign_in(client, owner.username)
+        too_soon = create(client, cookie, at_minute(at(tuesday, "09:59")))
+        exactly = create(client, cookie, at_minute(at(tuesday, "10:00")))
+        past = create(
+            client,
+            cookie,
+            body(
+                setup,
+                student_id=new_student(module_seeded_url),
+                starts_at=at(date(2031, 2, 3), "09:00"),
+                ends_at=at(date(2031, 2, 3), "09:30"),
+            ),
+        )
+
+    assert conflicts_of(too_soon) == [
+        {
+            "code": "notice_window",
+            "severity": "soft",
+            "details": {"booking_notice_hours": 24},
+        }
+    ]
+    assert code_of(exactly) == CREATED, exactly.text
+    assert codes_of(past) == [("notice_window", "soft")]
 
 
 # --- G2: several conflicts, non-overlapping states, successes ------------------------

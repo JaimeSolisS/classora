@@ -115,6 +115,13 @@ unless a bullet says otherwise.
   default), which the app uses for every date and time it shows.
 - Changing the time zone asks for the password again; it will be refused
   once classes are scheduled.
+- On the Scheduling policies tab, staff set the cancellation notice (when a
+  cancellation is late and when it is a no-show), when makeups are allowed
+  and within how many days, how long tutors have to answer an offer and the
+  booking notice. A change takes effect immediately or from a chosen date,
+  and earlier versions are kept so past classes keep the rules in force at
+  the time. Every signed-in user can read the policy (applying it to
+  classes arrives with scheduling).
 
 **Tutors**
 

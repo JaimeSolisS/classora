@@ -18,6 +18,14 @@
   (:func:`register_notification_type`), :func:`create_notification` inside
   the caller's transaction, and the recipient's reads and read state;
   implemented in :mod:`app.modules.administration.notifications`.
+- The scheduling policy (#61): :func:`get_scheduling_policy` (the version
+  in force at an instant) and the pure evaluator
+  (:class:`SchedulingPolicyValues`, :class:`PolicyOutcome`,
+  :func:`classify_change`, :func:`violates_booking_notice`,
+  :func:`default_respond_by`); implemented in
+  :mod:`app.modules.administration.policy_versions` and
+  :mod:`app.modules.administration.scheduling_policy`. Consumers import these
+  names from here, never the model.
 - Reading the audit log, below.
 
 **Audit log** (spec §9; architecture §4.4 cursor pagination).
@@ -130,6 +138,42 @@ from app.modules.administration.notifications import (
 )
 from app.modules.administration.notifications import (
     validated_params as validated_params,
+)
+from app.modules.administration.policy_versions import (
+    create_scheduling_policy as create_scheduling_policy,
+)
+from app.modules.administration.policy_versions import (
+    delete_scheduling_policy as delete_scheduling_policy,
+)
+from app.modules.administration.policy_versions import (
+    get_scheduling_policy as get_scheduling_policy,
+)
+from app.modules.administration.policy_versions import (
+    get_scheduling_policy_overview as get_scheduling_policy_overview,
+)
+from app.modules.administration.scheduling_policy import (
+    ChangeInitiator as ChangeInitiator,
+)
+from app.modules.administration.scheduling_policy import (
+    ChangeKind as ChangeKind,
+)
+from app.modules.administration.scheduling_policy import (
+    Classification as Classification,
+)
+from app.modules.administration.scheduling_policy import (
+    PolicyOutcome as PolicyOutcome,
+)
+from app.modules.administration.scheduling_policy import (
+    SchedulingPolicyValues as SchedulingPolicyValues,
+)
+from app.modules.administration.scheduling_policy import (
+    classify_change as classify_change,
+)
+from app.modules.administration.scheduling_policy import (
+    default_respond_by as default_respond_by,
+)
+from app.modules.administration.scheduling_policy import (
+    violates_booking_notice as violates_booking_notice,
 )
 from app.modules.administration.schemas import AuditChange, AuditEventListItem
 from app.modules.administration.settings import (

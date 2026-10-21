@@ -1,6 +1,6 @@
 """Administration request and response bodies: the audit log (#22), the
-business settings (#37), the approval requests (#40) and the notifications
-(#41)."""
+business settings (#37), the approval requests (#40), the notifications
+(#41) and the scheduling policy (#61)."""
 
 import uuid
 import zoneinfo
@@ -9,6 +9,7 @@ from functools import cache
 from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -24,7 +25,13 @@ from app.modules.administration.settings_models import (
     EMAIL_MAX_LENGTH,
     FIRST_WEEKDAY,
     LAST_WEEKDAY,
+    MAKEUP_WINDOW_DAYS_MAX,
+    MAKEUP_WINDOW_DAYS_MIN,
+    NOTICE_HOURS_MAX,
+    NOTICE_HOURS_MIN,
     PHONE_MAX_LENGTH,
+    RESPONSE_HOURS_MAX,
+    RESPONSE_HOURS_MIN,
     TIME_ZONE_MAX_LENGTH,
 )
 
@@ -298,3 +305,84 @@ class NotificationReadAllBody(BaseModel):
 
 class NotificationReadAllResult(BaseModel):
     updated: int
+
+
+# --- Scheduling policy (#61) ---------------------------------------------------------
+
+NoticeHours = Annotated[int, Field(ge=NOTICE_HOURS_MIN, le=NOTICE_HOURS_MAX)]
+ResponseHours = Annotated[int, Field(ge=RESPONSE_HOURS_MIN, le=RESPONSE_HOURS_MAX)]
+MakeupWindowDays = Annotated[
+    int, Field(ge=MAKEUP_WINDOW_DAYS_MIN, le=MAKEUP_WINDOW_DAYS_MAX)
+]
+
+
+class SchedulingPolicyRules(BaseModel):
+    """The rules of one scheduling policy version."""
+
+    booking_notice_hours: NoticeHours = Field(
+        description="Hours of notice a booking needs (0 = none)."
+    )
+    change_notice_hours: NoticeHours = Field(
+        description=(
+            "A family's cancellation or reschedule later than this many hours"
+            " before the start is late (0 = never late before the start)."
+        )
+    )
+    response_hours: ResponseHours = Field(
+        description="Hours a tutor has to answer an offer (ADR-0005 D3)."
+    )
+    makeup_after_on_time: bool = Field(
+        description="A makeup is allowed after an on-time cancellation."
+    )
+    makeup_after_late: bool = Field(
+        description="A makeup is allowed after a late cancellation."
+    )
+    makeup_after_no_show: bool = Field(
+        description="A makeup is allowed after a no-show."
+    )
+    makeup_window_days: MakeupWindowDays = Field(
+        description="Days after the missed class within which a makeup happens."
+    )
+
+
+class SchedulingPolicyItem(SchedulingPolicyRules):
+    """One policy version, in force from ``effective_from`` until the next
+    version's ``effective_from``."""
+
+    id: uuid.UUID
+    effective_from: datetime
+    created_at: datetime
+
+
+class SchedulingPolicyOverview(BaseModel):
+    """The version in force now, the upcoming ones and the past ones."""
+
+    current: SchedulingPolicyItem
+    upcoming: list[SchedulingPolicyItem] = Field(
+        description="Versions that take effect later, oldest first."
+    )
+    history: list[SchedulingPolicyItem] = Field(
+        description="Versions no longer in force, newest first (at most 50)."
+    )
+
+
+class SchedulingPolicyCreate(SchedulingPolicyRules):
+    """A new version: every rule, the latest version it replaces and when it
+    takes effect."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    based_on_id: uuid.UUID = Field(
+        description=(
+            "The id of the latest version (the current one or the last"
+            " upcoming one); otherwise 409 version_conflict."
+        )
+    )
+    effective_from: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When it takes effect: now when omitted; otherwise not in the past"
+            " and later than every existing version (422"
+            " invalid_effective_from)."
+        ),
+    )

@@ -3158,6 +3158,185 @@
         }
       }
     },
+    "/api/v1/scheduling-policies": {
+      "get": {
+        "tags": [
+          "scheduling-policies"
+        ],
+        "summary": "Get Scheduling Policies",
+        "description": "The scheduling policy in force now, the upcoming versions (oldest\nfirst) and the past ones (newest first, at most 50).",
+        "operationId": "get_scheduling_policies_api_v1_scheduling_policies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulingPolicyOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "scheduling-policies"
+        ],
+        "summary": "Create Scheduling Policy",
+        "description": "Publish a new policy version, in force from ``effective_from`` (now\nwhen omitted). Versions are never edited: to change an upcoming one,\ndelete it and create another.",
+        "operationId": "create_scheduling_policy_api_v1_scheduling_policies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchedulingPolicyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulingPolicyItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "based_on_id is not the latest version: the policy changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scheduling-policies/{policy_id}": {
+      "delete": {
+        "tags": [
+          "scheduling-policies"
+        ],
+        "summary": "Delete Scheduling Policy",
+        "description": "Delete an upcoming policy version.",
+        "operationId": "delete_scheduling_policy_api_v1_scheduling_policies__policy_id__delete",
+        "parameters": [
+          {
+            "name": "policy_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Policy Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such policy version (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is in force or in the past; only an upcoming version can be deleted (policy_version_in_effect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/education-levels": {
       "get": {
         "tags": [
@@ -12369,6 +12548,194 @@
         ],
         "title": "SchedulingConflict",
         "type": "object"
+      },
+      "SchedulingPolicyCreate": {
+        "properties": {
+          "booking_notice_hours": {
+            "type": "integer",
+            "maximum": 336.0,
+            "minimum": 0.0,
+            "title": "Booking Notice Hours",
+            "description": "Hours of notice a booking needs (0 = none)."
+          },
+          "change_notice_hours": {
+            "type": "integer",
+            "maximum": 336.0,
+            "minimum": 0.0,
+            "title": "Change Notice Hours",
+            "description": "A family's cancellation or reschedule later than this many hours before the start is late (0 = never late before the start)."
+          },
+          "response_hours": {
+            "type": "integer",
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Response Hours",
+            "description": "Hours a tutor has to answer an offer (ADR-0005 D3)."
+          },
+          "makeup_after_on_time": {
+            "type": "boolean",
+            "title": "Makeup After On Time",
+            "description": "A makeup is allowed after an on-time cancellation."
+          },
+          "makeup_after_late": {
+            "type": "boolean",
+            "title": "Makeup After Late",
+            "description": "A makeup is allowed after a late cancellation."
+          },
+          "makeup_after_no_show": {
+            "type": "boolean",
+            "title": "Makeup After No Show",
+            "description": "A makeup is allowed after a no-show."
+          },
+          "makeup_window_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Makeup Window Days",
+            "description": "Days after the missed class within which a makeup happens."
+          },
+          "based_on_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Based On Id",
+            "description": "The id of the latest version (the current one or the last upcoming one); otherwise 409 version_conflict."
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From",
+            "description": "When it takes effect: now when omitted; otherwise not in the past and later than every existing version (422 invalid_effective_from)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "booking_notice_hours",
+          "change_notice_hours",
+          "response_hours",
+          "makeup_after_on_time",
+          "makeup_after_late",
+          "makeup_after_no_show",
+          "makeup_window_days",
+          "based_on_id"
+        ],
+        "title": "SchedulingPolicyCreate",
+        "description": "A new version: every rule, the latest version it replaces and when it\ntakes effect."
+      },
+      "SchedulingPolicyItem": {
+        "properties": {
+          "booking_notice_hours": {
+            "type": "integer",
+            "maximum": 336.0,
+            "minimum": 0.0,
+            "title": "Booking Notice Hours",
+            "description": "Hours of notice a booking needs (0 = none)."
+          },
+          "change_notice_hours": {
+            "type": "integer",
+            "maximum": 336.0,
+            "minimum": 0.0,
+            "title": "Change Notice Hours",
+            "description": "A family's cancellation or reschedule later than this many hours before the start is late (0 = never late before the start)."
+          },
+          "response_hours": {
+            "type": "integer",
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Response Hours",
+            "description": "Hours a tutor has to answer an offer (ADR-0005 D3)."
+          },
+          "makeup_after_on_time": {
+            "type": "boolean",
+            "title": "Makeup After On Time",
+            "description": "A makeup is allowed after an on-time cancellation."
+          },
+          "makeup_after_late": {
+            "type": "boolean",
+            "title": "Makeup After Late",
+            "description": "A makeup is allowed after a late cancellation."
+          },
+          "makeup_after_no_show": {
+            "type": "boolean",
+            "title": "Makeup After No Show",
+            "description": "A makeup is allowed after a no-show."
+          },
+          "makeup_window_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Makeup Window Days",
+            "description": "Days after the missed class within which a makeup happens."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Effective From"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_notice_hours",
+          "change_notice_hours",
+          "response_hours",
+          "makeup_after_on_time",
+          "makeup_after_late",
+          "makeup_after_no_show",
+          "makeup_window_days",
+          "id",
+          "effective_from",
+          "created_at"
+        ],
+        "title": "SchedulingPolicyItem",
+        "description": "One policy version, in force from ``effective_from`` until the next\nversion's ``effective_from``."
+      },
+      "SchedulingPolicyOverview": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/SchedulingPolicyItem"
+          },
+          "upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingPolicyItem"
+            },
+            "type": "array",
+            "title": "Upcoming",
+            "description": "Versions that take effect later, oldest first."
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingPolicyItem"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "Versions no longer in force, newest first (at most 50)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "upcoming",
+          "history"
+        ],
+        "title": "SchedulingPolicyOverview",
+        "description": "The version in force now, the upcoming ones and the past ones."
       },
       "SchedulingWarning": {
         "properties": {

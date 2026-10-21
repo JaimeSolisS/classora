@@ -13,6 +13,7 @@ import {
 } from './api';
 import { updateBody, valuesOf, type SettingsFormValues } from './rules';
 import { SettingsForm } from './SettingsForm';
+import { SettingsTabs } from './SettingsTabs';
 
 // /settings (#37 H3, H4), for settings.manage holders: the business
 // settings form. A save sends `version` plus the changed fields, stores the
@@ -45,6 +46,7 @@ export function SettingsView({
   );
   return (
     <div className="flex flex-col gap-6">
+      <SettingsTabs />
       <h1 id={titleId} className="text-2xl font-semibold">
         {t('settings.title')}
       </h1>

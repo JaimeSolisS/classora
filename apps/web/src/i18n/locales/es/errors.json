@@ -82,5 +82,7 @@
   "not_whole_minutes": "Usa minutos completos.",
   "ends_before_start": "El fin debe ser después del inicio.",
   "duration_out_of_range": "Una sesión dura de 15 minutos a 8 horas.",
-  "crosses_local_date": "Una sesión debe empezar y terminar el mismo día."
+  "crosses_local_date": "Una sesión debe empezar y terminar el mismo día.",
+  "invalid_effective_from": "Una política nueva debe entrar en vigor ahora o después, y después de todos los cambios próximos. Elige una fecha posterior.",
+  "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página."
 }

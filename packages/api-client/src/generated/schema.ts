@@ -865,6 +865,53 @@ export interface paths {
         patch: operations["update_business_settings_api_v1_business_settings_patch"];
         trace?: never;
     };
+    "/api/v1/scheduling-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Scheduling Policies
+         * @description The scheduling policy in force now, the upcoming versions (oldest
+         *     first) and the past ones (newest first, at most 50).
+         */
+        get: operations["get_scheduling_policies_api_v1_scheduling_policies_get"];
+        put?: never;
+        /**
+         * Create Scheduling Policy
+         * @description Publish a new policy version, in force from ``effective_from`` (now
+         *     when omitted). Versions are never edited: to change an upcoming one,
+         *     delete it and create another.
+         */
+        post: operations["create_scheduling_policy_api_v1_scheduling_policies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduling-policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Scheduling Policy
+         * @description Delete an upcoming policy version.
+         */
+        delete: operations["delete_scheduling_policy_api_v1_scheduling_policies__policy_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/education-levels": {
         parameters: {
             query?: never;
@@ -3745,6 +3792,133 @@ export interface components {
             details: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * SchedulingPolicyCreate
+         * @description A new version: every rule, the latest version it replaces and when it
+         *     takes effect.
+         */
+        SchedulingPolicyCreate: {
+            /**
+             * Booking Notice Hours
+             * @description Hours of notice a booking needs (0 = none).
+             */
+            booking_notice_hours: number;
+            /**
+             * Change Notice Hours
+             * @description A family's cancellation or reschedule later than this many hours before the start is late (0 = never late before the start).
+             */
+            change_notice_hours: number;
+            /**
+             * Response Hours
+             * @description Hours a tutor has to answer an offer (ADR-0005 D3).
+             */
+            response_hours: number;
+            /**
+             * Makeup After On Time
+             * @description A makeup is allowed after an on-time cancellation.
+             */
+            makeup_after_on_time: boolean;
+            /**
+             * Makeup After Late
+             * @description A makeup is allowed after a late cancellation.
+             */
+            makeup_after_late: boolean;
+            /**
+             * Makeup After No Show
+             * @description A makeup is allowed after a no-show.
+             */
+            makeup_after_no_show: boolean;
+            /**
+             * Makeup Window Days
+             * @description Days after the missed class within which a makeup happens.
+             */
+            makeup_window_days: number;
+            /**
+             * Based On Id
+             * Format: uuid
+             * @description The id of the latest version (the current one or the last upcoming one); otherwise 409 version_conflict.
+             */
+            based_on_id: string;
+            /**
+             * Effective From
+             * @description When it takes effect: now when omitted; otherwise not in the past and later than every existing version (422 invalid_effective_from).
+             */
+            effective_from?: string | null;
+        };
+        /**
+         * SchedulingPolicyItem
+         * @description One policy version, in force from ``effective_from`` until the next
+         *     version's ``effective_from``.
+         */
+        SchedulingPolicyItem: {
+            /**
+             * Booking Notice Hours
+             * @description Hours of notice a booking needs (0 = none).
+             */
+            booking_notice_hours: number;
+            /**
+             * Change Notice Hours
+             * @description A family's cancellation or reschedule later than this many hours before the start is late (0 = never late before the start).
+             */
+            change_notice_hours: number;
+            /**
+             * Response Hours
+             * @description Hours a tutor has to answer an offer (ADR-0005 D3).
+             */
+            response_hours: number;
+            /**
+             * Makeup After On Time
+             * @description A makeup is allowed after an on-time cancellation.
+             */
+            makeup_after_on_time: boolean;
+            /**
+             * Makeup After Late
+             * @description A makeup is allowed after a late cancellation.
+             */
+            makeup_after_late: boolean;
+            /**
+             * Makeup After No Show
+             * @description A makeup is allowed after a no-show.
+             */
+            makeup_after_no_show: boolean;
+            /**
+             * Makeup Window Days
+             * @description Days after the missed class within which a makeup happens.
+             */
+            makeup_window_days: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * SchedulingPolicyOverview
+         * @description The version in force now, the upcoming ones and the past ones.
+         */
+        SchedulingPolicyOverview: {
+            current: components["schemas"]["SchedulingPolicyItem"];
+            /**
+             * Upcoming
+             * @description Versions that take effect later, oldest first.
+             */
+            upcoming: components["schemas"]["SchedulingPolicyItem"][];
+            /**
+             * History
+             * @description Versions no longer in force, newest first (at most 50).
+             */
+            history: components["schemas"]["SchedulingPolicyItem"][];
         };
         /**
          * SchedulingWarning
@@ -6785,6 +6959,160 @@ export interface operations {
                 };
             };
             /** @description The settings changed since they were loaded (version_conflict); reload and retry. Or the time zone can't change because scheduled classes exist (tz_change_requires_migration). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_scheduling_policies_api_v1_scheduling_policies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingPolicyOverview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_scheduling_policy_api_v1_scheduling_policies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulingPolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulingPolicyItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description based_on_id is not the latest version: the policy changed since it was loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_scheduling_policy_api_v1_scheduling_policies__policy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such policy version (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is in force or in the past; only an upcoming version can be deleted (policy_version_in_effect). */
             409: {
                 headers: {
                     [name: string]: unknown;

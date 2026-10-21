@@ -83,6 +83,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'availability_change_requires_approval',
   ],
   ['scheduling_conflict', 'scheduling_conflict'],
+  ['invalid_effective_from', 'invalid_effective_from'],
+  ['policy_version_in_effect', 'policy_version_in_effect'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
