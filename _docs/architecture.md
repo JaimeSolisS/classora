@@ -191,6 +191,7 @@ Open points: → ISSUE-FL1, FL2, FL3.
 
 - The UI uses react-i18next (es and en) and date-fns/date-fns-tz.
 - The center's configured time zone governs scheduling, local date boundaries, recurrence and due dates.
+- Recurrence expansion and DST handling (local wall-clock expansion, `fold=0`): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
 
 Open points: → ISSUE-D3, ISSUE-X1.
 
@@ -205,7 +206,7 @@ Decision: → ISSUE-A3 (accepted on issue #22).
 - React Router with guarded views. The guards are for UX only; the server is authoritative.
 - **TanStack Query** for server state and caching. **Zustand** for UI-only state. React Hook Form + Zod for forms.
 - Tailwind + shadcn/ui, central design tokens, Storybook, light/dark/system themes with preferences stored in the database.
-- FullCalendar (daily/weekly/monthly; drag-and-drop validated by the server) → ISSUE-X2 for licensing.
+- FullCalendar v7 standard views (MIT; no premium resource views) → ADR-0005. Daily/weekly/monthly; drag-and-drop validated by the server.
 - Recharts and TanStack Table for analytics. Customizable dashboards → ISSUE-X3.
 - Centralized error handling, safe retries, skeleton states. **No optimistic updates on financial mutations.**
 - Layouts adapt by role: desktop-first admin, mobile-friendly tutor, student and guardian views. Target is WCAG 2.2 AA.
@@ -267,7 +268,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -360,14 +361,14 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - §16 says database constraints protect invariants.
   - §3 also says workload limits produce warnings only.
 - **Problem:** A database constraint cannot be overridden, and the spec does not list which restrictions are overridable.
-- **Resolution — PROPOSED:**
-  - **Hard, never overridable, enforced in the database:**
-    - Tutor double-booking and room double-booking. Use `EXCLUDE USING gist` on `tstzrange` for non-cancelled class sessions. This needs the `btree_gist` extension.
-    - Room capacity exceeded.
-  - **Soft, overridable with a reason and an audit record, checked in the application:**
-    - Tutor outside published availability, missing qualification, group/cohort max size, booking-policy notice windows.
-  - **Warning only:** workload limits and required breaks.
-  - **Student overlap:** checked in the application inside the booking transaction, using a per-student advisory lock. Group membership makes a pure constraint impractical. Hard by default.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - **Hard, never overridable:**
+    - `tutor_overlap` and `room_overlap`: partial `EXCLUDE USING gist` on `tstzrange(starts_at, ends_at, '[)')` over the occupying states (ISSUE-SC1); `btree_gist` is already enabled by #38. Back-to-back sessions are allowed.
+    - `student_overlap`: checked in the application inside the booking transaction, under a per-student transaction advisory lock.
+    - `room_capacity_exceeded`: checked in the application under a row lock.
+  - **Soft, overridable with `schedule.override` and a reason, then audited:** `tutor_unavailable`, `room_unavailable`, `center_closed`, `outside_operating_hours`, `tutor_not_qualified`, `group_capacity_exceeded`, `notice_window`.
+  - **Warning only, never blocks:** `daily_limit_exceeded`, `weekly_limit_exceeded`, `break_too_short`.
+  - Inactive or invalid references are `422`, not conflicts. Conflicts are `409 scheduling_conflict`; overrides send `override: {codes, reason}` and are stored as rows plus an audit event.
 
 #### ISSUE-D5 — Optimistic concurrency wire format (M)
 - **Resolution — PROPOSED:**
@@ -377,10 +378,10 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 #### ISSUE-D6 — Bilingual full-text search (M)
 - **Problem:** The spec does not choose a PostgreSQL text-search configuration for mixed Spanish and English content.
-- **Resolution — names part ACCEPTED** (human decision on GitHub issue #33, M2-15, 2026-10-18, owner JaimeSolisS; no ADR); the rest stays PROPOSED:
+- **Resolution — names part ACCEPTED** (human decision on GitHub issue #33, M2-15, 2026-10-18, owner JaimeSolisS; no ADR); `btree_gist` part ACCEPTED (ADR-0005, 2026-10-19); the library-documents part stays PROPOSED:
   - **Names and short fields — ACCEPTED:** `pg_trgm` + `unaccent` with the `simple` behaviour (no language stemming), enabled by the migration of their first consumer (M2-15, revision `0014`). Accent folding goes through an `IMMUTABLE` wrapper `public.f_unaccent(text)` (`SELECT public.unaccent('public.unaccent'::regdictionary, $1)`), because `unaccent()` itself is only `STABLE` and can't be used in an index; its `EXECUTE` stays granted to `PUBLIC`, so a least-privilege runtime role (#165) can call it. Search uses a GIN trigram **expression index** on `public.f_unaccent(lower(...))` of the searched text, never a stored search column (audit diffs carry no derived value). First use: student name search (`apps/api/app/modules/families/`).
   - Library documents — PROPOSED until M5: a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
-  - `btree_gist` — PROPOSED, decided with ISSUE-D4 (M4-01). Enabled early by #38 (M3-02, revision `0021`, owner-delegated decision #38 E1 (a)) for the academic-period exclusion constraint `ex_academic_periods_no_overlap`; ISSUE-D4 / M4-02 reuses it (`CREATE EXTENSION IF NOT EXISTS` or nothing).
+  - `btree_gist` — ACCEPTED (decided in [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md), 2026-10-19, with ISSUE-D4). Enabled by #38 (M3-02, revision `0021`, owner-delegated decision #38 E1 (a)) for the academic-period exclusion constraint `ex_academic_periods_no_overlap`; ISSUE-D4 / M4-02 reuses it (`CREATE EXTENSION IF NOT EXISTS` or nothing).
 
 #### ISSUE-D7 — Version pins (M)
 - **Problem:** The spec pins no major versions.
@@ -426,26 +427,28 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - whether an offered-but-unaccepted session holds the room and tutor slot,
   - whether acceptance applies to a whole series or to each occurrence,
   - what happens if the tutor never responds.
-- **Resolution — PROPOSED:**
-  - Session states: `draft → offered → confirmed`, plus `declined → unassigned`, and `cancelled` / `completed`.
-  - `offered` **holds** the room and tutor slot, so it counts in the overlap constraints.
-  - Acceptance is per **series assignment**. Substitutions are per occurrence.
-  - Offers have a configurable response deadline. An expired offer becomes an approval-inbox item.
-  - Only `confirmed` sessions appear on family calendars.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - Session states: `unassigned`, `offered`, `confirmed`, `completed`, `cancelled`, `skipped_closure`, `conflict`. There is no `draft`. `completed` and `cancelled` are final.
+  - The tutor is occupied in `offered`, `confirmed` and `completed`; the room and students in `unassigned`, `offered`, `confirmed` and `completed`.
+  - An offer covers one session or one series assignment from a date onward. Substitutions are one-occurrence offers. Offers are rows (`pending`, `accepted`, `declined`, `expired`, `withdrawn`).
+  - Deadline: `respond_by = min(offered_at + response_hours, first covered start)`, with `response_hours` in the M4-16 policy (default 48); the administrator may choose an earlier one. A periodic task expires offers every 5 minutes.
+  - On decline or expiry the covered sessions go to `unassigned` with the tutor cleared (room and students stay held), and a system-raised inbox item plus a notification are created.
+  - Families see only `confirmed` and `completed` sessions, plus cancelled or skipped occurrences of sessions they had already seen.
 
 #### ISSUE-SC2 — Recurrence materialization horizon and editing semantics (M)
 - **Spec:** §3 RRULE, rolling generation, exceptions, future-occurrence changes, holiday skipping.
-- **Resolution — PROPOSED:**
-  - Materialize occurrences on a rolling **12-week** horizon (configurable), extended nightly by a worker task.
-  - Each occurrence stores `series_id` and `original_start` (equivalent to RECURRENCE-ID) so exceptions survive regeneration.
-  - "This and future" edits end the old rule with `UNTIL` and create a new series. Past and completed occurrences are never rewritten.
-  - A center closure turns the affected occurrence into a `skipped_closure` record rather than deleting it.
-  - Whether a skipped occurrence creates a makeup obligation and a billing adjustment needs a **product decision** (open).
-  - Use the `python-dateutil` `rrule` implementation on the backend. This is a supporting library and needs approval.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - Rule subset: `FREQ=WEEKLY`, `INTERVAL` 1–4, `BYDAY`, optional `UNTIL` (local date) or `COUNT` (1–200). The API also takes and returns structured fields; the web app never parses `RRULE`s.
+  - Expansion in naive local time, then `ZoneInfo(TZID)` with `fold=0`.
+  - Rolling **12-week** horizon (`SCHEDULING_HORIZON_WEEKS`, 4–26), extended nightly at 08:00 UTC. Inserts use `UNIQUE (series_id, original_start)` with `ON CONFLICT DO NOTHING`; `is_exception` rows survive regeneration.
+  - "This and future" edits set `UNTIL` to the local day before the split and start a new series; matching future occurrences move (keeping their id), the others become `cancelled` (`series_changed`). Past, completed and cancelled occurrences are never rewritten.
+  - A series create refuses on any conflict; the nightly extension inserts a failing occurrence as `conflict` and raises an inbox item.
+  - A center closure turns the affected series occurrence into `skipped_closure` (holds nothing, never deleted). Product decision: **no makeup obligation**; a skipped occurrence is **never billable** (M6-14 reverses a posted charge) and courses and tuition plans are not prorated. Makeups are ordinary sessions.
+  - Library approved: `python-dateutil>=2.9.0.post0,<3` (lockfile 2.9.0.post0) with `types-python-dateutil`, backend only, added by #53. No JavaScript `rrule`.
 
 #### ISSUE-SC3 — Effective capacity (A)
 - **Spec:** §3 "Each group/cohort has its own maximum size and respects room capacity".
-- **Resolution — PROPOSED:** Effective capacity = `min(group_max, room_capacity)`. Group max can be overridden (soft, per ISSUE-D4). Room capacity cannot.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md). Effective capacity = `min(group_or_cohort_max, room_capacity)`; with no room, the group or cohort maximum; an individual session has exactly one student. The group or cohort maximum is soft (`group_capacity_exceeded`, up to the room capacity). Room capacity is hard.
 
 ### 10.6 Billing and finance
 
@@ -718,9 +721,9 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Each PDF uses the recipient's preferred language, falling back to the center default.
 
 #### ISSUE-X2 — FullCalendar licensing (A; spec §18.6 open)
-- **Resolution — PROPOSED:**
-  - Ship with the free standard views (day/week/month/list) plus filters.
-  - Buy a FullCalendar premium license only if room or tutor **resource columns** are confirmed as required. The license key would be a build-time setting.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - FullCalendar **v7, standard MIT views only** (day/week time grid, month, list, `interaction`), with tutor, student, room and type filters instead of resource columns. No premium package and no licence key; spec §18.6 is resolved without changing the spec.
+  - Pins: `@fullcalendar/react` 7.1.3 and `temporal-polyfill` 1.0.6, added by #57.
 
 #### ISSUE-X3 — Dashboard drag-and-drop (M)
 - **Spec:** §8 "drag/reorder widgets".
@@ -754,7 +757,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0007, ADR-0008 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
@@ -762,7 +765,7 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | [0002](adr/0002-module-boundaries-and-reporting.md) | Module boundaries and the reporting module — **Accepted** | A1, A2 |
 | [0003](adr/0003-database-connection-topology.md) | Database connection topology (PgBouncer, direct connections) and background jobs — **Accepted** | D1, J1, J2 (N1 stays PROPOSED apart from the direct `LISTEN` connection) |
 | [0004](adr/0004-money-time-and-date-representation.md) | Money, time and date representation — **Accepted** | D2, D3 |
-| 0005 | Scheduling invariants, overrides and recurrence | D4, SC1–SC3 |
+| [0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md) | Scheduling invariants, overrides, recurrence and calendar — **Accepted** | D4, D6 (`btree_gist`), SC1–SC3, X2 |
 | 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
 | [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
 | [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
@@ -777,4 +780,4 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline), SC2 (makeup after closures), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar), O1 (third-party data processing) and L2 (retention periods).
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods).
