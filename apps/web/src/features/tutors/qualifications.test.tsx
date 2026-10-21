@@ -32,6 +32,8 @@ import {
   LEVEL_PREPARATORIA,
   LEVEL_SECUNDARIA,
   QUALIFICATIONS,
+  QUALIFICATIONS_WITH_REVOKED,
+  REVOKED_QUALIFICATION,
   SUBJECT_ALGEBRA,
   SUBJECT_CALCULO,
   SUBJECT_FISICA,
@@ -44,7 +46,8 @@ import {
 // #44 F1-F3: the Qualifications section of the tutor profile (table,
 // teaching subjects, the request dialog with level and subject selects, the
 // cancel action), the approvals summary of staff.qualification items, the
-// two notification messages in es and en, and their link.
+// two notification messages in es and en, and their link. #198 E3: the
+// revoked row, the Revoke action and dialog, and the revoked notification.
 
 const DETAIL = `GET /api/v1/tutors/${TUTOR_ID}`;
 const QUALIFICATIONS_ROUTE = `GET /api/v1/tutors/${TUTOR_ID}/qualifications`;
@@ -454,5 +457,191 @@ describe('approvals and notifications (F2, F3, C4)', () => {
         `/tutors/${TUTOR_ID}#qualifications`,
       );
     }
+  });
+});
+
+const APPROVED = QUALIFICATIONS[0]!;
+const REVOKE = `POST /api/v1/tutors/${TUTOR_ID}/qualifications/${APPROVED.id}/revoke`;
+
+const COORDINATOR: SessionUserBody = {
+  ...TEST_USER,
+  roles: ['academic_coordinator'],
+  permissions: ['tutor.view'],
+};
+
+const revokeButtons = () =>
+  [...section().querySelectorAll('button')].filter(
+    (button) => button.textContent === 'Revoke',
+  );
+
+function typeReason(value: string) {
+  const field = openDialog()!.querySelector('textarea')!;
+  // The prototype's setter, so React's value tracker sees a change.
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  act(() => {
+    setter?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+describe('revoking an approved qualification (#198 E1, E3)', () => {
+  it('a revoked row shows its status, date and reason', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN, {
+      [QUALIFICATIONS_ROUTE]: () =>
+        jsonResponse(200, QUALIFICATIONS_WITH_REVOKED),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const row = section().querySelector(
+      `tr[data-qualification-id="${REVOKED_QUALIFICATION.id}"]`,
+    )!;
+    const cells = [...row.querySelectorAll('td')].map((c) => c.textContent);
+    expect(cells[2]).toBe('Revoked');
+    expect(cells[5]).toMatch(/^Revoked .+The certificate has expired\.$/);
+    // A revoked row has no Revoke button.
+    expect(row.querySelector('button')).toBeNull();
+  });
+
+  it('only holders of qualification.review see Revoke, only on approved rows', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(revokeButtons()).toHaveLength(1);
+    expect(revokeButtons()[0]!.closest('tr')!.dataset.qualificationId).toBe(
+      APPROVED.id,
+    );
+    expect(revokeButtons()[0]!.getAttribute('aria-label')).toBe(
+      'Revoke qualification for Álgebra',
+    );
+    app.unmount();
+
+    for (const [user, detail] of [
+      [SELF, TUTOR_AS_SELF],
+      [COORDINATOR, TUTOR_AS_ADMIN],
+    ] as const) {
+      stub(user, detail);
+      app = await renderApp(`/tutors/${TUTOR_ID}`);
+      expect(revokeButtons()).toHaveLength(0);
+      app.unmount();
+    }
+    app = undefined;
+  });
+
+  it('sends the reason and version, then refreshes and announces', async () => {
+    const api = stub(ADMIN, TUTOR_AS_ADMIN, {
+      [REVOKE]: () =>
+        jsonResponse(200, {
+          ...APPROVED,
+          status: 'revoked',
+          revoked_at: '2026-10-06T10:00:00Z',
+          revocation_reason: 'Expired.',
+          version: 3,
+        }),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    const detailCalls = api.calls(DETAIL).length;
+
+    await click(revokeButtons()[0]!);
+    expect(openDialog()!.textContent).toContain('Revoke qualification');
+    expect(openDialog()!.textContent).toContain(
+      'The qualification for Álgebra (Secundaria) will stop counting at once.',
+    );
+    typeReason('  Expired.  ');
+    await click(buttonNamed(openDialog()!, 'Revoke qualification'));
+
+    expect(api.calls(REVOKE).map((r) => r.body)).toEqual([
+      { reason: 'Expired.', version: APPROVED.version },
+    ]);
+    expect(openDialog()).toBeNull();
+    expect(section().querySelector('[role="status"]')?.textContent).toBe(
+      'Qualification revoked.',
+    );
+    expect(api.calls(QUALIFICATIONS_ROUTE).length).toBeGreaterThan(1);
+    expect(api.calls(DETAIL).length).toBeGreaterThan(detailCalls);
+  });
+
+  it('the reason is required', async () => {
+    const api = stub(ADMIN, TUTOR_AS_ADMIN);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    await click(revokeButtons()[0]!);
+
+    typeReason('   ');
+    await click(buttonNamed(openDialog()!, 'Revoke qualification'));
+
+    expect(openDialog()!.textContent).toContain('Enter the reason.');
+    expect(
+      openDialog()!.querySelector('textarea')!.getAttribute('aria-invalid'),
+    ).toBe('true');
+    expect(api.calls(REVOKE)).toHaveLength(0);
+  });
+
+  it('qualification_not_approved shows in the dialog alert', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN, {
+      [REVOKE]: () => problem(409, 'qualification_not_approved'),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    await click(revokeButtons()[0]!);
+    typeReason('Expired.');
+
+    await click(buttonNamed(openDialog()!, 'Revoke qualification'));
+
+    expect(openDialog()).not.toBeNull();
+    expect(alerts(openDialog()!).join(' ')).toContain(
+      'Only an approved qualification can be revoked.',
+    );
+  });
+
+  it('version_conflict offers Reload, which sends the new version', async () => {
+    const reloaded = [{ ...APPROVED, version: 5 }, ...QUALIFICATIONS.slice(1)];
+    const api = stub(ADMIN, TUTOR_AS_ADMIN, {
+      [QUALIFICATIONS_ROUTE]: [
+        () => jsonResponse(200, QUALIFICATIONS),
+        () => jsonResponse(200, reloaded),
+      ],
+      [REVOKE]: [
+        () => problem(409, 'version_conflict'),
+        () => jsonResponse(200, { ...APPROVED, status: 'revoked', version: 6 }),
+      ],
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    await click(revokeButtons()[0]!);
+    typeReason('Expired.');
+    await click(buttonNamed(openDialog()!, 'Revoke qualification'));
+
+    await click(buttonNamed(openDialog()!, 'Reload'));
+    await settle();
+    await click(buttonNamed(openDialog()!, 'Revoke qualification'));
+
+    expect(api.calls(REVOKE).map((r) => r.body)).toEqual([
+      { reason: 'Expired.', version: APPROVED.version },
+      { reason: 'Expired.', version: 5 },
+    ]);
+  });
+
+  it('the revoked message in es and en, linking to the own qualifications', () => {
+    const params = {
+      subject_name: 'Física',
+      education_level_name: 'Secundaria',
+    };
+    const message = (lng: string) =>
+      notificationMessage(i18n.getFixedT(lng), i18n, {
+        notification_type: 'staff.qualification_revoked',
+        params,
+      });
+    expect(message('es')).toBe(
+      'Se revocó tu calificación para Física (Secundaria). Consulta el motivo en tus calificaciones.',
+    );
+    expect(message('en')).toBe(
+      'Your qualification for Física (Secundaria) was revoked. See the reason in your qualifications.',
+    );
+    expect(
+      NOTIFICATION_LINKS['staff.qualification_revoked']?.(
+        {},
+        { userId: TUTOR_ID },
+      ),
+    ).toBe(`/tutors/${TUTOR_ID}#qualifications`);
   });
 });

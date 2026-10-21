@@ -29,6 +29,9 @@ qualification of this tutor) → ``409 approval_transition_invalid`` unless
 ``pending``. The approval request is locked before the qualification, in the
 order a decision takes, so a cancel racing a decision can't deadlock.
 
+Revoking an approved qualification (#198) is
+:mod:`app.modules.staff.qualification_revocation`.
+
 **Only approved counts** (#44 D2): :func:`approved_subject_ids`,
 :func:`is_qualified`, :func:`qualified_tutor_ids` and the profile's
 ``teaching_subjects``. A later-deactivated subject keeps its approved
@@ -104,7 +107,7 @@ def _sort_key(reference: SubjectReference) -> tuple[int, str, str]:
     )
 
 
-async def _items(
+async def items_of(
     session: AsyncSession, rows: Sequence[TutorQualification]
 ) -> list[QualificationItem]:
     """Items ordered by the level's ``sort_order``, the subject name, then
@@ -131,6 +134,8 @@ def _item(row: TutorQualification, reference: SubjectReference) -> Qualification
         requested_at=row.created_at,
         decided_at=row.decided_at,
         rejection_reason=row.rejection_reason,
+        revoked_at=row.revoked_at,
+        revocation_reason=row.revocation_reason,
         version=row.version,
     )
 
@@ -150,7 +155,7 @@ async def list_qualifications(
     if status != "all":
         query = query.where(TutorQualification.status == status)
     rows = (await session.scalars(query)).all()
-    return await _items(session, rows)
+    return await items_of(session, rows)
 
 
 async def _flush_new(session: AsyncSession) -> None:
@@ -240,7 +245,7 @@ async def cancel_qualification(
     qualification.decided_at = clock.now()
     qualification.decided_by_user_id = principal.user_id
     await session.flush()
-    [item] = await _items(session, [qualification])
+    [item] = await items_of(session, [qualification])
     return item
 
 
@@ -295,7 +300,7 @@ async def is_qualified(
     session: AsyncSession, tutor_user_id: uuid.UUID, subject_id: uuid.UUID
 ) -> bool:
     """Whether the tutor holds an approved qualification for the subject
-    (pending, rejected and cancelled never count)."""
+    (pending, rejected, cancelled and revoked never count)."""
     found = await session.scalar(
         select(TutorQualification.id)
         .where(TutorQualification.tutor_user_id == tutor_user_id)

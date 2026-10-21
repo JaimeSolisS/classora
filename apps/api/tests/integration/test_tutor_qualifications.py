@@ -1,6 +1,7 @@
-"""Tutor qualifications (#44 B, C, D, E1) with real logins through the real
-app: requests and cancels by the tutor, decisions through the approval inbox,
-notifications, teaching subjects and the eligibility helpers."""
+"""Tutor qualifications (#44 B, C, D, E1; revocation #198 B-D) with real
+logins through the real app: requests and cancels by the tutor, decisions
+through the approval inbox, revocations, notifications, teaching subjects and
+the eligibility helpers."""
 
 import threading
 import uuid
@@ -190,6 +191,8 @@ def test_a_tutor_requests_a_qualification(
         "requested_at",
         "decided_at",
         "rejection_reason",
+        "revoked_at",
+        "revocation_reason",
         "version",
     }
     assert body["subject_id"] == subject["id"]
@@ -456,7 +459,7 @@ def test_the_list_order_and_status_filter(
         b_item["id"]
     ]
     assert listed(client, cookie, person.id, status="rejected") == []
-    response = get(client, cookie, qualifications_path(person.id), status="revoked")
+    response = get(client, cookie, qualifications_path(person.id), status="expired")
     assert code_of(response) == INVALID
 
 
@@ -713,3 +716,351 @@ def test_only_approved_qualifications_count(
         True,
         True,
     )
+
+
+# --- #198: revoking an approved qualification ---------------------------------------
+
+NOT_APPROVED = (409, "qualification_not_approved")
+VERSION_CONFLICT = (409, "version_conflict")
+
+
+def revoke_path(user_id: Any, qualification_id: Any) -> str:
+    return f"{qualifications_path(user_id)}/{qualification_id}/revoke"
+
+
+def revoke(
+    client: TestClient,
+    cookie: Any,
+    user_id: Any,
+    qualification_id: Any,
+    *,
+    reason: Any = "Outdated certificate.",
+    version: Any = 2,
+) -> Response:
+    return post(
+        client,
+        cookie,
+        revoke_path(user_id, qualification_id),
+        {"reason": reason, "version": version},
+    )
+
+
+def approved_item(
+    client: TestClient,
+    tutor_cookie: Any,
+    reviewer_cookie: Any,
+    url: str,
+    user_id: Any,
+    subject_id: Any,
+) -> dict[str, Any]:
+    """A new approved qualification (version 2)."""
+    item = requested(client, tutor_cookie, user_id, subject_id)
+    assert code_of(approve(client, reviewer_cookie, url, item["id"])) == OK
+    [shown] = [
+        i for i in listed(client, tutor_cookie, user_id) if i["id"] == item["id"]
+    ]
+    assert shown["status"] == "approved" and shown["version"] == 2
+    return shown
+
+
+def revocation_row(url: str, qualification_id: Any) -> Any:
+    [row] = run_sql(
+        url,
+        "SELECT status, decided_at, decided_by_user_id, rejection_reason,"
+        " revoked_at, revoked_by_user_id, revocation_reason, version"
+        " FROM tutor_qualifications WHERE id = :id",
+        {"id": qualification_id},
+    )
+    return row
+
+
+def revoked_notifications(url: str, user_id: Any) -> list[Any]:
+    return [
+        n
+        for n in notifications_of(url, user_id)
+        if n.notification_type == "staff.qualification_revoked"
+    ]
+
+
+def audit_updates(url: str, qualification_id: Any) -> list[Any]:
+    return [
+        e
+        for e in events(
+            url,
+            record_type="tutor_qualifications",
+            record_id=uuid.UUID(str(qualification_id)),
+        )
+        if e.action == "update"
+    ]
+
+
+@pytest.mark.parametrize("reviewer", [OWNER, ADMINISTRATOR])
+def test_a_reviewer_revokes_an_approved_qualification(
+    module_seeded_url, client, owner_cookie, level, subject, tutor, reviewer
+):
+    person, cookie = tutor
+    actor = create_user(module_seeded_url, roles=(reviewer,))
+    actor_cookie = sign_in(client, actor.username)
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    approved = revocation_row(module_seeded_url, item["id"])
+
+    response = revoke(
+        client, actor_cookie, person.id, item["id"], reason="  Outdated certificate.  "
+    )
+
+    assert code_of(response) == OK, response.text
+    body = response.json()
+    assert body["id"] == item["id"]
+    assert body["status"] == "revoked"
+    assert body["revocation_reason"] == "Outdated certificate."
+    assert body["revoked_at"] is not None
+    assert body["rejection_reason"] is None
+    assert body["decided_at"] == item["decided_at"]
+    assert body["version"] == 3
+    row = revocation_row(module_seeded_url, item["id"])
+    assert row.status == "revoked"
+    assert row.revoked_by_user_id == actor.id
+    assert row.revocation_reason == "Outdated certificate."
+    # The approval decision is kept: approved by X on D1, revoked by Y on D2.
+    assert row.decided_at == approved.decided_at
+    assert row.decided_by_user_id == approved.decided_by_user_id
+    assert row.rejection_reason is None
+    # B4: one notification, without the reason.
+    [notification] = revoked_notifications(module_seeded_url, person.id)
+    assert notification.params == {
+        "subject_name": subject["name"],
+        "education_level_name": level["name"],
+    }
+    # B6: the approval request stays approved.
+    assert approval_of(module_seeded_url, item["id"]).status == "approved"
+    # D2: audited with the reviewer as the actor.
+    revocation = audit_updates(module_seeded_url, item["id"])[-1]
+    assert revocation.actor_user_id == actor.id
+    assert revocation.changes["status"] == {"old": "approved", "new": "revoked"}
+    assert revocation.changes["revocation_reason"] == {
+        "old": None,
+        "new": "Outdated certificate.",
+    }
+    assert revocation.changes["revoked_by_user_id"]["new"] == str(actor.id)
+    assert revocation.changes["revoked_at"]["old"] is None
+    assert revocation.changes["revoked_at"]["new"] is not None
+    # B3: the tutor and a viewer see it; the status filter finds it.
+    for viewer in (cookie, actor_cookie):
+        [shown] = listed(client, viewer, person.id, status="revoked")
+        assert shown == body
+    assert listed(client, cookie, person.id, status="approved") == []
+
+
+def test_only_reviewers_revoke(module_seeded_url, client, owner_cookie, subject, tutor):
+    person, cookie = tutor
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    for role in (ACADEMIC_COORDINATOR, FINANCE_STAFF):
+        viewer = sign_in(client, create_user(module_seeded_url, roles=(role,)).username)
+        assert code_of(revoke(client, viewer, person.id, item["id"])) == DENIED, role
+    # The tutor themselves can't withdraw an approved qualification.
+    assert code_of(revoke(client, cookie, person.id, item["id"])) == DENIED
+    # 403 comes before 422.
+    assert code_of(revoke(client, cookie, person.id, item["id"], reason="")) == DENIED
+
+    assert revocation_row(module_seeded_url, item["id"]).status == "approved"
+    assert revoked_notifications(module_seeded_url, person.id) == []
+
+
+def test_an_unknown_or_another_tutors_qualification_is_404(
+    module_seeded_url, client, owner_cookie, subject, tutor
+):
+    person, cookie = tutor
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    other = create_user(module_seeded_url, roles=(TUTOR,))
+
+    assert code_of(revoke(client, owner_cookie, person.id, uuid.uuid4())) == NOT_FOUND
+    assert_same_not_found(
+        revoke(client, owner_cookie, other.id, item["id"]),
+        revoke(client, owner_cookie, other.id, uuid.uuid4()),
+    )
+    assert revocation_row(module_seeded_url, item["id"]).status == "approved"
+
+
+def test_only_an_approved_qualification_can_be_revoked(
+    module_seeded_url, client, owner_cookie, level, tutor
+):
+    person, cookie = tutor
+    pending, rejected, cancelled, revoked = (
+        create_subject(client, owner_cookie, level["id"]) for _ in range(4)
+    )
+    p = requested(client, cookie, person.id, pending["id"])
+    r = requested(client, cookie, person.id, rejected["id"])
+    assert (
+        code_of(reject(client, owner_cookie, module_seeded_url, r["id"], "No.")) == OK
+    )
+    c = requested(client, cookie, person.id, cancelled["id"])
+    assert code_of(cancel(client, cookie, person.id, c["id"])) == OK
+    v = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, revoked["id"]
+    )
+    assert code_of(revoke(client, owner_cookie, person.id, v["id"])) == OK
+    before = notifications_of(module_seeded_url, person.id)
+
+    for item in listed(client, cookie, person.id):
+        updates = len(audit_updates(module_seeded_url, item["id"]))
+        response = revoke(
+            client, owner_cookie, person.id, item["id"], version=item["version"]
+        )
+        assert code_of(response) == NOT_APPROVED, item["status"]
+        after = listed(client, cookie, person.id)
+        assert next(i for i in after if i["id"] == item["id"]) == item
+        assert len(audit_updates(module_seeded_url, item["id"])) == updates
+    assert {i["status"] for i in listed(client, cookie, person.id)} == {
+        "pending",
+        "rejected",
+        "cancelled",
+        "revoked",
+    }
+    assert notifications_of(module_seeded_url, person.id) == before
+    assert revocation_row(module_seeded_url, p["id"]).status == "pending"
+
+
+def test_a_stale_version_and_bad_bodies(
+    module_seeded_url, client, owner_cookie, subject, tutor
+):
+    person, cookie = tutor
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    path = revoke_path(person.id, item["id"])
+
+    assert (
+        code_of(revoke(client, owner_cookie, person.id, item["id"], version=1))
+        == VERSION_CONFLICT
+    )
+    for body in (
+        {"reason": "", "version": 2},
+        {"reason": "   ", "version": 2},
+        {"reason": "x" * 1001, "version": 2},
+        {"reason": "Ok."},
+        {"version": 2},
+        {"reason": "Ok.", "version": 0},
+        {"reason": "Ok.", "version": 2, "status": "revoked"},
+    ):
+        assert code_of(post(client, owner_cookie, path, body)) == INVALID, body
+    # 422 on the body comes before the 404.
+    assert (
+        code_of(revoke(client, owner_cookie, person.id, uuid.uuid4(), reason=""))
+        == INVALID
+    )
+    assert revocation_row(module_seeded_url, item["id"]).status == "approved"
+    assert revoked_notifications(module_seeded_url, person.id) == []
+    # 1000 characters is accepted.
+    response = revoke(client, owner_cookie, person.id, item["id"], reason="x" * 1000)
+    assert code_of(response) == OK
+    assert len(response.json()["revocation_reason"]) == 1000
+
+
+def test_concurrent_revokes_give_one_200_one_409_and_one_notification(
+    module_seeded_url, owner_cookie, admin_cookie, subject, tutor
+):
+    person, cookie = tutor
+    with auth_client(module_seeded_url) as setup:
+        item = approved_item(
+            setup, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+        )
+    cookies = (owner_cookie, admin_cookie)
+    results: list[Any] = [None, None]
+    start = threading.Barrier(2)
+
+    def run(index: int) -> None:
+        with auth_client(module_seeded_url) as own_client:
+            start.wait()
+            results[index] = code_of(
+                revoke(own_client, cookies[index], person.id, item["id"])
+            )
+
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results) == [OK, VERSION_CONFLICT]
+    assert len(revoked_notifications(module_seeded_url, person.id)) == 1
+    assert revocation_row(module_seeded_url, item["id"]).version == 3
+
+
+def test_a_revoked_qualification_stops_counting_and_can_be_requested_again(
+    module_seeded_url, client, owner_cookie, admin_cookie, level, subject, tutor
+):
+    person, cookie = tutor
+    kept = create_subject(client, owner_cookie, level["id"])
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, kept["id"]
+    )
+    assert eligibility(module_seeded_url, person.id, subject["id"]) == (
+        True,
+        True,
+        True,
+    )
+
+    assert code_of(revoke(client, admin_cookie, person.id, item["id"])) == OK
+
+    # C1: it stops counting at once; the other approved one still counts.
+    assert eligibility(module_seeded_url, person.id, subject["id"]) == (
+        False,
+        False,
+        False,
+    )
+    assert eligibility(module_seeded_url, person.id, kept["id"]) == (True, True, True)
+    for viewer in (cookie, admin_cookie):
+        assert [s["subject_id"] for s in teaching(client, viewer, person.id)] == [
+            kept["id"]
+        ]
+    # C2: the tutor requests the same subject again; the revoked row stays.
+    again = requested(client, cookie, person.id, subject["id"])
+    assert again["status"] == "pending"
+    statuses = {
+        i["id"]: i["status"]
+        for i in listed(client, cookie, person.id)
+        if i["subject_id"] == subject["id"]
+    }
+    assert statuses == {item["id"]: "revoked", again["id"]: "pending"}
+    # Approving the new request makes the subject count again.
+    assert code_of(approve(client, admin_cookie, module_seeded_url, again["id"])) == OK
+    assert eligibility(module_seeded_url, person.id, subject["id"]) == (
+        True,
+        True,
+        True,
+    )
+
+
+def test_an_ex_tutors_qualification_and_an_inactive_subject_can_be_revoked(
+    module_seeded_url, client, owner_cookie, subject, tutor
+):
+    person, cookie = tutor
+    item = approved_item(
+        client, cookie, owner_cookie, module_seeded_url, person.id, subject["id"]
+    )
+    deactivated = patch(
+        client,
+        owner_cookie,
+        subject_path(subject["id"]),
+        {"version": 1, "is_active": False},
+    )
+    assert code_of(deactivated) == OK
+    run_sql(
+        module_seeded_url,
+        "DELETE FROM user_roles WHERE user_id = :id",
+        {"id": person.id},
+    )
+
+    response = revoke(client, owner_cookie, person.id, item["id"])
+
+    assert code_of(response) == OK, response.text
+    assert revocation_row(module_seeded_url, item["id"]).status == "revoked"

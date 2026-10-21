@@ -501,7 +501,8 @@
         "pending": "Pendiente",
         "approved": "Aprobada",
         "rejected": "Rechazada",
-        "cancelled": "Cancelada"
+        "cancelled": "Cancelada",
+        "revoked": "Revocada"
       },
       "request": "Solicitar calificación",
       "requestTitle": "Solicitar una calificación",
@@ -524,6 +525,18 @@
       "cancelKeep": "Conservar solicitud",
       "cancelling": "Cancelando…",
       "cancelled": "Solicitud cancelada.",
+      "revoke": "Revocar",
+      "revokeFor": "Revocar calificación de {{subject}}",
+      "revokeTitle": "Revocar calificación",
+      "revokeDescription": "La calificación para {{subject}} ({{level}}) dejará de contar de inmediato. Se avisa al tutor, que verá el motivo.",
+      "revokeReason": "Motivo (obligatorio)",
+      "revokeReasonRequired": "Escribe el motivo.",
+      "revokeReasonTooLong": "Usa como máximo 1000 caracteres.",
+      "revokeConfirm": "Revocar calificación",
+      "revoking": "Revocando…",
+      "revoked": "Calificación revocada.",
+      "revokedOn": "Revocada el {{date}}",
+      "reload": "Recargar",
       "loadError": "No se pudieron cargar las calificaciones."
     },
     "availability": {
@@ -1177,7 +1190,8 @@
     "types": {
       "dev_demo": "Notificación de prueba: {{label}}",
       "staff_qualification_approved": "Se aprobó tu calificación para {{subject_name}} ({{education_level_name}}).",
-      "staff_qualification_rejected": "No se aprobó tu calificación para {{subject_name}} ({{education_level_name}}); consulta el motivo en tus calificaciones."
+      "staff_qualification_rejected": "No se aprobó tu calificación para {{subject_name}} ({{education_level_name}}); consulta el motivo en tus calificaciones.",
+      "staff_qualification_revoked": "Se revocó tu calificación para {{subject_name}} ({{education_level_name}}). Consulta el motivo en tus calificaciones."
     }
   }
 }

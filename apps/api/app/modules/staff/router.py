@@ -26,6 +26,11 @@ Tutor qualifications (#44; ``staff/qualifications.py`` has the orders):
 Reviewers decide through the approval inbox (``/api/v1/approval-requests``,
 ``qualification.review``).
 
+- ``POST …/qualifications/{qualification_id}/revoke`` (#198):
+  ``require("qualification.review")`` (Owners and Administrators); order
+  ``403`` → ``422`` → ``404`` → ``409 version_conflict`` → ``409
+  qualification_not_approved`` (``staff/qualification_revocation.py``).
+
 Tutor availability (#45; ``staff/tutor_availability.py`` has the orders),
 local wall-clock times of the center:
 
@@ -60,12 +65,14 @@ from app.modules.staff.assignment_impact import (
     get_availability_impact_source,
 )
 from app.modules.staff.permissions import TUTOR_VIEW
+from app.modules.staff.qualification_approval import QUALIFICATION_REVIEW
 from app.modules.staff.schemas import (
     AvailabilityCheck,
     AvailabilityExceptionCreate,
     AvailabilityExceptionItem,
     QualificationCreate,
     QualificationItem,
+    QualificationRevoke,
     QualificationStatusFilter,
     TutorAvailabilityDetail,
     TutorDetail,
@@ -253,6 +260,44 @@ async def cancel_qualification(
         principal=principal,
         user_id=user_id,
         qualification_id=qualification_id,
+    )
+
+
+@router.post(
+    "/{user_id}/qualifications/{qualification_id}/revoke",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc(
+            "No such qualification, or it isn't this tutor's (not_found)."
+        ),
+        409: problem_response_doc(
+            "The qualification changed since it was loaded (version_conflict),"
+            " or it isn't approved (qualification_not_approved)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid: a blank reason or one longer than 1000"
+            " characters, a missing version or one below 1, an unknown field"
+            " (validation_error)."
+        ),
+    },
+)
+async def revoke_qualification(
+    principal: Annotated[Principal, require(QUALIFICATION_REVIEW)],
+    user_id: uuid.UUID,
+    qualification_id: uuid.UUID,
+    body: QualificationRevoke,
+    uow: UnitOfWorkDep,
+) -> QualificationItem:
+    """A reviewer withdraws an approved qualification with a reason. The row
+    stays as revoked, stops counting for eligibility at once, and the tutor
+    is notified. The approval request stays approved."""
+    return await service.revoke_qualification(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        qualification_id=qualification_id,
+        reason=body.reason,
+        version=body.version,
     )
 
 

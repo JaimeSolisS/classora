@@ -1572,6 +1572,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Qualification
+         * @description A reviewer withdraws an approved qualification with a reason. The row
+         *     stays as revoked, stops counting for eligibility at once, and the tutor
+         *     is notified. The approval request stays approved.
+         */
+        post: operations["revoke_qualification_api_v1_tutors__user_id__qualifications__qualification_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tutors/{user_id}/availability": {
         parameters: {
             query?: never;
@@ -3361,13 +3383,39 @@ export interface components {
              * @description The reviewer's reason; set only for rejected.
              */
             rejection_reason: string | null;
+            /**
+             * Revoked At
+             * @description When the approval was revoked; set only for revoked.
+             */
+            revoked_at: string | null;
+            /**
+             * Revocation Reason
+             * @description The reviewer's revocation reason; set only for revoked.
+             */
+            revocation_reason: string | null;
             /** Version */
             version: number;
         };
+        /**
+         * QualificationRevoke
+         * @description A reviewer withdraws an approved qualification (#198 B1).
+         */
+        QualificationRevoke: {
+            /**
+             * Reason
+             * @description Why the qualification is revoked; the tutor sees it.
+             */
+            reason: string;
+            /**
+             * Version
+             * @description The version the caller loaded.
+             */
+            version: number;
+        };
         /** @enum {string} */
-        QualificationStatus: "pending" | "approved" | "rejected" | "cancelled";
+        QualificationStatus: "pending" | "approved" | "rejected" | "cancelled" | "revoked";
         /** @enum {string} */
-        QualificationStatusFilter: "all" | "pending" | "approved" | "rejected" | "cancelled";
+        QualificationStatusFilter: "all" | "pending" | "approved" | "rejected" | "cancelled" | "revoked";
         /**
          * ReauthenticateRequest
          * @description The current user's password (#26). The same bounds as login.
@@ -9272,6 +9320,78 @@ export interface operations {
                 };
             };
             /** @description The qualification is no longer pending (approval_transition_invalid). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    revoke_qualification_api_v1_tutors__user_id__qualifications__qualification_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                qualification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualificationRevoke"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such qualification, or it isn't this tutor's (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The qualification changed since it was loaded (version_conflict), or it isn't approved (qualification_not_approved). */
             409: {
                 headers: {
                     [name: string]: unknown;

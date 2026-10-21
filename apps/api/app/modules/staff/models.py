@@ -7,12 +7,14 @@
   row. ``Audited`` with nothing excluded, versioned.
 - ``tutor_qualifications`` (#44): a tutor's request to teach one subject (the
   level follows from the subject, #32). ``status`` is ``pending`` →
-  ``approved`` | ``rejected`` | ``cancelled``; ``decided_at`` is set exactly
-  for the three final states and ``rejection_reason`` exactly for
-  ``rejected``. The partial unique index
+  ``approved`` | ``rejected`` | ``cancelled``, and ``approved`` →
+  ``revoked`` (#198); ``decided_at`` is set exactly for the four final
+  states (a revoked row keeps its approval decision), ``rejection_reason``
+  exactly for ``rejected``, and ``revoked_at``, ``revoked_by_user_id`` and
+  ``revocation_reason`` exactly for ``revoked``. The partial unique index
   ``uq_tutor_qualifications_active`` allows one active (``pending`` or
   ``approved``) qualification per tutor and subject; rejected and cancelled
-  rows don't block a new request. The row keeps its own status, mirrored
+  and revoked rows don't block a new request. The row keeps its own status, mirrored
   with its ``staff.qualification`` approval request in one transaction, so
   eligibility never reads ``approval_requests`` (ADR-0002). ``Audited``,
   versioned.
@@ -86,12 +88,16 @@ PENDING: Final = "pending"
 APPROVED: Final = "approved"
 REJECTED: Final = "rejected"
 CANCELLED: Final = "cancelled"
+REVOKED: Final = "revoked"
 
-QUALIFICATION_STATUSES: Final = (PENDING, APPROVED, REJECTED, CANCELLED)
+QUALIFICATION_STATUSES: Final = (PENDING, APPROVED, REJECTED, CANCELLED, REVOKED)
+FINAL_STATUSES: Final = (APPROVED, REJECTED, CANCELLED, REVOKED)
+"""The statuses that keep ``decided_at`` (a revoked row was approved first)."""
 ACTIVE_STATUSES: Final = (PENDING, APPROVED)
 """The statuses that block another request for the same tutor and subject."""
 
 REJECTION_REASON_MAX_LENGTH: Final = 1000
+REVOCATION_REASON_MAX_LENGTH: Final = 1000
 
 # The "no duplicate active qualification" index (#44 A1): a concurrent
 # duplicate request that loses the race is 409 qualification_exists.
@@ -109,13 +115,18 @@ class TutorQualification(Audited, VersionedMixin, Model):
             f"status IN ({_quoted(QUALIFICATION_STATUSES)})", name="status_valid"
         ),
         CheckConstraint(
-            "(status IN ('approved', 'rejected', 'cancelled'))"
-            " = (decided_at IS NOT NULL)",
+            f"(status IN ({_quoted(FINAL_STATUSES)})) = (decided_at IS NOT NULL)",
             name="decided_iff_final",
         ),
         CheckConstraint(
             "(status = 'rejected') = (rejection_reason IS NOT NULL)",
             name="reason_iff_rejected",
+        ),
+        CheckConstraint(
+            "(status = 'revoked') = (revoked_at IS NOT NULL)"
+            " AND (status = 'revoked') = (revoked_by_user_id IS NOT NULL)"
+            " AND (status = 'revoked') = (revocation_reason IS NOT NULL)",
+            name="revocation_iff_revoked",
         ),
         Index(
             ACTIVE_UNIQUE,
@@ -141,6 +152,15 @@ class TutorQualification(Audited, VersionedMixin, Model):
     )
     rejection_reason: Mapped[str | None] = mapped_column(
         String(REJECTION_REASON_MAX_LENGTH), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    revocation_reason: Mapped[str | None] = mapped_column(
+        String(REVOCATION_REASON_MAX_LENGTH), nullable=True
     )
 
 

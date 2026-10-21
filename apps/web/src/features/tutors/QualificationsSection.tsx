@@ -33,6 +33,7 @@ import {
   type QualificationItem,
   type TeachingSubject,
 } from './api';
+import { RevokeQualificationDialog } from './RevokeQualificationDialog';
 
 // The tutor profile's Qualifications section (#44 F1), `id="qualifications"`
 // (the decision notifications link here). "Teaching subjects" lists the
@@ -44,6 +45,11 @@ import {
 // (qualification_exists, subject_inactive) show in the dialog's alert.
 // Presentational apart from the dialog's catalog queries: the page passes
 // the list state and the actions; stories pass stubs.
+//
+// Revocation (#198 E1): a revoked row shows "Revoked" with the revoked date
+// and the reason where a rejection reason goes. For holders of
+// qualification.review (`canRevoke`), an approved row has "Revoke", which
+// opens RevokeQualificationDialog; the tutor never sees it.
 
 export type QualificationsState =
   | { status: 'loading' }
@@ -59,6 +65,14 @@ interface QualificationsSectionProps {
   onRequest: (subjectId: string) => Promise<void>;
   /** Cancels a pending request; rejects with the error to show. */
   onCancel: (item: QualificationItem) => Promise<void>;
+  /** The caller holds qualification.review (UX only; the API decides). */
+  canRevoke?: boolean;
+  /** Revokes an approved qualification; rejects with the error to show. */
+  onRevoke?: (item: QualificationItem, reason: string) => Promise<void>;
+  /** Refetches the list (the revoke dialog's "Reload"). */
+  onReload?: () => Promise<void>;
+  /** Opens with the revoke dialog shown for this qualification (stories). */
+  initiallyRevokingId?: string;
   /** The dialog's catalog reads (stories pass stubs). */
   loadLevels?: (signal: AbortSignal) => Promise<CatalogOption[]>;
   loadSubjects?: (
@@ -75,6 +89,10 @@ export function QualificationsSection({
   canRequest,
   onRequest,
   onCancel,
+  canRevoke = false,
+  onRevoke = async () => {},
+  onReload = async () => {},
+  initiallyRevokingId,
   loadLevels = fetchActiveLevelOptions,
   loadSubjects = fetchActiveSubjectOptions,
   initiallyRequesting = false,
@@ -89,6 +107,14 @@ export function QualificationsSection({
     initiallyRequesting && canRequest,
   );
   const [cancelling, setCancelling] = useState<QualificationItem | null>(null);
+  // The id only: after "Reload" the dialog gets the item's new version.
+  const [revokingId, setRevokingId] = useState<string | null>(
+    canRevoke ? (initiallyRevokingId ?? null) : null,
+  );
+  const revoking =
+    state.status === 'ready' && revokingId !== null
+      ? (state.items.find((item) => item.id === revokingId) ?? null)
+      : null;
   const [announcement, setAnnouncement] = useState('');
   const [error, setError] = useState<unknown>(null);
 
@@ -117,6 +143,9 @@ export function QualificationsSection({
   } else {
     const cancellable =
       canRequest && state.items.some((item) => item.status === 'pending');
+    const revocable =
+      canRevoke && state.items.some((item) => item.status === 'approved');
+    const withActions = cancellable || revocable;
     table = (
       <Table aria-labelledby={tableTitleId}>
         <TableHeader>
@@ -139,7 +168,7 @@ export function QualificationsSection({
             <TableHead scope="col">
               {t('tutors.qualifications.reason')}
             </TableHead>
-            {cancellable ? (
+            {withActions ? (
               <TableHead scope="col">
                 {t('tutors.qualifications.actions')}
               </TableHead>
@@ -173,10 +202,39 @@ export function QualificationsSection({
               </TableCell>
               <TableCell className="whitespace-normal break-words">
                 {item.status === 'rejected' ? item.rejection_reason : null}
+                {item.status === 'revoked' ? (
+                  <>
+                    {item.revoked_at ? (
+                      <span className="block">
+                        {t('tutors.qualifications.revokedOn', {
+                          date: formatInstant(item.revoked_at, 'dateTime'),
+                        })}
+                      </span>
+                    ) : null}
+                    {item.revocation_reason}
+                  </>
+                ) : null}
               </TableCell>
-              {cancellable ? (
+              {withActions ? (
                 <TableCell>
-                  {item.status === 'pending' ? (
+                  {revocable && item.status === 'approved' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={t('tutors.qualifications.revokeFor', {
+                        subject: item.subject_name,
+                      })}
+                      onClick={() => {
+                        setError(null);
+                        setAnnouncement('');
+                        setRevokingId(item.id);
+                      }}
+                    >
+                      {t('tutors.qualifications.revoke')}
+                    </Button>
+                  ) : null}
+                  {cancellable && item.status === 'pending' ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -274,6 +332,16 @@ export function QualificationsSection({
         item={cancelling}
         onConfirm={cancel}
         onKeep={() => setCancelling(null)}
+      />
+      <RevokeQualificationDialog
+        item={revoking}
+        onReload={onReload}
+        onClose={() => setRevokingId(null)}
+        onConfirm={async (item, reason) => {
+          await onRevoke(item, reason);
+          setRevokingId(null);
+          setAnnouncement(t('tutors.qualifications.revoked'));
+        }}
       />
     </section>
   );

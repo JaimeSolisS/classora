@@ -323,6 +323,11 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   select (active ones, loaded per level; API errors in the dialog's alert),
   and a pending row has "Cancel request" behind a confirmation ("Keep
   request" / "Cancel request"). Results are polite status messages.
+  #198: a revoked row shows "Revoked" with the revoked date and reason in
+  the reason column; holders of `qualification.review` get "Revoke" on
+  approved rows, which opens `RevokeQualificationDialog` (subject and level,
+  a required reason textarea, destructive confirm; `qualification_not_approved`
+  and `version_conflict` with "Reload" in its alert region).
 - **`AvailabilitySection`** (`features/tutors`, #45): the tutor profile's
   `#availability` section. A help line names the center's time zone. For
   the tutor themselves and `tutor.manage` holders, the
