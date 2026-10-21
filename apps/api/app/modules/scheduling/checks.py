@@ -178,7 +178,7 @@ async def _capacity_conflicts(
 
 
 async def _tutor_conflicts(
-    session: AsyncSession, candidate: SlotCandidate, slot: LocalSlot, tutor: uuid.UUID
+    session: AsyncSession, subject_id: uuid.UUID, slot: LocalSlot, tutor: uuid.UUID
 ) -> list[Conflict]:
     conflicts: list[Conflict] = []
     availability = await staff.is_tutor_available_at(
@@ -187,10 +187,8 @@ async def _tutor_conflicts(
     reasons = tutor_unavailable_reasons(availability.reasons)
     if reasons:
         conflicts.append(Conflict(TUTOR_UNAVAILABLE, {"reasons": reasons}))
-    if not await staff.is_qualified(session, tutor, candidate.subject_id):
-        conflicts.append(
-            Conflict(TUTOR_NOT_QUALIFIED, {"subject_id": str(candidate.subject_id)})
-        )
+    if not await staff.is_qualified(session, tutor, subject_id):
+        conflicts.append(Conflict(TUTOR_NOT_QUALIFIED, {"subject_id": str(subject_id)}))
     return conflicts
 
 
@@ -260,7 +258,7 @@ async def collect_conflicts(
     conflicts += await _capacity_conflicts(session, candidate)
     if candidate.tutor_user_id is not None:
         conflicts += await _tutor_conflicts(
-            session, candidate, slot, candidate.tutor_user_id
+            session, candidate.subject_id, slot, candidate.tutor_user_id
         )
     if candidate.classroom_id is not None and not await catalog.is_classroom_available(
         session, candidate.classroom_id, slot.weekday, slot.start, slot.end
@@ -272,4 +270,34 @@ async def collect_conflicts(
         session, slot, check_center_closed=check_center_closed
     )
     conflicts += await _notice_conflicts(session, slot, now)
+    return sort_conflicts(conflicts)
+
+
+async def find_offer_conflicts(
+    session: AsyncSession, row: ClassSession, tutor_user_id: uuid.UUID, zone: str
+) -> list[Conflict]:
+    """The conflicts of offering the stored session ``row`` to a tutor later
+    (#52 C2 step 8, E2): ``tutor_overlap`` (hard), ``tutor_unavailable``,
+    ``tutor_not_qualified``, ``center_closed``, ``outside_operating_hours``
+    and ``room_unavailable`` (soft), sorted, with the same check functions as
+    :func:`collect_conflicts`. ``student_overlap``, ``room_overlap``, capacity and
+    ``notice_window`` are not re-run: the students, the time and the room
+    are unchanged (their writers hold the #48 locks) and the booking notice
+    was applied when the slot was booked. The caller holds the session row
+    and the zone ``FOR SHARE``."""
+    slot = local_slot(row.starts_at, row.ends_at, zone)
+    conflicts: list[Conflict] = []
+    tutors = await _overlap_ids(
+        session, slot, TUTOR_OCCUPYING_STATES, ClassSession.tutor_user_id, tutor_user_id
+    )
+    if tutors:
+        conflicts.append(Conflict(TUTOR_OVERLAP, {"class_session_ids": tutors}))
+    conflicts += await _tutor_conflicts(session, row.subject_id, slot, tutor_user_id)
+    if row.classroom_id is not None and not await catalog.is_classroom_available(
+        session, row.classroom_id, slot.weekday, slot.start, slot.end
+    ):
+        conflicts.append(
+            Conflict(ROOM_UNAVAILABLE, {"classroom_id": str(row.classroom_id)})
+        )
+    conflicts += await _center_conflicts(session, slot, check_center_closed=True)
     return sort_conflicts(conflicts)

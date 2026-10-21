@@ -168,7 +168,10 @@ unless a bullet says otherwise.
   session; on the "Schedule a session" page, "Suggest tutors" fills in the
   chosen one.
 - A session with a tutor is offered to that tutor; one without a tutor stays
-  unassigned (tutors can't accept offers yet).
+  unassigned. Tutors accept or decline offered sessions from My offers
+  (notified in-app); declined or unanswered offers (48 h by default, set in
+  the scheduling policy) return the session for reassignment through the
+  approval inbox, and staff offer it again from the session's page.
 
 **Courses**
 
@@ -184,8 +187,9 @@ unless a bullet says otherwise.
 **Approvals**
 
 - The Approvals page is the shared list of requests waiting for a decision,
-  filtered by status, type and assignee. It holds account requests and tutor
-  qualification requests; staff approve or reject them. Approving an account
+  filtered by status, type and assignee. It holds account requests, tutor
+  qualification requests and sessions to reassign after a tutor declined or
+  didn't answer an offer; staff approve or reject them. Approving an account
   request never enrolls anyone.
 
 **Notifications**
@@ -194,7 +198,8 @@ unless a bullet says otherwise.
   panel to read them and mark one or all as read.
 - New notifications arrive live (Server-Sent Events); when the live
   connection isn't available, the bell checks every 30 seconds instead.
-- Today they tell tutors about qualification decisions and revocations. In
+- Today they tell tutors about qualification decisions and revocations and
+  new session offers, and tell staff when an offer is declined or expires. In
   local and dev, signed-in users can create a test notification for
   themselves.
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
@@ -74,6 +75,14 @@ export function ScheduleSessionPage() {
         timeZone={timeZone}
         labelledBy={titleId}
         canOverride={canOverride}
+        sessionLink={(sessionId) => (
+          <Link
+            to={`/schedule/sessions/${encodeURIComponent(sessionId)}`}
+            className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          >
+            {t('scheduling.success.openSession')}
+          </Link>
+        )}
         onSubmit={(values, override) =>
           createClassSession(scheduleBody(values, timeZone, override))
         }

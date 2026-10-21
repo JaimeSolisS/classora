@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -100,6 +100,8 @@ export interface ScheduleSessionFormProps {
   onSuggestTutors?: (values: ScheduleValues) => Promise<TutorSuggestionList>;
   /** The values to start from (stories). */
   initialValues?: ScheduleValues;
+  /** A link to the created session's page (#52 H2; the page passes it). */
+  sessionLink?: (sessionId: string) => ReactNode;
   /** The id of the page heading that names the form. */
   labelledBy: string;
 }
@@ -116,6 +118,7 @@ export function ScheduleSessionForm({
   onSuggestTutors,
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
+  sessionLink,
 }: ScheduleSessionFormProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
@@ -455,7 +458,8 @@ export function ScheduleSessionForm({
               : t('scheduling.success.unassigned')}
           </dd>
         </dl>
-        <div>
+        <div className="flex flex-wrap items-center gap-4">
+          {sessionLink ? sessionLink(created.id) : null}
           <Button type="button" onClick={scheduleAnother}>
             {t('scheduling.success.another')}
           </Button>

@@ -83,6 +83,10 @@ const API_CODES = [
   'availability_change_requires_approval',
   'scheduling_conflict',
   'class_session_not_assignable',
+  'class_session_not_offerable',
+  'offer_not_pending',
+  'offer_expired',
+  'reassignment_still_needed',
   'invalid_effective_from',
   'policy_version_in_effect',
 ];

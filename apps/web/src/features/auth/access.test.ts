@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canAccess, routeRequirement } from './access';
-import type { PermissionCode, SessionUser } from './session';
+import type { PermissionCode, RoleCode, SessionUser } from './session';
 
 // F6 (pure part): the one access check of the guard and the navigation.
 
@@ -110,7 +110,33 @@ describe('canAccess with anyPermission (#40 F1)', () => {
   });
 });
 
+describe('canAccess with role (#52 H1)', () => {
+  const tutor: SessionUser = { ...user, roles: ['tutor'], permissions: [] };
+
+  it('allows a user who holds the role', () => {
+    expect(canAccess(tutor, { role: 'tutor' })).toBe(true);
+  });
+
+  it('denies a user without the role, whatever their permissions', () => {
+    expect(canAccess(user, { role: 'tutor' })).toBe(false);
+    expect(canAccess(tutor, { role: 'tutor', permission: 'user.view' })).toBe(
+      false,
+    );
+  });
+
+  it('fails closed on a malformed role', () => {
+    expect(canAccess(tutor, { role: ['tutor'] as unknown as RoleCode })).toBe(
+      false,
+    );
+    expect(canAccess(tutor, { role: null as unknown as RoleCode })).toBe(false);
+  });
+});
+
 describe('routeRequirement', () => {
+  it('reads handle.role', () => {
+    expect(routeRequirement({ role: 'tutor' })).toEqual({ role: 'tutor' });
+  });
+
   it('reads handle.permission', () => {
     expect(routeRequirement({ permission: 'user.view' })).toEqual({
       permission: 'user.view',

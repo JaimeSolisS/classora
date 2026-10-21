@@ -18,6 +18,11 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    (any state but ``active``, a pending invitee included;
    ``identity.service.get_role_member``) and ``classroom_unknown`` /
    ``classroom_inactive`` (``catalog.service.classroom_references``);
+4b. with a tutor, the offer deadline (#52 C1): ``respond_by`` defaults to
+   the scheduling policy's response time at now (never after the start); a
+   requested one must be after now and no later than that
+   (``422 respond_by_invalid``); without a tutor it is ``422
+   respond_by_requires_tutor``;
 5. every conflict check (:mod:`app.modules.scheduling.conflicts` lists the
    codes and their data sources); the tutor checks run only with a tutor, the
    room checks only with a room. Local values are taken in the center zone;
@@ -28,6 +33,9 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    conflict, sorted (:func:`~app.modules.scheduling.conflicts.sort_conflicts`),
    unless there is none, or the body's ``override`` lists every one and all
    are soft;
+6b. with a tutor, ``409 class_session_not_offerable`` (``details.reason =
+   "started"``) when the start is not after now (an overridden
+   ``notice_window`` can reach here; #52);
 7. the tutor's workload warnings (#50 A7,
    :func:`~app.modules.scheduling.workload_sessions.session_warnings`): at
    most two statements with a tutor, none without one; they never block and
@@ -41,10 +49,13 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    ``scheduling.session_override`` event
    (:func:`~app.modules.scheduling.overrides.record_session_override`).
 
+10. with a tutor (#52 C1), its ``pending`` offer (``offered_at`` now,
+    ``offered_by`` the caller) and the tutor's ``scheduling.offer_received``
+    notification.
+
 The ``403`` for an ``override`` without ``schedule.override`` comes before
-step 1 (the route). No offer row, notification or inbox item is created
-(#52). Audit: the automatic ``create`` events of both tables, plus the
-override event when something was overridden.
+step 1 (the route). Audit: the automatic ``create`` events of every table
+written, plus the override event when something was overridden.
 
 **Read** (:func:`get_class_session`): every holder of ``schedule.view``
 sees every session and its overrides (no record policy for staff, D9); at
@@ -75,6 +86,7 @@ from app.modules.scheduling.conflicts import (
     Conflict,
 )
 from app.modules.scheduling.errors import (
+    ClassSessionNotOfferableError,
     InvalidSessionTimesError,
     SchedulingConflictError,
     SessionOverlapError,
@@ -82,10 +94,15 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.models import (
+    OFFER_PENDING,
+    AssignmentOffer,
+    AssignmentOfferSession,
     ClassSession,
     ClassSessionOverride,
     ClassSessionParticipant,
 )
+from app.modules.scheduling.offer_records import insert_offer, notify_offer_received
+from app.modules.scheduling.offers import RespondByInvalidError, resolve_respond_by
 from app.modules.scheduling.overrides import evaluate_override, record_session_override
 from app.modules.scheduling.schemas import (
     ClassSessionCreate,
@@ -93,6 +110,7 @@ from app.modules.scheduling.schemas import (
     ClassSessionDetail,
     ClassSessionSlot,
     OverrideActor,
+    PendingOffer,
     SessionClassroom,
     SessionOverrideItem,
     SessionParticipant,
@@ -308,6 +326,7 @@ def _detail(
     classroom: SessionClassroom | None,
     participants: list[SessionParticipant],
     overrides: list[SessionOverrideItem],
+    pending_offer: PendingOffer | None,
 ) -> ClassSessionDetail:
     return ClassSessionDetail(
         id=row.id,
@@ -333,6 +352,7 @@ def _detail(
         ),
         is_exception=row.is_exception,
         conflict_codes=list(row.conflict_codes),
+        pending_offer=pending_offer,
     )
 
 
@@ -349,6 +369,48 @@ def _override_item(
     )
 
 
+async def _respond_by(
+    session: AsyncSession, body: ClassSessionCreate, offered_at: datetime
+) -> datetime | None:
+    """#52 C1: the offer's deadline with a tutor (``None`` without one, or
+    when the session has already begun: the create refuses it after the
+    conflicts). ``422 respond_by_requires_tutor`` / ``respond_by_invalid``
+    on ``respond_by``."""
+    if body.tutor_user_id is None:
+        if body.respond_by is not None:
+            raise SessionValidationError(
+                [
+                    _field_error(
+                        "respond_by",
+                        "respond_by_requires_tutor",
+                        "A deadline needs a tutor to answer it.",
+                    )
+                ]
+            )
+        return None
+    policy = await administration.get_scheduling_policy(session, offered_at)
+    try:
+        return resolve_respond_by(
+            policy,
+            offered_at=offered_at,
+            first_starts_at=body.starts_at,
+            requested=body.respond_by,
+        )
+    except RespondByInvalidError:
+        if body.respond_by is None:
+            return None
+        raise SessionValidationError([respond_by_error()]) from None
+
+
+def respond_by_error() -> FieldError:
+    """``respond_by_invalid`` on ``respond_by`` (#52 B2)."""
+    return _field_error(
+        "respond_by",
+        "respond_by_invalid",
+        "The deadline must be after now and no later than the default.",
+    )
+
+
 async def create_class_session(
     session: AsyncSession, body: ClassSessionCreate, *, actor_id: uuid.UUID
 ) -> ClassSessionCreated:
@@ -359,10 +421,15 @@ async def create_class_session(
     zone = await administration.get_center_time_zone(session, for_share=True)
     validate_bounds(body, zone)
     refs = await references(session, body)
+    offered_at = clock.now()
+    respond_by = await _respond_by(session, body, offered_at)
     conflicts = await find_conflicts(session, body, zone)
     decision = evaluate_override(conflicts, body.override)
     if not decision.allowed:
         raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])
+    if body.tutor_user_id is not None and body.starts_at <= offered_at:
+        # #52: an offer can't be answered before a session that has begun.
+        raise ClassSessionNotOfferableError(started=True)
     warnings = (
         []
         if body.tutor_user_id is None
@@ -408,6 +475,24 @@ async def create_class_session(
         )
         actors = await identity.get_account_references(session, [actor_id])
         overrides.append(_override_item(stored, actors))
+    pending_offer = None
+    if refs.tutor is not None and respond_by is not None:
+        # #52 C1: the offer, in the same transaction, and the tutor's
+        # notification.
+        offer = await insert_offer(
+            session,
+            tutor_user_id=refs.tutor.id,
+            offered_by_user_id=actor_id,
+            offered_at=offered_at,
+            respond_by=respond_by,
+            class_session_ids=[row.id],
+        )
+        await notify_offer_received(
+            session, offer, subject_name=refs.subject.name, starts_at=row.starts_at
+        )
+        pending_offer = PendingOffer(
+            id=offer.id, tutor=refs.tutor, respond_by=offer.respond_by.astimezone(UTC)
+        )
     detail = _detail(
         row,
         subject=refs.subject,
@@ -415,6 +500,7 @@ async def create_class_session(
         classroom=refs.classroom,
         participants=[refs.student],
         overrides=overrides,
+        pending_offer=pending_offer,
     )
     return ClassSessionCreated(**detail.model_dump(), warnings=warnings)
 
@@ -423,10 +509,28 @@ async def get_class_session(
     session: AsyncSession, class_session_id: uuid.UUID
 ) -> ClassSessionDetail:
     """``GET /api/v1/class-sessions/{id}``: at most seven statements (the
-    tutor and the override actors are read together)."""
-    row = await session.get(ClassSession, class_session_id)
-    if row is None:
+    tutor and the override actors are read together; the pending offer,
+    #52 G3, comes with the session row)."""
+    pending = (
+        select(
+            AssignmentOfferSession.class_session_id,
+            AssignmentOffer.id,
+            AssignmentOffer.respond_by,
+        )
+        .join(AssignmentOffer, AssignmentOffer.id == AssignmentOfferSession.offer_id)
+        .where(AssignmentOffer.status == OFFER_PENDING)
+        .subquery()
+    )
+    found = (
+        await session.execute(
+            select(ClassSession, pending.c.id, pending.c.respond_by)
+            .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
+            .where(ClassSession.id == class_session_id)
+        )
+    ).first()
+    if found is None:
         raise RecordNotFoundError()
+    row, offer_id, offer_respond_by = found
     student_ids = list(
         await session.scalars(
             select(ClassSessionParticipant.student_id).where(
@@ -480,4 +584,11 @@ async def get_class_session(
             for student in students.values()
         ],
         overrides=[_override_item(override, accounts) for override in override_rows],
+        pending_offer=(
+            None
+            if offer_id is None or tutor is None
+            else PendingOffer(
+                id=offer_id, tutor=tutor, respond_by=offer_respond_by.astimezone(UTC)
+            )
+        ),
     )

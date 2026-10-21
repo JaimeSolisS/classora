@@ -20,7 +20,10 @@ from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
     get_account_references,
 )
-from app.modules.scheduling.service import OCCURRENCE_CONFLICT_HANDLER
+from app.modules.scheduling.service import (
+    OCCURRENCE_CONFLICT_HANDLER,
+    OFFER_REASSIGNMENT_HANDLER,
+)
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
 
 ALLOWED = {
@@ -138,12 +141,13 @@ REGISTERED_TYPES = {
     "identity.registration",
     "staff.qualification",
     "scheduling.occurrence_conflict",
+    "scheduling.offer_reassignment",
 }
 
 
 def test_build_app_registers_exactly_the_real_types():
-    # D3: build_app registers identity.registration and (#44 C1)
-    # staff.qualification.
+    # D3: build_app registers identity.registration, (#44 C1)
+    # staff.qualification and (#52 E2) scheduling.offer_reassignment.
     for request_type in REGISTERED_TYPES:
         unregister_approval_handler(request_type)
     build_app()
@@ -163,6 +167,12 @@ def test_build_app_registers_exactly_the_real_types():
     assert occurrence.review_permission == "schedule.manage"
     assert occurrence.supports_request_changes is False
     assert occurrence.reason_required_on_reject is True
+    # #52 E2: the reassignment item of a declined or expired offer.
+    reassignment = OFFER_REASSIGNMENT_HANDLER
+    assert reassignment.request_type == "scheduling.offer_reassignment"
+    assert reassignment.review_permission == "schedule.assign"
+    assert reassignment.supports_request_changes is False
+    assert reassignment.reason_required_on_reject is True
 
 
 def test_build_app_registers_the_account_reference_resolver():

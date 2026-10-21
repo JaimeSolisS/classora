@@ -40,7 +40,8 @@
     "families": "Families",
     "tutors": "Tutors",
     "schedule": "Schedule",
-    "courses": "Courses"
+    "courses": "Courses",
+    "offers": "My offers"
   },
   "notFound": {
     "title": "Page not found",
@@ -290,11 +291,14 @@
     "types": {
       "identity_registration": "Account request",
       "staff_qualification": "Tutor qualification",
+      "scheduling_offer_reassignment": "Session to reassign",
       "scheduling_occurrence_conflict": "Series session conflict"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
       "qualification": "{{tutor}} — {{subject}} ({{level}})",
+      "reassignmentDeclined": "Declined by {{tutor}} · {{subject}} · {{when}}",
+      "reassignmentExpired": "Expired, offered to {{tutor}} · {{subject}} · {{when}}",
       "occurrenceConflict": "Series occurrence {{when}} — {{students}} · {{subject}}: {{codes}}"
     },
     "list": {
@@ -319,7 +323,11 @@
       "requestChanges": "Request changes",
       "approveFor": "Approve {{name}}",
       "rejectFor": "Reject {{name}}",
-      "requestChangesFor": "Request changes from {{name}}"
+      "requestChangesFor": "Request changes from {{name}}",
+      "markResolved": "Mark resolved",
+      "dismiss": "Dismiss",
+      "markResolvedFor": "Mark resolved: {{name}}",
+      "dismissFor": "Dismiss: {{name}}"
     },
     "dialog": {
       "approveTitle": "Approve: {{summary}}",
@@ -342,6 +350,14 @@
       "approved": "Approved.",
       "rejected": "Rejected.",
       "changesRequested": "Changes requested."
+    },
+    "reassignment": {
+      "openSession": "Open the session",
+      "note": "Tutor's note: {{note}}",
+      "resolveTitle": "Mark resolved: {{summary}}",
+      "dismissTitle": "Dismiss: {{summary}}",
+      "resolveConfirm": "Mark this item resolved? The session must already have a tutor again, or no longer need one.",
+      "dismissConfirm": "Dismiss this item? The session is not changed."
     },
     "occurrenceCodes": {
       "student_unknown": "Unknown student",
@@ -1343,7 +1359,10 @@
       "dev_demo": "Demo notification: {{label}}",
       "staff_qualification_approved": "Your qualification for {{subject_name}} ({{education_level_name}}) was approved.",
       "staff_qualification_rejected": "Your qualification for {{subject_name}} ({{education_level_name}}) was not approved; see the reason in your qualifications.",
-      "staff_qualification_revoked": "Your qualification for {{subject_name}} ({{education_level_name}}) was revoked. See the reason in your qualifications."
+      "staff_qualification_revoked": "Your qualification for {{subject_name}} ({{education_level_name}}) was revoked. See the reason in your qualifications.",
+      "scheduling_offer_received": "You have a new session offer: {{subject_name}}, {{starts_at}}. Answer by {{respond_by}}.",
+      "scheduling_offer_declined": "{{tutor_name}} declined {{subject_name}}, {{starts_at}}. Offer it to another tutor.",
+      "scheduling_offer_expired": "The offer of {{subject_name}}, {{starts_at}} to {{tutor_name}} expired without an answer. Offer it to another tutor."
     }
   },
   "scheduling": {
@@ -1382,7 +1401,8 @@
       "state": "Status",
       "offered": "Offered to {{tutor}}",
       "unassigned": "Unassigned",
-      "another": "Schedule another"
+      "another": "Schedule another",
+      "openSession": "Open the session"
     },
     "severity": {
       "hard": "Not allowed",
@@ -1569,6 +1589,39 @@
       "hours": "{{hours}} h",
       "minutes": "{{minutes}} min",
       "hoursMinutes": "{{hours}} h {{minutes}} min"
+    },
+    "offer": {
+      "heading": "Offer to a tutor",
+      "intro": "The tutor gets a notification and answers in My offers. Every rule is checked again for the tutor you choose.",
+      "chooseTutor": "Choose a tutor",
+      "deadline": "Earlier deadline (optional)",
+      "deadlineHelp": "Leave empty for the default deadline (the scheduling policy's response time, never after the start). Times in {{zone}}.",
+      "deadlineDate": "Date",
+      "deadlineTime": "Time",
+      "submit": "Offer the session",
+      "submitting": "Offering…",
+      "overrideAction": "Override and offer",
+      "overrideDescription": "The session is offered despite these rules. The reason is saved in the audit log.",
+      "validation": {
+        "tutorRequired": "Choose a tutor.",
+        "deadlineIncomplete": "Give both a date and a time, or leave both empty."
+      }
+    },
+    "session": {
+      "title": "Session",
+      "backToCalendar": "Back to the calendar",
+      "offeredTo": "Offered to {{tutor}}.",
+      "summary": "Summary",
+      "state": "State",
+      "zone": "({{zone}})",
+      "noTutor": "No tutor",
+      "pendingOffer": "Pending offer",
+      "pendingOfferText": "{{tutor}}, answer by {{when}}",
+      "history": "Offer history",
+      "noOffers": "No offers yet.",
+      "offeredBy": "Offered by {{name}} on {{when}}",
+      "respondedAt": "Answered on {{when}}",
+      "respondBy": "Answer by {{when}}"
     }
   },
   "courses": {
@@ -1703,6 +1756,57 @@
         "nameTaken": "Another course template already has this name, possibly an inactive one."
       },
       "assessmentRequired": "Required"
+    }
+  },
+  "offers": {
+    "title": "My offers",
+    "intro": "Sessions the center offers you. Accept or decline each one before its deadline; a declined or unanswered session goes back to the staff to offer to someone else.",
+    "zone": "Times are in the center's time zone ({{zone}}).",
+    "emptyPending": "No offers waiting for your answer.",
+    "emptyAnswered": "No answered offers yet.",
+    "accepted": "Accepted: {{offer}}. It is now in Answered.",
+    "declined": "Declined: {{offer}}. It is now in Answered.",
+    "cancel": "Cancel",
+    "tabs": {
+      "label": "Offers",
+      "pending": "Pending",
+      "answered": "Answered"
+    },
+    "card": {
+      "label": "{{subject}}, {{date}}, {{start}}",
+      "subject": "{{subject}} ({{level}})",
+      "when": "{{date}}, {{start}}–{{end}}",
+      "classroom": "Classroom",
+      "noClassroom": "No classroom",
+      "students": "Students",
+      "answerBy": "Answer by {{when}}",
+      "dueSoon": "Due soon",
+      "answeredAt": "Answered {{when}}",
+      "note": "Note: {{note}}"
+    },
+    "status": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "expired": "Expired",
+      "withdrawn": "Withdrawn"
+    },
+    "accept": {
+      "title": "Accept this session?",
+      "description": "You will teach {{offer}}. It is confirmed once you accept.",
+      "submit": "Accept",
+      "action": "Accept",
+      "for": "Accept {{offer}}"
+    },
+    "decline": {
+      "title": "Decline this session",
+      "description": "Decline {{offer}}. The staff will offer it to someone else.",
+      "note": "Note for the staff (optional)",
+      "counter": "{{length}} of {{max}} characters",
+      "submitting": "Declining…",
+      "submit": "Decline",
+      "action": "Decline",
+      "for": "Decline {{offer}}"
     }
   }
 }

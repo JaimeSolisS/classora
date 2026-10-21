@@ -36,6 +36,15 @@
   scheduling_conflict`` listing every occurrence's conflicts → ``201``.
 - ``GET /api/v1/class-series/{class_series_id}`` (#53 I):
   ``require("schedule.view")``; every holder sees every series.
+- Assignment offers (#52; :mod:`~app.modules.scheduling.offer_flow` gives
+  the orders): ``POST /api/v1/class-sessions/{class_session_id}/offers``
+  (``require("schedule.assign")``; an ``override`` needs
+  ``schedule.override``) offers an ``unassigned`` session to a tutor;
+  ``GET`` on the same path (``require("schedule.view")``) is its offer
+  history. ``GET /api/v1/assignment-offers`` and ``POST
+  /api/v1/assignment-offers/{offer_id}/accept|decline`` are
+  ``authenticated()`` with a record policy: only the offered tutor's own
+  offers; anyone else gets an empty list or ``404``, never ``403``.
 """
 
 import uuid
@@ -46,6 +55,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.authz import (
     PERMISSION_RESPONSES,
     Principal,
+    authenticated,
     ensure_permission,
     require,
 )
@@ -54,8 +64,15 @@ from app.core.errors import problem_response_doc
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
 from app.modules.scheduling.schemas import (
+    OFFERS_DEFAULT_LIMIT,
+    OFFERS_MAX_LIMIT,
     TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
     TUTOR_SUGGESTIONS_MAX_LIMIT,
+    AssignmentOfferCreate,
+    AssignmentOfferCreated,
+    AssignmentOfferDecline,
+    AssignmentOfferItem,
+    AssignmentOfferPage,
     ClassSeriesCreate,
     ClassSeriesCreated,
     ClassSeriesDetail,
@@ -63,7 +80,9 @@ from app.modules.scheduling.schemas import (
     ClassSessionCreate,
     ClassSessionCreated,
     ClassSessionDetail,
+    ClassSessionOffers,
     ClassSessionRangeQuery,
+    OfferStatusFilter,
     SlotSuggestionRequest,
     SlotSuggestions,
     TutorOptions,
@@ -82,6 +101,7 @@ suggestions_router = APIRouter(
     prefix="/api/v1/tutor-suggestions", tags=["class-sessions"]
 )
 series_router = APIRouter(prefix="/api/v1/class-series", tags=["class-series"])
+offers_router = APIRouter(prefix="/api/v1/assignment-offers", tags=["class-sessions"])
 
 TUTOR_OPTIONS_DEFAULT_LIMIT: Final = 20
 TUTOR_OPTIONS_MAX_LIMIT: Final = 50
@@ -102,7 +122,9 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             "The session breaks scheduling rules (scheduling_conflict);"
             " `conflicts` lists every one, hard and soft. A hard conflict, or"
             " a soft one the `override` doesn't list, always refuses."
-            " Nothing is created."
+            " Nothing is created. With a tutor, a session that has already"
+            " begun can't be offered (class_session_not_offerable,"
+            " details.reason = started)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
@@ -111,9 +133,10 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             " duplicate_code, code_not_overridable, code_unknown);"
             " the bounds (naive_datetime, not_whole_minutes,"
             " ends_before_start, duration_out_of_range, crosses_local_date);"
-            " or the references (student_unknown, student_inactive,"
+            " the references (student_unknown, student_inactive,"
             " subject_unknown, subject_inactive, tutor_unknown, tutor_inactive,"
-            " classroom_unknown, classroom_inactive), all in one response."
+            " classroom_unknown, classroom_inactive), all in one response; or"
+            " `respond_by` (respond_by_requires_tutor, respond_by_invalid)."
         ),
     },
 )
@@ -123,9 +146,12 @@ async def create_class_session(
     uow: UnitOfWorkDep,
 ) -> ClassSessionCreated:
     """Schedule a one-off individual session. With a tutor it is created
-    `offered` to them, without one `unassigned`. Every rule is checked
-    first; with an `override` the listed soft conflicts are allowed, stored
-    with the reason and audited. `warnings` is always empty for now."""
+    `offered` to them, with a pending offer (deadline `respond_by`, by
+    default the scheduling policy's response time but never after the
+    start) and a notification to the tutor; without one `unassigned`. Every
+    rule is checked first; with an `override` the listed soft conflicts are
+    allowed, stored with the reason and audited. `warnings` lists the
+    tutor's workload warnings."""
     if body.override is not None:
         ensure_permission(principal, SCHEDULE_OVERRIDE)
     return await service.create_class_session(
@@ -361,3 +387,152 @@ async def get_class_series(
     """One class series with its rule, references and the occurrences that
     start now or later."""
     return await service.get_class_series(uow.session, class_series_id)
+
+
+@router.post(
+    "/{class_session_id}/offers",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): no schedule.assign, or an"
+            " `override` without schedule.override. The privacy notice must be"
+            " accepted first (privacy_notice_required); a failed Origin or"
+            " X-CSRF-Token check (csrf_failed)."
+        ),
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); it is"
+            " not unassigned (class_session_not_offerable, details.state) or has"
+            " begun (class_session_not_offerable, details.reason = started);"
+            " or the tutor breaks scheduling rules (scheduling_conflict, every"
+            " conflict listed). Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, a naive `respond_by`, the `override` (reason_required,"
+            " reason_too_long, codes_required, duplicate_code,"
+            " code_not_overridable, code_unknown); the tutor (tutor_unknown,"
+            " tutor_inactive) or `respond_by` (respond_by_invalid), in one"
+            " response."
+        ),
+    },
+)
+async def offer_class_session(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    class_session_id: uuid.UUID,
+    body: AssignmentOfferCreate,
+    uow: UnitOfWorkDep,
+) -> AssignmentOfferCreated:
+    """Offer an `unassigned` session to a tutor: it becomes `offered` to them
+    with a pending offer and the tutor is notified. Checked again for the
+    new tutor: overlap (hard), availability, qualification, center closure,
+    operating hours and the room's availability (soft; an `override` with
+    schedule.override allows them). Not re-checked: the booking notice and
+    the student and room overlaps. Offering closes the session's open
+    reassignment item. `warnings` lists the tutor's workload warnings."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
+    return await service.offer_class_session(
+        uow.session, class_session_id, body, actor_id=principal.user_id
+    )
+
+
+@router.get(
+    "/{class_session_id}/offers",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class session (not_found)."),
+    },
+)
+async def list_class_session_offers(
+    principal: Annotated[Principal, require(SCHEDULE_VIEW)],
+    class_session_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> ClassSessionOffers:
+    """The session's offers, newest first, with each answer and decline
+    note."""
+    return await service.list_session_offers(uow.session, class_session_id)
+
+
+@offers_router.get(
+    "",
+    responses={
+        **PERMISSION_RESPONSES,
+        422: problem_response_doc(
+            "An unknown status, or limit/offset out of range (validation_error)."
+        ),
+    },
+)
+async def list_assignment_offers(
+    principal: Annotated[Principal, authenticated()],
+    uow: UnitOfWorkDep,
+    status: OfferStatusFilter = "pending",
+    limit: Annotated[int, Query(ge=1, le=OFFERS_MAX_LIMIT)] = OFFERS_DEFAULT_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AssignmentOfferPage:
+    """The signed-in user's own offers: `pending` (by deadline, the
+    default), `answered` (accepted, declined, expired or withdrawn; newest
+    first) or `all` (newest first). Anyone who has none gets an empty
+    page."""
+    return await service.list_my_offers(
+        uow.session,
+        caller_id=principal.user_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+_ANSWER_RESPONSES = {
+    **PERMISSION_RESPONSES,
+    404: problem_response_doc(
+        "No such offer, or it was offered to someone else (not_found)."
+    ),
+    409: problem_response_doc(
+        "The offer was already answered, expired or withdrawn"
+        " (offer_not_pending, details.status), or its deadline has passed"
+        " (offer_expired)."
+    ),
+}
+
+
+@offers_router.post("/{offer_id}/accept", responses=_ANSWER_RESPONSES)
+async def accept_assignment_offer(
+    principal: Annotated[Principal, authenticated()],
+    offer_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> AssignmentOfferItem:
+    """Accept an offer made to you before its deadline: its sessions become
+    `confirmed` with you as the tutor."""
+    return await service.answer_offer(
+        uow.session, offer_id, caller_id=principal.user_id, accept=True
+    )
+
+
+@offers_router.post(
+    "/{offer_id}/decline",
+    responses={
+        **_ANSWER_RESPONSES,
+        422: problem_response_doc(
+            "An unknown field, or a note longer than 500 characters"
+            " (decline_note_too_long)."
+        ),
+    },
+)
+async def decline_assignment_offer(
+    principal: Annotated[Principal, authenticated()],
+    offer_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+    body: AssignmentOfferDecline | None = None,
+) -> AssignmentOfferItem:
+    """Decline an offer made to you before its deadline, with an optional
+    note for the staff: its sessions go back to `unassigned` and the staff
+    get an inbox item to offer them again."""
+    return await service.answer_offer(
+        uow.session,
+        offer_id,
+        caller_id=principal.user_id,
+        accept=False,
+        note=None if body is None else body.note,
+    )

@@ -1846,9 +1846,12 @@ export interface paths {
         /**
          * Create Class Session
          * @description Schedule a one-off individual session. With a tutor it is created
-         *     `offered` to them, without one `unassigned`. Every rule is checked
-         *     first; with an `override` the listed soft conflicts are allowed, stored
-         *     with the reason and audited. `warnings` is always empty for now.
+         *     `offered` to them, with a pending offer (deadline `respond_by`, by
+         *     default the scheduling policy's response time but never after the
+         *     start) and a notification to the tutor; without one `unassigned`. Every
+         *     rule is checked first; with an `override` the listed soft conflicts are
+         *     allowed, stored with the reason and audited. `warnings` lists the
+         *     tutor's workload warnings.
          */
         post: operations["create_class_session_api_v1_class_sessions_post"];
         delete?: never;
@@ -1927,6 +1930,37 @@ export interface paths {
         get: operations["list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Class Session Offers
+         * @description The session's offers, newest first, with each answer and decline
+         *     note.
+         */
+        get: operations["list_class_session_offers_api_v1_class_sessions__class_session_id__offers_get"];
+        put?: never;
+        /**
+         * Offer Class Session
+         * @description Offer an `unassigned` session to a tutor: it becomes `offered` to them
+         *     with a pending offer and the tutor is notified. Checked again for the
+         *     new tutor: overlap (hard), availability, qualification, center closure,
+         *     operating hours and the room's availability (soft; an `override` with
+         *     schedule.override allows them). Not re-checked: the booking notice and
+         *     the student and room overlaps. Offering closes the session's open
+         *     reassignment item. `warnings` lists the tutor's workload warnings.
+         */
+        post: operations["offer_class_session_api_v1_class_sessions__class_session_id__offers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2026,6 +2060,72 @@ export interface paths {
         get: operations["get_class_series_api_v1_class_series__class_series_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assignment-offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assignment Offers
+         * @description The signed-in user's own offers: `pending` (by deadline, the
+         *     default), `answered` (accepted, declined, expired or withdrawn; newest
+         *     first) or `all` (newest first). Anyone who has none gets an empty
+         *     page.
+         */
+        get: operations["list_assignment_offers_api_v1_assignment_offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assignment-offers/{offer_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Assignment Offer
+         * @description Accept an offer made to you before its deadline: its sessions become
+         *     `confirmed` with you as the tutor.
+         */
+        post: operations["accept_assignment_offer_api_v1_assignment_offers__offer_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assignment-offers/{offer_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Assignment Offer
+         * @description Decline an offer made to you before its deadline, with an optional
+         *     note for the staff: its sessions go back to `unassigned` and the staff
+         *     get an inbox item to offer them again.
+         */
+        post: operations["decline_assignment_offer_api_v1_assignment_offers__offer_id__decline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2196,6 +2296,101 @@ export interface components {
         ApprovalStatus: "pending" | "approved" | "rejected" | "changes_requested" | "cancelled";
         /** @enum {string} */
         ApprovalStatusFilter: "open" | "pending" | "approved" | "rejected" | "changes_requested" | "cancelled" | "all";
+        /**
+         * AssignmentOfferCreate
+         * @description Offer an ``unassigned`` session to a tutor
+         *     (``POST /api/v1/class-sessions/{id}/offers``, #52 C2).
+         */
+        AssignmentOfferCreate: {
+            /**
+             * Tutor User Id
+             * Format: uuid
+             */
+            tutor_user_id: string;
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /**
+             * Respond By
+             * @description An earlier deadline for the tutor's answer, after now and no later than the default; truncated to whole minutes.
+             */
+            respond_by?: string | null;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * AssignmentOfferCreated
+         * @description The new offer and the tutor's workload warnings (#52 C2 step 12).
+         */
+        AssignmentOfferCreated: {
+            offer: components["schemas"]["AssignmentOfferItem"];
+            /**
+             * Warnings
+             * @description The tutor's workload warnings for the session. They never block.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * AssignmentOfferDecline
+         * @description The optional body of a decline (#52 D3).
+         */
+        AssignmentOfferDecline: {
+            /**
+             * Note
+             * @description Why the tutor declines, for the staff: trimmed, at most 500 characters; empty is no note.
+             */
+            note?: string | null;
+        };
+        /**
+         * AssignmentOfferItem
+         * @description One assignment offer (#52 G1).
+         */
+        AssignmentOfferItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            scope: components["schemas"]["OfferScopeCode"];
+            status: components["schemas"]["OfferStatusCode"];
+            tutor: components["schemas"]["OfferPerson"];
+            /**
+             * Offered At
+             * Format: date-time
+             */
+            offered_at: string;
+            offered_by: components["schemas"]["OfferPerson"];
+            /**
+             * Respond By
+             * Format: date-time
+             */
+            respond_by: string;
+            /** Responded At */
+            responded_at: string | null;
+            /** Decline Note */
+            decline_note: string | null;
+            /**
+             * Sessions
+             * @description The covered sessions, by start.
+             */
+            sessions: components["schemas"]["OfferSession"][];
+        };
+        /**
+         * AssignmentOfferPage
+         * @description A page of the caller's offers (#52 G2).
+         */
+        AssignmentOfferPage: {
+            /** Items */
+            items: components["schemas"]["AssignmentOfferItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /**
          * AuditChange
          * @description One column's value before and after the change (null when there is none).
@@ -2767,6 +2962,11 @@ export interface components {
             ends_at: string;
             /** @description Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks. */
             override?: components["schemas"]["SessionOverride"] | null;
+            /**
+             * Respond By
+             * @description With a tutor only (#52): an earlier deadline for the tutor's answer, after now and no later than the default (the scheduling policy's response time, but never after the start); truncated to whole minutes. Null or absent: the default.
+             */
+            respond_by?: string | null;
         };
         /**
          * ClassSessionCreated
@@ -2837,6 +3037,8 @@ export interface components {
              * @description The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`).
              */
             conflict_codes: string[];
+            /** @description The pending offer of an `offered` session (#52); null otherwise. */
+            pending_offer: components["schemas"]["PendingOffer"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
@@ -2912,6 +3114,16 @@ export interface components {
              * @description The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`).
              */
             conflict_codes: string[];
+            /** @description The pending offer of an `offered` session (#52); null otherwise. */
+            pending_offer: components["schemas"]["PendingOffer"] | null;
+        };
+        /**
+         * ClassSessionOffers
+         * @description A session's offer history, newest first (#52 G3).
+         */
+        ClassSessionOffers: {
+            /** Items */
+            items: components["schemas"]["AssignmentOfferItem"][];
         };
         /**
          * ClassroomCreate
@@ -4142,6 +4354,78 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * OfferPerson
+         * @description A user named on an offer.
+         */
+        OfferPerson: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** @constant */
+        OfferScopeCode: "session";
+        /**
+         * OfferSession
+         * @description A session the offer covers.
+         */
+        OfferSession: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["OfferSessionSubject"];
+            classroom: components["schemas"]["OfferSessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["OfferSessionParticipant"][];
+        };
+        /**
+         * OfferSessionClassroom
+         * @description The classroom of an offered session.
+         */
+        OfferSessionClassroom: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * OfferSessionParticipant
+         * @description A student of an offered session.
+         */
+        OfferSessionParticipant: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * OfferSessionSubject
+         * @description The subject of an offered session.
+         */
+        OfferSessionSubject: {
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /** @enum {string} */
+        OfferStatusCode: "pending" | "accepted" | "declined" | "expired" | "withdrawn";
         /** OffsetPage[AcademicPeriodDetail] */
         OffsetPage_AcademicPeriodDetail_: {
             /** Items */
@@ -4401,6 +4685,23 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * PendingOffer
+         * @description The pending offer of an ``offered`` session (#52 G3).
+         */
+        PendingOffer: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            tutor: components["schemas"]["SessionTutor"];
+            /**
+             * Respond By
+             * Format: date-time
+             */
+            respond_by: string;
+        };
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
@@ -4485,6 +4786,10 @@ export interface components {
             errors?: components["schemas"]["FieldError"][];
             /** Conflicts */
             conflicts?: components["schemas"]["SchedulingConflict"][];
+            /** Details */
+            details?: {
+                [key: string]: string;
+            };
         };
         /**
          * QualificationCreate
@@ -12084,7 +12389,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. */
+            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12263,6 +12568,135 @@ export interface operations {
                 };
             };
             /** @description The session is completed, cancelled or skipped for a closure (class_session_not_assignable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_class_session_offers_api_v1_class_sessions__class_session_id__offers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionOffers"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    offer_class_session_api_v1_class_sessions__class_session_id__offers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentOfferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOfferCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.assign, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); it is not unassigned (class_session_not_offerable, details.state) or has begun (class_session_not_offerable, details.reason = started); or the tutor breaks scheduling rules (scheduling_conflict, every conflict listed). Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12489,6 +12923,195 @@ export interface operations {
             };
             /** @description No such class series (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_assignment_offers_api_v1_assignment_offers_get: {
+        parameters: {
+            query?: {
+                status?: "pending" | "answered" | "all";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOfferPage"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    accept_assignment_offer_api_v1_assignment_offers__offer_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOfferItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such offer, or it was offered to someone else (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The offer was already answered, expired or withdrawn (offer_not_pending, details.status), or its deadline has passed (offer_expired). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    decline_assignment_offer_api_v1_assignment_offers__offer_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AssignmentOfferDecline"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOfferItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such offer, or it was offered to someone else (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The offer was already answered, expired or withdrawn (offer_not_pending, details.status), or its deadline has passed (offer_expired). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

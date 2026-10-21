@@ -54,6 +54,8 @@ from app.modules.identity.models import (
     UserRole,
 )
 from app.modules.scheduling.models import (
+    AssignmentOffer,
+    AssignmentOfferSession,
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
@@ -98,6 +100,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert audited_classes(Base) == [
         AcademicPeriod,
         ApprovalRequest,
+        AssignmentOffer,
+        AssignmentOfferSession,
         BusinessSettings,
         ClassSeries,
         ClassSeriesParticipant,

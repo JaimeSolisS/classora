@@ -44,6 +44,15 @@ STUDENT_OCCUPYING_STATES: Final = ROOM_OCCUPYING_STATES
 """The states in which a session holds its students' time (D2; checked by the
 application under an advisory lock, #48)."""
 
+FAMILY_VISIBLE_STATES: Final = frozenset(
+    {SessionState.CONFIRMED, SessionState.COMPLETED}
+)
+"""The states in which a session shows on its students' and guardians'
+schedules (ADR-0005 D2 family visibility; #52 B4, E3): only once a tutor has
+accepted it. ``unassigned``, ``offered`` and ``conflict`` never show. #67
+(M4-22) builds the family views on this set and adds its rule for sessions
+cancelled or skipped after the family saw them confirmed."""
+
 FINAL_STATES: Final = frozenset({SessionState.COMPLETED, SessionState.CANCELLED})
 """States with no way out."""
 
@@ -108,3 +117,12 @@ def can_transition(from_state: str, to_state: str) -> bool:
     except ValueError:
         return False
     return target in ALLOWED_TRANSITIONS[source]
+
+
+def is_family_visible(state: str) -> bool:
+    """Whether a session in ``state`` shows on a family schedule
+    (:data:`FAMILY_VISIBLE_STATES`). Unknown states never do."""
+    try:
+        return SessionState(state) in FAMILY_VISIBLE_STATES
+    except ValueError:
+        return False

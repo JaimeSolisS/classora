@@ -1,8 +1,8 @@
 """Scheduling: ``class_series``, ``class_series_participants`` and the
 occurrence columns of ``class_sessions``.
 
-Revision ID: 0034
-Revises: 0033
+Revision ID: 0035
+Revises: 0034
 Create Date: 2026-10-21
 
 M4-08 (#53 B; spec §1, §3; ADR-0005 D4, D6; ADR-0004: a local ``TIME`` plus
@@ -36,8 +36,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0034"
-down_revision: str | Sequence[str] | None = "0033"
+revision: str = "0035"
+down_revision: str | Sequence[str] | None = "0034"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

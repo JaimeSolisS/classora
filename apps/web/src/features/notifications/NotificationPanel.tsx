@@ -100,7 +100,9 @@ export function NotificationPanel({
                         />
                       ) : null}
                       <span className="min-w-0 flex-1 break-words">
-                        {notificationMessage(t, i18n, item)}
+                        {notificationMessage(t, i18n, item, (instant) =>
+                          formatInstant(instant, 'dateTime'),
+                        )}
                       </span>
                     </span>
                     <span className="flex gap-2 text-xs font-normal text-muted-foreground">

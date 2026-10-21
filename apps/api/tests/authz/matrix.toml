@@ -143,6 +143,27 @@ access = "authenticated"
 
 [[route]]
 method = "GET"
+path = "/api/v1/assignment-offers"
+access = "authenticated"
+# #52 G2: record policy, only the caller's own offers (an empty page for
+# anyone who has none).
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/accept"
+access = "authenticated"
+# #52 D1: only the offered tutor; the placeholder id is no offer, so 404 for
+# every role. The 200 and the other callers' 404 are in
+# tests/integration/test_assignment_offers.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/decline"
+access = "authenticated"
+# #52 D1: as accept.
+
+[[route]]
+method = "GET"
 path = "/api/v1/audit-events"
 access = "permission"
 permission = "audit.view"
@@ -319,6 +340,23 @@ allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
 # #48: every holder sees every session; the placeholder id is no session:
 # 404 for every allowed role. The uuid convertor (#50) keeps the path from
 # shadowing /suggestions (a GET there is 405).
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/offers"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #52 G3: the placeholder id is no session: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/offers"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #52 C2: a valid body, so the placeholder id gets 404 for every allowed role.
+json = {tutor_user_id = "00000000-0000-7000-8000-000000000001", version = 1}
 
 [[route]]
 method = "GET"

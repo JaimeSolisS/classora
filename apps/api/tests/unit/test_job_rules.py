@@ -219,6 +219,7 @@ DEMO_TASKS = {"demo:succeed", "demo:fail", "demo:periodic"}
 MODULE_TASKS = {
     "identity:purge_auth_sessions",
     "ratelimit:purge_counters",
+    "scheduling:expire_offers",
     "scheduling:materialize_series",
 }
 

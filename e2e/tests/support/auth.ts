@@ -40,7 +40,8 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * invitation, never createActiveUser; #35), preferences/preferences.spec.ts
  * 2 (the tutor on two devices; #36), tutors/profiles.spec.ts 1 (the tutor;
  * #43), tutors/qualifications.spec.ts 2 (the demo Owner's reauthenticated
- * API context for the tutor's role change, and the tutor; #44) = 45
+ * API context for the tutor's role change, and the tutor; #44),
+ * scheduling/offers.spec.ts 1 (`demo.tutor`, a #195 demo account; #52) = 46
  * attempts, 2 failures for
  * `demo.owner`. Keep the total well under both limits; never add a setting
  * that disables the limits.
@@ -63,7 +64,7 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * tutors/qualifications.spec.ts does with createApprovedTutor, #44) or
  * rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 45;
+export const LOGIN_ATTEMPTS_PER_RUN = 46;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 20;

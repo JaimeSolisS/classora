@@ -1,26 +1,34 @@
-"""Scheduling background jobs (#53 F3, F4): the nightly series
-materialization.
+"""Scheduling background jobs (#52 E3, #53 F3/F4; ADR-0003, ADR-0005 D3, D4).
 
-``scheduling:materialize_series`` is a periodic Procrastinate task
-registered in **every** environment by :func:`app.core.jobs.create_job_app`
-(through :func:`register`). It runs at 08:00 UTC (``0 8 * * *``: Procrastinate
-evaluates the cron on UTC timestamps, whatever the process time zone) and
-extends every series that is not finished to the rolling horizon
-(``SCHEDULING_HORIZON_WEEKS``, ADR-0005 D4) with
-:func:`~app.modules.scheduling.materialize.materialize_series` in ``extend``
-mode.
-
-Rules (ADR-0003, ISSUE-J1 to J4): the only argument is Procrastinate's
+Two periodic Procrastinate tasks, registered in every environment by
+:func:`app.core.jobs.create_job_app` (through :func:`register`). Both follow
+the ``identity/tasks.py`` rules: the only argument is Procrastinate's
 ``timestamp: int``; one job per tick (``queueing_lock`` and a fixed
-``periodic_id``); the run is idempotent (a rerun inserts nothing). It runs
-in the worker over a direct connection
-(:func:`app.core.jobs.create_worker_engine`), **one Unit of Work per series**
-(the system acts: ``actor_id=None``), so one failing series never blocks the
-others: its error is logged with the series id and the error class, and the
-next run retries it. One summary line with counts only (no personal data).
+``periodic_id``); idempotent; one Unit of Work per item; counts-only logs.
+Procrastinate evaluates the crons on UTC timestamps, whatever the process
+time zone.
 
-:func:`run_materialization` builds its own engine and disposes it, so it can
-also be run by hand::
+**``scheduling:expire_offers``** (#52), every five minutes: expires the
+pending offers whose ``respond_by`` has passed. Their still-``offered``
+sessions go back to ``unassigned`` (the tutor is cleared), the offer becomes
+``expired``, and a reassignment inbox item and the ``scheduling.
+offer_expired`` notifications are made (``offer_flow.expire_offer``). Each
+run selects at most :data:`BATCH_SIZE` overdue offers (oldest deadline
+first) and handles each one in its own Unit of Work, re-checking under the
+lock order that it is still pending and overdue. An offer answered
+meanwhile is skipped, so a concurrent answer wins. Audit events carry no
+actor.
+
+**``scheduling:materialize_series``** (#53), every day at 08:00 UTC
+(``0 8 * * *``): extends every unfinished series to the rolling horizon
+(``SCHEDULING_HORIZON_WEEKS``, ADR-0005 D4) with
+:func:`~app.modules.scheduling.materialize.materialize_series` in
+``extend`` mode, one Unit of Work per series (the system acts:
+``actor_id=None``). A failing series never blocks the others: its error is
+logged with the series id and the error class, and the next run retries it.
+
+Both ``run_*`` functions build their own direct engine and dispose of it, so
+they can also be run by hand::
 
     uv run python -c "import asyncio; from app.core.config import get_settings; \\
     from app.modules.scheduling.tasks import run_materialization; \\
@@ -49,13 +57,61 @@ from app.modules.administration import service as administration
 from app.modules.scheduling.materialize import materialize_series
 from app.modules.scheduling.models import ClassSeries
 from app.modules.scheduling.occurrence_approval import OCCURRENCE_CONFLICT_HANDLER
+from app.modules.scheduling.offer_flow import expire_offer, overdue_offer_ids
 
 logger = logging.getLogger(__name__)
 
-TASK_NAME: Final = "scheduling:materialize_series"
+TASK_NAME: Final = "scheduling:expire_offers"
+EXPIRE_CRON: Final = "*/5 * * * *"
+EXPIRE_PERIODIC_ID: Final = "scheduling-expire-offers"
+EXPIRE_QUEUEING_LOCK: Final = "scheduling-expire-offers"
+BATCH_SIZE: Final = 200
+
+MATERIALIZE_TASK_NAME: Final = "scheduling:materialize_series"
 MATERIALIZE_CRON: Final = "0 8 * * *"
 MATERIALIZE_PERIODIC_ID: Final = "scheduling-materialize-series"
 MATERIALIZE_QUEUEING_LOCK: Final = "scheduling-materialize-series"
+
+
+@dataclass(frozen=True)
+class ExpiryResult:
+    """What one run did."""
+
+    expired: int
+    skipped: int
+
+
+async def run_expire_offers(settings: Settings) -> ExpiryResult:
+    """Expire the overdue pending offers at :func:`app.core.clock.now`.
+
+    Builds its own direct engine and disposes it, so it can also be run by
+    hand."""
+    now = clock.now()
+    engine = create_worker_engine(settings)
+    expired = skipped = 0
+    try:
+        sessionmaker = create_sessionmaker(engine)
+        async with UnitOfWork(sessionmaker) as uow:
+            offer_ids = await overdue_offer_ids(uow.session, now, limit=BATCH_SIZE)
+        for offer_id in offer_ids:
+            async with UnitOfWork(sessionmaker) as uow:
+                changed = await expire_offer(uow.session, offer_id, now)
+            if changed:
+                expired += 1
+            else:
+                skipped += 1
+    finally:
+        await engine.dispose()
+    logger.info(
+        "Expired assignment offers", extra={"expired": expired, "skipped": skipped}
+    )
+    return ExpiryResult(expired=expired, skipped=skipped)
+
+
+@ids_only
+async def expire_offers(timestamp: int) -> None:
+    """The periodic task: one run with the process's settings."""
+    await run_expire_offers(get_settings())
 
 
 @dataclass(frozen=True)
@@ -157,13 +213,19 @@ async def materialize_class_series(timestamp: int) -> None:
 
 
 def register(app: App) -> None:
-    """Register the nightly materialization on ``app`` (every environment)."""
+    """Register the five-minute offer expiry and the nightly series
+    materialization on ``app`` (every environment)."""
+    app.periodic(
+        cron=EXPIRE_CRON,
+        periodic_id=EXPIRE_PERIODIC_ID,
+        queueing_lock=EXPIRE_QUEUEING_LOCK,
+    )(app.task(name=TASK_NAME, queueing_lock=EXPIRE_QUEUEING_LOCK)(expire_offers))
     app.periodic(
         cron=MATERIALIZE_CRON,
         periodic_id=MATERIALIZE_PERIODIC_ID,
         queueing_lock=MATERIALIZE_QUEUEING_LOCK,
     )(
-        app.task(name=TASK_NAME, queueing_lock=MATERIALIZE_QUEUEING_LOCK)(
+        app.task(name=MATERIALIZE_TASK_NAME, queueing_lock=MATERIALIZE_QUEUEING_LOCK)(
             materialize_class_series
         )
     )

@@ -2,7 +2,8 @@
 
 ``administration`` imports no other module (it is the lower layer that
 ``identity`` and later modules call), so the approval types' handlers, the
-notification types of the modules (#41), the account-reference resolver
+notification types of the modules (#41; #52's offer types and its
+``scheduling.offer_reassignment`` handler), the account-reference resolver
 of the approval inbox and the modules' time-zone dependency checks (#37,
 #47: ``scheduling.class_sessions``; #53: ``scheduling.class_series``, and
 the ``scheduling.occurrence_conflict`` approval type) are wired here, by
@@ -32,6 +33,10 @@ def register_approval_wiring() -> None:
         scheduling_service.OCCURRENCE_CONFLICT_HANDLER
     )
     register_qualification_notifications()
+    administration_service.register_approval_handler(
+        scheduling_service.OFFER_REASSIGNMENT_HANDLER
+    )
+    scheduling_service.register_offer_notifications()
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions

@@ -4,7 +4,9 @@ Every error response has ``Content-Type: application/problem+json`` and a body
 with ``type`` (always ``"about:blank"``), ``title`` (the HTTP reason phrase),
 ``status``, a stable ``snake_case`` ``code``, the ``request_id`` and an optional
 fixed ``detail``. Field-level errors add ``errors``; a ``409
-scheduling_conflict`` adds ``conflicts`` (ADR-0005 wire format, #48).
+scheduling_conflict`` adds ``conflicts`` (ADR-0005 wire format, #48); a few
+state errors add ``details``, a flat map of short codes (for example ``409
+offer_not_pending`` ``{"status": "accepted"}``, #52), never record data.
 
 Routes and dependencies raise :class:`AppError` (or a subclass); they never
 build Problem JSON by hand. A domain error defines only its class attributes::
@@ -73,6 +75,7 @@ class ProblemDetails(TypedDict):
     detail: NotRequired[str]
     errors: NotRequired[list[FieldError]]
     conflicts: NotRequired[list[SchedulingConflict]]
+    details: NotRequired[dict[str, str]]
 
 
 class AppError(Exception):
@@ -90,11 +93,13 @@ class AppError(Exception):
         *,
         errors: Sequence[FieldError] | None = None,
         conflicts: Sequence[SchedulingConflict] | None = None,
+        details: Mapping[str, str] | None = None,
     ) -> None:
         if detail is not None:
             self.detail = detail
         self.errors = list(errors) if errors is not None else None
         self.conflicts = list(conflicts) if conflicts is not None else None
+        self.details = dict(details) if details is not None else None
         super().__init__(self.code)
 
 
@@ -131,6 +136,7 @@ def problem_response(
     *,
     errors: Sequence[FieldError] | None = None,
     conflicts: Sequence[SchedulingConflict] | None = None,
+    details: Mapping[str, str] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """The single renderer for Problem Details responses."""
@@ -147,6 +153,8 @@ def problem_response(
         body["errors"] = list(errors)
     if conflicts is not None:
         body["conflicts"] = list(conflicts)
+    if details is not None:
+        body["details"] = dict(details)
     return JSONResponse(
         status_code=status,
         content=body,
@@ -180,6 +188,7 @@ async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
         exc.detail,
         errors=exc.errors,
         conflicts=exc.conflicts,
+        details=exc.details,
         headers=exc.headers,
     )
 

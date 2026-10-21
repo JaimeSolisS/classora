@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { i18n } from '@/i18n';
+import { formatInstant } from '@/lib/time';
 import type { ApprovalRequestItem } from './api';
 import {
   approvalSummary,
@@ -55,31 +56,33 @@ describe('the series occurrence conflict summary', () => {
 
   it('shows the time in the center zone, the student, subject and codes', () => {
     expect(
-      approvalSummary(OCCURRENCE, en, {
-        timeZone: 'America/Mexico_City',
-        language: 'en',
-      }),
+      approvalSummary(OCCURRENCE, en, (instant) =>
+        formatInstant(instant, {
+          timeZone: 'America/Mexico_City',
+          language: 'en',
+        }),
+      ),
     ).toBe(
       'Series occurrence Apr 7, 2031, 4:00 PM — Ana López · Matemáticas: Tutor overlap, Inactive tutor',
     );
     expect(
-      approvalSummary(OCCURRENCE, es, {
-        timeZone: 'America/Tijuana',
-        language: 'es',
-      }),
+      approvalSummary(OCCURRENCE, es, (instant) =>
+        formatInstant(instant, { timeZone: 'America/Tijuana', language: 'es' }),
+      ),
     ).toBe(
       'Sesión de serie 7 abr 2031, 15:00 — Ana López · Matemáticas: Traslape del tutor, Tutor inactivo',
     );
   });
 
   it('names its buttons with the summary and labels its type', () => {
-    const context = {
-      timeZone: 'America/Mexico_City',
-      language: 'en',
-    } as const;
+    const format = (instant: string) =>
+      formatInstant(instant, {
+        timeZone: 'America/Mexico_City',
+        language: 'en',
+      });
 
-    expect(itemName(OCCURRENCE, en, context)).toBe(
-      approvalSummary(OCCURRENCE, en, context),
+    expect(itemName(OCCURRENCE, en, format)).toBe(
+      approvalSummary(OCCURRENCE, en, format),
     );
     expect(typeLabel('scheduling.occurrence_conflict', en)).toBe(
       'Series session conflict',
