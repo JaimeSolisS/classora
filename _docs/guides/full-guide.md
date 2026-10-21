@@ -230,7 +230,7 @@ Rules:
 # Classora delivery process
 
 - GitHub Issues are the canonical backlog after import.
-- Work on one issue at a time.
+- Work on one issue at a time, or overlap at most two with each in its own worktree and its own QA PASS and merge.
 - PM refines the issue before engineering starts.
 - Engineer implements the groomed issue, writes tests, and commits changes.
 - QA verifies each acceptance criterion independently and posts PASS or FAIL.
