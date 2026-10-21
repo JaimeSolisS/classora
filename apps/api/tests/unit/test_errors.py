@@ -204,6 +204,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/closures",
         "/api/v1/closures/check",
         "/api/v1/closures/{closure_id}",
+        "/api/v1/course-templates",
+        "/api/v1/course-templates/{template_id}",
         "/api/v1/tutors",
         "/api/v1/tutors/{user_id}",
         "/api/v1/tutors/{user_id}/qualifications",

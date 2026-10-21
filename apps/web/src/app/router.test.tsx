@@ -81,6 +81,9 @@ describe('route tree', () => {
       'tutors',
       'tutors/:userId',
       'schedule/new',
+      'courses',
+      'courses/templates/new',
+      'courses/templates/:templateId',
       'settings',
       'settings/scheduling-policies',
       'account/password',
@@ -126,14 +129,18 @@ describe('route tree', () => {
     expect(children[25]!.handle).toEqual({ permission: 'tutor.view' });
     // #48 F1.
     expect(children[26]!.handle).toEqual({ permission: 'schedule.manage' });
+    // #64 G1.
+    expect(children[27]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[28]!.handle).toEqual({ permission: 'course.manage' });
+    expect(children[29]!.handle).toEqual({ permission: 'course.view' });
     // #37 H3.
-    expect(children[27]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[30]!.handle).toEqual({ permission: 'settings.manage' });
     // #61 F1.
-    expect(children[28]!.handle).toEqual({ permission: 'settings.manage' });
-    expect(children[29]!.handle).toBeUndefined();
+    expect(children[31]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[32]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[30]!.id).toBe('privacy-notice');
-    expect(children[30]!.handle).toBeUndefined();
+    expect(children[33]!.id).toBe('privacy-notice');
+    expect(children[33]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

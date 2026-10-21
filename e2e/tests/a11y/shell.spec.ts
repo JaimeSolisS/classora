@@ -37,7 +37,8 @@ const THEMES = ['light', 'dark'] as const;
 // that student and guardian (#172 J2), /tutors and the profile of a tutor
 // the scan invites through the API first (#43 F2; an invitation only, no
 // redemption; scanned once its Qualifications and Availability sections
-// loaded, #44 G2, #45 G2), and
+// loaded, #44 G2, #45 G2), /courses and the course template editor
+// (/courses/templates/new once its form loaded, #64 H2), and
 // the open notification panel
 // (#41 F2, its own test below)
 // are behind the guard: scanned signed in
@@ -149,6 +150,13 @@ const ROUTES: ScannedRoute[] = [
     path: '/tutors/<created>',
     signedIn: true,
     createsTutor: true,
+  },
+  { name: 'courses', path: '/courses', signedIn: true },
+  {
+    name: 'course-template-new',
+    path: '/courses/templates/new',
+    signedIn: true,
+    waitForField: common.courses.templates.name,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },

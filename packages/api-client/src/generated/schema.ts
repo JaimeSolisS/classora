@@ -1770,6 +1770,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/course-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Course Templates
+         * @description The course templates with ``status``, by name.
+         */
+        get: operations["list_course_templates_api_v1_course_templates_get"];
+        put?: never;
+        /**
+         * Create Course Template
+         * @description Create an active template from a whole document (no item ids).
+         */
+        post: operations["create_course_template_api_v1_course_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/course-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Course Template
+         * @description One course template, active or not.
+         */
+        get: operations["get_course_template_api_v1_course_templates__template_id__get"];
+        /**
+         * Replace Course Template
+         * @description Replace the template's content: modules and assessments with an
+         *     ``id`` are kept and updated, those without are created, stored ones
+         *     left out are deleted. Cohorts already created keep their snapshot.
+         */
+        put: operations["replace_course_template_api_v1_course_templates__template_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Course Template Status
+         * @description Deactivate (``is_active: false``) or reactivate a template.
+         */
+        patch: operations["set_course_template_status_api_v1_course_templates__template_id__patch"];
+        trace?: never;
+    };
     "/api/v1/class-sessions": {
         parameters: {
             query?: never;
@@ -2673,6 +2727,280 @@ export interface components {
         };
         /** @enum {string} */
         ConsentScope: "student_login" | "guardian_academic_access";
+        /**
+         * CourseCompletion
+         * @description The completion criteria, derived from the template: the minimum
+         *     attendance (null: none), then the required modules and assessments, in
+         *     position order.
+         */
+        CourseCompletion: {
+            /** Min Attendance Percent */
+            min_attendance_percent: number | null;
+            /** Required Module Ids */
+            required_module_ids: string[];
+            /** Required Assessment Ids */
+            required_assessment_ids: string[];
+        };
+        /**
+         * CourseTemplateAssessment
+         * @description One assessment definition, by position (1-based); ``module_id`` null
+         *     is the whole course.
+         */
+        CourseTemplateAssessment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /** Module Id */
+            module_id: string | null;
+            /** Is Required */
+            is_required: boolean;
+            /** Min Score Percent */
+            min_score_percent: number | null;
+        };
+        /**
+         * CourseTemplateAssessmentWrite
+         * @description One assessment definition of a written template; its position is its
+         *     index in ``assessments`` plus one.
+         */
+        CourseTemplateAssessmentWrite: {
+            /**
+             * Id
+             * @description An assessment of this template to keep (PUT only); none creates one.
+             */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Module Index
+             * @description The 0-based index of its module in this body's modules; null is the whole course.
+             */
+            module_index?: number | null;
+            /** Is Required */
+            is_required: boolean;
+            /** Min Score Percent */
+            min_score_percent?: number | null;
+        };
+        /**
+         * CourseTemplateDetail
+         * @description One template with its modules, assessments and completion criteria.
+         */
+        CourseTemplateDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Subjects */
+            subjects: components["schemas"]["CourseTemplateSubject"][];
+            /** Session Count */
+            session_count: number;
+            /** Session Minutes */
+            session_minutes: number;
+            /** Total Minutes */
+            total_minutes: number;
+            /** Module Count */
+            module_count: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Description */
+            description: string | null;
+            /** Min Attendance Percent */
+            min_attendance_percent: number | null;
+            /** Modules */
+            modules: components["schemas"]["CourseTemplateModule"][];
+            /** Assessments */
+            assessments: components["schemas"]["CourseTemplateAssessment"][];
+            completion: components["schemas"]["CourseCompletion"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * CourseTemplateModule
+         * @description One syllabus module, by position (1-based).
+         */
+        CourseTemplateModule: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Subject Id */
+            subject_id: string | null;
+            /** Planned Sessions */
+            planned_sessions: number | null;
+            /** Is Required */
+            is_required: boolean;
+            /** Materials */
+            materials: string | null;
+        };
+        /**
+         * CourseTemplateModuleWrite
+         * @description One syllabus module of a written template; its position is its index
+         *     in ``modules`` plus one.
+         */
+        CourseTemplateModuleWrite: {
+            /**
+             * Id
+             * @description A module of this template to keep (PUT only); none creates one.
+             */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Subject Id
+             * @description One of the template's subject_ids, or null.
+             */
+            subject_id?: string | null;
+            /** Planned Sessions */
+            planned_sessions?: number | null;
+            /** Is Required */
+            is_required: boolean;
+            /**
+             * Materials
+             * @description Free-text materials references (no files or links).
+             */
+            materials?: string | null;
+        };
+        /**
+         * CourseTemplateReplace
+         * @description The new content of a template (``PUT
+         *     /api/v1/course-templates/{template_id}``) with the ``version`` the caller
+         *     loaded. It replaces the whole content: modules and assessments left out
+         *     are deleted.
+         */
+        CourseTemplateReplace: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Subject Ids */
+            subject_ids: string[];
+            /** Session Count */
+            session_count: number;
+            /** Session Minutes */
+            session_minutes: number;
+            /** Min Attendance Percent */
+            min_attendance_percent?: number | null;
+            /** Modules */
+            modules: components["schemas"]["CourseTemplateModuleWrite"][];
+            /** Assessments */
+            assessments?: components["schemas"]["CourseTemplateAssessmentWrite"][];
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        CourseTemplateStatus: "active" | "inactive" | "all";
+        /**
+         * CourseTemplateStatusUpdate
+         * @description Deactivate or reactivate a template (``PATCH
+         *     /api/v1/course-templates/{template_id}``).
+         */
+        CourseTemplateStatusUpdate: {
+            /** Version */
+            version: number;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * CourseTemplateSubject
+         * @description A subject of a template, with its level's current name.
+         *     ``is_active`` is false when the subject or its level was deactivated
+         *     after it was linked (it stays linked).
+         */
+        CourseTemplateSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Level Name */
+            level_name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * CourseTemplateSummary
+         * @description A template in the list. ``total_minutes`` is ``session_count`` ×
+         *     ``session_minutes``.
+         */
+        CourseTemplateSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Subjects */
+            subjects: components["schemas"]["CourseTemplateSubject"][];
+            /** Session Count */
+            session_count: number;
+            /** Session Minutes */
+            session_minutes: number;
+            /** Total Minutes */
+            total_minutes: number;
+            /** Module Count */
+            module_count: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CourseTemplateWrite
+         * @description A whole template document (``POST /api/v1/course-templates``).
+         */
+        CourseTemplateWrite: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Subject Ids */
+            subject_ids: string[];
+            /** Session Count */
+            session_count: number;
+            /** Session Minutes */
+            session_minutes: number;
+            /** Min Attendance Percent */
+            min_attendance_percent?: number | null;
+            /** Modules */
+            modules: components["schemas"]["CourseTemplateModuleWrite"][];
+            /** Assessments */
+            assessments?: components["schemas"]["CourseTemplateAssessmentWrite"][];
+        };
         /** CursorPage[AuditEventListItem] */
         CursorPage_AuditEventListItem_: {
             /** Items */
@@ -3360,6 +3688,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[CourseTemplateSummary] */
+        OffsetPage_CourseTemplateSummary_: {
+            /** Items */
+            items: components["schemas"]["CourseTemplateSummary"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[EducationLevelDetail] */
         OffsetPage_EducationLevelDetail_: {
             /** Items */
@@ -3554,7 +3893,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -10496,6 +10835,318 @@ export interface operations {
             };
             /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_course_templates_api_v1_course_templates_get: {
+        parameters: {
+            query?: {
+                /** @description active (the default), inactive or all. */
+                status?: components["schemas"]["CourseTemplateStatus"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_CourseTemplateSummary_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_course_template_api_v1_course_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another course template already has this name, ignoring case; inactive templates count (name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_course_template_api_v1_course_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such course template (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    replace_course_template_api_v1_course_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseTemplateReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such course template (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The template changed since it was loaded (version_conflict); reload and retry. Or Another course template already has this name, ignoring case; inactive templates count (name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    set_course_template_status_api_v1_course_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseTemplateStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseTemplateDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such course template (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The template changed since it was loaded (version_conflict); reload and retry. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

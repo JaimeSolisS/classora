@@ -364,6 +364,15 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   checkboxes and a "Takes effect" radio group ("Immediately" or "From
   date", which reveals a `type="date"` input with the center's zone in its
   help text). Save stays disabled until a rule changes.
+- **`CourseTemplateForm`** (`features/courses`, #64): a long form on its own
+  page (not a dialog) with `h2` sections. Repeated rows (modules,
+  assessments) are bordered list items with an `h3` ("Module 2"); each
+  control's accessible name names its row and starts from or contains the
+  visible label ("Module 2 title", "Move up module 2"). "Move up" / "Move
+  down" announce the new position in a polite live region and keep focus on
+  the moved row; "Add" focuses the new row's first field, "Remove" focuses
+  the "Add" button. Rows reference each other by a stable row key, so a
+  reorder never loses a link. Read-only holders get `CourseTemplateView`.
 - **`popover`** (`components/ui/popover.tsx`, #41): the shadcn wrapper over
   the Popover of the pinned `radix-ui` package. Non-modal (`role="dialog"`);
   give the content an accessible name (`aria-labelledby` its heading).

@@ -29,6 +29,13 @@ from app.modules.catalog.models import (
     EducationLevel,
     Subject,
 )
+from app.modules.courses.models import (
+    CourseTemplate,
+    CourseTemplateAssessment,
+    CourseTemplateModule,
+    CourseTemplateSnapshot,
+    CourseTemplateSubject,
+)
 from app.modules.families.models import (
     ConsentRecord,
     Family,
@@ -93,6 +100,11 @@ def test_the_guard_scans_the_real_audited_models():
         ClassroomAvailabilityWindow,
         Closure,
         ConsentRecord,
+        CourseTemplate,
+        CourseTemplateAssessment,
+        CourseTemplateModule,
+        CourseTemplateSnapshot,
+        CourseTemplateSubject,
         EducationLevel,
         Family,
         FamilyGuardian,
@@ -150,9 +162,16 @@ def test_the_guard_scans_the_real_audited_models():
         TutorPreferredClassroom,
         ClassSession,
         ClassSessionParticipant,
+        CourseTemplate,
+        CourseTemplateSubject,
+        CourseTemplateModule,
+        CourseTemplateAssessment,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()
+    # #64: a snapshot's content is the immutable row itself, not repeated in
+    # its create event.
+    assert CourseTemplateSnapshot.__audit_exclude__ == {"content"}
     assert {"users", "user_roles", "user_delegations", "audited_things"} <= set(
         audited_table_names()
     )

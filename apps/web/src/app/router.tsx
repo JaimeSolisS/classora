@@ -11,6 +11,11 @@ import { InvitePage, ResetPage } from '@/features/auth/redeem/RedeemLinkPage';
 import { RegisterPage } from '@/features/auth/register/RegisterPage';
 import { SchedulingPoliciesPage } from '@/features/settings/SchedulingPoliciesPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
+import {
+  CourseTemplateEditPage,
+  NewCourseTemplatePage,
+} from '@/features/courses/CourseTemplatePages';
+import { CourseTemplatesPage } from '@/features/courses/CourseTemplatesPage';
 import { FamiliesPage } from '@/features/families/FamiliesPage';
 import { FamilyDetailPage } from '@/features/families/FamilyDetailPage';
 import {
@@ -234,6 +239,21 @@ export const routes: RouteObject[] = [
             path: 'schedule/new',
             element: <ScheduleSessionPage />,
             handle: { permission: 'schedule.manage' },
+          },
+          {
+            path: 'courses',
+            element: <CourseTemplatesPage />,
+            handle: { permission: 'course.view' },
+          },
+          {
+            path: 'courses/templates/new',
+            element: <NewCourseTemplatePage />,
+            handle: { permission: 'course.manage' },
+          },
+          {
+            path: 'courses/templates/:templateId',
+            element: <CourseTemplateEditPage />,
+            handle: { permission: 'course.view' },
           },
           {
             path: 'settings',

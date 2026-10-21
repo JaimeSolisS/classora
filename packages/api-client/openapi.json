@@ -8134,6 +8134,422 @@
         }
       }
     },
+    "/api/v1/course-templates": {
+      "get": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "List Course Templates",
+        "description": "The course templates with ``status``, by name.",
+        "operationId": "list_course_templates_api_v1_course_templates_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CourseTemplateStatus",
+              "description": "active (the default), inactive or all.",
+              "default": "active"
+            },
+            "description": "active (the default), inactive or all."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_CourseTemplateSummary_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "Create Course Template",
+        "description": "Create an active template from a whole document (no item ids).",
+        "operationId": "create_course_template_api_v1_course_templates_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseTemplateWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseTemplateDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another course template already has this name, ignoring case; inactive templates count (name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-templates/{template_id}": {
+      "get": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "Get Course Template",
+        "description": "One course template, active or not.",
+        "operationId": "get_course_template_api_v1_course_templates__template_id__get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseTemplateDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such course template (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "Replace Course Template",
+        "description": "Replace the template's content: modules and assessments with an\n``id`` are kept and updated, those without are created, stored ones\nleft out are deleted. Cohorts already created keep their snapshot.",
+        "operationId": "replace_course_template_api_v1_course_templates__template_id__put",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseTemplateReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseTemplateDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such course template (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The template changed since it was loaded (version_conflict); reload and retry. Or Another course template already has this name, ignoring case; inactive templates count (name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "Set Course Template Status",
+        "description": "Deactivate (``is_active: false``) or reactivate a template.",
+        "operationId": "set_course_template_status_api_v1_course_templates__template_id__patch",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseTemplateStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseTemplateDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such course template (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The template changed since it was loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/class-sessions": {
       "post": {
         "tags": [
@@ -10133,6 +10549,734 @@
           "guardian_academic_access"
         ]
       },
+      "CourseCompletion": {
+        "properties": {
+          "min_attendance_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Attendance Percent"
+          },
+          "required_module_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Module Ids"
+          },
+          "required_assessment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Assessment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_attendance_percent",
+          "required_module_ids",
+          "required_assessment_ids"
+        ],
+        "title": "CourseCompletion",
+        "description": "The completion criteria, derived from the template: the minimum\nattendance (null: none), then the required modules and assessments, in\nposition order."
+      },
+      "CourseTemplateAssessment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "module_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Id"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "min_score_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "title",
+          "module_id",
+          "is_required",
+          "min_score_percent"
+        ],
+        "title": "CourseTemplateAssessment",
+        "description": "One assessment definition, by position (1-based); ``module_id`` null\nis the whole course."
+      },
+      "CourseTemplateAssessmentWrite": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "An assessment of this template to keep (PUT only); none creates one."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "module_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Index",
+            "description": "The 0-based index of its module in this body's modules; null is the whole course."
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "min_score_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score Percent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "is_required"
+        ],
+        "title": "CourseTemplateAssessmentWrite",
+        "description": "One assessment definition of a written template; its position is its\nindex in ``assessments`` plus one."
+      },
+      "CourseTemplateDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateSubject"
+            },
+            "type": "array",
+            "title": "Subjects"
+          },
+          "session_count": {
+            "type": "integer",
+            "title": "Session Count"
+          },
+          "session_minutes": {
+            "type": "integer",
+            "title": "Session Minutes"
+          },
+          "total_minutes": {
+            "type": "integer",
+            "title": "Total Minutes"
+          },
+          "module_count": {
+            "type": "integer",
+            "title": "Module Count"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "min_attendance_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Attendance Percent"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateModule"
+            },
+            "type": "array",
+            "title": "Modules"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateAssessment"
+            },
+            "type": "array",
+            "title": "Assessments"
+          },
+          "completion": {
+            "$ref": "#/components/schemas/CourseCompletion"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subjects",
+          "session_count",
+          "session_minutes",
+          "total_minutes",
+          "module_count",
+          "is_active",
+          "version",
+          "updated_at",
+          "description",
+          "min_attendance_percent",
+          "modules",
+          "assessments",
+          "completion",
+          "created_at"
+        ],
+        "title": "CourseTemplateDetail",
+        "description": "One template with its modules, assessments and completion criteria."
+      },
+      "CourseTemplateModule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "planned_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Sessions"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "materials": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "title",
+          "description",
+          "subject_id",
+          "planned_sessions",
+          "is_required",
+          "materials"
+        ],
+        "title": "CourseTemplateModule",
+        "description": "One syllabus module, by position (1-based)."
+      },
+      "CourseTemplateModuleWrite": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "A module of this template to keep (PUT only); none creates one."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "One of the template's subject_ids, or null."
+          },
+          "planned_sessions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Sessions"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "materials": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materials",
+            "description": "Free-text materials references (no files or links)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "is_required"
+        ],
+        "title": "CourseTemplateModuleWrite",
+        "description": "One syllabus module of a written template; its position is its index\nin ``modules`` plus one."
+      },
+      "CourseTemplateReplace": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "subject_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Subject Ids"
+          },
+          "session_count": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Session Count"
+          },
+          "session_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Session Minutes"
+          },
+          "min_attendance_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Attendance Percent"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateModuleWrite"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Modules"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateAssessmentWrite"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Assessments"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "subject_ids",
+          "session_count",
+          "session_minutes",
+          "modules",
+          "version"
+        ],
+        "title": "CourseTemplateReplace",
+        "description": "The new content of a template (``PUT\n/api/v1/course-templates/{template_id}``) with the ``version`` the caller\nloaded. It replaces the whole content: modules and assessments left out\nare deleted."
+      },
+      "CourseTemplateStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive",
+          "all"
+        ]
+      },
+      "CourseTemplateStatusUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "is_active"
+        ],
+        "title": "CourseTemplateStatusUpdate",
+        "description": "Deactivate or reactivate a template (``PATCH\n/api/v1/course-templates/{template_id}``)."
+      },
+      "CourseTemplateSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "level_name": {
+            "type": "string",
+            "title": "Level Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "level_name",
+          "is_active"
+        ],
+        "title": "CourseTemplateSubject",
+        "description": "A subject of a template, with its level's current name.\n``is_active`` is false when the subject or its level was deactivated\nafter it was linked (it stays linked)."
+      },
+      "CourseTemplateSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateSubject"
+            },
+            "type": "array",
+            "title": "Subjects"
+          },
+          "session_count": {
+            "type": "integer",
+            "title": "Session Count"
+          },
+          "session_minutes": {
+            "type": "integer",
+            "title": "Session Minutes"
+          },
+          "total_minutes": {
+            "type": "integer",
+            "title": "Total Minutes"
+          },
+          "module_count": {
+            "type": "integer",
+            "title": "Module Count"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subjects",
+          "session_count",
+          "session_minutes",
+          "total_minutes",
+          "module_count",
+          "is_active",
+          "version",
+          "updated_at"
+        ],
+        "title": "CourseTemplateSummary",
+        "description": "A template in the list. ``total_minutes`` is ``session_count`` ×\n``session_minutes``."
+      },
+      "CourseTemplateWrite": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "subject_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Subject Ids"
+          },
+          "session_count": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Session Count"
+          },
+          "session_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Session Minutes"
+          },
+          "min_attendance_percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Attendance Percent"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateModuleWrite"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Modules"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateAssessmentWrite"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Assessments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "subject_ids",
+          "session_count",
+          "session_minutes",
+          "modules"
+        ],
+        "title": "CourseTemplateWrite",
+        "description": "A whole template document (``POST /api/v1/course-templates``)."
+      },
       "CursorPage_AuditEventListItem_": {
         "properties": {
           "items": {
@@ -11643,6 +12787,37 @@
         ],
         "title": "OffsetPage[ClosureDetail]"
       },
+      "OffsetPage_CourseTemplateSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[CourseTemplateSummary]"
+      },
       "OffsetPage_EducationLevelDetail_": {
         "properties": {
           "items": {
@@ -12078,6 +13253,8 @@
           "audit.view",
           "catalog.manage",
           "consent.record",
+          "course.manage",
+          "course.view",
           "family.manage",
           "finance.refund.approve",
           "guardian.view",

@@ -54,7 +54,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # tutor_availability_settings, _windows and _exceptions in staff, M3-09;
     # tutor_preferred_classrooms in staff, M3-09b), then scheduling
     # (class_sessions and class_session_participants, M4-02;
-    # scheduling_policies in administration, M4-16);
+    # scheduling_policies in administration, M4-16), then courses
+    # (course_templates, _subjects, _modules, _assessments and _snapshots,
+    # M4-19);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -101,6 +103,11 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "business_settings",
         "operating_hours",
         "scheduling_policies",
+        "course_templates",
+        "course_template_subjects",
+        "course_template_modules",
+        "course_template_assessments",
+        "course_template_snapshots",
     }
 
 
