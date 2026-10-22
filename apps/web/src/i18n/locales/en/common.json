@@ -303,7 +303,9 @@
       "seriesReassignmentDeclined_one": "Declined by {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} session)",
       "seriesReassignmentDeclined_other": "Declined by {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)",
       "seriesReassignmentExpired_one": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} session)",
-      "seriesReassignmentExpired_other": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)"
+      "seriesReassignmentExpired_other": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)",
+      "substitutionDeclined": "Substitute {{tutor}} declined · {{subject}} · {{when}} · still taught by {{original}}",
+      "substitutionExpired": "Substitute {{tutor}} didn't answer · {{subject}} · {{when}} · still taught by {{original}}"
     },
     "list": {
       "title": "Requests",
@@ -1373,7 +1375,13 @@
       "scheduling_occurrence_skipped_closure": "A class on {{starts_at}} is not held because the center is closed.",
       "scheduling_session_rescheduled": "A class was moved to {{starts_at}}.",
       "scheduling_series_changed": "A weekly series changes from {{from_date}} (classes moved: {{changed}}, cancelled: {{cancelled}}).",
-      "scheduling_series_cancelled": "A weekly series is cancelled from {{from_date}}."
+      "scheduling_series_cancelled": "A weekly series is cancelled from {{from_date}}.",
+      "scheduling_offer_received_substitution": "Substitute for {{original_tutor_name}}: {{subject_name}}, {{starts_at}}. Answer by {{respond_by}}.",
+      "scheduling_offer_declined_substitution": "{{tutor_name}} declined to substitute for {{original_tutor_name}}: {{subject_name}}, {{starts_at}}. {{original_tutor_name}} still teaches it.",
+      "scheduling_offer_expired_substitution": "The substitution for {{original_tutor_name}} ({{subject_name}}, {{starts_at}}) offered to {{tutor_name}} expired without an answer. {{original_tutor_name}} still teaches it.",
+      "scheduling_tutor_substituted": "Your class on {{starts_at}} is now taught by a substitute.",
+      "scheduling_session_tutor_changed": "A class on {{starts_at}} has a new tutor.",
+      "scheduling_session_cancelled": "A class on {{starts_at}} is cancelled."
     }
   },
   "scheduling": {
@@ -1784,6 +1792,48 @@
         "scheduledWith_other": "Scheduled with overrides on {{count}} occurrences.",
         "rowDone": "The occurrence was scheduled with an override."
       }
+    },
+    "substitution": {
+      "heading": "Find a substitute",
+      "intro": "The substitute gets a notification and answers in My offers. The session stays with its tutor until the substitute accepts. Every rule is checked again for the substitute.",
+      "tutor": "Substitute",
+      "chooseTutor": "Choose a substitute",
+      "reason": "Reason (required; the substitute doesn't see it)",
+      "counter": "{{length}}/{{max}} characters",
+      "submit": "Offer to the substitute",
+      "submitting": "Offering…",
+      "overrideAction": "Override and offer",
+      "overrideDescription": "The substitution is offered despite these rules. The reason is saved in the audit log.",
+      "validation": {
+        "reasonRequired": "Give a reason.",
+        "reasonTooLong": "The reason can be at most 1000 characters long."
+      },
+      "offeredTo": "Offered to {{tutor}} as a substitute. The session stays with its tutor until they accept.",
+      "pendingLabel": "Pending substitution",
+      "historyHeading": "Substitutions",
+      "pendingText": "Substitution pending: {{tutor}}, answer by {{when}}",
+      "pendingHelp": "{{tutor}} still teaches the session until the substitute accepts.",
+      "withdraw": "Withdraw substitution",
+      "withdrawTitle": "Withdraw the substitution?",
+      "withdrawBody": "{{tutor}} can no longer accept it. The session is not changed and nobody is notified.",
+      "change": "{{from}} → {{to}}",
+      "reasonText": "Reason: {{reason}}",
+      "withdrawn": "Substitution withdrawn. The session is unchanged."
+    },
+    "cancel": {
+      "action": "Cancel session",
+      "title": "Cancel this session",
+      "description": "The tutor and the family are notified, and pending offers are withdrawn. This can't be undone.",
+      "reason": "Reason (required)",
+      "keep": "Keep the session",
+      "submit": "Cancel the session",
+      "submitting": "Cancelling…",
+      "validation": {
+        "reasonRequired": "Give a reason.",
+        "reasonTooLong": "The reason can be at most 1000 characters long."
+      },
+      "banner": "Cancelled",
+      "bannerWhen": "Cancelled on {{when}}."
     }
   },
   "courses": {
@@ -1988,6 +2038,9 @@
       "more_other": "and {{count}} more",
       "acceptTitle": "Accept this weekly series?",
       "acceptDescription": "You will teach the {{offer}}. All its current and future sessions from that date are confirmed once you accept."
+    },
+    "substitution": {
+      "for": "Substitute for {{tutor}}"
     }
   }
 }

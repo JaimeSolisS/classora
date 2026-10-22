@@ -2007,6 +2007,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/substitutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Class Session Substitutions
+         * @description The session's substitutions, newest first, with their status, reason
+         *     and answer.
+         */
+        get: operations["list_class_session_substitutions_api_v1_class_sessions__class_session_id__substitutions_get"];
+        put?: never;
+        /**
+         * Substitute Class Session
+         * @description Offer one confirmed session that hasn't begun to a substitute tutor,
+         *     with a reason. The session stays confirmed with its tutor until the
+         *     substitute accepts in My offers; a decline or an expiry leaves it as it
+         *     is and raises an inbox item. Checked for the substitute: overlap (hard),
+         *     availability, qualification, center closure (one-off sessions only),
+         *     operating hours and the room's availability (soft; an `override` with
+         *     schedule.override allows them). The substitute is notified, without the
+         *     reason. `warnings` lists the substitute's workload warnings.
+         */
+        post: operations["substitute_class_session_api_v1_class_sessions__class_session_id__substitutions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Class Session Substitution
+         * @description Withdraw a pending substitution: the session is unchanged and nobody
+         *     is notified.
+         */
+        post: operations["withdraw_class_session_substitution_api_v1_class_sessions__class_session_id__substitutions__substitution_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Class Session
+         * @description Cancel one session or one occurrence of a series that hasn't begun,
+         *     with a reason. Its pending offers and substitution are withdrawn and its
+         *     open inbox items closed. The tutor (offered or confirmed), a pending
+         *     substitute and the family (confirmed) are notified, without the reason.
+         *     The series itself is unchanged and never re-creates the occurrence.
+         */
+        post: operations["cancel_class_session_api_v1_class_sessions__class_session_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -2483,6 +2560,10 @@ export interface components {
              */
             id: string;
             scope: components["schemas"]["OfferScopeCode"];
+            /** @description `assignment` gives the sessions a tutor; `substitution` (#55) hands one confirmed session over from its original tutor. */
+            kind: components["schemas"]["OfferKindCode"];
+            /** @description For a substitution offer, whom it replaces; null otherwise. */
+            substitution: components["schemas"]["OfferSubstitution"] | null;
             status: components["schemas"]["OfferStatusCode"];
             tutor: components["schemas"]["OfferPerson"];
             /**
@@ -3224,6 +3305,24 @@ export interface components {
             markers: components["schemas"]["MarkerCode"][];
         };
         /**
+         * ClassSessionCancel
+         * @description Cancel one session or occurrence (``POST
+         *     /api/v1/class-sessions/{id}/cancel``, #55 C1). ``reason`` is trimmed,
+         *     1-1000 characters (``reason_required`` / ``reason_too_long``).
+         */
+        ClassSessionCancel: {
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
          * ClassSessionCreate
          * @description A one-off individual session (``POST /api/v1/class-sessions``).
          *
@@ -3347,6 +3446,10 @@ export interface components {
             conflict_codes: string[];
             /** @description The pending offer of an `offered` session (#52); null otherwise. */
             pending_offer: components["schemas"]["PendingOffer"] | null;
+            /** @description The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts. */
+            pending_substitution: components["schemas"]["PendingSubstitution"] | null;
+            /** @description When and why a `cancelled` session was cancelled; null otherwise. */
+            cancellation: components["schemas"]["SessionCancellation"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
@@ -3424,6 +3527,10 @@ export interface components {
             conflict_codes: string[];
             /** @description The pending offer of an `offered` session (#52); null otherwise. */
             pending_offer: components["schemas"]["PendingOffer"] | null;
+            /** @description The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts. */
+            pending_substitution: components["schemas"]["PendingSubstitution"] | null;
+            /** @description When and why a `cancelled` session was cancelled; null otherwise. */
+            cancellation: components["schemas"]["SessionCancellation"] | null;
         };
         /**
          * ClassSessionOffers
@@ -3432,6 +3539,14 @@ export interface components {
         ClassSessionOffers: {
             /** Items */
             items: components["schemas"]["AssignmentOfferItem"][];
+        };
+        /**
+         * ClassSessionSubstitutions
+         * @description A session's substitutions, newest first (#55 E2).
+         */
+        ClassSessionSubstitutions: {
+            /** Items */
+            items: components["schemas"]["SubstitutionItem"][];
         };
         /**
          * ClassSessionUpdate
@@ -3535,6 +3650,10 @@ export interface components {
             conflict_codes: string[];
             /** @description The pending offer of an `offered` session (#52); null otherwise. */
             pending_offer: components["schemas"]["PendingOffer"] | null;
+            /** @description The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts. */
+            pending_substitution: components["schemas"]["PendingSubstitution"] | null;
+            /** @description When and why a `cancelled` session was cancelled; null otherwise. */
+            cancellation: components["schemas"]["SessionCancellation"] | null;
             /**
              * Warnings
              * @description Always empty for an edit for now.
@@ -4784,6 +4903,8 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** @enum {string} */
+        OfferKindCode: "assignment" | "substitution";
         /**
          * OfferPerson
          * @description A user named on an offer.
@@ -4898,6 +5019,14 @@ export interface components {
         };
         /** @enum {string} */
         OfferStatusCode: "pending" | "accepted" | "declined" | "expired" | "withdrawn";
+        /**
+         * OfferSubstitution
+         * @description What a substitute sees of a substitution (#55 E4): the original tutor,
+         *     never the reason.
+         */
+        OfferSubstitution: {
+            original_tutor: components["schemas"]["OfferPerson"];
+        };
         /** OffsetPage[AcademicPeriodDetail] */
         OffsetPage_AcademicPeriodDetail_: {
             /** Items */
@@ -5193,6 +5322,23 @@ export interface components {
              */
             scope: "session" | "series";
             tutor: components["schemas"]["SessionTutor"];
+            /**
+             * Respond By
+             * Format: date-time
+             */
+            respond_by: string;
+        };
+        /**
+         * PendingSubstitution
+         * @description The pending substitution of a ``confirmed`` session (#55 E3).
+         */
+        PendingSubstitution: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            substitute: components["schemas"]["SessionTutor"];
             /**
              * Respond By
              * Format: date-time
@@ -5776,6 +5922,19 @@ export interface components {
             count: number | null;
         };
         /**
+         * SessionCancellation
+         * @description When and why a session was cancelled (#55 E3).
+         */
+        SessionCancellation: {
+            /**
+             * Cancelled At
+             * Format: date-time
+             */
+            cancelled_at: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * SessionClassroom
          * @description The session's classroom (an inactive room stays shown as such).
          */
@@ -6303,6 +6462,91 @@ export interface components {
             name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * SubstitutionCreate
+         * @description Offer one ``confirmed`` session to a substitute tutor (``POST
+         *     /api/v1/class-sessions/{id}/substitutions``, #55 B2). ``reason`` is
+         *     trimmed, 1-1000 characters (``reason_required`` /
+         *     ``reason_too_long``).
+         */
+        SubstitutionCreate: {
+            /**
+             * Substitute Tutor User Id
+             * Format: uuid
+             */
+            substitute_tutor_user_id: string;
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Why the tutor is replaced, for the staff (never shown to the substitute): 1-1000 characters, trimmed.
+             */
+            reason: string;
+            /**
+             * Respond By
+             * @description An earlier deadline for the substitute's answer, after now and no later than the default; truncated to whole minutes.
+             */
+            respond_by?: string | null;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * SubstitutionCreated
+         * @description The new substitution and the substitute's workload warnings.
+         */
+        SubstitutionCreated: {
+            substitution: components["schemas"]["SubstitutionItem"];
+            /**
+             * Warnings
+             * @description The substitute's workload warnings for the session. They never block.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * SubstitutionItem
+         * @description One substitution of a session's tutor (#55 E1); ``status`` is its
+         *     offer's.
+         */
+        SubstitutionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            status: components["schemas"]["OfferStatusCode"];
+            /**
+             * Offer Id
+             * Format: uuid
+             */
+            offer_id: string;
+            original_tutor: components["schemas"]["OfferPerson"];
+            substitute_tutor: components["schemas"]["OfferPerson"];
+            /** Reason */
+            reason: string;
+            requested_by: components["schemas"]["OfferPerson"];
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Respond By
+             * Format: date-time
+             */
+            respond_by: string;
+            /** Responded At */
+            responded_at: string | null;
+            /** Decline Note */
+            decline_note: string | null;
         };
         /**
          * SuggestedSlot
@@ -13444,6 +13688,274 @@ export interface operations {
                 };
             };
             /** @description The session changed since it was read (version_conflict); it is not unassigned (class_session_not_offerable, details.state) or has begun (class_session_not_offerable, details.reason = started); or the tutor breaks scheduling rules (scheduling_conflict, every conflict listed). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_class_session_substitutions_api_v1_class_sessions__class_session_id__substitutions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionSubstitutions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    substitute_class_session_api_v1_class_sessions__class_session_id__substitutions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubstitutionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubstitutionCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.assign, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); it is not confirmed (class_session_not_substitutable, details.reason = state, details.state), has begun (details.reason = started) or already has a pending substitution (details.reason = substitution_pending, details.substitution_id); or the substitute breaks scheduling rules (scheduling_conflict, every conflict listed). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    withdraw_class_session_substitution_api_v1_class_sessions__class_session_id__substitutions__substitution_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+                substitution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubstitutionItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or no such substitution of it (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The substitution was already answered, expired or withdrawn (offer_not_pending, details.status). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    cancel_class_session_api_v1_class_sessions__class_session_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSessionCancel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); or it is completed, cancelled or skipped for a closure (class_session_not_cancellable, details.reason = state, details.state) or has begun (details.reason = started). Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

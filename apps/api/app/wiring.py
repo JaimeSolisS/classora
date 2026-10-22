@@ -4,7 +4,9 @@
 ``identity`` and later modules call), so the approval types' handlers, the
 notification types of the modules (#41; #52's offer types and its
 ``scheduling.offer_reassignment`` handler; #232's
-``scheduling.occurrence_skipped_closure``; #54's three edit types), the
+``scheduling.occurrence_skipped_closure``; #54's three edit types; #55's
+three substitution and cancellation types), the #55 cancellation workflow
+step (``app.workflows.session_cancellation``), the
 account-reference resolver of the approval inbox and the modules' time-zone
 dependency checks (#37, #47: ``scheduling.class_sessions``; #53:
 ``scheduling.class_series``, and the ``scheduling.occurrence_conflict``
@@ -22,6 +24,7 @@ from app.modules.staff.service import (
     QUALIFICATION_APPROVAL_HANDLER,
     register_qualification_notifications,
 )
+from app.workflows.session_cancellation import on_session_cancelled
 
 
 def register_approval_wiring() -> None:
@@ -40,6 +43,8 @@ def register_approval_wiring() -> None:
     scheduling_service.register_offer_notifications()
     scheduling_service.register_closure_notifications()
     scheduling_service.register_edit_notifications()
+    scheduling_service.register_substitution_notifications()
+    scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions

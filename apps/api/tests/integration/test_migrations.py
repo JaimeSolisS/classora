@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0039"
+HEAD = "0040"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -115,6 +115,7 @@ COURSE_TABLES = [
 OVERRIDE_TABLES = ["class_session_overrides"]
 OFFER_TABLES = ["assignment_offer_sessions", "assignment_offers"]
 SERIES_TABLES = ["class_series", "class_series_participants"]
+SUBSTITUTION_TABLES = ["class_session_substitutions"]
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -309,6 +310,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *OVERRIDE_TABLES,
             *OFFER_TABLES,
             *SERIES_TABLES,
+            *SUBSTITUTION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4131,12 +4133,29 @@ def _of_0039(diff: Any) -> bool:
     return False
 
 
+SUBSTITUTIONS_TABLE = "class_session_substitutions"
+SUBSTITUTIONS_INDEX = "ix_class_session_substitutions_class_session_id"
+"""The objects revision 0040 adds (#55 A1, A2)."""
+
+
+def _of_0040(diff: Any) -> bool:
+    """A metadata difference that revision 0040 adds (the offer ``kind``
+    column and the substitutions table with its index)."""
+    if diff[0] == "add_column":
+        return diff[2] == "assignment_offers" and diff[3].name == "kind"
+    if diff[0] == "add_table":
+        return diff[1].name == SUBSTITUTIONS_TABLE
+    if diff[0] == "add_index":
+        return diff[1].name == SUBSTITUTIONS_INDEX
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
     their foreign key and unique constraint; and 0036's and 0038's
     objects."""
-    if _of_0036(diff) or _of_0038(diff) or _of_0039(diff):
+    if _of_0036(diff) or _of_0038(diff) or _of_0039(diff) or _of_0040(diff):
         return True
     if diff[0] == "add_table":
         return diff[1].name in tables
@@ -4811,9 +4830,13 @@ def test_assignment_offers_columns_constraints_and_indexes(fresh_database_url):
         # 0036 (#233 A1)
         "class_series_id": ("uuid", "YES", None, None),
         "from_date": ("date", "YES", None, None),
+        # 0040 (#55 A1)
+        "kind": ("character varying", "NO", 20, "'assignment'::character varying"),
     }
     constraints = _constraints(fresh_database_url, table)
     assert set(constraints) == {
+        "ck_assignment_offers_kind_valid",
+        "ck_assignment_offers_substitution_session_scope",
         "pk_assignment_offers",
         "fk_assignment_offers_tutor_user_id_users",
         "fk_assignment_offers_offered_by_user_id_users",
@@ -5065,7 +5088,7 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
     assert [
         d
         for d in metadata_diff(fresh_database_url)
-        if not (_of_0036(d) or _of_0038(d) or _of_0039(d))
+        if not (_of_0036(d) or _of_0038(d) or _of_0039(d) or _of_0040(d))
     ] == []
     [row] = run_sql(
         fresh_database_url,
@@ -5280,7 +5303,9 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
     command.upgrade(config, "0036")
 
     assert [
-        d for d in metadata_diff(fresh_database_url) if not (_of_0038(d) or _of_0039(d))
+        d
+        for d in metadata_diff(fresh_database_url)
+        if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
     ] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
         before = offers_before if table == "assignment_offers" else series_before
@@ -5555,7 +5580,9 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
     command.upgrade(config, "0037")
 
     assert version_nums(dsn) == ["0037"]
-    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+    ] == []
     sessions = _session_rows(dsn)
     for cleared in (future, past):
         state, tutor_id, version = sessions_before[cleared]
@@ -5599,12 +5626,14 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
     command.upgrade(config, "0037")
     subject = _subject_row(dsn)
     old = _series(dsn, subject)
-    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+    ] == []
 
     command.upgrade(config, "0038")
 
     assert version_nums(dsn) == ["0038"]
-    assert [d for d in metadata_diff(dsn) if not _of_0039(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d))] == []
     [row] = run_sql(
         dsn, "SELECT split_from_series_id FROM class_series WHERE id = :id", {"id": old}
     )
@@ -5628,7 +5657,9 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
 
     assert version_nums(dsn) == ["0037"]
     assert LINEAGE_COLUMN not in _columns(dsn, "class_series")
-    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+    ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
 
     command.upgrade(config, "head")
@@ -5664,7 +5695,7 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
     command.upgrade(config, "0039")
 
     assert version_nums(dsn) == ["0039"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0040(d)] == []
     [row] = run_sql(
         dsn,
         "SELECT class_series_id, reason FROM class_session_overrides WHERE id = :id",
@@ -5701,9 +5732,158 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
 
     assert version_nums(dsn) == ["0038"]
     assert OVERRIDE_CONTEXT_COLUMN not in _columns(dsn, "class_session_overrides")
-    assert [d for d in metadata_diff(dsn) if not _of_0039(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d))] == []
     assert len(run_sql(dsn, "SELECT id FROM class_session_overrides")) == 2
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
     assert metadata_diff(dsn) == []
+
+
+# --- 0040: substitutions (#55 A1, A2, A4) -------------------------------------------
+
+SUBSTITUTION_INSERT = (
+    "INSERT INTO class_session_substitutions (class_session_id, offer_id,"
+    " original_tutor_user_id, substitute_tutor_user_id, reason,"
+    " requested_by_user_id, slot_starts_at, slot_ends_at)"
+    " VALUES (:s, :o, :original, :substitute, :reason, :original,"
+    " '2031-01-12 16:00Z', '2031-01-12 17:00Z') RETURNING id"
+)
+
+
+def _offer_row(dsn: str, tutor: uuid.UUID, kind: str | None = None) -> uuid.UUID:
+    """A session-scope offer, with ``kind`` when given (else the default)."""
+    if kind is None:
+        [row] = run_sql(
+            dsn,
+            "INSERT INTO assignment_offers (scope, tutor_user_id, offered_at,"
+            " offered_by_user_id, respond_by) VALUES ('session', :u,"
+            " '2031-01-01T12:00:00Z', :u, '2031-01-03T12:00:00Z') RETURNING id",
+            {"u": tutor},
+        )
+    else:
+        [row] = run_sql(
+            dsn,
+            "INSERT INTO assignment_offers (scope, kind, tutor_user_id, offered_at,"
+            " offered_by_user_id, respond_by) VALUES ('session', :k, :u,"
+            " '2031-01-01T12:00:00Z', :u, '2031-01-03T12:00:00Z') RETURNING id",
+            {"u": tutor, "k": kind},
+        )
+    return uuid.UUID(str(row.id))
+
+
+def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0039")
+    tutor, substitute = _user_row(dsn), _user_row(dsn)
+    old = _offer_row(dsn, tutor)
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0040")
+
+    assert version_nums(dsn) == ["0040"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == {SUBSTITUTIONS_TABLE}
+    [row] = run_sql(
+        dsn, "SELECT kind FROM assignment_offers WHERE id = :id", {"id": old}
+    )
+    assert row.kind == "assignment"
+    subject = _subject_row(dsn)
+    [session] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, tutor_user_id,"
+        " starts_at, ends_at, scheduled_minutes) VALUES ('individual',"
+        " 'confirmed', :subject, :t, '2031-01-12 16:00Z', '2031-01-12 17:00Z', 60)"
+        " RETURNING id",
+        {"subject": subject, "t": tutor},
+    )
+    offer = _offer_row(dsn, substitute, kind="substitution")
+    substitution = {
+        "s": session.id,
+        "o": offer,
+        "original": tutor,
+        "substitute": substitute,
+        "reason": "Enfermedad",
+    }
+    run_sql(dsn, SUBSTITUTION_INSERT, substitution)
+
+    # A4: the raw-SQL rejections.
+    with pytest.raises(IntegrityError, match="ck_assignment_offers_kind_valid"):
+        _offer_row(dsn, tutor, kind="swap")
+    with pytest.raises(
+        IntegrityError, match="ck_assignment_offers_substitution_session_scope"
+    ):
+        run_sql(
+            dsn,
+            "INSERT INTO assignment_offers (scope, kind, tutor_user_id, offered_at,"
+            " offered_by_user_id, respond_by, class_series_id, from_date)"
+            " VALUES ('series', 'substitution', :u, '2031-01-01T12:00:00Z', :u,"
+            " '2031-01-03T12:00:00Z', :series, '2031-01-06')",
+            {"u": tutor, "series": _series(dsn, subject)},
+        )
+    for changes, constraint in (
+        ({"substitute": tutor}, "ck_class_session_substitutions_substitute_differs"),
+        ({"reason": " Enfermedad "}, "ck_class_session_substitutions_reason_trimmed"),
+        ({"reason": ""}, "ck_class_session_substitutions_reason_trimmed"),
+        ({}, "uq_class_session_substitutions_offer_id"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, SUBSTITUTION_INSERT, substitution | changes)
+
+    command.downgrade(config, "0039")
+
+    assert version_nums(dsn) == ["0039"]
+    assert public_tables(dsn) == before
+    assert "kind" not in _columns(dsn, "assignment_offers")
+    assert [d for d in metadata_diff(dsn) if not _of_0040(d)] == []
+    assert {r.id for r in run_sql(dsn, "SELECT id FROM assignment_offers")} == {old}
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_class_session_substitutions_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = SUBSTITUTIONS_TABLE
+
+    assert _columns(fresh_database_url, table) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "class_session_id": ("uuid", "NO", None, None),
+        "offer_id": ("uuid", "NO", None, None),
+        "original_tutor_user_id": ("uuid", "NO", None, None),
+        "substitute_tutor_user_id": ("uuid", "NO", None, None),
+        "reason": ("character varying", "NO", 1000, None),
+        "requested_by_user_id": ("uuid", "NO", None, None),
+        "slot_starts_at": ("timestamp with time zone", "NO", None, None),
+        "slot_ends_at": ("timestamp with time zone", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    foreign_keys = {
+        "fk_class_session_substitutions_class_session_id_class_sessions",
+        "fk_class_session_substitutions_offer_id_assignment_offers",
+        "fk_class_session_substitutions_original_tutor_user_id_users",
+        "fk_class_session_substitutions_substitute_tutor_user_id_users",
+        "fk_class_session_substitutions_requested_by_user_id_users",
+    }
+    assert set(constraints) == {
+        "pk_class_session_substitutions",
+        "uq_class_session_substitutions_offer_id",
+        "ck_class_session_substitutions_substitute_differs",
+        "ck_class_session_substitutions_reason_trimmed",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(fresh_database_url, table)) == {
+        "pk_class_session_substitutions",
+        "uq_class_session_substitutions_offer_id",
+        SUBSTITUTIONS_INDEX,
+    }

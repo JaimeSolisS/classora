@@ -251,11 +251,9 @@ async def _skip(
     if not rows:
         return
     previous = {row.id: (row.state, row.tutor_user_id) for row in rows}
-    await withdraw_pending_offers(
-        session,
-        [row.id for row in rows if row.state == SessionState.OFFERED],
-        by_user_id=None,
-    )
+    # Session-scope offers of either kind (#55 G2/G3: a confirmed row's
+    # pending substitution too).
+    await withdraw_pending_offers(session, [row.id for row in rows], by_user_id=None)
     for row in rows:
         await transition_class_session(
             session,

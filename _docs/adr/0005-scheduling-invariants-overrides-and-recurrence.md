@@ -84,7 +84,7 @@ Data validity is **`422`, not a conflict**: an inactive tutor, a user without th
 
 ### Offers and the response deadline (D3 (a), ISSUE-SC1, product)
 
-- **Scope:** an offer covers one one-off session, or one series assignment: every not-yet-completed occurrence of the series from a given date onward. A substitution (#55) is a one-occurrence offer.
+- **Scope:** an offer covers one one-off session, or one series assignment: every not-yet-completed occurrence of the series from a given date onward. A substitution (#55) is a one-occurrence offer (see the [amendment](#amendments) for what it does to the session).
 - **Offer records:** offers are rows of their own: tutor, scope, status `pending`, `accepted`, `declined`, `expired` or `withdrawn`, `respond_by`, `responded_at` and an optional decline note. The history of who was offered what survives reassignments.
 - **Deadline:** `respond_by = min(offered_at + response_hours, starts_at of the first covered occurrence)`. `response_hours` is part of the M4-16 scheduling policy, default **48**. The administrator making the offer may choose an earlier deadline, never one later than the first covered occurrence.
 - **Decline or expiry:** the offer becomes `declined` or `expired`. Every covered session goes to `unassigned` with its tutor cleared: the tutor's slot is released, and the room and the students stay held. A system-raised inbox item (#40, `requester_user_id NULL`) asks for reassignment, and the administrators are notified.
@@ -181,10 +181,22 @@ Tutors, students and guardians reach their own schedules through record-level po
 - **D9 (b) — Coordinators also hold `schedule.manage`.** Rejected: spec §3 gives creating and cancelling classes to administrators.
 - **D9 (c) — a single `schedule.manage` with nothing for Coordinators.** Rejected: leaves out the "tutor assignments" spec §2 gives Coordinators.
 
+## Amendments
+
+### A1 — Substitution offers (#55 E1, 2026-10-22, owner-delegated)
+
+Under D3, a **substitution offer** (`assignment_offers.kind = 'substitution'`, always session scope) covers one `confirmed` occurrence that hasn't started. Unlike an assignment offer:
+
+- while it is pending, the session **stays `confirmed` with its original tutor** (there is no `confirmed → offered` transition, so families never lose sight of it). The substitute's slot is not held: the accept answers `409 scheduling_conflict` (`tutor_overlap`) if they were booked meanwhile;
+- **accepting** swaps the tutor in one transaction (still `confirmed`, under the tutor `EXCLUDE`), after re-checking that the session is still `confirmed` with the original tutor at the offered times;
+- **declining or expiring** leaves the session unchanged (still `confirmed`, original tutor) and raises the same reassignment inbox item and staff notifications as an assignment offer.
+
+D2 is unchanged. A session has at most one pending substitution; writers that move or cancel a `confirmed` row withdraw it. A center cancellation stores no policy classification; billing (M6-14) and pay (M7-04) add their steps to the `app/workflows/session_cancellation.py` seam (#55 E3).
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §7.4, §8, §10.3 ISSUE-D4 and ISSUE-D6, §10.5 ISSUE-SC1, ISSUE-SC2 and ISSUE-SC3, §10.12 ISSUE-X2, §11, §12
 - [`../spec.md`](../spec.md) §1, §2, §3, §10, §15 W1 and W2, §16, §18 item 6
 - [ADR-0002](0002-module-boundaries-and-reporting.md), [ADR-0003](0003-database-connection-topology.md), [ADR-0004](0004-money-time-and-date-representation.md), [ADR-0007](0007-authentication-sessions-recovery-and-delegation.md)
-- GitHub issue #46 (this decision gate); groomed issues #37, #38, #39, #44, #45, #197 and #198
+- GitHub issue #46 (this decision gate); groomed issues #37, #38, #39, #44, #45, #197 and #198; #55 (amendment A1)
 - Primary sources (checked 2026-10-19): `registry.npmjs.org/@fullcalendar/react`, `/temporal-polyfill` and `/rrule`; `fullcalendar.io/license`, `/docs/react`, `/docs/timeZone`, `/docs/accessibility` and `/docs/shadcn`; `github.com/fullcalendar/fullcalendar`; `pypi.org/project/python-dateutil` and `/types-python-dateutil`; `github.com/dateutil/dateutil`

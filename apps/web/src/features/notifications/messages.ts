@@ -8,7 +8,9 @@ import type { NotificationItem } from './api';
 // interpolating `params`, so a language switch re-renders old ones too. A
 // type the client doesn't know shows a generic message, never its code.
 // An offer notification about a series (#233 E1: its params carry
-// `class_series_id`) uses the type's `_series` message when there is one.
+// `class_series_id`) uses the type's `_series` message when there is one;
+// a substitution offer (#55 F4: `kind = "substitution"`) its `_substitution`
+// message.
 
 /** The i18n key of a type's message, for example `notifications.types.dev_demo`. */
 export function notificationMessageKey(type: string): string {
@@ -83,6 +85,11 @@ function isSeries(params: NotificationItem['params']): boolean {
   );
 }
 
+/** Whether the params are about a substitution offer (#55 F1, F4). */
+function isSubstitution(params: NotificationItem['params']): boolean {
+  return params.kind === 'substitution';
+}
+
 /** The translated message of one notification. */
 export function notificationMessage(
   t: TFunction,
@@ -92,7 +99,13 @@ export function notificationMessage(
 ): string {
   const base = notificationMessageKey(item.notification_type);
   const series = `${base}_series`;
-  const key = isSeries(item.params) && i18n.exists(series) ? series : base;
+  const substitution = `${base}_substitution`;
+  let key = base;
+  if (isSeries(item.params) && i18n.exists(series)) {
+    key = series;
+  } else if (isSubstitution(item.params) && i18n.exists(substitution)) {
+    key = substitution;
+  }
   if (!i18n.exists(key)) {
     return t('notifications.unknown');
   }
@@ -140,7 +153,9 @@ function offeredSession(params: NotificationItem['params']): string {
  * `scheduling.occurrence_skipped_closure`, #232, and #54's
  * `scheduling.session_rescheduled`, `scheduling.series_changed` and
  * `scheduling.series_cancelled`: their tutor, student and guardian
- * recipients have no session or series page yet, #54b / #67).
+ * recipients have no session or series page yet, #54b / #67; #55's
+ * `scheduling.tutor_substituted`, `scheduling.session_tutor_changed` and
+ * `scheduling.session_cancelled` for the same reason, until #67).
  */
 export const NOTIFICATION_LINKS: Readonly<
   Record<

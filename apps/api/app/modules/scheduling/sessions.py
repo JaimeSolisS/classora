@@ -121,6 +121,38 @@ async def transition_class_session(
     return row
 
 
+async def replace_session_tutor(
+    session: AsyncSession,
+    class_session_id: uuid.UUID,
+    *,
+    tutor_user_id: uuid.UUID,
+    expected_version: int,
+) -> ClassSession:
+    """Hand a ``confirmed`` session to another tutor (#55 D1: a substitute
+    accepted). The state stays ``confirmed``; the version is bumped.
+
+    Order: the row ``FOR UPDATE`` (missing → ``RecordNotFoundError``) →
+    ``ensure_version`` (``StaleVersionError``) → ``confirmed`` only (else
+    ``ValueError``: the caller re-checks first) → the new tutor, flushed
+    through :func:`flush_class_sessions`: when the new tutor is already
+    held at that time the exclusion constraint refuses it
+    (:class:`SessionOverlapError` ``tutor_overlap``)."""
+    row = await session.scalar(
+        select(ClassSession)
+        .where(ClassSession.id == class_session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if row is None:
+        raise RecordNotFoundError()
+    ensure_version(row, expected_version)
+    if row.state != SessionState.CONFIRMED:
+        raise ValueError(f"only a confirmed session changes tutor, not {row.state}")
+    row.tutor_user_id = tutor_user_id
+    await flush_class_sessions(session)
+    return row
+
+
 async def has_class_sessions(session: AsyncSession) -> bool:
     """Whether any class session exists, in any state (#37 E1 (a)): past and
     cancelled rows also hold instants computed from the center's local time,

@@ -38,6 +38,11 @@ import { formatLocalDate } from '@/lib/time';
 // from-date and the end (until, count or none), how many sessions are
 // scheduled so far, the first sessions ("and n more" when truncated) and
 // the deadline. Accepting it confirms every current and future session.
+//
+// A substitution offer (#55 H2) reads "Substitute for <original tutor>" with
+// the same Accept and Decline; a 409 substitution_no_longer_valid or a
+// scheduling_conflict (the substitute is busy then) shows its message on the
+// card and the list is refreshed.
 
 export type OffersState =
   | { status: 'loading' }
@@ -379,6 +384,13 @@ function OfferCard({
                 level: session.subject.education_level_name,
               })}
             </h2>
+            {offer.substitution && index === 0 ? (
+              <p className="font-medium break-words">
+                {t('offers.substitution.for', {
+                  tutor: offer.substitution.original_tutor.display_name,
+                })}
+              </p>
+            ) : null}
             <p className="break-words">
               {t('offers.card.when', {
                 date: times.date,

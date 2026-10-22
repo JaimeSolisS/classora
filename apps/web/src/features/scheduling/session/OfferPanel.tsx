@@ -30,6 +30,8 @@ import type { AssignmentOfferCreated } from './api';
 import {
   EMPTY_OFFER,
   offerServerErrors,
+  REASON_MAX_LENGTH,
+  reasonLength,
   validateOffer,
   type OfferErrors,
   type OfferField,
@@ -56,22 +58,27 @@ import { SeriesConflictList } from './SeriesConflictList';
 // route above) or "This and following sessions" (the series from this
 // occurrence's date). The series choice never has an override (E3): its 409
 // lists the conflicts grouped by local date.
+//
+// `variant="substitute"` (#55 H1) is "Find a substitute" for a confirmed
+// session: the same picker, suggestions, deadline, conflict panel and
+// override dialog, plus a required reason (1-1000 characters, with a
+// counter), with its own labels; the session stays with its tutor until the
+// substitute accepts.
 
-export interface OfferPanelProps {
+export interface OfferPanelProps<T = AssignmentOfferCreated> {
   tutors: readonly Option[];
   timeZone: string;
   canOverride: boolean;
   onSuggest: () => Promise<TutorSuggestionList>;
-  onSubmit: (
-    values: OfferValues,
-    override?: SessionOverride,
-  ) => Promise<AssignmentOfferCreated>;
+  onSubmit: (values: OfferValues, override?: SessionOverride) => Promise<T>;
   /** After a 201 (the page refreshes the session). */
-  onOffered: (created: AssignmentOfferCreated) => void;
+  onOffered: (created: T) => void;
   /** The series choice (#233 G2), for an occurrence of a tutorless series. */
   series?: {
-    onSubmit: (values: OfferValues) => Promise<AssignmentOfferCreated>;
+    onSubmit: (values: OfferValues) => Promise<T>;
   };
+  /** "offer" (#52) or "substitute" (#55). */
+  variant?: 'offer' | 'substitute';
   /** Stories. */
   initialValues?: OfferValues;
   initialConflicts?: SchedulingConflict[];
@@ -79,7 +86,7 @@ export interface OfferPanelProps {
   initialSeriesConflicts?: SchedulingConflict[];
 }
 
-export function OfferPanel({
+export function OfferPanel<T = AssignmentOfferCreated>({
   tutors,
   timeZone,
   canOverride,
@@ -87,12 +94,35 @@ export function OfferPanel({
   onSubmit,
   onOffered,
   series,
+  variant = 'offer',
   initialValues = EMPTY_OFFER,
   initialConflicts,
   initialScope = 'session',
   initialSeriesConflicts,
-}: OfferPanelProps) {
+}: OfferPanelProps<T>) {
   const { t } = useTranslation();
+  const substitute = variant === 'substitute';
+  const labels = substitute
+    ? {
+        heading: t('scheduling.substitution.heading'),
+        intro: t('scheduling.substitution.intro'),
+        chooseTutor: t('scheduling.substitution.chooseTutor'),
+        tutor: t('scheduling.substitution.tutor'),
+        submit: t('scheduling.substitution.submit'),
+        submitting: t('scheduling.substitution.submitting'),
+        overrideAction: t('scheduling.substitution.overrideAction'),
+        overrideDescription: t('scheduling.substitution.overrideDescription'),
+      }
+    : {
+        heading: t('scheduling.offer.heading'),
+        intro: t('scheduling.offer.intro'),
+        chooseTutor: t('scheduling.offer.chooseTutor'),
+        tutor: t('scheduling.fields.tutor'),
+        submit: t('scheduling.offer.submit'),
+        submitting: t('scheduling.offer.submitting'),
+        overrideAction: t('scheduling.offer.overrideAction'),
+        overrideDescription: t('scheduling.offer.overrideDescription'),
+      };
   const { t: tErrors } = useTranslation('errors');
   const id = useId();
   const headingId = `${id}-heading`;
@@ -122,6 +152,7 @@ export function OfferPanel({
   const focusAfterDialog = useRef<'button' | 'panel'>('button');
 
   const fieldId = (field: OfferField | 'deadlineTime') => `${id}-${field}`;
+  const counterId = `${id}-reason-counter`;
   const errorId = (field: OfferField) => `${id}-${field}-error`;
 
   function message(key: OfferMessage | undefined): string | undefined {
@@ -188,7 +219,9 @@ export function OfferPanel({
   }
 
   function focusFirst(found: OfferErrors) {
-    const first = (['tutor', 'deadline'] as const).find((f) => found[f]);
+    const first = (['tutor', 'reason', 'deadline'] as const).find(
+      (f) => found[f],
+    );
     if (first) {
       document.getElementById(fieldId(first))?.focus();
     }
@@ -199,7 +232,7 @@ export function OfferPanel({
     setSeriesConflicts(null);
     setFailure(null);
     setAnnouncement('');
-    const found = validateOffer(values);
+    const found = validateOffer(values, { requireReason: substitute });
     setErrors(found);
     if (Object.keys(found).length > 0) {
       focusFirst(found);
@@ -282,11 +315,9 @@ export function OfferPanel({
       className="flex w-full max-w-2xl min-w-0 flex-col gap-4 rounded-md border border-border p-4"
     >
       <h2 id={headingId} className="text-lg font-semibold">
-        {t('scheduling.offer.heading')}
+        {labels.heading}
       </h2>
-      <p className="text-sm text-muted-foreground">
-        {t('scheduling.offer.intro')}
-      </p>
+      <p className="text-sm text-muted-foreground">{labels.intro}</p>
       {seriesConflicts ? (
         <SeriesConflictList conflicts={seriesConflicts} />
       ) : null}
@@ -300,7 +331,7 @@ export function OfferPanel({
                 type="button"
                 onClick={() => setOverriding(true)}
               >
-                {t('scheduling.offer.overrideAction')}
+                {labels.overrideAction}
               </Button>
             </div>
           ) : (
@@ -317,10 +348,10 @@ export function OfferPanel({
             onCancel={() => setOverriding(false)}
             onCloseAutoFocus={afterDialog}
             labels={{
-              title: t('scheduling.offer.overrideAction'),
-              description: t('scheduling.offer.overrideDescription'),
-              submit: t('scheduling.offer.overrideAction'),
-              submitting: t('scheduling.offer.submitting'),
+              title: labels.overrideAction,
+              description: labels.overrideDescription,
+              submit: labels.overrideAction,
+              submitting: labels.submitting,
             }}
           />
         </div>
@@ -371,7 +402,7 @@ export function OfferPanel({
         ) : null}
         <div className="flex flex-col gap-2">
           <label htmlFor={fieldId('tutor')} className="text-sm font-medium">
-            {t('scheduling.fields.tutor')}
+            {labels.tutor}
           </label>
           <select
             id={fieldId('tutor')}
@@ -386,7 +417,7 @@ export function OfferPanel({
               }))
             }
           >
-            <option value="">{t('scheduling.offer.chooseTutor')}</option>
+            <option value="">{labels.chooseTutor}</option>
             {tutors.map((tutor) => (
               <option key={tutor.id} value={tutor.id}>
                 {tutor.name}
@@ -410,6 +441,45 @@ export function OfferPanel({
             <TutorSuggestions state={suggestions} onChoose={choose} />
           ) : null}
         </div>
+        {substitute ? (
+          <div className="flex flex-col gap-2">
+            <label htmlFor={fieldId('reason')} className="text-sm font-medium">
+              {t('scheduling.substitution.reason')}
+            </label>
+            <textarea
+              id={fieldId('reason')}
+              rows={3}
+              required
+              value={values.reason ?? ''}
+              aria-invalid={errors.reason ? true : undefined}
+              aria-describedby={describedBy('reason', counterId)}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  reason: event.target.value,
+                }))
+              }
+              className="w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1.5 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
+            />
+            <FieldError
+              id={errorId('reason')}
+              message={message(errors.reason)}
+            />
+            <p
+              id={counterId}
+              className={
+                reasonLength(values.reason ?? '') > REASON_MAX_LENGTH
+                  ? 'text-sm text-destructive'
+                  : 'text-sm text-muted-foreground'
+              }
+            >
+              {t('scheduling.substitution.counter', {
+                length: reasonLength(values.reason ?? ''),
+                max: REASON_MAX_LENGTH,
+              })}
+            </p>
+          </div>
+        ) : null}
         <fieldset className="flex flex-col gap-3">
           <legend className="text-sm font-medium">
             {t('scheduling.offer.deadline')}
@@ -470,9 +540,7 @@ export function OfferPanel({
         <div>
           <Button type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}
-            {submitting
-              ? t('scheduling.offer.submitting')
-              : t('scheduling.offer.submit')}
+            {submitting ? labels.submitting : labels.submit}
           </Button>
         </div>
       </form>

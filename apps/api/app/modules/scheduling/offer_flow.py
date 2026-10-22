@@ -54,6 +54,18 @@ the series' tutor and assignment, and always raises one inbox item and the
 staff notifications (with the series params), even when no row was
 covered.
 
+**Substitutions** (#55 D; created by
+:mod:`~app.modules.scheduling.substitution_flow`): the same answer and
+expiry paths, with the session lock then the offer lock. Accepting
+re-checks the session against the substitution's snapshot (``409
+substitution_no_longer_valid``) and swaps the tutor
+(:func:`~app.modules.scheduling.sessions.replace_session_tutor`; an
+``EXCLUDE`` refusal is ``409 scheduling_conflict`` with one
+``tutor_overlap``); declining or expiring leaves the session ``confirmed``
+with its original tutor and raises the inbox item and the staff
+notifications. :func:`withdraw_pending_substitutions` is the G3 seam of
+the writers that move a ``confirmed`` row.
+
 **Withdraw** (:func:`withdraw_pending_offers`): a seam for the later paths
 that cancel or substitute an ``offered`` session (#55, #58): the covering
 pending **session-scope** offers become ``withdrawn``, without an inbox item
@@ -99,11 +111,14 @@ from app.modules.scheduling.errors import (
     SchedulingConflictError,
     SessionOverlapError,
     SessionValidationError,
+    SubstitutionNoLongerValidError,
 )
 from app.modules.scheduling.models import (
     OFFER_ACCEPTED,
     OFFER_DECLINED,
     OFFER_EXPIRED,
+    OFFER_KIND_ASSIGNMENT,
+    OFFER_KIND_SUBSTITUTION,
     OFFER_PENDING,
     OFFER_SCOPE_SESSION,
     OFFER_WITHDRAWN,
@@ -113,6 +128,7 @@ from app.modules.scheduling.models import (
     ClassSeries,
     ClassSession,
     ClassSessionParticipant,
+    ClassSessionSubstitution,
 )
 from app.modules.scheduling.offer_records import (
     OFFER_DECLINED as OFFER_DECLINED_NOTIFICATION,
@@ -149,9 +165,21 @@ from app.modules.scheduling.schemas import (
     OfferSessionParticipant,
     OfferSessionSubject,
     OfferStatusFilter,
+    OfferSubstitution,
 )
-from app.modules.scheduling.sessions import transition_class_session
+from app.modules.scheduling.sessions import (
+    replace_session_tutor,
+    transition_class_session,
+)
 from app.modules.scheduling.states import SessionState
+from app.modules.scheduling.substitution_records import (
+    SESSION_TUTOR_CHANGED,
+    TUTOR_SUBSTITUTED,
+    family_recipients,
+    notify_session,
+    substitution_of_offer,
+)
+from app.modules.scheduling.substitutions import substitution_still_valid
 from app.modules.scheduling.workload_sessions import session_warnings
 
 REASSIGNMENT_TYPE: Final = "scheduling.offer_reassignment"
@@ -293,8 +321,10 @@ async def _close_reassignment_item(
     session: AsyncSession, class_session_id: uuid.UUID, *, by_user_id: uuid.UUID
 ) -> None:
     """E2 auto-close: cancel the open reassignment item of the session's
-    latest declined or expired **session-scope** offer, if it is still open.
-    The items of series offers are closed by the series route (#233 C3)."""
+    latest declined or expired **session-scope assignment** offer, if it is
+    still open. The items of series offers are closed by the series route
+    (#233 C3), those of substitution offers by the next substitution (#55
+    B2 step 12) or the cancel."""
     latest = await session.scalar(
         select(AssignmentOffer.id)
         .join(
@@ -303,6 +333,7 @@ async def _close_reassignment_item(
         )
         .where(AssignmentOfferSession.class_session_id == class_session_id)
         .where(AssignmentOffer.scope == OFFER_SCOPE_SESSION)
+        .where(AssignmentOffer.kind == OFFER_KIND_ASSIGNMENT)
         .where(AssignmentOffer.status.in_(CLOSED_STATUSES))
         .order_by(AssignmentOffer.responded_at.desc(), AssignmentOffer.id.desc())
         .limit(1)
@@ -312,14 +343,15 @@ async def _close_reassignment_item(
 
 
 async def close_reassignment_item_of(
-    session: AsyncSession, offer_id: uuid.UUID, *, by_user_id: uuid.UUID
-) -> None:
-    """Cancel the reassignment item of ``offer_id`` if it is still open."""
+    session: AsyncSession, offer_id: uuid.UUID, *, by_user_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    """Cancel the reassignment item of ``offer_id`` if it is still open;
+    the id of the cancelled item, or ``None``."""
     request_id = await administration.approval_request_id_for_subject(
         session, request_type=REASSIGNMENT_TYPE, subject_id=offer_id
     )
     if request_id is None:
-        return
+        return None
     try:
         await administration.cancel_approval_request(
             session, request_id=request_id, by_user_id=by_user_id
@@ -327,7 +359,8 @@ async def close_reassignment_item_of(
     except administration.ApprovalTransitionInvalidError:
         # Already resolved or dismissed: nothing is open. The check runs
         # before any write, so the transaction is unaffected.
-        return
+        return None
+    return request_id
 
 
 async def offer_class_session(
@@ -421,7 +454,16 @@ async def _close_offer(
     offer ``status``, then (when a session went back) the reassignment item
     and the staff notifications. A series offer (#233 D3) also clears the
     series' tutor and always raises the item and the notifications: the
-    series itself needs a tutor again."""
+    series itself needs a tutor again.
+
+    A **substitution** offer (#55 D2) leaves its session as it is (still
+    ``confirmed`` with the original tutor) and raises the item and the
+    notifications while the session is still ``confirmed``."""
+    if offer.kind == OFFER_KIND_SUBSTITUTION:
+        await _close_substitution(
+            session, offer, sessions, status=status, now=now, note=note
+        )
+        return
     returned: list[ClassSession] = []
     for row in sessions:
         if (
@@ -475,6 +517,108 @@ async def _close_offer(
     )
 
 
+async def _close_substitution(
+    session: AsyncSession,
+    offer: AssignmentOffer,
+    sessions: Sequence[ClassSession],
+    *,
+    status: str,
+    now: datetime,
+    note: str | None,
+) -> None:
+    _finish(offer, status, now)
+    offer.decline_note = note
+    await session.flush()
+    [row] = sessions
+    if row.state != SessionState.CONFIRMED:
+        return
+    substitution = await substitution_of_offer(session, offer.id)
+    assert substitution is not None  # noqa: S101 - A3: one row per offer
+    await administration.create_approval_request(
+        session,
+        request_type=REASSIGNMENT_TYPE,
+        subject_id=offer.id,
+        requester_user_id=None,
+        priority=reassignment_priority(row.starts_at, now),
+    )
+    subject = (await catalog.subject_references(session, [row.subject_id]))[
+        row.subject_id
+    ]
+    accounts = await identity.get_account_references(
+        session, {offer.tutor_user_id, substitution.original_tutor_user_id}
+    )
+    await notify_offer_closed(
+        session,
+        offer,
+        notification_type=(
+            OFFER_DECLINED_NOTIFICATION
+            if status == OFFER_DECLINED
+            else OFFER_EXPIRED_NOTIFICATION
+        ),
+        class_session_id=row.id,
+        subject_name=subject.name,
+        starts_at=row.starts_at,
+        tutor_name=accounts[offer.tutor_user_id].display_name,
+        original_tutor_name=accounts[substitution.original_tutor_user_id].display_name,
+    )
+
+
+async def _accept_substitution(
+    session: AsyncSession,
+    offer: AssignmentOffer,
+    sessions: Sequence[ClassSession],
+    *,
+    now: datetime,
+) -> None:
+    """#55 D1: re-check the session against the snapshot (``409
+    substitution_no_longer_valid``), swap the tutor (an ``EXCLUDE`` refusal
+    → ``409 scheduling_conflict`` with one ``tutor_overlap``), accept the
+    offer and tell the original tutor and the family. Qualification and
+    availability are not re-checked (#52 D2)."""
+    [row] = sessions
+    substitution = await substitution_of_offer(session, offer.id)
+    assert substitution is not None  # noqa: S101 - A3: one row per offer
+    if not substitution_still_valid(
+        state=row.state,
+        tutor_user_id=row.tutor_user_id,
+        starts_at=row.starts_at,
+        ends_at=row.ends_at,
+        original_tutor_user_id=substitution.original_tutor_user_id,
+        slot_starts_at=substitution.slot_starts_at,
+        slot_ends_at=substitution.slot_ends_at,
+    ):
+        raise SubstitutionNoLongerValidError()
+    try:
+        await replace_session_tutor(
+            session,
+            row.id,
+            tutor_user_id=offer.tutor_user_id,
+            expected_version=row.version,
+        )
+    except SessionOverlapError:
+        raise SchedulingConflictError(
+            [Conflict(TUTOR_OVERLAP, {"class_session_ids": []}).as_wire()]
+        ) from None
+    _finish(offer, OFFER_ACCEPTED, now)
+    await session.flush()
+    await notify_session(
+        session,
+        [substitution.original_tutor_user_id],
+        TUTOR_SUBSTITUTED,
+        class_session_id=row.id,
+        starts_at=row.starts_at,
+        actor_id=offer.tutor_user_id,
+    )
+    await notify_session(
+        session,
+        await family_recipients(session, row.id),
+        SESSION_TUTOR_CHANGED,
+        class_session_id=row.id,
+        starts_at=row.starts_at,
+        actor_id=offer.tutor_user_id,
+    )
+
+
 def _series_first_start(
     series: ClassSeries, offer: AssignmentOffer, now: datetime
 ) -> datetime | None:
@@ -492,17 +636,19 @@ def _series_first_start(
 
 async def _offer_target(
     session: AsyncSession, offer_id: uuid.UUID
-) -> tuple[uuid.UUID, uuid.UUID | None] | None:
-    """``(tutor_user_id, class_series_id)`` of an offer (unlocked; both never
-    change), or ``None`` when there is no such offer."""
+) -> tuple[uuid.UUID, uuid.UUID | None, str] | None:
+    """``(tutor_user_id, class_series_id, kind)`` of an offer (unlocked;
+    they never change), or ``None`` when there is no such offer."""
     found = (
         await session.execute(
             select(
-                AssignmentOffer.tutor_user_id, AssignmentOffer.class_series_id
+                AssignmentOffer.tutor_user_id,
+                AssignmentOffer.class_series_id,
+                AssignmentOffer.kind,
             ).where(AssignmentOffer.id == offer_id)
         )
     ).first()
-    return None if found is None else (found[0], found[1])
+    return None if found is None else (found[0], found[1], found[2])
 
 
 async def answer_offer(
@@ -514,7 +660,7 @@ async def answer_offer(
     note: str | None = None,
 ) -> AssignmentOfferItem:
     """``POST /api/v1/assignment-offers/{id}/accept|decline`` (D1-D3; a
-    series offer, #233 D)."""
+    series offer, #233 D; a substitution offer, #55 D)."""
     found = await _offer_target(session, offer_id)
     if found is None or found[0] != caller_id:
         raise RecordNotFoundError()
@@ -524,7 +670,9 @@ async def answer_offer(
     now = clock.now()
     if is_overdue(offer.respond_by, now):
         raise OfferExpiredError()
-    if accept:
+    if accept and offer.kind == OFFER_KIND_SUBSTITUTION:
+        await _accept_substitution(session, offer, sessions, now=now)
+    elif accept:
         for row in sessions:
             if (
                 row.state == SessionState.OFFERED
@@ -594,10 +742,12 @@ async def withdraw_pending_offers(
     *,
     by_user_id: uuid.UUID | None,
 ) -> list[uuid.UUID]:
-    """E4 seam (#55, #58): mark the pending **session-scope** offers covering
-    these sessions ``withdrawn`` (no inbox item, no notification) and return
-    their ids. The caller has locked the sessions (the lock order) and moves
-    them out of ``offered`` itself. Series-scope offers are left alone
+    """E4 seam (#55, #58): mark the pending **session-scope** offers of
+    **either kind** (an assignment of an ``offered`` session, a
+    substitution of a ``confirmed`` one; #55 G2) covering these sessions
+    ``withdrawn`` (no inbox item, no notification) and return their ids.
+    The caller has locked the sessions (the lock order) and moves them out
+    of ``offered`` itself. Series-scope offers are left alone
     (:func:`withdraw_series_offer` withdraws one; #233 B6). ``by_user_id``
     is the audit actor of the caller's Unit of Work; it is not stored on the
     offer."""
@@ -615,6 +765,38 @@ async def withdraw_pending_offers(
             .where(AssignmentOffer.status == OFFER_PENDING)
             .where(AssignmentOffer.scope == OFFER_SCOPE_SESSION)
             .distinct()
+            .order_by(AssignmentOffer.id)
+        )
+    )
+    now = clock.now()
+    for offer_id in offer_ids:
+        offer = await _lock_offer(session, offer_id)
+        if offer.status == OFFER_PENDING:
+            _finish(offer, OFFER_WITHDRAWN, now)
+    await session.flush()
+    return offer_ids
+
+
+async def withdraw_pending_substitutions(
+    session: AsyncSession, class_session_ids: Sequence[uuid.UUID]
+) -> list[uuid.UUID]:
+    """#55 G3: the writers that move a ``confirmed`` row (``PATCH``, the
+    series edits) withdraw its pending **substitution** (its snapshot no
+    longer matches) and keep any assignment offer (#54 caps its deadline).
+    The caller holds the session locks; the offers are locked here. Returns
+    the withdrawn offer ids."""
+    if not class_session_ids:
+        return []
+    offer_ids = list(
+        await session.scalars(
+            select(AssignmentOffer.id)
+            .join(
+                AssignmentOfferSession,
+                AssignmentOfferSession.offer_id == AssignmentOffer.id,
+            )
+            .where(AssignmentOfferSession.class_session_id.in_(class_session_ids))
+            .where(AssignmentOffer.status == OFFER_PENDING)
+            .where(AssignmentOffer.kind == OFFER_KIND_SUBSTITUTION)
             .order_by(AssignmentOffer.id)
         )
     )
@@ -753,12 +935,23 @@ async def offer_items(
     )
     rows = (
         await session.execute(
-            select(ranked.c.offer_id, ClassSession, students, ranked.c.total)
+            select(
+                ranked.c.offer_id,
+                ClassSession,
+                students,
+                ranked.c.total,
+                ClassSessionSubstitution.original_tutor_user_id,
+            )
             .join(ClassSession, ClassSession.id == ranked.c.class_session_id)
+            .outerjoin(
+                ClassSessionSubstitution,
+                ClassSessionSubstitution.offer_id == ranked.c.offer_id,
+            )
             .where(ranked.c.position <= OFFER_ITEM_SESSIONS_MAX)
             .order_by(ClassSession.starts_at, ClassSession.id)
         )
     ).all()
+    originals = {row[0]: row[4] for row in rows if row[4] is not None}
     series_ids = {o.class_series_id for o in offers if o.class_series_id is not None}
     series_by_id = (
         {
@@ -782,11 +975,13 @@ async def offer_items(
     )
     accounts = await identity.get_account_references(
         session,
-        {o.tutor_user_id for o in offers} | {o.offered_by_user_id for o in offers},
+        {o.tutor_user_id for o in offers}
+        | {o.offered_by_user_id for o in offers}
+        | set(originals.values()),
     )
     by_offer: dict[uuid.UUID, list[OfferSession]] = {}
     totals: dict[uuid.UUID, int] = {}
-    for offer_id, row, ids, total in rows:
+    for offer_id, row, ids, total, _ in rows:
         totals[offer_id] = int(total)
         subject = subjects[row.subject_id]
         room = rooms.get(row.classroom_id) if row.classroom_id else None
@@ -845,6 +1040,10 @@ async def offer_items(
         AssignmentOfferItem(
             id=offer.id,
             scope=offer.scope,  # type: ignore[arg-type]
+            kind=offer.kind,  # type: ignore[arg-type]
+            substitution=None
+            if offer.id not in originals
+            else OfferSubstitution(original_tutor=person(originals[offer.id])),
             status=offer.status,  # type: ignore[arg-type]
             tutor=person(offer.tutor_user_id),
             offered_at=_utc(offer.offered_at),

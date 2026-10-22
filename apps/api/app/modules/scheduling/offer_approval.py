@@ -12,6 +12,8 @@ can't be sent back for changes, and dismissing one needs a reason.
   item stays pending). The sessions are locked first (the offer lock
   order). For a **series** offer (#233 E2) the series must also have a
   tutor again; the series row is locked before the sessions.
+- A **substitution** offer's session stays ``confirmed`` (#55 D2), so
+  "Mark resolved" is always allowed for it.
 - **Reject ("Dismiss")**: closes the item; the session is unchanged
   (cancelling sessions belongs to #55 / #58).
 - **Auto-close**: offering the session again cancels the item
@@ -20,8 +22,11 @@ can't be sent back for changes, and dismissing one needs a reason.
 
 ``summaries``: ``{class_session_id, subject_name, starts_at, tutor_name,
 outcome (declined | expired), decline_note, session_state, class_series_id,
-from_date, occurrence_count}`` by offer id, in four statements whatever the
-page size. The three series keys are ``null`` for a session offer; for a
+from_date, occurrence_count, kind, original_tutor_name}`` by offer id, in
+four statements whatever the page size. ``kind`` is ``assignment`` or
+``substitution`` (#55 D2); ``original_tutor_name`` is the tutor a
+substitution would have replaced (``null`` for an assignment): the session
+is still taught by them. The three series keys are ``null`` for a session offer; for a
 series offer without a covered session, ``class_session_id``,
 ``starts_at`` and ``session_state`` are ``null``.
 
@@ -45,6 +50,7 @@ from app.modules.scheduling.models import (
     AssignmentOfferSession,
     ClassSeries,
     ClassSession,
+    ClassSessionSubstitution,
 )
 from app.modules.scheduling.offer_flow import (
     REASSIGNMENT_TYPE,
@@ -115,15 +121,24 @@ class OfferReassignmentHandler:
             return {}
         found = (
             await session.execute(
-                select(AssignmentOffer, ClassSeries.subject_id)
+                select(
+                    AssignmentOffer,
+                    ClassSeries.subject_id,
+                    ClassSessionSubstitution.original_tutor_user_id,
+                )
                 .outerjoin(
                     ClassSeries, ClassSeries.id == AssignmentOffer.class_series_id
+                )
+                .outerjoin(
+                    ClassSessionSubstitution,
+                    ClassSessionSubstitution.offer_id == AssignmentOffer.id,
                 )
                 .where(AssignmentOffer.id.in_(ids))
             )
         ).all()
-        offers = {offer.id: offer for offer, _ in found}
-        series_subjects = {offer.id: subject for offer, subject in found if subject}
+        offers = {offer.id: offer for offer, _, _ in found}
+        series_subjects = {offer.id: subject for offer, subject, _ in found if subject}
+        originals = {offer.id: original for offer, _, original in found if original}
         first: dict[uuid.UUID, ClassSession] = {}
         covered: dict[uuid.UUID, int] = {}
         for offer_id, row in (
@@ -144,7 +159,9 @@ class OfferReassignmentHandler:
             {row.subject_id for row in first.values()} | set(series_subjects.values()),
         )
         accounts = await identity.get_account_references(
-            session, {offer.tutor_user_id for offer in offers.values()}
+            session,
+            {offer.tutor_user_id for offer in offers.values()}
+            | set(originals.values()),
         )
         summaries: dict[uuid.UUID, Mapping[str, Any]] = {}
         for offer_id, offer in offers.items():
@@ -175,8 +192,15 @@ class OfferReassignmentHandler:
                 "occurrence_count": None
                 if offer.class_series_id is None
                 else covered.get(offer_id, 0),
+                "kind": offer.kind,
+                "original_tutor_name": _name(accounts, originals.get(offer_id)),
             }
         return summaries
+
+
+def _name(accounts: Mapping[uuid.UUID, Any], user_id: uuid.UUID | None) -> str | None:
+    account = None if user_id is None else accounts.get(user_id)
+    return None if account is None else str(account.display_name)
 
 
 OFFER_REASSIGNMENT_HANDLER: Final = OfferReassignmentHandler()

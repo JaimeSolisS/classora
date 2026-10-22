@@ -23,6 +23,7 @@ import {
   DECLINED_OFFER,
   NOW,
   PENDING_OFFER,
+  SUBSTITUTION_OFFER,
   SERIES_OFFER,
   SHORT_SERIES_OFFER,
 } from './fixtures';
@@ -148,6 +149,11 @@ describe('rules', () => {
     expect(staleAnswer(error('offer_not_pending'))).toBe('offer_not_pending');
     expect(staleAnswer(error('offer_expired'))).toBe('offer_expired');
     expect(staleAnswer(error('version_conflict'))).toBeNull();
+    // #55 H2: a substitution that changed, or a substitute busy then.
+    expect(staleAnswer(error('substitution_no_longer_valid'))).toBe(
+      'substitution_no_longer_valid',
+    );
+    expect(staleAnswer(error('scheduling_conflict'))).toBe('substitute_busy');
     expect(staleAnswer(new Error('x'))).toBeNull();
   });
 });
@@ -221,6 +227,27 @@ describe('/offers', () => {
     expect(api.calls(LIST)).toHaveLength(2);
     expect(alerts(main())).toContain(
       'The deadline to answer this offer has passed.',
+    );
+  });
+
+  it('a substitution card names the original tutor; a changed session is refused', async () => {
+    const accept = `POST /api/v1/assignment-offers/${SUBSTITUTION_OFFER.id}/accept`;
+    const api = stub({
+      [LIST]: [
+        () => page([SUBSTITUTION_OFFER]),
+        () => page([SUBSTITUTION_OFFER]),
+      ],
+      [accept]: () => problem(409, 'substitution_no_longer_valid'),
+    });
+    app = await renderApp('/offers');
+
+    expect(main().textContent).toContain('Substitute for Carmen Ruiz');
+    await click(buttonByText(main(), 'Accept'));
+    await click(buttonNamed(openDialog()!, 'Accept'));
+
+    expect(api.calls(LIST)).toHaveLength(2);
+    expect(alerts(main())).toContain(
+      "This session changed after the substitution was offered, so it can't be taken.",
     );
   });
 

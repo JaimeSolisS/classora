@@ -29,16 +29,23 @@ export function noteTooLong(note: string): boolean {
 
 /**
  * An answer refused because the offer can no longer be answered (`409
- * offer_not_pending` / `offer_expired`): its message key, so the card
- * shows it and the list is refreshed. Null for any other error.
+ * offer_not_pending` / `offer_expired`; for a substitution, #55 H2, `409
+ * substitution_no_longer_valid` or a `scheduling_conflict` because the
+ * substitute is busy then): its message key, so the card shows it and the
+ * list is refreshed. Null for any other error.
  */
 export function staleAnswer(error: unknown): ErrorMessageKey | null {
   if (!(error instanceof ApiError)) {
     return null;
   }
-  return error.code === 'offer_not_pending' || error.code === 'offer_expired'
-    ? error.code
-    : null;
+  if (
+    error.code === 'offer_not_pending' ||
+    error.code === 'offer_expired' ||
+    error.code === 'substitution_no_longer_valid'
+  ) {
+    return error.code;
+  }
+  return error.code === 'scheduling_conflict' ? 'substitute_busy' : null;
 }
 
 /** The local date and times of a session in the center zone (H1). */

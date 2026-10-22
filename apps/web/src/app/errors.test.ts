@@ -94,6 +94,9 @@ const API_CODES = [
   'series_ended',
   'session_not_in_conflict',
   'occurrence_started',
+  'class_session_not_substitutable',
+  'class_session_not_cancellable',
+  'substitution_no_longer_valid',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

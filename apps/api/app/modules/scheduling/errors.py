@@ -213,3 +213,57 @@ class SessionNotInConflictError(AppError):
 
     def __init__(self, state: str) -> None:
         super().__init__(details={"state": state})
+
+
+# --- Substitutions and cancellations (#55) -----------------------------------------
+
+
+class ClassSessionNotSubstitutableError(AppError):
+    """``409 class_session_not_substitutable`` (#55 B2 step 5):
+    ``details.reason`` is ``state`` (with ``details.state``; only a
+    ``confirmed`` session can get a substitute), ``started``, or
+    ``substitution_pending`` (with ``details.substitution_id``)."""
+
+    status = 409
+    code = "class_session_not_substitutable"
+    detail = "This session can't be given to a substitute tutor now."
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        state: str | None = None,
+        substitution_id: str | None = None,
+    ) -> None:
+        details = {"reason": reason}
+        if state is not None:
+            details["state"] = state
+        if substitution_id is not None:
+            details["substitution_id"] = substitution_id
+        super().__init__(details=details)
+
+
+class SubstitutionNoLongerValidError(AppError):
+    """``409 substitution_no_longer_valid`` (#55 D1): the session is no longer
+    ``confirmed`` with the original tutor at the offered times, so the
+    substitute can't take it. Nothing is written."""
+
+    status = 409
+    code = "substitution_no_longer_valid"
+    detail = "This session changed since the substitution was offered."
+
+
+class ClassSessionNotCancellableError(AppError):
+    """``409 class_session_not_cancellable`` (#55 C1 step 6):
+    ``details.reason`` is ``state`` (with ``details.state``: ``completed``,
+    ``cancelled`` or ``skipped_closure``) or ``started``."""
+
+    status = 409
+    code = "class_session_not_cancellable"
+    detail = "This session can't be cancelled."
+
+    def __init__(self, reason: str, *, state: str | None = None) -> None:
+        details = {"reason": reason}
+        if state is not None:
+            details["state"] = state
+        super().__init__(details=details)

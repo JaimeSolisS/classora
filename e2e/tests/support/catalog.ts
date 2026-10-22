@@ -65,6 +65,20 @@ type Common = {
       submit: string;
       series: Record<'series' | 'session', string>;
     };
+    // #55: substitutions and cancellations.
+    substitution: Record<
+      | 'heading'
+      | 'tutor'
+      | 'reason'
+      | 'submit'
+      | 'overrideAction'
+      | 'historyHeading'
+      | 'pendingText'
+      | 'withdraw'
+      | 'withdrawTitle',
+      string
+    >;
+    cancel: Record<'action' | 'title' | 'reason' | 'submit' | 'banner', string>;
     // #54b: weekly series.
     series: {
       repeats: string;
@@ -474,6 +488,7 @@ type Common = {
       staff_qualification_approved: string;
       staff_qualification_rejected: string;
       staff_qualification_revoked: string;
+      scheduling_session_cancelled: string;
     };
   };
   courses: {

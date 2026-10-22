@@ -94,12 +94,15 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.models import (
+    OFFER_KIND_ASSIGNMENT,
+    OFFER_KIND_SUBSTITUTION,
     OFFER_PENDING,
     AssignmentOffer,
     AssignmentOfferSession,
     ClassSession,
     ClassSessionOverride,
     ClassSessionParticipant,
+    ClassSessionSubstitution,
 )
 from app.modules.scheduling.offer_records import insert_offer, notify_offer_received
 from app.modules.scheduling.offers import RespondByInvalidError, resolve_respond_by
@@ -111,6 +114,8 @@ from app.modules.scheduling.schemas import (
     ClassSessionSlot,
     OverrideActor,
     PendingOffer,
+    PendingSubstitution,
+    SessionCancellation,
     SessionClassroom,
     SessionOverrideItem,
     SessionParticipant,
@@ -339,7 +344,14 @@ def _detail(
     participants: list[SessionParticipant],
     overrides: list[SessionOverrideItem],
     pending_offer: PendingOffer | None,
+    pending_substitution: PendingSubstitution | None = None,
 ) -> ClassSessionDetail:
+    cancellation = None
+    if row.cancelled_at is not None and row.cancellation_reason is not None:
+        cancellation = SessionCancellation(
+            cancelled_at=row.cancelled_at.astimezone(UTC),
+            reason=row.cancellation_reason,
+        )
     return ClassSessionDetail(
         id=row.id,
         kind=SessionKind(row.kind).value,
@@ -365,6 +377,8 @@ def _detail(
         is_exception=row.is_exception,
         conflict_codes=list(row.conflict_codes),
         pending_offer=pending_offer,
+        pending_substitution=pending_substitution,
+        cancellation=cancellation,
     )
 
 
@@ -524,8 +538,9 @@ async def get_class_session(
     session: AsyncSession, class_session_id: uuid.UUID
 ) -> ClassSessionDetail:
     """``GET /api/v1/class-sessions/{id}``: at most seven statements (the
-    tutor and the override actors are read together; the pending offer,
-    #52 G3, comes with the session row)."""
+    tutor, the substitute and the override actors are read together; the
+    pending offer, #52 G3, and the pending substitution, #55 E3, come with
+    the session row)."""
     pending = (
         select(
             AssignmentOfferSession.class_session_id,
@@ -535,18 +550,48 @@ async def get_class_session(
         )
         .join(AssignmentOffer, AssignmentOffer.id == AssignmentOfferSession.offer_id)
         .where(AssignmentOffer.status == OFFER_PENDING)
+        .where(AssignmentOffer.kind == OFFER_KIND_ASSIGNMENT)
+        .subquery()
+    )
+    substitution = (
+        select(
+            ClassSessionSubstitution.class_session_id,
+            ClassSessionSubstitution.id,
+            ClassSessionSubstitution.substitute_tutor_user_id,
+            AssignmentOffer.respond_by,
+        )
+        .join(AssignmentOffer, AssignmentOffer.id == ClassSessionSubstitution.offer_id)
+        .where(AssignmentOffer.status == OFFER_PENDING)
+        .where(AssignmentOffer.kind == OFFER_KIND_SUBSTITUTION)
         .subquery()
     )
     found = (
         await session.execute(
-            select(ClassSession, pending.c.id, pending.c.scope, pending.c.respond_by)
+            select(
+                ClassSession,
+                pending.c.id,
+                pending.c.scope,
+                pending.c.respond_by,
+                substitution.c.id,
+                substitution.c.substitute_tutor_user_id,
+                substitution.c.respond_by,
+            )
             .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
+            .outerjoin(substitution, substitution.c.class_session_id == ClassSession.id)
             .where(ClassSession.id == class_session_id)
         )
     ).first()
     if found is None:
         raise RecordNotFoundError()
-    row, offer_id, offer_scope, offer_respond_by = found
+    (
+        row,
+        offer_id,
+        offer_scope,
+        offer_respond_by,
+        substitution_id,
+        substitute_id,
+        substitution_respond_by,
+    ) = found
     student_ids = list(
         await session.scalars(
             select(ClassSessionParticipant.student_id).where(
@@ -568,6 +613,8 @@ async def get_class_session(
     account_ids = {override.actor_user_id for override in override_rows}
     if row.tutor_user_id is not None:
         account_ids.add(row.tutor_user_id)
+    if substitute_id is not None:
+        account_ids.add(substitute_id)
     accounts = await identity.get_account_references(session, account_ids)
     tutor = None
     if row.tutor_user_id is not None:
@@ -608,6 +655,18 @@ async def get_class_session(
                 scope=offer_scope,
                 tutor=tutor,
                 respond_by=offer_respond_by.astimezone(UTC),
+            )
+        ),
+        pending_substitution=(
+            None
+            if substitution_id is None
+            else PendingSubstitution(
+                id=substitution_id,
+                substitute=SessionTutor(
+                    id=accounts[substitute_id].id,
+                    display_name=accounts[substitute_id].display_name,
+                ),
+                respond_by=substitution_respond_by.astimezone(UTC),
             )
         ),
     )

@@ -30,7 +30,8 @@ After the route's ``401``/``403`` and the body's ``422`` (``override`` and
    inbox request is cancelled; ``offered`` / ``confirmed`` keep their state
    and tutor; an ``EXCLUDE`` race is the #48 single-conflict ``409``;
 10. a pending offer of the row gets its ``respond_by`` capped at its first
-    covered start (D3); ``scheduling.session_rescheduled`` to the tutor
+    covered start (D3); a pending substitution of a ``confirmed`` row is
+    withdrawn (#55 G3); ``scheduling.session_rescheduled`` to the tutor
     (``offered`` / ``confirmed``) and the family (``confirmed``);
 11. ``200`` with the session and ``warnings: []``.
 """
@@ -70,7 +71,10 @@ from app.modules.scheduling.notifications import (
     Affected,
     notify_session_rescheduled,
 )
-from app.modules.scheduling.offer_flow import cap_offer_deadlines
+from app.modules.scheduling.offer_flow import (
+    cap_offer_deadlines,
+    withdraw_pending_substitutions,
+)
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
 from app.modules.scheduling.schemas import ClassSessionUpdate, ClassSessionUpdated
 from app.modules.scheduling.series_edit import cancel_conflict_request
@@ -217,6 +221,9 @@ async def update_class_session(
         await cancel_conflict_request(session, row.id)
     if row.state == SessionState.OFFERED:
         await cap_offer_deadlines(session, [row.id])
+    if previous_state == SessionState.CONFIRMED:
+        # #55 G3: the pending substitution's snapshot no longer matches.
+        await withdraw_pending_substitutions(session, [row.id])
     await notify_session_rescheduled(
         session, affected, starts_at=row.starts_at, actor_id=actor_id
     )

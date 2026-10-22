@@ -14,6 +14,7 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
+  settle,
   type RenderedApp,
 } from '@/test/render-app';
 import {
@@ -24,7 +25,13 @@ import {
 } from '../create/fixtures';
 import {
   ACCEPTED_SERIES,
+  CANCELLED_SESSION,
+  CONFIRMED_SESSION,
   DECLINED,
+  DECLINED_SUBSTITUTION,
+  NEW_SUBSTITUTION,
+  PENDING_SUBSTITUTION,
+  SUBSTITUTED_SESSION,
   NEW_OFFER,
   NEW_SERIES_OFFER,
   OFFERED_SESSION,
@@ -36,13 +43,18 @@ import {
   UNASSIGNED_SESSION,
 } from './fixtures';
 import {
+  canCancel,
+  canSubstitute,
   conflictsByDate,
+  isStaleSessionError,
   offerBody,
   offerServerErrors,
   respondByInstant,
   seriesOfferBody,
+  substitutionBody,
   validateOffer,
 } from './rules';
+import { ApiError } from '@/app/api';
 
 // #52 H2, H4: the staff session page (summary, history, the offer panel
 // with the #51 suggestions, the #48 conflict panel and the #49 override),
@@ -55,6 +67,10 @@ const OFFER = `POST /api/v1/class-sessions/${ID}/offers`;
 const REPLACEMENTS = `GET /api/v1/class-sessions/${ID}/replacement-tutors`;
 const SERIES_DETAIL = `GET /api/v1/class-series/${SERIES_ID}`;
 const SERIES_OFFER = `POST /api/v1/class-series/${SERIES_ID}/offers`;
+const SUBSTITUTIONS = `GET /api/v1/class-sessions/${ID}/substitutions`;
+const SUBSTITUTE = `POST /api/v1/class-sessions/${ID}/substitutions`;
+const WITHDRAW = `POST /api/v1/class-sessions/${ID}/substitutions/${PENDING_SUBSTITUTION.id}/withdraw`;
+const CANCEL = `POST /api/v1/class-sessions/${ID}/cancel`;
 
 const ASSIGNER: SessionUserBody = {
   ...TEST_USER,
@@ -76,6 +92,7 @@ function stub(
     'GET /api/v1/auth/me': meAs(user),
     [DETAIL]: () => jsonResponse(200, UNASSIGNED_SESSION),
     [OFFERS]: () => jsonResponse(200, { items: [DECLINED] }),
+    [SUBSTITUTIONS]: () => jsonResponse(200, { items: [] }),
     'GET /api/v1/tutors': () =>
       jsonResponse(200, {
         items: TUTORS.map((t) => ({
@@ -443,5 +460,377 @@ describe('/schedule/sessions/:id', () => {
     expect(main().textContent).toContain(
       'Part of a weekly series · offered to Diego Torres, answer by Jan 4, 2031, 3:00 AM',
     );
+  });
+});
+
+// #55 H1, H4: "Find a substitute", the pending substitution and its
+// history, "Cancel session" and the cancelled banner; the rules (the
+// panels' visibility, the body with a deadline in Tijuana across the DST
+// change, the field errors, the refused writes that reload the session).
+
+const MANAGER: SessionUserBody = {
+  ...OWNER,
+  permissions: [...OWNER.permissions, 'schedule.manage'],
+};
+
+function problem(status: number, code: string): Response {
+  return new Response(
+    JSON.stringify({
+      type: 'about:blank',
+      title: 'Conflict',
+      status,
+      code,
+      request_id: 'req-1',
+    }),
+    { status, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+}
+
+function typeInto(field: HTMLTextAreaElement, value: string) {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  act(() => {
+    setter?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+describe('substitution and cancel rules (#55)', () => {
+  const now = new Date('2031-01-06T15:59:00Z');
+  const later = new Date('2031-01-06T16:00:00Z');
+
+  it('shows the substitute panel for a confirmed future session only', () => {
+    expect(canSubstitute(CONFIRMED_SESSION, now, true)).toBe(true);
+    expect(canSubstitute(CONFIRMED_SESSION, later, true)).toBe(false);
+    expect(canSubstitute(CONFIRMED_SESSION, now, false)).toBe(false);
+    expect(canSubstitute(SUBSTITUTED_SESSION, now, true)).toBe(false);
+    for (const state of ['unassigned', 'offered', 'cancelled'] as const) {
+      expect(canSubstitute({ ...CONFIRMED_SESSION, state }, now, true)).toBe(
+        false,
+      );
+    }
+  });
+
+  it('offers "Cancel session" for the cancellable states before the start', () => {
+    for (const state of [
+      'unassigned',
+      'offered',
+      'confirmed',
+      'conflict',
+    ] as const) {
+      expect(canCancel({ ...CONFIRMED_SESSION, state }, now, true)).toBe(true);
+    }
+    for (const state of [
+      'completed',
+      'cancelled',
+      'skipped_closure',
+    ] as const) {
+      expect(canCancel({ ...CONFIRMED_SESSION, state }, now, true)).toBe(false);
+    }
+    expect(canCancel(CONFIRMED_SESSION, later, true)).toBe(false);
+    expect(canCancel(CONFIRMED_SESSION, now, false)).toBe(false);
+  });
+
+  it('builds the substitution body; the deadline is local to Tijuana across DST', () => {
+    expect(
+      substitutionBody(
+        {
+          tutorId: 'tutor-2',
+          deadlineDate: '2026-03-09',
+          deadlineTime: '10:00',
+          reason: '  Enferma  ',
+        },
+        5,
+        'America/Tijuana',
+      ),
+    ).toEqual({
+      substitute_tutor_user_id: 'tutor-2',
+      version: 5,
+      reason: 'Enferma',
+      respond_by: '2026-03-09T17:00:00.000Z',
+    });
+    expect(
+      substitutionBody(
+        {
+          tutorId: 'tutor-2',
+          deadlineDate: '2026-03-07',
+          deadlineTime: '10:00',
+          reason: 'x',
+        },
+        5,
+        'America/Tijuana',
+      ).respond_by,
+    ).toBe('2026-03-07T18:00:00.000Z');
+  });
+
+  it('needs a reason of at most 1000 characters', () => {
+    const values = {
+      tutorId: 't',
+      deadlineDate: '',
+      deadlineTime: '',
+      reason: '   ',
+    };
+    expect(validateOffer(values, { requireReason: true })).toEqual({
+      reason: 'scheduling.substitution.validation.reasonRequired',
+    });
+    expect(
+      validateOffer(
+        { ...values, reason: 'a'.repeat(1001) },
+        { requireReason: true },
+      ),
+    ).toEqual({ reason: 'scheduling.substitution.validation.reasonTooLong' });
+    expect(validateOffer(values)).toEqual({});
+  });
+
+  it('maps the substitute and reason field errors', () => {
+    expect(
+      offerServerErrors([
+        {
+          path: ['body', 'substitute_tutor_user_id'],
+          code: 'substitute_is_current_tutor',
+          message: '',
+        },
+        { path: ['body', 'reason'], code: 'reason_too_long', message: '' },
+      ]),
+    ).toEqual({
+      tutor: 'errors:substitute_is_current_tutor',
+      reason: 'scheduling.substitution.validation.reasonTooLong',
+    });
+  });
+
+  it('reloads after the refused writes only', () => {
+    const error = (code: string) =>
+      new ApiError({ code, status: 409, requestId: 'r' });
+    for (const code of [
+      'class_session_not_substitutable',
+      'class_session_not_cancellable',
+      'version_conflict',
+      'offer_not_pending',
+    ]) {
+      expect(isStaleSessionError(error(code))).toBe(true);
+    }
+    expect(isStaleSessionError(error('scheduling_conflict'))).toBe(false);
+    expect(isStaleSessionError(new Error('x'))).toBe(false);
+  });
+});
+
+describe('/schedule/sessions/:id substitutions and cancellation (#55)', () => {
+  it('a confirmed session gets "Find a substitute"; the request sends the reason', async () => {
+    const api = stub(ASSIGNER, {
+      [DETAIL]: () => jsonResponse(200, CONFIRMED_SESSION),
+      [SUBSTITUTE]: () => jsonResponse(201, NEW_SUBSTITUTION),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    expect(main().textContent).toContain('Find a substitute');
+    expect(main().textContent).not.toContain('Cancel session');
+    const select = main().querySelector<HTMLSelectElement>('form select')!;
+    // The current tutor is not a choice.
+    expect([...select.options].map((option) => option.value)).not.toContain(
+      TUTORS[0]!.id,
+    );
+    choose(select, TUTORS[1]!.id);
+    await click(buttonByText(main(), 'Offer to the substitute')!);
+    expect(api.calls(SUBSTITUTE)).toHaveLength(0);
+    expect(main().textContent).toContain('Give a reason.');
+
+    typeInto(
+      main().querySelector<HTMLTextAreaElement>('form textarea')!,
+      ' Carmen está enferma ',
+    );
+    await click(buttonByText(main(), 'Offer to the substitute')!);
+
+    expect(api.calls(SUBSTITUTE)[0]!.body).toEqual({
+      substitute_tutor_user_id: TUTORS[1]!.id,
+      version: 5,
+      reason: 'Carmen está enferma',
+    });
+    expect(main().textContent).toContain(
+      'Offered to Diego Torres as a substitute.',
+    );
+  });
+
+  it('no panel without schedule.assign; a pending substitution shows its card and history', async () => {
+    stub(
+      { ...TEST_USER, permissions: ['schedule.view'] },
+      { [DETAIL]: () => jsonResponse(200, CONFIRMED_SESSION) },
+    );
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    expect(main().textContent).not.toContain('Find a substitute');
+    app.unmount();
+
+    const api = stub(ASSIGNER, {
+      [DETAIL]: () => jsonResponse(200, SUBSTITUTED_SESSION),
+      [SUBSTITUTIONS]: () =>
+        jsonResponse(200, {
+          items: [PENDING_SUBSTITUTION, DECLINED_SUBSTITUTION],
+        }),
+      [WITHDRAW]: () =>
+        jsonResponse(200, { ...PENDING_SUBSTITUTION, status: 'withdrawn' }),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    const text = main().textContent ?? '';
+    expect(text).not.toContain('Find a substitute');
+    expect(text).toContain('Pending substitution');
+    expect(text).toContain('Substitution pending: Diego Torres, answer by');
+    expect(text).toContain('Carmen Ruiz → Diego Torres');
+    expect(text).toContain('Reason: Carmen está enferma.');
+    expect(text).toContain('Note: No puedo ese día.');
+
+    await click(buttonByText(main(), 'Withdraw substitution')!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await click(buttonByText(dialog, 'Withdraw substitution')!);
+    expect(api.calls(WITHDRAW)).toHaveLength(1);
+  });
+
+  // QA D1: the reload returns a *changed* session, which remounts (new
+  // version) or hides (pending substitution) the panel; the message stays.
+  it.each([
+    [
+      'version_conflict',
+      { ...CONFIRMED_SESSION, version: 6 },
+      'Someone else changed this record.',
+      true,
+    ],
+    [
+      'class_session_not_substitutable',
+      SUBSTITUTED_SESSION,
+      "This session can't be given to a substitute now.",
+      false,
+    ],
+  ] as const)(
+    'a stale %s keeps its message after the reload',
+    async (code, reloaded, message, panelStays) => {
+      const api = stub(ASSIGNER, {
+        [DETAIL]: [
+          () => jsonResponse(200, CONFIRMED_SESSION),
+          () => jsonResponse(200, reloaded),
+        ],
+        [SUBSTITUTE]: () => problem(409, code),
+      });
+      app = await renderApp(`/schedule/sessions/${ID}`);
+      const before = api.calls(DETAIL).length;
+
+      choose(
+        main().querySelector<HTMLSelectElement>('form select')!,
+        TUTORS[1]!.id,
+      );
+      typeInto(
+        main().querySelector<HTMLTextAreaElement>('form textarea')!,
+        'Viaje',
+      );
+      await click(buttonByText(main(), 'Offer to the substitute')!);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+      await settle();
+
+      expect(api.calls(DETAIL).length).toBeGreaterThan(before);
+      expect(main().textContent?.includes('Find a substitute')).toBe(
+        panelStays,
+      );
+      const notice = [...main().querySelectorAll('[role="alert"]')].find(
+        (element) => element.textContent?.includes(message),
+      );
+      expect(notice).toBeDefined();
+      expect(document.activeElement).toBe(notice);
+    },
+  );
+
+  it('after a withdraw, focus goes to the "withdrawn" notice', async () => {
+    stub(ASSIGNER, {
+      [DETAIL]: [
+        () => jsonResponse(200, SUBSTITUTED_SESSION),
+        () => jsonResponse(200, CONFIRMED_SESSION),
+      ],
+      [SUBSTITUTIONS]: [
+        () => jsonResponse(200, { items: [PENDING_SUBSTITUTION] }),
+        () =>
+          jsonResponse(200, {
+            items: [{ ...PENDING_SUBSTITUTION, status: 'withdrawn' }],
+          }),
+      ],
+      [WITHDRAW]: () =>
+        jsonResponse(200, { ...PENDING_SUBSTITUTION, status: 'withdrawn' }),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    await click(buttonByText(main(), 'Withdraw substitution')!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await click(buttonByText(dialog, 'Withdraw substitution')!);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    await settle();
+
+    const notice = main().querySelector('[role="status"][tabindex="-1"]');
+    expect(notice?.textContent).toBe(
+      'Substitution withdrawn. The session is unchanged.',
+    );
+    expect(document.activeElement).toBe(notice);
+    expect(buttonByText(main(), 'Withdraw substitution')).toBeUndefined();
+  });
+
+  it('cancels with a reason; focus starts on the reason, not the destructive button', async () => {
+    const api = stub(MANAGER, {
+      [DETAIL]: [
+        () => jsonResponse(200, CONFIRMED_SESSION),
+        () => jsonResponse(200, CANCELLED_SESSION),
+      ],
+      [CANCEL]: () => jsonResponse(200, CANCELLED_SESSION),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    await click(buttonByText(main(), 'Cancel session')!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain(
+      'The tutor and the family are notified',
+    );
+    expect(document.activeElement).toBe(dialog.querySelector('textarea'));
+    await click(buttonByText(dialog, 'Cancel the session')!);
+    expect(api.calls(CANCEL)).toHaveLength(0);
+    expect(dialog.textContent).toContain('Give a reason.');
+
+    typeInto(dialog.querySelector('textarea')!, '  Cierre  ');
+    await click(buttonByText(dialog, 'Cancel the session')!);
+
+    expect(api.calls(CANCEL)[0]!.body).toEqual({
+      version: 5,
+      reason: 'Cierre',
+    });
+    expect(main().textContent).toContain('Cancelled');
+    expect(main().textContent).toContain('Reason: Cierre por mantenimiento.');
+    expect(buttonByText(main(), 'Cancel session')).toBeUndefined();
+  });
+
+  it('a 409 class_session_not_cancellable stays in the dialog and reloads', async () => {
+    const api = stub(MANAGER, {
+      [DETAIL]: () => jsonResponse(200, CONFIRMED_SESSION),
+      [CANCEL]: () => problem(409, 'class_session_not_cancellable'),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    const before = api.calls(DETAIL).length;
+
+    await click(buttonByText(main(), 'Cancel session')!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    typeInto(dialog.querySelector('textarea')!, 'Cierre');
+    await click(buttonByText(dialog, 'Cancel the session')!);
+
+    expect(dialog.textContent).toContain("This session can't be cancelled");
+    expect(api.calls(DETAIL).length).toBeGreaterThan(before);
+  });
+
+  it('a cancelled session shows the banner and no actions', async () => {
+    stub(MANAGER, {
+      [DETAIL]: () => jsonResponse(200, CANCELLED_SESSION),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    const banner = [...main().querySelectorAll('h2')].find(
+      (h) => h.textContent === 'Cancelled',
+    );
+    expect(banner).toBeDefined();
+    expect(main().textContent).toContain('Cancelled on');
+    expect(buttonByText(main(), 'Cancel session')).toBeUndefined();
+    expect(main().textContent).not.toContain('Find a substitute');
   });
 });

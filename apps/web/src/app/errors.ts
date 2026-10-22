@@ -102,6 +102,10 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['session_not_editable', 'session_not_editable'],
   ['series_offer_pending', 'series_offer_pending'],
   ['series_ended', 'series_ended'],
+  // Substitutions and cancellations (#55).
+  ['class_session_not_substitutable', 'class_session_not_substitutable'],
+  ['class_session_not_cancellable', 'class_session_not_cancellable'],
+  ['substitution_no_longer_valid', 'substitution_no_longer_valid'],
   // Overriding a conflict occurrence (#236).
   ['session_not_in_conflict', 'session_not_in_conflict'],
   ['occurrence_started', 'occurrence_started'],

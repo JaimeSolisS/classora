@@ -11,12 +11,13 @@ import {
   PENDING_OFFER,
   SERIES_OFFER,
   SHORT_SERIES_OFFER,
+  SUBSTITUTION_OFFER,
 } from './fixtures';
 import { OffersView } from './OffersView';
 
 // "My offers" (#52 H4): empty, pending, due soon, answered, and the decline
 // dialog with an error; the series cards (#233 G4): pending with and
-// without truncation, answered. No request: the answers are stubs. Axe runs in
+// without truncation, answered; a substitution card (#55 H4). No request: the answers are stubs. Axe runs in
 // light and dark (the storybook projects).
 
 const meta = {
@@ -160,6 +161,17 @@ export const SeriesAcceptConfirmation: Story = {
     const dialog = await screen.findByRole('dialog');
     await expect(
       within(dialog).getByText(i18n.t('offers.series.acceptTitle')),
+    ).toBeInTheDocument();
+  },
+};
+
+export const Substitution: Story = {
+  args: { state: { status: 'ready', items: [SUBSTITUTION_OFFER] } },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByText(
+        i18n.t('offers.substitution.for', { tutor: 'Carmen Ruiz' }),
+      ),
     ).toBeInTheDocument();
   },
 };

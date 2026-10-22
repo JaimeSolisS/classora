@@ -388,6 +388,18 @@ json = { version = 1, starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-0
 
 [[route]]
 method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/cancel"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #55 I6: a valid body; the placeholder id is no session: 404 for every
+# allowed role. A Coordinator holds schedule.assign but not schedule.manage
+# (403). The 200, 409 and 422 cases are tested in
+# tests/integration/test_session_cancellation.py.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
 path = "/api/v1/class-sessions/{class_session_id}/conflict-overrides"
 access = "permission"
 permission = "schedule.manage"
@@ -424,6 +436,35 @@ allow = ["owner", "administrator", "academic_coordinator"]
 # #51 H6: the placeholder id is no session: 404 for every allowed role.
 # Finance holds schedule.view but not schedule.assign. The 200 and 409 cases
 # are tested in tests/integration/test_replacement_tutors.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #55 I6: the placeholder id is no session: 404 for every allowed role. The
+# 200 cases are tested in tests/integration/test_session_substitutions.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #55 I6: a valid body; the placeholder id is no session: 404 for every
+# allowed role ("not denied"). The 201, 409 and 422 cases are tested in
+# tests/integration/test_session_substitutions.py.
+json = { substitute_tutor_user_id = "00000000-0000-4000-8000-000000000055", version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #55 I6: the placeholder ids are no session and no substitution: 404 for
+# every allowed role.
 
 [[route]]
 method = "GET"

@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -117,6 +117,9 @@ Codes in use today:
 | `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned` (for a series offer, also while the series has no tutor); the item stays pending (see Assignment offers). |
 | `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
 | `session_not_editable` | 409 | `PATCH /api/v1/class-sessions/{class_session_id}` on a session that has begun (`details.reason = "started"`) or is `completed`, `cancelled` or `skipped_closure` (`details.state`); see Class sessions, "Moving a session". |
+| `class_session_not_substitutable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/substitutions` on a session that is not `confirmed` (`details.reason = "state"`, `details.state`), has begun (`started`) or already has a pending substitution (`substitution_pending`, `details.substitution_id`); see Substitutions. |
+| `substitution_no_longer_valid` | 409 | The substitute accepts a substitution whose session is no longer `confirmed` with the original tutor at the offered times; nothing is written (see Substitutions). |
+| `class_session_not_cancellable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/cancel` on a session that is `completed`, `cancelled` or `skipped_closure` (`details.reason = "state"`, `details.state`) or has begun (`started`); see Class sessions, "Cancelling a session". |
 | `session_not_in_conflict` | 409 | `POST /api/v1/class-sessions/{class_session_id}/conflict-overrides` on a session that isn't a `conflict` occurrence (`details.state`); see Class series, "Series overrides". |
 | `series_offer_pending` | 409 | A series edit while the series' tutor offer is waiting for an answer: answer or withdraw it first (see Class series, "Editing and cancelling"). |
 | `series_ended` | 409 | A series edit or cancellation from a date after the series' `last_occurrence_on`, a repeated cancellation included (see Class series, "Editing and cancelling"). |
@@ -753,7 +756,12 @@ preferences are M8-02 (#119); retention is M8-12 (#129).
 `{class_session_id, starts_at}`, `scheduling.series_changed` `{series_id,
 from_date, changed, cancelled}` (the resulting series; the recipient's own
 counts) and `scheduling.series_cancelled` `{series_id, from_date}` (#54, see
-Class sessions and Class series; no link yet).
+Class sessions and Class series; no link yet); `scheduling.tutor_substituted`,
+`scheduling.session_tutor_changed` and `scheduling.session_cancelled`, each
+`{class_session_id, starts_at}` (#55, see Substitutions and Class sessions;
+never the reason or a tutor's name; no link until #67). A substitution
+offer's `scheduling.offer_received` / `_declined` / `_expired` params add
+`kind = "substitution"` and `original_tutor_name`.
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -2277,7 +2285,62 @@ offer's `respond_by` is capped at its first covered start (ADR-0005 D3).
 `scheduling.session_rescheduled` goes to the tutor of an `offered` or
 `confirmed` session and, for `confirmed`, to the student's login and its
 linked guardians (see Notifications). An `EXCLUDE` race is `409
-scheduling_conflict` with that one conflict.
+scheduling_conflict` with that one conflict. A `confirmed` session's pending
+substitution is withdrawn (#55 G3; so are the substitutions of rows a series
+edit moves to a new slot or room, skips or cancels, and of rows the closure
+reconcile skips).
+
+#### Cancelling a session
+
+`POST /api/v1/class-sessions/{class_session_id}/cancel` (M4-10, #55 C;
+`require("schedule.manage")`: Owners and Administrators; a Coordinator gets
+`403`) cancels one one-off session or one occurrence of a series. Body
+(`extra="forbid"`): `{version, reason}`, `reason` trimmed, 1–1000
+characters (`422 reason_required` / `reason_too_long`). Order:
+
+1. `401`/`403`, then `422`;
+2. the session, unlocked → `404 not_found`;
+3. the locks: the series row `FOR UPDATE` when the row belongs to one (the
+   series-offer lock order), then the session `FOR UPDATE`, then the
+   offers;
+4. `409 version_conflict`;
+5. `409 class_session_not_cancellable`: `details.reason = "state"` (with
+   `details.state`) for `completed`, `cancelled` and `skipped_closure`;
+   `started` when `starts_at <= now` (what happens during or after a lesson
+   is attendance, M5);
+6. every pending **session-scope** offer of either kind is `withdrawn` (an
+   assignment offer of an `offered` session, a pending substitution); a
+   pending **series** offer covering the row is left alone and its answer
+   skips the row;
+7. `→ cancelled` with `cancelled_at` = now and the reason;
+8. the open `scheduling.offer_reassignment` items of the session's
+   session-scope offers and the open `scheduling.occurrence_conflict` item of
+   a `conflict` row are cancelled by the caller;
+9. the named audit event `scheduling.session_cancelled`
+   `{class_session_id, series_id, previous_state, reason,
+   withdrawn_offer_ids, cancelled_request_ids}` (plus the automatic update
+   event);
+10. `scheduling.session_cancelled` to the tutor of an `offered` or
+    `confirmed` session, to a pending substitute, and for `confirmed` only to
+    the students' logins and their linked guardians (from the state before
+    the cancel; never the actor; nothing for `unassigned` or `conflict`
+    rows);
+11. the cancellation steps of `app/workflows/session_cancellation.py`
+    (`on_session_cancelled`, registered by `app.wiring`; today a no-op that
+    M6-14 billing and M7-04 pay extend), in the same transaction. No policy
+    classification is stored for a center cancellation;
+12. `200` with the session (`cancellation {cancelled_at, reason}`).
+
+A cancelled occurrence keeps `series_id` and `original_start`: the series is
+unchanged and the nightly job never re-creates the date. The service is
+`scheduling.service.cancel_class_session(session, id, *, expected_version,
+reason, by_user_id, initiated_by="center" | "family" | "tutor")`; #62
+(M4-17) reuses it for approved family and tutor requests.
+
+`ClassSessionDetail` also carries `pending_substitution {id, substitute {id,
+display_name}, respond_by} | null` and `cancellation {cancelled_at, reason}
+| null` (#55 E3; read with the session row, the detail stays at seven
+statements). `pending_offer` is the pending **assignment** offer only.
 
 ### Assignment offers
 
@@ -2491,10 +2554,93 @@ seam, "Mark resolved" and the `scheduling.occurrence_conflict` approve take
 the series row before the sessions, so they serialize with the nightly job
 and can't deadlock.
 
+**Kinds (#55 A1).** `assignment_offers.kind` is `assignment` (the default)
+or `substitution` (always session scope, see Substitutions). Items carry
+`kind` and `substitution {original_tutor {id, display_name}} | null` (the
+substitute never sees the reason); `GET /api/v1/assignment-offers` and the
+session's offer history keep their statement budgets. The invariant above
+counts **assignment** offers only.
+
 **Family visibility.** `scheduling.states.FAMILY_VISIBLE_STATES` =
 `{confirmed, completed}` (`is_family_visible`): students and guardians see a
 session only once a tutor accepted it; the family views and their record
 policy are M4-22 (#67).
+
+### Substitutions
+
+Implemented by M4-10 (#55; spec §2 "Substitution", §3, W1.3–W1.4;
+[ADR-0005 amendment A1](adr/0005-scheduling-invariants-overrides-and-recurrence.md#amendments))
+in `apps/api/app/modules/scheduling/`: `substitutions.py` (the pure rules,
+the invariants and the lock order), `substitution_flow.py` (substitute,
+withdraw, list) and `substitution_records.py` (rows, items, the three
+notification types); the substitute answers through the Assignment offers
+routes.
+
+**Model.** A substitution is an `assignment_offers` row of `kind =
+'substitution'` (session scope) plus one `class_session_substitutions` row
+(audited, not versioned, append-only): `class_session_id`, `offer_id`
+(unique), `original_tutor_user_id` ≠ `substitute_tutor_user_id`, `reason`
+(trimmed, 1–1000), `requested_by_user_id` and `slot_starts_at` /
+`slot_ends_at` (the session's times when offered). Its status is the
+offer's. **Invariant:** a session has at most one pending substitution,
+only while it is `confirmed` with the original tutor at the snapshot's
+times.
+
+| Route | Access |
+| --- | --- |
+| `POST /api/v1/class-sessions/{class_session_id}/substitutions` | `schedule.assign` (an `override` needs `schedule.override`) |
+| `GET /api/v1/class-sessions/{class_session_id}/substitutions` | `schedule.view` |
+| `POST /api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw` | `schedule.assign` |
+
+**Create.** Body (`extra="forbid"`): `{substitute_tutor_user_id, version,
+reason, respond_by?, override?}` (`version` is the session's; `override` is
+the #49 member). Order: `401`/`403` → `422` (`reason_required`,
+`reason_too_long`, the override's codes) → `403 permission_denied` for an
+`override` without `schedule.override` → the session `FOR UPDATE` (`404`)
+→ `409 version_conflict` → `409 class_session_not_substitutable` → (the
+`lock_tutor` seam of #63) the zone `FOR SHARE` → `422` in one response:
+`tutor_unknown`, `tutor_inactive`, `substitute_is_current_tutor` (on
+`substitute_tutor_user_id`), `respond_by_invalid` (the offer deadline rule
+with the session's start) → the offer checks for the substitute on the
+session's own slot: `tutor_overlap` (hard), `tutor_unavailable`,
+`tutor_not_qualified`, `outside_operating_hours`, `room_unavailable` and,
+for a one-off session only, `center_closed` (soft); not `notice_window`,
+the student or room overlaps or capacity → the override decision (`409
+scheduling_conflict`, or the override row) → the offer, its session row and
+the substitution row; **the session is not changed** → `scheduling.
+offer_received` to the substitute (`kind`, `original_tutor_name`) → the
+open reassignment items of the session's earlier substitutions are
+cancelled → `201 {substitution, warnings}` (the substitute's workload
+warnings). The substitute's slot is not held while the offer is pending.
+
+**Answers.** The substitute accepts or declines with `POST
+/api/v1/assignment-offers/{offer_id}/accept|decline` (anyone else: `404`).
+Accept re-checks the session (`409 substitution_no_longer_valid`: no longer
+`confirmed` with the original tutor at the snapshot's times; nothing is
+written, the offer stays pending) and swaps the tutor (still `confirmed`,
+version bumped; the substitute booked elsewhere meanwhile is `409
+scheduling_conflict` with one `tutor_overlap`, nothing written);
+`scheduling.tutor_substituted` goes to the original tutor and
+`scheduling.session_tutor_changed` to the students' logins and guardians.
+Qualification and availability are not re-checked. Decline and expiry leave
+the session `confirmed` with its original tutor and raise the
+`scheduling.offer_reassignment` item (its summary adds `kind` and
+`original_tutor_name`; "Mark resolved" is always allowed) and the staff
+notifications.
+
+**Withdraw** (no body): `404` for an unknown session or a substitution of
+another session → the session `FOR UPDATE`, then the offer → `409
+offer_not_pending` (`details.status`) → `withdrawn`, `200` with the item. No
+notification, no inbox item.
+
+**List**: `{items}` newest first, each `{id, class_session_id, status,
+offer_id, original_tutor, substitute_tutor, reason, requested_by,
+requested_at, respond_by, responded_at, decline_note}`; at most four
+statements.
+
+**Lock order.** Substitute, withdraw and the answers take the session, then
+the offer; the cancel takes the series row (for an occurrence), then the
+session, then the offers. Neither takes a series row after a session row.
 
 ### Class series
 

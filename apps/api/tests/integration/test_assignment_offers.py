@@ -261,14 +261,16 @@ def reassignment_items(url: str, offer_id: Any) -> list[Any]:
 
 
 def assert_invariant(url: str) -> None:
-    """A3: a session is offered iff exactly one pending offer covers it, made
-    to the session's tutor."""
+    """A3 (#55 A3 restated): a session is offered iff exactly one pending
+    offer of kind ``assignment`` covers it, made to the session's tutor."""
     rows = run_sql(
         url,
         "SELECT s.id, s.state, s.tutor_user_id,"
-        " count(o.id) FILTER (WHERE o.status = 'pending') AS pending,"
+        " count(o.id) FILTER (WHERE o.status = 'pending'"
+        "   AND o.kind = 'assignment') AS pending,"
         " bool_and(o.tutor_user_id = s.tutor_user_id)"
-        "   FILTER (WHERE o.status = 'pending') AS same_tutor"
+        "   FILTER (WHERE o.status = 'pending' AND o.kind = 'assignment')"
+        "   AS same_tutor"
         " FROM class_sessions s"
         " LEFT JOIN assignment_offer_sessions x ON x.class_session_id = s.id"
         " LEFT JOIN assignment_offers o ON o.id = x.offer_id"
@@ -550,6 +552,9 @@ def test_decline_returns_the_session_and_asks_staff_to_reassign_it(
         "class_series_id": None,
         "from_date": None,
         "occurrence_count": None,
+        # #55 D2
+        "kind": "assignment",
+        "original_tutor_name": None,
     }
     assert_invariant(module_seeded_url)
 

@@ -9369,6 +9369,360 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/substitutions": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Substitute Class Session",
+        "description": "Offer one confirmed session that hasn't begun to a substitute tutor,\nwith a reason. The session stays confirmed with its tutor until the\nsubstitute accepts in My offers; a decline or an expiry leaves it as it\nis and raises an inbox item. Checked for the substitute: overlap (hard),\navailability, qualification, center closure (one-off sessions only),\noperating hours and the room's availability (soft; an `override` with\nschedule.override allows them). The substitute is notified, without the\nreason. `warnings` lists the substitute's workload warnings.",
+        "operationId": "substitute_class_session_api_v1_class_sessions__class_session_id__substitutions_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubstitutionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.assign, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); it is not confirmed (class_session_not_substitutable, details.reason = state, details.state), has begun (details.reason = started) or already has a pending substitution (details.reason = substitution_pending, details.substitution_id); or the substitute breaks scheduling rules (scheduling_conflict, every conflict listed). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "List Class Session Substitutions",
+        "description": "The session's substitutions, newest first, with their status, reason\nand answer.",
+        "operationId": "list_class_session_substitutions_api_v1_class_sessions__class_session_id__substitutions_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionSubstitutions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Withdraw Class Session Substitution",
+        "description": "Withdraw a pending substitution: the session is unchanged and nobody\nis notified.",
+        "operationId": "withdraw_class_session_substitution_api_v1_class_sessions__class_session_id__substitutions__substitution_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "substitution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Substitution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or no such substitution of it (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The substitution was already answered, expired or withdrawn (offer_not_pending, details.status).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/cancel": {
+      "post": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Cancel Class Session",
+        "description": "Cancel one session or one occurrence of a series that hasn't begun,\nwith a reason. Its pending offers and substitution are withdrawn and its\nopen inbox items closed. The tutor (offered or confirmed), a pending\nsubstitute and the family (confirmed) are notified, without the reason.\nThe series itself is unchanged and never re-creates the occurrence.",
+        "operationId": "cancel_class_session_api_v1_class_sessions__class_session_id__cancel_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSessionCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); or it is completed, cancelled or skipped for a closure (class_session_not_cancellable, details.reason = state, details.state) or has begun (details.reason = started). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -10754,6 +11108,21 @@
           "scope": {
             "$ref": "#/components/schemas/OfferScopeCode"
           },
+          "kind": {
+            "$ref": "#/components/schemas/OfferKindCode",
+            "description": "`assignment` gives the sessions a tutor; `substitution` (#55) hands one confirmed session over from its original tutor."
+          },
+          "substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferSubstitution"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a substitution offer, whom it replaces; null otherwise."
+          },
           "status": {
             "$ref": "#/components/schemas/OfferStatusCode"
           },
@@ -10830,6 +11199,8 @@
         "required": [
           "id",
           "scope",
+          "kind",
+          "substitution",
           "status",
           "tutor",
           "offered_at",
@@ -12304,6 +12675,28 @@
         "title": "ClassSessionCalendarItem",
         "description": "One session on the calendar (#57 A4). ``markers`` are computed on\nread, in a fixed order (``center_closed``, ``tutor_not_qualified``)."
       },
+      "ClassSessionCancel": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "ClassSessionCancel",
+        "description": "Cancel one session or occurrence (``POST\n/api/v1/class-sessions/{id}/cancel``, #55 C1). ``reason`` is trimmed,\n1-1000 characters (``reason_required`` / ``reason_too_long``)."
+      },
       "ClassSessionCreate": {
         "properties": {
           "kind": {
@@ -12526,6 +12919,28 @@
             ],
             "description": "The pending offer of an `offered` session (#52); null otherwise."
           },
+          "pending_substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingSubstitution"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts."
+          },
+          "cancellation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionCancellation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When and why a `cancelled` session was cancelled; null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -12556,6 +12971,8 @@
           "is_exception",
           "conflict_codes",
           "pending_offer",
+          "pending_substitution",
+          "cancellation",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -12690,6 +13107,28 @@
               }
             ],
             "description": "The pending offer of an `offered` session (#52); null otherwise."
+          },
+          "pending_substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingSubstitution"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts."
+          },
+          "cancellation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionCancellation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When and why a `cancelled` session was cancelled; null otherwise."
           }
         },
         "type": "object",
@@ -12712,7 +13151,9 @@
           "original_start",
           "is_exception",
           "conflict_codes",
-          "pending_offer"
+          "pending_offer",
+          "pending_substitution",
+          "cancellation"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -12733,6 +13174,23 @@
         ],
         "title": "ClassSessionOffers",
         "description": "A session's offer history, newest first (#52 G3)."
+      },
+      "ClassSessionSubstitutions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ClassSessionSubstitutions",
+        "description": "A session's substitutions, newest first (#55 E2)."
       },
       "ClassSessionUpdate": {
         "properties": {
@@ -12907,6 +13365,28 @@
             ],
             "description": "The pending offer of an `offered` session (#52); null otherwise."
           },
+          "pending_substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingSubstitution"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending substitution of a `confirmed` session (#55): the session stays with its tutor until the substitute accepts."
+          },
+          "cancellation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionCancellation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When and why a `cancelled` session was cancelled; null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -12937,6 +13417,8 @@
           "is_exception",
           "conflict_codes",
           "pending_offer",
+          "pending_substitution",
+          "cancellation",
           "warnings"
         ],
         "title": "ClassSessionUpdated",
@@ -15717,6 +16199,13 @@
         ],
         "title": "NotificationUnreadCount"
       },
+      "OfferKindCode": {
+        "type": "string",
+        "enum": [
+          "assignment",
+          "substitution"
+        ]
+      },
       "OfferPerson": {
         "properties": {
           "id": {
@@ -15953,6 +16442,19 @@
           "expired",
           "withdrawn"
         ]
+      },
+      "OfferSubstitution": {
+        "properties": {
+          "original_tutor": {
+            "$ref": "#/components/schemas/OfferPerson"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original_tutor"
+        ],
+        "title": "OfferSubstitution",
+        "description": "What a substitute sees of a substitution (#55 E4): the original tutor,\nnever the reason."
       },
       "OffsetPage_AcademicPeriodDetail_": {
         "properties": {
@@ -16606,6 +17108,31 @@
         ],
         "title": "PendingOffer",
         "description": "The pending offer of an ``offered`` session (#52 G3): its own, or the\nseries offer that covers it (#233 F2)."
+      },
+      "PendingSubstitution": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "substitute": {
+            "$ref": "#/components/schemas/SessionTutor"
+          },
+          "respond_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Respond By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "substitute",
+          "respond_by"
+        ],
+        "title": "PendingSubstitution",
+        "description": "The pending substitution of a ``confirmed`` session (#55 E3)."
       },
       "PeriodType": {
         "type": "string",
@@ -17623,6 +18150,26 @@
         ],
         "title": "SeriesRecurrenceDetail",
         "description": "The stored rule's structured fields."
+      },
+      "SessionCancellation": {
+        "properties": {
+          "cancelled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cancelled At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cancelled_at",
+          "reason"
+        ],
+        "title": "SessionCancellation",
+        "description": "When and why a session was cancelled (#55 E3)."
       },
       "SessionClassroom": {
         "properties": {
@@ -18761,6 +19308,165 @@
         ],
         "title": "SubjectUpdate",
         "description": "A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with\nthe ``version`` the caller loaded. The level can't be changed."
+      },
+      "SubstitutionCreate": {
+        "properties": {
+          "substitute_tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Substitute Tutor User Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the tutor is replaced, for the staff (never shown to the substitute): 1-1000 characters, trimmed."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "An earlier deadline for the substitute's answer, after now and no later than the default; truncated to whole minutes."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "substitute_tutor_user_id",
+          "version",
+          "reason"
+        ],
+        "title": "SubstitutionCreate",
+        "description": "Offer one ``confirmed`` session to a substitute tutor (``POST\n/api/v1/class-sessions/{id}/substitutions``, #55 B2). ``reason`` is\ntrimmed, 1-1000 characters (``reason_required`` /\n``reason_too_long``)."
+      },
+      "SubstitutionCreated": {
+        "properties": {
+          "substitution": {
+            "$ref": "#/components/schemas/SubstitutionItem"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "The substitute's workload warnings for the session. They never block."
+          }
+        },
+        "type": "object",
+        "required": [
+          "substitution",
+          "warnings"
+        ],
+        "title": "SubstitutionCreated",
+        "description": "The new substitution and the substitute's workload warnings."
+      },
+      "SubstitutionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OfferStatusCode"
+          },
+          "offer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offer Id"
+          },
+          "original_tutor": {
+            "$ref": "#/components/schemas/OfferPerson"
+          },
+          "substitute_tutor": {
+            "$ref": "#/components/schemas/OfferPerson"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requested_by": {
+            "$ref": "#/components/schemas/OfferPerson"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "respond_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Respond By"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "decline_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decline Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "class_session_id",
+          "status",
+          "offer_id",
+          "original_tutor",
+          "substitute_tutor",
+          "reason",
+          "requested_by",
+          "requested_at",
+          "respond_by",
+          "responded_at",
+          "decline_note"
+        ],
+        "title": "SubstitutionItem",
+        "description": "One substitution of a session's tutor (#55 E1); ``status`` is its\noffer's."
       },
       "SuggestedSlot": {
         "properties": {

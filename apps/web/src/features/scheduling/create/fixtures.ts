@@ -86,6 +86,8 @@ export const CREATED: ClassSessionCreated = {
     tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
     respond_by: '2026-10-23T12:00:00Z',
   },
+  pending_substitution: null,
+  cancellation: null,
   warnings: [],
 };
 

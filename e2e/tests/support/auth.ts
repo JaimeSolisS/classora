@@ -41,8 +41,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * 2 (the tutor on two devices; #36), tutors/profiles.spec.ts 1 (the tutor;
  * #43), tutors/qualifications.spec.ts 2 (the demo Owner's reauthenticated
  * API context for the tutor's role change, and the tutor; #44),
- * scheduling/offers.spec.ts 1 (`demo.tutor`, a #195 demo account; #52) = 46
- * attempts, 2 failures for
+ * scheduling/offers.spec.ts 2 (`demo.tutor`, a #195 demo account, #52;
+ * and the demo Owner's reauthenticated API context of createApprovedTutor
+ * for the substitute's role change, #55) = 47 attempts, 2 failures for
  * `demo.owner`. Keep the total well under both limits; never add a setting
  * that disables the limits.
  *
@@ -64,7 +65,7 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * tutors/qualifications.spec.ts does with createApprovedTutor, #44) or
  * rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 46;
+export const LOGIN_ATTEMPTS_PER_RUN = 47;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 20;
@@ -74,10 +75,11 @@ export const TOKEN_REDEMPTIONS_PER_RUN = 20;
  * per hour for the run's one IP): auth/registration.spec.ts sends 1,
  * families/consent.spec.ts 3 (createApprovedAccount for two parents and the
  * adult student, #35), families/guardians.spec.ts 1 (createApprovedAccount
- * for the guardian, #36) and tutors/qualifications.spec.ts 1
- * (createApprovedTutor, #44) = 6.
+ * for the guardian, #36), tutors/qualifications.spec.ts 1
+ * (createApprovedTutor, #44) and scheduling/offers.spec.ts 1
+ * (createApprovedTutor for the substitute, #55) = 7.
  */
-export const REGISTRATIONS_PER_RUN = 6;
+export const REGISTRATIONS_PER_RUN = 7;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {
