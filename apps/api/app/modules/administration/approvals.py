@@ -323,6 +323,69 @@ async def create_approval_request(
     return request
 
 
+async def open_approval_request(
+    session: AsyncSession,
+    *,
+    request_type: str,
+    subject_id: uuid.UUID,
+    requester_user_id: uuid.UUID | None,
+    priority: str = NORMAL,
+    assignee_user_id: uuid.UUID | None = None,
+) -> ApprovalRequest:
+    """The subject's request of ``request_type``, ``pending``, flushed (not
+    committed), for a subject that can need a decision more than once (#232
+    QA D1: an occurrence that returns to ``conflict``).
+
+    There is at most one request per subject
+    (``uq_approval_requests_request_type``), so:
+
+    - none yet → :func:`create_approval_request`;
+    - one already ``pending`` → kept, with ``requester_user_id``,
+      ``priority`` and ``assignee_user_id`` refreshed;
+    - one in any other status (decided, cancelled or ``changes_requested``)
+      → **reopened**: back to ``pending`` with those fields refreshed and
+      ``reason``, ``resolved_at`` and ``resolved_by_user_id`` cleared. This
+      is a system move outside :data:`TRANSITIONS` (which governs the
+      reviewer and requester actions); the earlier decision stays in the
+      audit log (the flush writes the ``update`` event and bumps
+      ``version``).
+
+    The row is locked ``FOR UPDATE`` first. ``ValueError`` as
+    :func:`create_approval_request`. Creating a request sends no
+    notification, so neither does reopening one: the inbox lists it again
+    because it is ``pending``.
+    """
+    if request_type not in _handlers:
+        raise ValueError(f"approval type not registered: {request_type!r}")
+    if priority not in APPROVAL_PRIORITIES:
+        raise ValueError(f"not an approval priority: {priority!r}")
+    request: ApprovalRequest | None = await session.scalar(
+        select(ApprovalRequest)
+        .where(ApprovalRequest.request_type == request_type)
+        .where(ApprovalRequest.subject_id == subject_id)
+        .with_for_update()
+    )
+    if request is None:
+        return await create_approval_request(
+            session,
+            request_type=request_type,
+            subject_id=subject_id,
+            requester_user_id=requester_user_id,
+            priority=priority,
+            assignee_user_id=assignee_user_id,
+        )
+    request.requester_user_id = requester_user_id
+    request.priority = priority
+    request.assignee_user_id = assignee_user_id
+    if request.status != PENDING:
+        request.status = PENDING
+        request.reason = None
+        request.resolved_at = None
+        request.resolved_by_user_id = None
+    await session.flush()
+    return request
+
+
 async def approval_request_id_for_subject(
     session: AsyncSession, *, request_type: str, subject_id: uuid.UUID
 ) -> uuid.UUID | None:
@@ -613,6 +676,7 @@ __all__ = [
     "ensure_transition",
     "get_approval_request",
     "list_approval_requests",
+    "open_approval_request",
     "register_account_reference_resolver",
     "register_approval_handler",
     "registered_account_reference_resolver",

@@ -2609,7 +2609,9 @@ UPDATE`; one `closures_between` call.
   its date (`unassigned`; `offered`, attached to the pending series offer
   if not already covered; or `confirmed`). Failing: `conflict` with its
   `conflict_codes` and one `scheduling.occurrence_conflict` request, as
-  above. A tutor or room overlap that appears between the checks and the
+  above. A row that was a conflict before keeps its one request: a decided
+  (or cancelled) request goes back to `pending`, with its reason and
+  resolver cleared, and is decided again like a new one. A tutor or room overlap that appears between the checks and the
   write makes that row `conflict` too; the rest of the series still goes
   through. A restore notifies nobody.
 - **Idempotent:** a rerun changes nothing and writes no event, notification

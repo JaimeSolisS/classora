@@ -560,3 +560,162 @@ def test_reruns_change_nothing(module_seeded_url, client, caplog):
         0,
         0,
     )
+
+
+# --- A row that already has a conflict request (QA D1) ----------------------------
+
+REQUEST_ROW = (
+    "SELECT id, status, requester_user_id, resolved_at, resolved_by_user_id,"
+    " reason, version FROM approval_requests"
+    " WHERE request_type = 'scheduling.occurrence_conflict' AND subject_id = :id"
+)
+
+
+def test_an_approved_conflict_skipped_then_reopened_into_a_conflict_is_reopened(
+    module_seeded_url, client
+):
+    """#53 conflict → approved → skipped by a closure → the date reopens into
+    a conflict again: the row is ``conflict`` with its one request back to
+    ``pending`` and actionable, the series doesn't fail and still extends,
+    and approving it again works."""
+    from tests.integration.catalog_support import get, post
+    from tests.integration.test_occurrence_conflict_approval import (
+        APPROVALS as APPROVAL_PATH,
+    )
+    from tests.integration.test_occurrence_conflict_approval import (
+        cancel_blocker,
+        conflict_setup,
+        state_of,
+    )
+
+    url = module_seeded_url
+    ctx = conflict_setup(url, client)
+    tl, later = ctx["tl"], ctx["later"]
+    row_id, request_id = ctx["session_id"], ctx["request_id"]
+    cancel_blocker(url, ctx["blocker"])
+    with frozen_clock(later):
+        cookie = owner_cookie(url, client)
+        response = post(client, cookie, f"{APPROVAL_PATH}/{request_id}/approve", {})
+    assert code_of(response) == (200, None), response.text
+    [approved] = run_sql(url, REQUEST_ROW, {"id": str(row_id)})
+    assert approved.status == "approved"
+
+    monday13 = tl.week(13)
+    closure = add_closure(url, monday13)
+    run(url, later)
+    assert state_of(url, row_id).state == "skipped_closure"
+    # While the row is skipped (it holds nothing), the tutor's slot is booked.
+    blocker = existing_session(
+        url,
+        state="confirmed",
+        tutor_user_id=ctx["tutor"],
+        starts_at=tl.at(monday13, "16:00"),
+        student_id=new_student(url),
+    )
+    set_closure(url, closure, is_active=False)
+    rows_before = len(series_rows(url, ctx["series_id"]))
+    reopen_at = later + timedelta(weeks=1)
+    result = run(url, reopen_at)
+
+    assert result.failed == 0
+    assert result.closure_conflicts >= 1
+    # The extension of the same series still ran (one more week of rows).
+    assert len(series_rows(url, ctx["series_id"])) > rows_before
+    row = state_of(url, row_id)
+    assert row.state == "conflict"
+    [codes] = run_sql(
+        url,
+        "SELECT conflict_codes FROM class_sessions WHERE id = :id",
+        {"id": str(row_id)},
+    )
+    assert list(codes.conflict_codes) == ["tutor_overlap"]
+    [request] = run_sql(url, REQUEST_ROW, {"id": str(row_id)})
+    assert request.id == request_id  # the same one, reopened
+    assert request.status == "pending"
+    assert request.requester_user_id is None
+    assert (request.resolved_at, request.resolved_by_user_id, request.reason) == (
+        None,
+        None,
+        None,
+    )
+    assert request.version > approved.version
+    # The reopen is audited like any change (the decision stays in the log).
+    reopened = run_sql(
+        url,
+        "SELECT changes FROM audit_events WHERE record_id = :id"
+        " AND action = 'update'"
+        " AND changes -> 'status' ->> 'old' = 'approved'"
+        " AND changes -> 'status' ->> 'new' = 'pending'",
+        {"id": str(request_id)},
+    )
+    assert len(reopened) == 1
+
+    with frozen_clock(reopen_at):
+        cookie = owner_cookie(url, client)
+        listed = get(client, cookie, APPROVAL_PATH)
+        item = get(client, cookie, f"{APPROVAL_PATH}/{request_id}")
+    assert request_id in {uuid.UUID(i["id"]) for i in listed.json()["items"]}
+    assert code_of(item) == (200, None), item.text
+    assert "approve" in item.json()["allowed_actions"]
+
+    # A rerun changes nothing; then approving it again schedules the row.
+    again = run(url, reopen_at)
+    assert again.failed == 0 and again.closure_conflicts == 0
+    cancel_blocker(url, blocker)
+    with frozen_clock(reopen_at):
+        cookie = owner_cookie(url, client)
+        response = post(client, cookie, f"{APPROVAL_PATH}/{request_id}/approve", {})
+    assert code_of(response) == (200, None), response.text
+    assert state_of(url, row_id).state == "offered"
+    [decided] = run_sql(url, REQUEST_ROW, {"id": str(row_id)})
+    assert decided.status == "approved"
+
+
+def test_a_cancelled_earlier_request_is_reopened_on_a_conflict_restore(
+    module_seeded_url, client
+):
+    url = module_seeded_url
+    tl = timeline()
+    series_id, refs = new_series(url, client, tl)
+    wednesday = tl.week(3, 3)
+    row = row_on(url, series_id, tl, wednesday)
+    earlier = uuid.uuid4()
+
+    async def _cancelled_request(session: AsyncSession) -> None:
+        from app.modules.administration.models import ApprovalRequest
+
+        session.add(
+            ApprovalRequest(
+                id=earlier,
+                request_type="scheduling.occurrence_conflict",
+                subject_id=row.id,
+                status="cancelled",
+                priority="normal",
+                resolved_at=tl.now - timedelta(days=1),
+            )
+        )
+        await session.flush()
+
+    in_uow(url, _cancelled_request)
+    closure = add_closure(url, wednesday)
+    run(url, tl.now)
+    assert row_on(url, series_id, tl, wednesday).state == "skipped_closure"
+    existing_session(
+        url,
+        state="confirmed",
+        tutor_user_id=refs["tutor"],
+        starts_at=tl.at(wednesday, "16:00"),
+        student_id=new_student(url),
+    )
+    set_closure(url, closure, is_active=False)
+    result = run(url, tl.now)
+
+    assert result.failed == 0
+    after = row_on(url, series_id, tl, wednesday)
+    assert after.state == "conflict"
+    [request] = run_sql(url, REQUEST_ROW, {"id": str(after.id)})
+    assert (request.id, request.status, request.resolved_at) == (
+        earlier,
+        "pending",
+        None,
+    )

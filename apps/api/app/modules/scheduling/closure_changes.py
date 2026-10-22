@@ -42,8 +42,11 @@ rule date:
 - clean → :func:`~app.modules.scheduling.materialize.
   occurrence_initial_state` (``unassigned``, ``offered``, then attached to
   the pending series offer, or ``confirmed``);
-- any code → ``conflict`` with ``conflict_codes`` and one
-  ``scheduling.occurrence_conflict`` inbox item (requester ``NULL``);
+- any code → ``conflict`` with ``conflict_codes`` and one pending
+  ``scheduling.occurrence_conflict`` inbox item (requester ``NULL``). A row
+  that was a conflict before already has its one request (decided), so
+  ``administration.service.open_approval_request`` reopens that one to
+  ``pending`` instead of inserting a second (QA D1);
 - an ``EXCLUDE`` race on the move (a session booked between the checks and
   the write) → ``conflict`` with that one code: the move runs in a
   savepoint, so the rest of the series still goes through.
@@ -344,7 +347,9 @@ async def _restore(
             to_state=SessionState.CONFLICT,
             expected_version=row.version,
         )
-        await administration.create_approval_request(
+        # QA D1: the row may already have a (decided) request from an
+        # earlier conflict; one request per subject, so reopen it.
+        await administration.open_approval_request(
             session,
             request_type=OCCURRENCE_CONFLICT_TYPE,
             subject_id=row.id,
