@@ -8919,6 +8919,98 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "class-sessions"
+        ],
+        "summary": "Update Class Session",
+        "description": "Move one session (a one-off session or one occurrence of a series) to\nnew times and, optionally, another room (`classroom_id` absent keeps the\nroom, `null` removes it). The tutor, subject and students never change.\nEvery rule is checked again at the new time, the session itself\nexcluded. A series occurrence becomes an exception: later changes of\nthe series' rule never recreate its original date. Offered and confirmed\nsessions keep their state and tutor; a session in `conflict` that now\npasses is scheduled. The tutor (offered or confirmed) and the family\n(confirmed) are notified. `warnings` is always empty for now.",
+        "operationId": "update_class_session_api_v1_class_sessions__class_session_id__patch",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSessionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSessionUpdated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/class-sessions/{class_session_id}/replacement-tutors": {
@@ -9513,6 +9605,194 @@
           },
           "404": {
             "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-series/{class_series_id}/edits": {
+      "post": {
+        "tags": [
+          "class-series"
+        ],
+        "summary": "Edit Class Series",
+        "description": "Change a series' time, duration, room or weekly rule from a date on\n(`following`) or from its next occurrence that hasn't begun (`all`).\nThe body carries the full new rule. Past, begun, completed and cancelled\noccurrences are never rewritten. When the series has occurrences before\nthat date it is split: it ends the day before, and a new series (with\n`split_from_series_id`) starts on the date; otherwise it is changed in\nplace. Future occurrences on a date the new rule keeps are moved (same\nid; edited ones lose their exception), the others are cancelled\n(`series_changed`), and new dates are created; a cancelled occurrence on\na kept date moves to the new series as it is. Every changed or new\noccurrence is checked; any conflict refuses the whole change.\n`warnings` is always empty for now.",
+        "operationId": "edit_class_series_api_v1_class_series__class_series_id__edits_post",
+        "parameters": [
+          {
+            "name": "class_series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Series Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSeriesEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSeriesEdited"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The series changed since it was read (version_conflict); its tutor offer is waiting for an answer (series_offer_pending); it has no occurrence on or after the date (series_ended); an occurrence on the date has begun (occurrence_started); or a changed or new occurrence breaks scheduling rules (scheduling_conflict: every conflict of every occurrence, with `details.occurrence_start`, the new instant, and `details.date`). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-series/{class_series_id}/cancellations": {
+      "post": {
+        "tags": [
+          "class-series"
+        ],
+        "summary": "Cancel Class Series",
+        "description": "Cancel a series' occurrences from a date on (`following`) or from its\nnext occurrence that hasn't begun (`all`), with a reason. Occurrences\nskipped for a closure, and cancelled ones, are kept as they are; the\nseries ends the day before the date. A pending tutor offer of the series\nis withdrawn. The tutor (offered or confirmed) and the family\n(confirmed) are notified.",
+        "operationId": "cancel_class_series_api_v1_class_series__class_series_id__cancellations_post",
+        "parameters": [
+          {
+            "name": "class_series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Series Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSeriesCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSeriesCancelled"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class series (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The series changed since it was read (version_conflict); it has no occurrence on or after the date (series_ended, also for a repeated cancellation); or an occurrence on the date has begun (occurrence_started). Nothing is changed.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -11150,6 +11430,63 @@
           "all"
         ]
       },
+      "ClassSeriesCancel": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/SeriesEditMode"
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date",
+            "description": "Required for `following`; null for `all`."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why: 1-1000 characters, trimmed."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The series' version, as read."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "from_date",
+          "reason",
+          "version"
+        ],
+        "title": "ClassSeriesCancel",
+        "description": "Cancel a series' occurrences from a date on (``POST\n/api/v1/class-series/{id}/cancellations``, #54 C5); ``mode`` and\n``from_date`` as in :class:`ClassSeriesEdit`. ``reason`` is trimmed,\n1-1000 characters (``reason_required`` / ``reason_too_long``)."
+      },
+      "ClassSeriesCancelled": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/ClassSeriesDetail"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SeriesCancelSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "summary"
+        ],
+        "title": "ClassSeriesCancelled",
+        "description": "The result of a series cancellation."
+      },
       "ClassSeriesCreate": {
         "properties": {
           "kind": {
@@ -11322,7 +11659,34 @@
               }
             ],
             "title": "Last Occurrence On",
-            "description": "The local date of the last occurrence; null: open-ended."
+            "description": "No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`."
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "description": "Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54)."
+          },
+          "split_from_series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split From Series Id",
+            "description": "The series a 'this and following' edit split this one from (#54); null: none."
+          },
+          "split_into_series_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Split Into Series Ids",
+            "description": "The series split from this one by later edits, oldest first (#54)."
           },
           "assignment": {
             "anyOf": [
@@ -11381,6 +11745,9 @@
           "recurrence",
           "rrule",
           "last_occurrence_on",
+          "ended",
+          "split_from_series_id",
+          "split_into_series_ids",
           "assignment",
           "version",
           "created_at",
@@ -11470,7 +11837,34 @@
               }
             ],
             "title": "Last Occurrence On",
-            "description": "The local date of the last occurrence; null: open-ended."
+            "description": "No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`."
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "description": "Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54)."
+          },
+          "split_from_series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split From Series Id",
+            "description": "The series a 'this and following' edit split this one from (#54); null: none."
+          },
+          "split_into_series_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Split Into Series Ids",
+            "description": "The series split from this one by later edits, oldest first (#54)."
           },
           "assignment": {
             "anyOf": [
@@ -11521,6 +11915,9 @@
           "recurrence",
           "rrule",
           "last_occurrence_on",
+          "ended",
+          "split_from_series_id",
+          "split_into_series_ids",
           "assignment",
           "version",
           "created_at",
@@ -11529,6 +11926,119 @@
         ],
         "title": "ClassSeriesDetail",
         "description": "One class series (``GET /api/v1/class-series/{id}``). The web app\nnever parses ``rrule``: it reads ``recurrence``."
+      },
+      "ClassSeriesEdit": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/SeriesEditMode"
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date",
+            "description": "Required for `following`; null for `all`."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The series' version, as read."
+          },
+          "start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM (whole minutes, no seconds)."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "description": "15-480 minutes."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "from_date",
+          "version",
+          "start_time",
+          "duration_minutes",
+          "classroom_id",
+          "recurrence"
+        ],
+        "title": "ClassSeriesEdit",
+        "description": "Change a series from a date on (``POST\n/api/v1/class-series/{id}/edits``, #54 C3): the **full** new rule, not a\npatch. ``mode = \"following\"`` starts on ``from_date`` (a local date);\n``\"all\"`` starts on the next occurrence that hasn't begun and takes\n``from_date = null``. The recurrence ``422`` codes are the create's\n(``until_before_start`` is against the start date of the change). No\n``override`` yet (#236)."
+      },
+      "ClassSeriesEdited": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/ClassSeriesDetail",
+            "description": "The resulting series: the new one after a split."
+          },
+          "previous_series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Series Id",
+            "description": "The series that was split (it ends the day before); null in place."
+          },
+          "split": {
+            "type": "boolean",
+            "title": "Split"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SeriesEditSummary"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for a series for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "previous_series_id",
+          "split",
+          "summary",
+          "warnings"
+        ],
+        "title": "ClassSeriesEdited",
+        "description": "The result of a series edit."
       },
       "ClassSeriesOfferCreate": {
         "properties": {
@@ -12107,6 +12617,214 @@
         ],
         "title": "ClassSessionOffers",
         "description": "A session's offer history, newest first (#52 G3)."
+      },
+      "ClassSessionUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as read."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The new classroom; null is no room; absent keeps the room."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "ClassSessionUpdate",
+        "description": "Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new\ninstants and optionally a new room. The tutor, the subject and the\nstudents never change here. ``classroom_id`` absent keeps the room;\n``null`` removes it. No ``override`` yet (#58 adds it)."
+      },
+      "ClassSessionUpdated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/SessionOverrideItem"
+            },
+            "type": "array",
+            "title": "Overrides",
+            "description": "The overrides of its soft conflicts, oldest first."
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id",
+            "description": "The series this session is an occurrence of (#53); null: one-off."
+          },
+          "original_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Start",
+            "description": "The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved."
+          },
+          "is_exception": {
+            "type": "boolean",
+            "title": "Is Exception",
+            "description": "An occurrence edited apart from its series (#54)."
+          },
+          "conflict_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflict Codes",
+            "description": "The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`)."
+          },
+          "pending_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingOffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pending offer of an `offered` session (#52); null otherwise."
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for an edit for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_at",
+          "ends_at",
+          "scheduled_minutes",
+          "version",
+          "created_at",
+          "updated_at",
+          "overrides",
+          "series_id",
+          "original_start",
+          "is_exception",
+          "conflict_codes",
+          "pending_offer",
+          "warnings"
+        ],
+        "title": "ClassSessionUpdated",
+        "description": "The moved session and its warnings."
       },
       "ClassroomCreate": {
         "properties": {
@@ -16495,6 +17213,72 @@
         ],
         "title": "SeriesAssignment",
         "description": "The series' tutor assignment (#233 F2): ``pending`` while its series\noffer waits for an answer (``respond_by`` set), ``accepted`` after."
+      },
+      "SeriesCancelSummary": {
+        "properties": {
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled"
+          },
+          "skipped_closure_kept": {
+            "type": "integer",
+            "title": "Skipped Closure Kept",
+            "description": "Rows skipped for a closure, left as they are."
+          }
+        },
+        "type": "object",
+        "required": [
+          "cancelled",
+          "skipped_closure_kept"
+        ],
+        "title": "SeriesCancelSummary",
+        "description": "What a cancellation did to the occurrence rows."
+      },
+      "SeriesEditMode": {
+        "type": "string",
+        "enum": [
+          "following",
+          "all"
+        ]
+      },
+      "SeriesEditSummary": {
+        "properties": {
+          "moved": {
+            "type": "integer",
+            "title": "Moved",
+            "description": "Rows kept (same id) with the new rule."
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created",
+            "description": "Rows created for dates the old rule lacked."
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled",
+            "description": "Rows cancelled (`series_changed`): their date left the rule."
+          },
+          "skipped_closure": {
+            "type": "integer",
+            "title": "Skipped Closure",
+            "description": "Moved or created rows that are on a closure date."
+          },
+          "exceptions_reset": {
+            "type": "integer",
+            "title": "Exceptions Reset",
+            "description": "Edited occurrences that took the new rule's times."
+          }
+        },
+        "type": "object",
+        "required": [
+          "moved",
+          "created",
+          "cancelled",
+          "skipped_closure",
+          "exceptions_reset"
+        ],
+        "title": "SeriesEditSummary",
+        "description": "What an edit did to the occurrence rows."
       },
       "SeriesOccurrence": {
         "properties": {

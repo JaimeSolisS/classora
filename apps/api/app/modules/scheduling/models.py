@@ -62,7 +62,12 @@ database agree (the integration drift test reads them back). See
   occurrence (``NULL``: open-ended). ``assignment_status`` (``pending`` |
   ``accepted``) and the local ``assignment_from`` date are the series' tutor
   assignment (#233 A2): both are set exactly when ``tutor_user_id`` is.
-  ``Audited``, versioned.
+  ``last_occurrence_on`` means "no occurrence after this date": a series
+  cancelled before its first remaining occurrence (#54 C5) has
+  ``until_on = last_occurrence_on`` = the day before the cancellation date,
+  which can be earlier than ``starts_on``. ``split_from_series_id`` (#54 A2)
+  is the series a "this and following" edit split this one from (never
+  itself). ``Audited``, versioned.
 - ``class_series_participants``: the students of a series (the #47
   participants pattern); the series ``version`` covers them. ``Audited``.
 - ``class_sessions`` occurrence columns (#53 B4): ``series_id`` and
@@ -371,6 +376,7 @@ class ClassSeries(Audited, VersionedMixin, Model):
             "(assignment_status IS NULL) = (assignment_from IS NULL)",
             name="assignment_from_iff_status",
         ),
+        CheckConstraint("split_from_series_id <> id", name="split_from_not_self"),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -401,6 +407,12 @@ class ClassSeries(Audited, VersionedMixin, Model):
     count: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     rrule: Mapped[str] = mapped_column(Text)
     last_occurrence_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    split_from_series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_series.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
 
 class ClassSeriesParticipant(Audited, Model):

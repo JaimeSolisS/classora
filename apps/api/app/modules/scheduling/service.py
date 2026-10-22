@@ -86,6 +86,15 @@ Closure changes on existing occurrences (#232,
 ``scheduling.occurrence_skipped_closure`` notification type is registered
 by ``app.wiring`` (:func:`register_closure_notifications`).
 
+Editing (#54): :func:`update_class_session` (``PATCH`` one session or
+occurrence, :mod:`~app.modules.scheduling.session_edit`),
+:func:`edit_class_series` and :func:`cancel_class_series` (a series from a
+date on, :mod:`~app.modules.scheduling.series_edit`, which documents the
+lock order, the "started" rule and the split algorithm),
+:func:`cap_offer_deadlines` (the #52 ``respond_by`` cap after a move) and
+the three edit notification types (:func:`register_edit_notifications`,
+:mod:`~app.modules.scheduling.notifications`).
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -180,6 +189,9 @@ from app.modules.scheduling.materialize import (
 from app.modules.scheduling.materialize import (
     revalidate_references as revalidate_references,
 )
+from app.modules.scheduling.notifications import (
+    register_edit_notifications as register_edit_notifications,
+)
 from app.modules.scheduling.occurrence_approval import (
     OCCURRENCE_CONFLICT_HANDLER as OCCURRENCE_CONFLICT_HANDLER,
 )
@@ -188,6 +200,9 @@ from app.modules.scheduling.offer_approval import (
 )
 from app.modules.scheduling.offer_flow import REASSIGNMENT_TYPE as REASSIGNMENT_TYPE
 from app.modules.scheduling.offer_flow import answer_offer as answer_offer
+from app.modules.scheduling.offer_flow import (
+    cap_offer_deadlines as cap_offer_deadlines,
+)
 from app.modules.scheduling.offer_flow import expire_offer as expire_offer
 from app.modules.scheduling.offer_flow import list_my_offers as list_my_offers
 from app.modules.scheduling.offer_flow import (
@@ -229,8 +244,17 @@ from app.modules.scheduling.series import (
 )
 from app.modules.scheduling.series import get_class_series as get_class_series
 from app.modules.scheduling.series import has_class_series as has_class_series
+from app.modules.scheduling.series_edit import (
+    cancel_class_series as cancel_class_series,
+)
+from app.modules.scheduling.series_edit import (
+    edit_class_series as edit_class_series,
+)
 from app.modules.scheduling.series_offers import (
     offer_class_series as offer_class_series,
+)
+from app.modules.scheduling.session_edit import (
+    update_class_session as update_class_session,
 )
 from app.modules.scheduling.sessions import (
     TIME_ZONE_DEPENDENCY as TIME_ZONE_DEPENDENCY,

@@ -90,12 +90,15 @@ async def _overlap_ids(
     states: frozenset[SessionState],
     column: InstrumentedAttribute[Any],
     value: uuid.UUID,
+    exclude: frozenset[uuid.UUID] = frozenset(),
 ) -> list[str]:
     query = select(ClassSession.id).where(
         column == value,
         ClassSession.state.in_(sorted(state.value for state in states)),
         _overlapping(slot),
     )
+    if exclude:
+        query = query.where(ClassSession.id.not_in(sorted(exclude)))
     if column is ClassSessionParticipant.student_id:
         query = query.join(
             ClassSessionParticipant,
@@ -108,7 +111,10 @@ async def _overlap_ids(
 
 
 async def _overlap_conflicts(
-    session: AsyncSession, candidate: SlotCandidate, slot: LocalSlot
+    session: AsyncSession,
+    candidate: SlotCandidate,
+    slot: LocalSlot,
+    exclude: frozenset[uuid.UUID],
 ) -> list[Conflict]:
     conflicts: list[Conflict] = []
     for student_id in candidate.student_ids:
@@ -118,6 +124,7 @@ async def _overlap_conflicts(
             STUDENT_OCCUPYING_STATES,
             ClassSessionParticipant.student_id,
             student_id,
+            exclude,
         )
         if students:
             conflicts.append(
@@ -133,6 +140,7 @@ async def _overlap_conflicts(
             TUTOR_OCCUPYING_STATES,
             ClassSession.tutor_user_id,
             candidate.tutor_user_id,
+            exclude,
         )
         if tutors:
             conflicts.append(Conflict(TUTOR_OVERLAP, {"class_session_ids": tutors}))
@@ -143,6 +151,7 @@ async def _overlap_conflicts(
             ROOM_OCCUPYING_STATES,
             ClassSession.classroom_id,
             candidate.classroom_id,
+            exclude,
         )
         if rooms:
             conflicts.append(
@@ -249,12 +258,15 @@ async def collect_conflicts(
     zone: str,
     now: datetime,
     check_center_closed: bool,
+    exclude_session_ids: frozenset[uuid.UUID] = frozenset(),
 ) -> list[Conflict]:
     """Every hard and soft conflict of ``candidate``, sorted (see the module
     docstring). The tutor checks run only with a tutor, the room checks only
-    with a room."""
+    with a room. ``exclude_session_ids`` are left out of the overlap checks:
+    the rows a write moves or cancels itself (#54 B4), so an edit never
+    conflicts with itself."""
     slot = local_slot(candidate.starts_at, candidate.ends_at, zone)
-    conflicts = await _overlap_conflicts(session, candidate, slot)
+    conflicts = await _overlap_conflicts(session, candidate, slot, exclude_session_ids)
     conflicts += await _capacity_conflicts(session, candidate)
     if candidate.tutor_user_id is not None:
         conflicts += await _tutor_conflicts(

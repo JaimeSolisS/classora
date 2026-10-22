@@ -1906,7 +1906,19 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Class Session
+         * @description Move one session (a one-off session or one occurrence of a series) to
+         *     new times and, optionally, another room (`classroom_id` absent keeps the
+         *     room, `null` removes it). The tutor, subject and students never change.
+         *     Every rule is checked again at the new time, the session itself
+         *     excluded. A series occurrence becomes an exception: later changes of
+         *     the series' rule never recreate its original date. Offered and confirmed
+         *     sessions keep their state and tutor; a session in `conflict` that now
+         *     passes is scheduled. The tutor (offered or confirmed) and the family
+         *     (confirmed) are notified. `warnings` is always empty for now.
+         */
+        patch: operations["update_class_session_api_v1_class_sessions__class_session_id__patch"];
         trace?: never;
     };
     "/api/v1/class-sessions/{class_session_id}/replacement-tutors": {
@@ -2063,6 +2075,62 @@ export interface paths {
         get: operations["get_class_series_api_v1_class_series__class_series_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-series/{class_series_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit Class Series
+         * @description Change a series' time, duration, room or weekly rule from a date on
+         *     (`following`) or from its next occurrence that hasn't begun (`all`).
+         *     The body carries the full new rule. Past, begun, completed and cancelled
+         *     occurrences are never rewritten. When the series has occurrences before
+         *     that date it is split: it ends the day before, and a new series (with
+         *     `split_from_series_id`) starts on the date; otherwise it is changed in
+         *     place. Future occurrences on a date the new rule keeps are moved (same
+         *     id; edited ones lose their exception), the others are cancelled
+         *     (`series_changed`), and new dates are created; a cancelled occurrence on
+         *     a kept date moves to the new series as it is. Every changed or new
+         *     occurrence is checked; any conflict refuses the whole change.
+         *     `warnings` is always empty for now.
+         */
+        post: operations["edit_class_series_api_v1_class_series__class_series_id__edits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-series/{class_series_id}/cancellations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Class Series
+         * @description Cancel a series' occurrences from a date on (`following`) or from its
+         *     next occurrence that hasn't begun (`all`), with a reason. Occurrences
+         *     skipped for a closure, and cancelled ones, are kept as they are; the
+         *     series ends the day before the date. A pending tutor offer of the series
+         *     is withdrawn. The tutor (offered or confirmed) and the family
+         *     (confirmed) are notified.
+         */
+        post: operations["cancel_class_series_api_v1_class_series__class_series_id__cancellations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2726,6 +2794,39 @@ export interface components {
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
         /**
+         * ClassSeriesCancel
+         * @description Cancel a series' occurrences from a date on (``POST
+         *     /api/v1/class-series/{id}/cancellations``, #54 C5); ``mode`` and
+         *     ``from_date`` as in :class:`ClassSeriesEdit`. ``reason`` is trimmed,
+         *     1-1000 characters (``reason_required`` / ``reason_too_long``).
+         */
+        ClassSeriesCancel: {
+            mode: components["schemas"]["SeriesEditMode"];
+            /**
+             * From Date
+             * @description Required for `following`; null for `all`.
+             */
+            from_date: string | null;
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed.
+             */
+            reason: string;
+            /**
+             * Version
+             * @description The series' version, as read.
+             */
+            version: number;
+        };
+        /**
+         * ClassSeriesCancelled
+         * @description The result of a series cancellation.
+         */
+        ClassSeriesCancelled: {
+            series: components["schemas"]["ClassSeriesDetail"];
+            summary: components["schemas"]["SeriesCancelSummary"];
+        };
+        /**
          * ClassSeriesCreate
          * @description A recurring individual series (``POST /api/v1/class-series``, #53 E1).
          *
@@ -2827,9 +2928,24 @@ export interface components {
             rrule: string;
             /**
              * Last Occurrence On
-             * @description The local date of the last occurrence; null: open-ended.
+             * @description No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`.
              */
             last_occurrence_on: string | null;
+            /**
+             * Ended
+             * @description Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54).
+             */
+            ended: boolean;
+            /**
+             * Split From Series Id
+             * @description The series a 'this and following' edit split this one from (#54); null: none.
+             */
+            split_from_series_id: string | null;
+            /**
+             * Split Into Series Ids
+             * @description The series split from this one by later edits, oldest first (#54).
+             */
+            split_into_series_ids: string[];
             /** @description The tutor assignment; null when the series has no tutor. */
             assignment: components["schemas"]["SeriesAssignment"] | null;
             /** Version */
@@ -2900,9 +3016,24 @@ export interface components {
             rrule: string;
             /**
              * Last Occurrence On
-             * @description The local date of the last occurrence; null: open-ended.
+             * @description No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`.
              */
             last_occurrence_on: string | null;
+            /**
+             * Ended
+             * @description Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54).
+             */
+            ended: boolean;
+            /**
+             * Split From Series Id
+             * @description The series a 'this and following' edit split this one from (#54); null: none.
+             */
+            split_from_series_id: string | null;
+            /**
+             * Split Into Series Ids
+             * @description The series split from this one by later edits, oldest first (#54).
+             */
+            split_into_series_ids: string[];
             /** @description The tutor assignment; null when the series has no tutor. */
             assignment: components["schemas"]["SeriesAssignment"] | null;
             /** Version */
@@ -2922,6 +3053,67 @@ export interface components {
              * @description The occurrence rows starting now or later, by start (rows are generated up to the rolling horizon).
              */
             occurrences: components["schemas"]["SeriesOccurrence"][];
+        };
+        /**
+         * ClassSeriesEdit
+         * @description Change a series from a date on (``POST
+         *     /api/v1/class-series/{id}/edits``, #54 C3): the **full** new rule, not a
+         *     patch. ``mode = "following"`` starts on ``from_date`` (a local date);
+         *     ``"all"`` starts on the next occurrence that hasn't begun and takes
+         *     ``from_date = null``. The recurrence ``422`` codes are the create's
+         *     (``until_before_start`` is against the start date of the change). No
+         *     ``override`` yet (#236).
+         */
+        ClassSeriesEdit: {
+            mode: components["schemas"]["SeriesEditMode"];
+            /**
+             * From Date
+             * @description Required for `following`; null for `all`.
+             */
+            from_date: string | null;
+            /**
+             * Version
+             * @description The series' version, as read.
+             */
+            version: number;
+            /**
+             * Start Time
+             * Format: time
+             * @description The local start time, HH:MM (whole minutes, no seconds).
+             */
+            start_time: string;
+            /**
+             * Duration Minutes
+             * @description 15-480 minutes.
+             */
+            duration_minutes: number;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id: string | null;
+            recurrence: components["schemas"]["SeriesRecurrence"];
+        };
+        /**
+         * ClassSeriesEdited
+         * @description The result of a series edit.
+         */
+        ClassSeriesEdited: {
+            /** @description The resulting series: the new one after a split. */
+            series: components["schemas"]["ClassSeriesDetail"];
+            /**
+             * Previous Series Id
+             * @description The series that was split (it ends the day before); null in place.
+             */
+            previous_series_id: string | null;
+            /** Split */
+            split: boolean;
+            summary: components["schemas"]["SeriesEditSummary"];
+            /**
+             * Warnings
+             * @description Always empty for a series for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
         };
         /**
          * ClassSeriesOfferCreate
@@ -3205,6 +3397,114 @@ export interface components {
         ClassSessionOffers: {
             /** Items */
             items: components["schemas"]["AssignmentOfferItem"][];
+        };
+        /**
+         * ClassSessionUpdate
+         * @description Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new
+         *     instants and optionally a new room. The tutor, the subject and the
+         *     students never change here. ``classroom_id`` absent keeps the room;
+         *     ``null`` removes it. No ``override`` yet (#58 adds it).
+         */
+        ClassSessionUpdate: {
+            /**
+             * Version
+             * @description The session's version, as read.
+             */
+            version: number;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            ends_at: string;
+            /**
+             * Classroom Id
+             * @description The new classroom; null is no room; absent keeps the room.
+             */
+            classroom_id?: string | null;
+        };
+        /**
+         * ClassSessionUpdated
+         * @description The moved session and its warnings.
+         */
+        ClassSessionUpdated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Overrides
+             * @description The overrides of its soft conflicts, oldest first.
+             */
+            overrides: components["schemas"]["SessionOverrideItem"][];
+            /**
+             * Series Id
+             * @description The series this session is an occurrence of (#53); null: one-off.
+             */
+            series_id: string | null;
+            /**
+             * Original Start
+             * @description The occurrence's instant in its series rule (null for a one-off session); it stays when the occurrence is moved.
+             */
+            original_start: string | null;
+            /**
+             * Is Exception
+             * @description An occurrence edited apart from its series (#54).
+             */
+            is_exception: boolean;
+            /**
+             * Conflict Codes
+             * @description The codes that put a generated occurrence in `conflict` (informational; kept after it leaves `conflict`).
+             */
+            conflict_codes: string[];
+            /** @description The pending offer of an `offered` session (#52); null otherwise. */
+            pending_offer: components["schemas"]["PendingOffer"] | null;
+            /**
+             * Warnings
+             * @description Always empty for an edit for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
         };
         /**
          * ClassroomCreate
@@ -5249,6 +5549,52 @@ export interface components {
             offer_id: string | null;
             /** Respond By */
             respond_by: string | null;
+        };
+        /**
+         * SeriesCancelSummary
+         * @description What a cancellation did to the occurrence rows.
+         */
+        SeriesCancelSummary: {
+            /** Cancelled */
+            cancelled: number;
+            /**
+             * Skipped Closure Kept
+             * @description Rows skipped for a closure, left as they are.
+             */
+            skipped_closure_kept: number;
+        };
+        /** @enum {string} */
+        SeriesEditMode: "following" | "all";
+        /**
+         * SeriesEditSummary
+         * @description What an edit did to the occurrence rows.
+         */
+        SeriesEditSummary: {
+            /**
+             * Moved
+             * @description Rows kept (same id) with the new rule.
+             */
+            moved: number;
+            /**
+             * Created
+             * @description Rows created for dates the old rule lacked.
+             */
+            created: number;
+            /**
+             * Cancelled
+             * @description Rows cancelled (`series_changed`): their date left the rule.
+             */
+            cancelled: number;
+            /**
+             * Skipped Closure
+             * @description Moved or created rows that are on a closure date.
+             */
+            skipped_closure: number;
+            /**
+             * Exceptions Reset
+             * @description Edited occurrences that took the new rule's times.
+             */
+            exceptions_reset: number;
         };
         /**
          * SeriesOccurrence
@@ -12673,6 +13019,77 @@ export interface operations {
             };
         };
     };
+    update_class_session_api_v1_class_sessions__class_session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSessionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionUpdated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get: {
         parameters: {
             query?: {
@@ -13078,6 +13495,148 @@ export interface operations {
             };
             /** @description No such class series (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    edit_class_series_api_v1_class_series__class_series_id__edits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSeriesEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSeriesEdited"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class series (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The series changed since it was read (version_conflict); its tutor offer is waiting for an answer (series_offer_pending); it has no occurrence on or after the date (series_ended); an occurrence on the date has begun (occurrence_started); or a changed or new occurrence breaks scheduling rules (scheduling_conflict: every conflict of every occurrence, with `details.occurrence_start`, the new instant, and `details.date`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    cancel_class_series_api_v1_class_series__class_series_id__cancellations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSeriesCancel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSeriesCancelled"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class series (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The series changed since it was read (version_conflict); it has no occurrence on or after the date (series_ended, also for a repeated cancellation); or an occurrence on the date has begun (occurrence_started). Nothing is changed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

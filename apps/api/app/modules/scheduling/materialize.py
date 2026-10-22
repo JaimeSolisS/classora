@@ -137,7 +137,7 @@ class _SeriesRefs:
 
 
 @dataclass
-class _Planned:
+class PlannedOccurrence:
     occurrence: Occurrence
     state: SessionState
     codes: list[str] = field(default_factory=list)
@@ -206,6 +206,26 @@ async def validate_series_references(
     of the series' references that are no longer valid (a student, the
     subject or its level, the tutor or the room deactivated since the
     create), each once. The subject is read ``FOR SHARE``, as at create."""
+    await validate_slot_references(
+        session,
+        student_ids,
+        subject_id=series.subject_id,
+        tutor_user_id=series.tutor_user_id,
+        classroom_id=series.classroom_id,
+    )
+
+
+async def validate_slot_references(
+    session: AsyncSession,
+    student_ids: list[uuid.UUID],
+    *,
+    subject_id: uuid.UUID,
+    tutor_user_id: uuid.UUID | None,
+    classroom_id: uuid.UUID | None,
+) -> None:
+    """``422`` (:class:`SessionValidationError`) with the #48 C3 field errors
+    of these references (the students, the subject or its level, the tutor
+    and the room), each once; also the #54 edits'."""
     errors: list[FieldError] = []
     for student_id in student_ids:
         try:
@@ -213,9 +233,9 @@ async def validate_series_references(
                 session,
                 _SeriesRefs(
                     student_id=student_id,
-                    subject_id=series.subject_id,
-                    tutor_user_id=series.tutor_user_id,
-                    classroom_id=series.classroom_id,
+                    subject_id=subject_id,
+                    tutor_user_id=tutor_user_id,
+                    classroom_id=classroom_id,
                 ),
             )
         except SessionValidationError as exc:
@@ -249,7 +269,7 @@ def closed_dates(closures: list[ClosureDetail]) -> set[date]:
     return closed
 
 
-def _occurrence_wire(conflict: Conflict, occurrence: Occurrence) -> SchedulingConflict:
+def occurrence_wire(conflict: Conflict, occurrence: Occurrence) -> SchedulingConflict:
     wire = conflict.as_wire()
     wire["details"] = {
         **wire["details"],
@@ -261,7 +281,7 @@ def _occurrence_wire(conflict: Conflict, occurrence: Occurrence) -> SchedulingCo
     return wire
 
 
-def _bounds_error(occurrence: Occurrence) -> SessionValidationError:
+def occurrence_bounds_error(occurrence: Occurrence) -> SessionValidationError:
     error: FieldError = {
         "path": ["body", "start_time"],
         "code": "crosses_local_date",
@@ -353,18 +373,18 @@ async def materialize_series(
         if mode == "extend"
         else []
     )
-    planned: list[_Planned] = []
+    planned: list[PlannedOccurrence] = []
     refused: list[SchedulingConflict] = []
     for occurrence in occurrences:
         if occurrence.local_date in closed:
-            planned.append(_Planned(occurrence, SessionState.SKIPPED_CLOSURE))
+            planned.append(PlannedOccurrence(occurrence, SessionState.SKIPPED_CLOSURE))
             continue
         codes = list(reference_codes)
         try:
             validate_session_bounds(occurrence.starts_at, occurrence.ends_at, zone)
         except InvalidSessionTimesError as exc:
             if mode == "create":
-                raise _bounds_error(occurrence) from None
+                raise occurrence_bounds_error(occurrence) from None
             codes.append(exc.reason)
         else:
             conflicts = await collect_conflicts(
@@ -383,20 +403,20 @@ async def materialize_series(
                 check_center_closed=False,
             )
             if mode == "create":
-                refused += [_occurrence_wire(c, occurrence) for c in conflicts]
+                refused += [occurrence_wire(c, occurrence) for c in conflicts]
             codes += [c.code for c in conflicts if c.code not in codes]
         if codes:
-            planned.append(_Planned(occurrence, SessionState.CONFLICT, codes))
+            planned.append(PlannedOccurrence(occurrence, SessionState.CONFLICT, codes))
         else:
             planned.append(
-                _Planned(
+                PlannedOccurrence(
                     occurrence, occurrence_initial_state(series, occurrence.local_date)
                 )
             )
     if refused:
         raise SchedulingConflictError(refused)
 
-    rows = await _insert(session, series, planned, student_ids, mode=mode)
+    rows = await insert_occurrences(session, series, planned, student_ids, mode=mode)
     if mode == "extend":
         # B2: new offered rows join the pending series offer (in create
         # mode the series offer is made after this, with every row).
@@ -423,10 +443,10 @@ async def materialize_series(
     )
 
 
-async def _insert(
+async def insert_occurrences(
     session: AsyncSession,
     series: ClassSeries,
-    planned: list[_Planned],
+    planned: list[PlannedOccurrence],
     student_ids: list[uuid.UUID],
     *,
     mode: Mode,
@@ -457,7 +477,7 @@ async def _insert(
         except SessionOverlapError as exc:
             if mode == "create":
                 raise SchedulingConflictError(
-                    [_occurrence_wire(_race_conflict(exc.code, series), occurrence)]
+                    [occurrence_wire(_race_conflict(exc.code, series), occurrence)]
                 ) from None
             raise
         rows.append(row)

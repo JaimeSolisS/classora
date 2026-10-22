@@ -535,7 +535,7 @@ def test_the_read_matches_the_create_in_at_most_eight_statements(
     assert code_of(read) == (200, None)
     expected = {k: v for k, v in created.items() if k != "warnings"}
     assert read.json() == expected
-    assert count <= 8
+    assert count <= 9  # #54 A2: +1 for the lineage
     assert detail.model_dump(mode="json") == expected
 
 

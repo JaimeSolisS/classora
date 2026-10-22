@@ -137,8 +137,10 @@ function offeredSession(params: NotificationItem['params']): string {
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
- * `scheduling.occurrence_skipped_closure`, #232: its tutor, student and
- * guardian recipients have no session page yet, #67).
+ * `scheduling.occurrence_skipped_closure`, #232, and #54's
+ * `scheduling.session_rescheduled`, `scheduling.series_changed` and
+ * `scheduling.series_cancelled`: their tutor, student and guardian
+ * recipients have no session or series page yet, #54b / #67).
  */
 export const NOTIFICATION_LINKS: Readonly<
   Record<
