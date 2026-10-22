@@ -17,6 +17,7 @@ from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     ADMINISTRATOR,
     FINANCE_STAFF,
+    OWNER,
 )
 from app.modules.scheduling import tasks
 from app.modules.scheduling.models import ClassSession
@@ -26,7 +27,7 @@ from tests.integration.auth_support import auth_client, create_user
 from tests.integration.catalog_support import count_statements, get, post
 from tests.integration.conftest import run_sql, settings_for
 from tests.integration.invitation_support import sign_in
-from tests.integration.lifecycle_support import code_of, in_uow
+from tests.integration.lifecycle_support import code_of, events, in_uow
 from tests.integration.series_support import (
     Timeline,
     create_series,
@@ -35,16 +36,28 @@ from tests.integration.series_support import (
     series_body,
     timeline,
 )
+from tests.integration.test_assignment_offers import new_tutor_user
 from tests.integration.test_class_session_create import (
     CREATED,
     change,
     existing_session,
+    new_room,
     new_student,
     new_subject,
     new_tutor,
 )
+from tests.integration.test_series_offers import (
+    Ctx,
+    as_user,
+    assert_invariant,
+    conflict_row,
+    make_series,
+    offer_series,
+    series_state,
+)
 
 APPROVALS = "/api/v1/approval-requests"
+OFFERS = "/api/v1/assignment-offers"
 
 
 @pytest.fixture(scope="module")
@@ -272,3 +285,192 @@ def test_summaries_take_a_fixed_number_of_statements(module_seeded_url, client):
 
     assert single == double == 5
     assert set(found) == {one["session_id"], two["session_id"]}
+
+
+# --- #266: the series' tutor changed after the conflict row was stored -------------
+
+
+def offers_ctx(url: str) -> Ctx:
+    """A :class:`~tests.integration.test_series_offers.Ctx` ("now" the Friday
+    before the first Monday) whose ``tutor`` is tutor A."""
+    tl = timeline()
+    subject = new_subject(url)
+    return Ctx(
+        tl=tl,
+        now=tl.now - timedelta(days=2),
+        owner=create_user(url, roles=(OWNER,)),
+        student=new_student(url),
+        subject=subject,
+        tutor=new_tutor_user(url, qualified_for=[subject]),
+        room=new_room(url),
+    )
+
+
+def offer_and_accept(client, ctx: Ctx, series_id: Any, tutor, at) -> None:
+    """Offer the series to ``tutor`` at ``at`` (from today) and accept it as
+    that tutor one minute later."""
+    cookie = as_user(client, ctx.owner, at)
+    with frozen_clock(at):
+        version = series_state_version(client, cookie, series_id)
+        offered = offer_series(
+            client, cookie, series_id, tutor_user_id=str(tutor.id), version=version
+        )
+    assert code_of(offered) == CREATED, offered.text
+    later = at + timedelta(minutes=1)
+    cookie = as_user(client, tutor, later)
+    with frozen_clock(later):
+        accepted = post(
+            client, cookie, f"{OFFERS}/{offered.json()['offer']['id']}/accept", {}
+        )
+    assert code_of(accepted) == (200, None), accepted.text
+
+
+def series_state_version(client, cookie, series_id: Any) -> int:
+    response = get(client, cookie, f"/api/v1/class-series/{series_id}")
+    assert code_of(response) == (200, None), response.text
+    return int(response.json()["version"])
+
+
+def conflict_row_id(url: str, series_id: Any) -> Any:
+    [row] = run_sql(
+        url,
+        "SELECT id, tutor_user_id FROM class_sessions"
+        " WHERE series_id = :series AND state = 'conflict'",
+        {"series": str(series_id)},
+    )
+    return row
+
+
+def path_a(url: str, client) -> dict[str, Any]:
+    """Path A: a series without a tutor gets a ``conflict`` row (tutor
+    ``NULL``; the series' student is busy) at night, then it is offered to
+    tutor B, who accepts."""
+    ctx = offers_ctx(url)
+    created = make_series(client, ctx, tutor=False, count=26)
+    week13 = ctx.tl.week(13)
+    blocker, request_id = conflict_row(url, ctx, created["id"], week13)
+    conflict = conflict_row_id(url, created["id"])
+    assert conflict.tutor_user_id is None
+    tutor_b = new_tutor_user(url, qualified_for=[ctx.subject])
+    later = ctx.now + timedelta(weeks=1, hours=1)
+    offer_and_accept(client, ctx, created["id"], tutor_b, later)
+    state = series_state(url, created["id"])
+    assert (state.assignment_status, state.tutor_user_id) == ("accepted", tutor_b.id)
+    return {
+        "ctx": ctx,
+        "series_id": created["id"],
+        "session_id": conflict.id,
+        "request_id": request_id,
+        "blocker": blocker,
+        "tutor_b": tutor_b,
+        "at": later + timedelta(hours=1),
+        "week13": week13,
+    }
+
+
+def approve_as_owner(client, ctx: Ctx, request_id: Any, at) -> Any:
+    cookie = as_user(client, ctx.owner, at)
+    with frozen_clock(at):
+        return post(client, cookie, f"{APPROVALS}/{request_id}/approve", {})
+
+
+def test_approve_confirms_with_the_tutor_who_accepted_after_the_conflict(
+    module_seeded_url, client
+):
+    setup = path_a(module_seeded_url, client)
+    ctx: Ctx = setup["ctx"]
+    cancel_blocker(module_seeded_url, setup["blocker"])
+
+    response = approve_as_owner(client, ctx, setup["request_id"], setup["at"])
+
+    assert code_of(response) == (200, None), response.text
+    row = state_of(module_seeded_url, setup["session_id"])
+    assert (row.state, row.tutor_user_id) == ("confirmed", setup["tutor_b"].id)
+    assert request_status(module_seeded_url, setup["request_id"]) == "approved"
+    # A2: the tutor change and the state change are update events by the
+    # reviewer (one or two events).
+    updates = [
+        e
+        for e in events(module_seeded_url, record_id=setup["session_id"])
+        if e.action == "update"
+        and (
+            (e.changes or {}).get("tutor_user_id", {}).get("new")
+            == str(setup["tutor_b"].id)
+            or (e.changes or {}).get("state", {}).get("new") == "confirmed"
+        )
+    ]
+    assert updates
+    assert {e.actor_user_id for e in updates} == {ctx.owner.id}
+    changed = {key for e in updates for key in (e.changes or {})}
+    assert {"tutor_user_id", "state"} <= changed
+    assert_invariant(module_seeded_url, setup["series_id"])
+
+
+def test_approve_with_the_new_tutor_busy_is_a_tutor_overlap_and_changes_nothing(
+    module_seeded_url, client
+):
+    setup = path_a(module_seeded_url, client)
+    ctx: Ctx = setup["ctx"]
+    cancel_blocker(module_seeded_url, setup["blocker"])
+    existing_session(
+        module_seeded_url,
+        state="confirmed",
+        tutor_user_id=setup["tutor_b"].id,
+        student_id=new_student(module_seeded_url),
+        starts_at=ctx.tl.at(setup["week13"], "16:00"),
+    )
+
+    response = approve_as_owner(client, ctx, setup["request_id"], setup["at"])
+
+    assert code_of(response) == (409, "scheduling_conflict"), response.text
+    assert [c["code"] for c in response.json()["conflicts"]] == ["tutor_overlap"]
+    row = state_of(module_seeded_url, setup["session_id"])
+    assert (row.state, row.tutor_user_id) == ("conflict", None)
+    assert request_status(module_seeded_url, setup["request_id"]) == "pending"
+
+
+def test_approve_confirms_with_tutor_b_after_tutor_a_declined(
+    module_seeded_url, client
+):
+    """Path B: the conflict row is stored with tutor A (the series offer is
+    pending at night); A declines, the series is offered to B, B accepts."""
+    url = module_seeded_url
+    ctx = offers_ctx(url)
+    created = make_series(client, ctx, tutor=False, count=26)
+    week13 = ctx.tl.week(13)
+    # Offered to A an hour before the night run (from today).
+    before = ctx.now + timedelta(weeks=1) - timedelta(hours=1)
+    cookie = as_user(client, ctx.owner, before)
+    with frozen_clock(before):
+        offered = offer_series(
+            client,
+            cookie,
+            created["id"],
+            tutor_user_id=str(ctx.tutor.id),
+            version=created["version"],
+        )
+    assert code_of(offered) == CREATED, offered.text
+    blocker, request_id = conflict_row(url, ctx, created["id"], week13)
+    conflict = conflict_row_id(url, created["id"])
+    assert conflict.tutor_user_id == ctx.tutor.id
+    after = ctx.now + timedelta(weeks=1, hours=1)
+    cookie = as_user(client, ctx.tutor, after)
+    with frozen_clock(after):
+        declined = post(
+            client, cookie, f"{OFFERS}/{offered.json()['offer']['id']}/decline", {}
+        )
+    assert code_of(declined) == (200, None), declined.text
+    assert series_state(url, created["id"]).tutor_user_id is None
+    # The conflict row keeps the tutor it was stored with.
+    assert state_of(url, conflict.id).tutor_user_id == ctx.tutor.id
+    tutor_b = new_tutor_user(url, qualified_for=[ctx.subject])
+    offer_and_accept(client, ctx, created["id"], tutor_b, after + timedelta(hours=1))
+    cancel_blocker(url, blocker)
+
+    response = approve_as_owner(client, ctx, request_id, after + timedelta(hours=2))
+
+    assert code_of(response) == (200, None), response.text
+    row = state_of(url, conflict.id)
+    assert (row.state, row.tutor_user_id) == ("confirmed", tutor_b.id)
+    assert request_status(url, request_id) == "approved"
+    assert_invariant(url, created["id"])
