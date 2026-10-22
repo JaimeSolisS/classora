@@ -65,6 +65,36 @@ type Common = {
       submit: string;
       series: Record<'series' | 'session', string>;
     };
+    // #54b: weekly series.
+    series: {
+      repeats: string;
+      startsOn: string;
+      count: string;
+      untilDate: string;
+      submit: string;
+      endsOptions: Record<'never' | 'until' | 'count', string>;
+      success: { heading: string; openSeries: string };
+      scope: Record<'following' | 'fromDate' | 'all', string>;
+      occurrence: { title: string; submit: string };
+      edit: { title: string; submit: string };
+      cancel: {
+        title: string;
+        reason: string;
+        submit: string;
+        done_other: string;
+      };
+      summary: { moved_other: string };
+      page: Record<
+        | 'title'
+        | 'ended'
+        | 'edited'
+        | 'editOccurrence'
+        | 'editSeries'
+        | 'cancelSeries'
+        | 'continuesFrom',
+        string
+      >;
+    };
   };
   offers: {
     title: string;
@@ -253,6 +283,7 @@ type Common = {
     };
   };
   weeklyWindows: {
+    weekdays: Record<'1' | '2' | '3' | '4' | '5' | '6' | '7', string>;
     add: string;
     weekdayLabel: string;
     startsAtLabel: string;

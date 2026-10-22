@@ -22,6 +22,7 @@ import {
   UNASSIGNED,
 } from './fixtures';
 import type { SessionOverride } from './rules';
+import { SERIES_CONFLICTS, SERIES_CREATED } from '../series/fixtures';
 import { ScheduleSessionForm } from './ScheduleSessionForm';
 
 // "Schedule a session" (#48 F4, #49 F5): empty, filled, submitting, the
@@ -34,7 +35,8 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // warnings. Suggested tutors (#51 G3): loading, three results (one
 // preferring the room, one with limits), empty and an error. No request:
 // `onSubmit`, `onSuggest`, `onSuggestTutors` and the student search are
-// stubs.
+// stubs. Repeats weekly (#54b E3): the section on, a 409 grouped by date
+// (no override for series yet) and the series success panel.
 
 const meta = {
   title: 'Scheduling/ScheduleSessionForm',
@@ -47,6 +49,7 @@ const meta = {
     timeZone: 'America/Mexico_City',
     labelledBy: 'schedule-title',
     onSubmit: fn(() => Promise.resolve(CREATED)),
+    onSubmitSeries: fn(() => Promise.resolve(SERIES_CREATED)),
     canOverride: true,
   },
   render: (args) => (
@@ -556,5 +559,65 @@ export const TutorSuggestionsError: Story = {
       name: tutorsHeading(),
     });
     await expect(await within(section).findByRole('alert')).toBeVisible();
+  },
+};
+
+// --- Repeats weekly (#54b E3) -------------------------------------------------
+
+const REPEATS = {
+  initialValues: { ...FILLED, tutorId: '', classroomId: '' },
+  initialRepeats: true,
+  initialRecurrence: {
+    weekdays: [1, 3],
+    interval: 1,
+    ends: 'count' as const,
+    until: '',
+    count: '6',
+  },
+};
+const seriesSubmitName = () => i18n.t('scheduling.series.submit');
+
+export const RepeatsWeekly: Story = {
+  args: REPEATS,
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.series.startsOn')),
+    ).toHaveValue('2031-01-06');
+    await expect(
+      canvas.getByRole('group', { name: i18n.t('scheduling.series.weekdays') }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.series.count')),
+    ).toHaveValue(6);
+  },
+};
+
+export const RepeatsConflicts: Story = {
+  args: {
+    ...REPEATS,
+    onSubmitSeries: fn(() => Promise.reject(conflictError(SERIES_CONFLICTS))),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      canvas.getByRole('button', { name: seriesSubmitName() }),
+    );
+    const alert = await canvas.findByRole('alert');
+    await expect(alert).toHaveTextContent(
+      i18n.t('scheduling.series.conflicts.noOverride'),
+    );
+    await expect(alert.querySelectorAll('h3')).toHaveLength(2);
+    await waitFor(() => expect(alert.querySelector('h2')).toHaveFocus());
+  },
+};
+
+export const RepeatsSuccess: Story = {
+  args: REPEATS,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      canvas.getByRole('button', { name: seriesSubmitName() }),
+    );
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.series.success.heading')),
+    ).toBeVisible();
   },
 };

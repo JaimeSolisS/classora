@@ -53,6 +53,9 @@ function CalendarStory({
     searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
     searchStudents: () => Promise.resolve(STUDENT_OPTIONS),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
+    // #54b D2: every event is an occurrence of one series here.
+    fetchSeriesId: () =>
+      Promise.resolve('00000000-0000-4000-8000-0000000007a1'),
   };
   return (
     <main className="p-4">
@@ -257,6 +260,14 @@ export const EventDialog: Story = {
         i18n.t('scheduling.markers.center_closed.explanation'),
       ),
     ).toBeVisible();
+    await expect(
+      await within(dialog).findByRole('link', {
+        name: i18n.t('scheduling.calendar.dialog.openSeries'),
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/schedule/series/00000000-0000-4000-8000-0000000007a1',
+    );
   },
 };
 

@@ -160,6 +160,11 @@ unless a bullet says otherwise.
   Administrator with the delegated override permission, can override soft
   conflicts with a reason, which is audited; overlaps and room capacity are
   never overridable.
+- The same page creates weekly recurring series ("Repeats weekly": the days,
+  every 1 to 4 weeks, ending never, on a date or after a number of
+  sessions). Each series has its own page, where staff move one occurrence,
+  change the series from a date onward, or cancel its future occurrences;
+  past and completed classes never change.
 - When a time conflicts, the page suggests the nearest free times;
   exceeding a tutor's daily or weekly teaching limit, or a too-short break,
   gives a warning but doesn't block.
@@ -223,7 +228,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** recurring and group scheduling, rescheduling from the
+**Not built yet:** group scheduling, rescheduling from the
 calendar, course cohorts, attendance, academic records,
 billing and payments, payroll, reporting and analytics, and
 deployment. See the

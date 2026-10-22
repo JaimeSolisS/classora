@@ -9,6 +9,21 @@ import { FieldError } from '@/features/auth/FieldError';
 import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { useFormatters } from '@/lib/formatters';
+import { toLanguage } from '@/i18n/language';
+import type { ClassSeriesCreated } from '../series/api';
+import { describeRecurrence } from '../series/describeRecurrence';
+import {
+  EMPTY_RECURRENCE,
+  RECURRENCE_FIELD_ORDER,
+  recurrenceFieldId,
+  recurrenceServerErrors,
+  validateRecurrence,
+  weekdaysFor,
+  type RecurrenceErrors,
+  type RecurrenceValues,
+} from '../series/recurrence';
+import { RecurrenceFields } from '../series/RecurrenceFields';
+import { SeriesConflictPanel } from '../series/SeriesConflictPanel';
 import {
   conflictsOf,
   type ClassSessionCreated,
@@ -80,6 +95,16 @@ import { useWarningMessage } from './warningMessages';
 // announces the tutor. Changing the subject, classroom, date or times
 // clears a shown panel, so stale suggestions are never applied. A 422 goes
 // onto the form's fields.
+//
+// Repeats weekly (#54b A1-A4): with `onSubmitSeries` a switch (off by
+// default, so the one-off flow is unchanged) turns the form into a weekly
+// series: the date becomes "Starts on", and the weekdays (pre-checked with
+// the start date's weekday until the user changes them), "Every N weeks"
+// and "Ends" appear. A 201 shows the series success panel (the rule
+// summary, the sessions created so far, how many are skipped for a
+// closure, the series link); a 409 shows every occurrence's conflicts
+// grouped by local date, without an override (M4-09c) and without
+// suggested times; a 422 goes onto the fields, `recurrence.*` included.
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -104,6 +129,17 @@ export interface ScheduleSessionFormProps {
   sessionLink?: (sessionId: string) => ReactNode;
   /** The id of the page heading that names the form. */
   labelledBy: string;
+  /** Creates a weekly series (#54b); none: no "Repeats weekly" switch. */
+  onSubmitSeries?: (
+    values: ScheduleValues,
+    recurrence: RecurrenceValues,
+  ) => Promise<ClassSeriesCreated>;
+  /** A link to the created series' page (#54b D1). */
+  seriesLink?: (seriesId: string) => ReactNode;
+  /** Whether "Repeats weekly" starts on (stories). */
+  initialRepeats?: boolean;
+  /** The rule to start from (stories). */
+  initialRecurrence?: RecurrenceValues;
 }
 
 export function ScheduleSessionForm({
@@ -119,8 +155,13 @@ export function ScheduleSessionForm({
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
   sessionLink,
+  onSubmitSeries,
+  seriesLink,
+  initialRepeats = false,
+  initialRecurrence = EMPTY_RECURRENCE,
 }: ScheduleSessionFormProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = toLanguage(i18n.resolvedLanguage);
   const { t: tErrors } = useTranslation('errors');
   const { formatInstant } = useFormatters();
   const id = useId();
@@ -130,6 +171,22 @@ export function ScheduleSessionForm({
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
   const [created, setCreated] = useState<ClassSessionCreated | null>(null);
+  const [repeats, setRepeats] = useState(
+    initialRepeats && onSubmitSeries !== undefined,
+  );
+  const [recurrence, setRecurrence] =
+    useState<RecurrenceValues>(initialRecurrence);
+  const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceErrors>(
+    {},
+  );
+  // Until the user changes the weekdays, they follow the start date.
+  const weekdaysTouched = useRef(initialRecurrence.weekdays.length > 0);
+  const [seriesConflicts, setSeriesConflicts] = useState<
+    SchedulingConflict[] | null
+  >(null);
+  const [createdSeries, setCreatedSeries] = useState<ClassSeriesCreated | null>(
+    null,
+  );
   const [overriding, setOverriding] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestionsState | null>(null);
   const [announcement, setAnnouncement] = useState('');
@@ -167,6 +224,43 @@ export function ScheduleSessionForm({
     setValues((current) => ({ ...current, [key]: value }));
     if (SLOT_FIELDS.has(key)) {
       clearTutorSuggestions();
+    }
+    if (key === 'date' && !weekdaysTouched.current) {
+      setRecurrence((current) => ({
+        ...current,
+        weekdays: weekdaysFor(value as string),
+      }));
+    }
+  }
+
+  function toggleRepeats(on: boolean) {
+    setRepeats(on);
+    setConflicts(null);
+    setSeriesConflicts(null);
+    clearSuggestions();
+    setFailure(null);
+    setRecurrenceErrors({});
+    if (on && !weekdaysTouched.current) {
+      setRecurrence((current) => ({
+        ...current,
+        weekdays: weekdaysFor(values.date),
+      }));
+    }
+  }
+
+  function changeRecurrence(next: RecurrenceValues) {
+    if (next.weekdays !== recurrence.weekdays) {
+      weekdaysTouched.current = true;
+    }
+    setRecurrence(next);
+  }
+
+  function focusRecurrence(found: RecurrenceErrors) {
+    const first = RECURRENCE_FIELD_ORDER.find((field) => found[field]);
+    if (first) {
+      document
+        .getElementById(recurrenceFieldId(`${id}-recurrence`, first))
+        ?.focus();
     }
   }
 
@@ -270,12 +364,67 @@ export function ScheduleSessionForm({
     window.setTimeout(() => submitButton.current?.focus(), 0);
   }
 
+  async function submitSeries(
+    submitSeriesFn: NonNullable<typeof onSubmitSeries>,
+  ) {
+    const found = validateSchedule(values);
+    const foundRule = validateRecurrence(recurrence, values.date);
+    setErrors(found);
+    setRecurrenceErrors(foundRule);
+    if (Object.keys(found).length > 0) {
+      focusFirst(found);
+      return;
+    }
+    if (Object.keys(foundRule).length > 0) {
+      focusRecurrence(foundRule);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const series = await submitSeriesFn(values, recurrence);
+      setCreatedSeries(series);
+      window.setTimeout(() => successHeading.current?.focus(), 0);
+    } catch (caught) {
+      const list = conflictsOf(caught);
+      if (list) {
+        setSeriesConflicts(list);
+        return;
+      }
+      if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
+        const mapped = serverErrors(caught.fieldErrors);
+        const mappedRule = recurrenceServerErrors(caught.fieldErrors);
+        if (
+          Object.keys(mapped).length > 0 ||
+          Object.keys(mappedRule).length > 0
+        ) {
+          setErrors(mapped);
+          setRecurrenceErrors(mappedRule);
+          if (Object.keys(mapped).length > 0) {
+            focusFirst(mapped);
+          } else {
+            focusRecurrence(mappedRule);
+          }
+          return;
+        }
+      }
+      setFailure(caught);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submit() {
     setConflicts(null);
+    setSeriesConflicts(null);
+    setRecurrenceErrors({});
     clearSuggestions();
     clearTutorSuggestions();
     setAnnouncement('');
     setFailure(null);
+    if (repeats && onSubmitSeries) {
+      await submitSeries(onSubmitSeries);
+      return;
+    }
     const found = validateSchedule(values);
     setErrors(found);
     if (Object.keys(found).length > 0) {
@@ -373,6 +522,11 @@ export function ScheduleSessionForm({
 
   function scheduleAnother() {
     setCreated(null);
+    setCreatedSeries(null);
+    setRepeats(false);
+    setRecurrence(EMPTY_RECURRENCE);
+    setRecurrenceErrors({});
+    weekdaysTouched.current = false;
     clearTutorSuggestions();
     setAnnouncement('');
     setErrors({});
@@ -384,6 +538,66 @@ export function ScheduleSessionForm({
   const overriddenCodes = created
     ? [...new Set(created.overrides.flatMap((o) => o.codes))]
     : [];
+
+  if (createdSeries) {
+    const skipped = createdSeries.occurrences.filter(
+      (o) => o.state === 'skipped_closure',
+    ).length;
+    return (
+      <section
+        aria-labelledby={`${id}-success`}
+        className="flex w-full max-w-2xl flex-col gap-4 rounded-md border border-border p-4"
+      >
+        <h2
+          id={`${id}-success`}
+          ref={successHeading}
+          tabIndex={-1}
+          className="text-lg font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {t('scheduling.series.success.heading')}
+        </h2>
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+          <dt className="font-medium">{t('scheduling.fields.student')}</dt>
+          <dd className="break-words">
+            {createdSeries.participants.map((p) => p.display_name).join(', ')}
+          </dd>
+          <dt className="font-medium">{t('scheduling.fields.subject')}</dt>
+          <dd className="break-words">
+            {t('scheduling.success.subject', {
+              subject: createdSeries.subject.name,
+              level: createdSeries.subject.education_level_name,
+            })}
+          </dd>
+          <dt className="font-medium">{t('scheduling.series.rule')}</dt>
+          <dd className="break-words">
+            {describeRecurrence(createdSeries.recurrence, language)}
+          </dd>
+          <dt className="font-medium">{t('scheduling.success.state')}</dt>
+          <dd>
+            {createdSeries.tutor
+              ? t('scheduling.success.offered', {
+                  tutor: createdSeries.tutor.display_name,
+                })
+              : t('scheduling.success.unassigned')}
+          </dd>
+        </dl>
+        <p>
+          {t('scheduling.series.success.upcoming', {
+            count: createdSeries.occurrences.length,
+          })}
+          {skipped > 0
+            ? ` ${t('scheduling.series.success.skipped', { count: skipped })}`
+            : null}
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          {seriesLink ? seriesLink(createdSeries.id) : null}
+          <Button type="button" onClick={scheduleAnother}>
+            {t('scheduling.success.another')}
+          </Button>
+        </div>
+      </section>
+    );
+  }
 
   if (created) {
     const tutor = created.tutor;
@@ -567,6 +781,14 @@ export function ScheduleSessionForm({
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
+      {seriesConflicts ? (
+        <SeriesConflictPanel
+          conflicts={seriesConflicts}
+          heading={t('scheduling.series.conflicts.createHeading', {
+            count: seriesConflicts.length,
+          })}
+        />
+      ) : null}
       {failure ? <ErrorAlert error={failure} /> : null}
       <form
         method="post"
@@ -670,16 +892,45 @@ export function ScheduleSessionForm({
           <p id={zoneId} className="text-sm text-muted-foreground">
             {t('scheduling.zone', { zone: timeZone })}
           </p>
+          {onSubmitSeries ? (
+            <label className="flex min-h-9 w-fit items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={repeats}
+                onChange={(event) => toggleRepeats(event.target.checked)}
+                className="size-4 accent-foreground"
+              />
+              {t('scheduling.series.repeats')}
+            </label>
+          ) : null}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {timeField('date', t('scheduling.fields.date'))}
+            {timeField(
+              'date',
+              repeats
+                ? t('scheduling.series.startsOn')
+                : t('scheduling.fields.date'),
+            )}
             {timeField('start', t('scheduling.fields.start'))}
             {timeField('end', t('scheduling.fields.end'))}
           </div>
+          {repeats ? (
+            <RecurrenceFields
+              idPrefix={`${id}-recurrence`}
+              values={recurrence}
+              errors={recurrenceErrors}
+              onChange={changeRecurrence}
+            />
+          ) : null}
         </fieldset>
         <div>
           <Button ref={submitButton} type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}
-            {submitting ? t('scheduling.submitting') : t('scheduling.submit')}
+            {submitting
+              ? t('scheduling.submitting')
+              : repeats
+                ? t('scheduling.series.submit')
+                : t('scheduling.submit')}
           </Button>
         </div>
       </form>

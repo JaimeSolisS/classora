@@ -117,6 +117,10 @@ const SERVER_FIELDS: Record<string, ScheduleField> = {
   classroom_id: 'classroom',
   starts_at: 'start',
   ends_at: 'end',
+  // A weekly series (#54b A3): the start date and time, and the duration.
+  starts_on: 'date',
+  start_time: 'start',
+  duration_minutes: 'end',
 };
 
 /** The C2/C3 codes with their own `errors` key. */
@@ -134,6 +138,8 @@ export const FIELD_ERROR_CODES: ReadonlySet<string> = new Set([
   'ends_before_start',
   'duration_out_of_range',
   'crosses_local_date',
+  'starts_on_in_past',
+  'time_format',
 ]);
 
 /** The server's 422 field errors on the form's fields (others are left out). */

@@ -1512,7 +1512,8 @@
         "time": "Time",
         "timeValue": "{{time}} ({{zone}})",
         "state": "Status",
-        "markers": "Warnings"
+        "markers": "Warnings",
+        "openSeries": "Open series"
       }
     },
     "states": {
@@ -1651,6 +1652,126 @@
       "seriesPending": "offered to {{tutor}}, answer by {{when}}",
       "seriesPendingNoDeadline": "offered to {{tutor}}",
       "seriesAccepted": "{{tutor}} from {{date}}"
+    },
+    "series": {
+      "repeats": "Repeats weekly",
+      "startsOn": "Starts on",
+      "weekdays": "Repeats on",
+      "interval": "Repeat",
+      "intervalOption_one": "Every week",
+      "intervalOption_other": "Every {{count}} weeks",
+      "ends": "Ends",
+      "endsOptions": {
+        "never": "Never",
+        "until": "On date",
+        "count": "After a number of sessions"
+      },
+      "untilDate": "End date",
+      "count": "Number of sessions",
+      "countHelp": "1 to {{max}} sessions in all, counting the ones skipped for a center closure.",
+      "rule": "Repeats",
+      "submit": "Schedule series",
+      "describe": {
+        "everyWeek": "Every week on {{days}}",
+        "everyWeeks_one": "Every {{count}} week on {{days}}",
+        "everyWeeks_other": "Every {{count}} weeks on {{days}}",
+        "until": "{{rule}}, until {{date}}",
+        "count_one": "{{rule}}, {{count}} session in all",
+        "count_other": "{{rule}}, {{count}} sessions in all",
+        "noEnd": "{{rule}}, with no end date"
+      },
+      "validation": {
+        "weekdaysRequired": "Choose at least one day of the week.",
+        "intervalRange": "Choose every 1 to 4 weeks.",
+        "untilRequired": "Enter the end date.",
+        "untilBeforeStart": "The end date can't be before the start date.",
+        "countRange": "Enter a whole number from 1 to 200.",
+        "fromDateRequired": "Enter the date the change starts on.",
+        "reasonRequired": "Give a reason.",
+        "reasonTooLong": "The reason can have at most 1000 characters."
+      },
+      "success": {
+        "heading": "Weekly series scheduled",
+        "upcoming_one": "{{count}} session created so far; later ones are added automatically.",
+        "upcoming_other": "{{count}} sessions created so far; later ones are added automatically.",
+        "skipped_one": "{{count}} of them is skipped for a center closure.",
+        "skipped_other": "{{count}} of them are skipped for center closures.",
+        "openSeries": "Open the series"
+      },
+      "conflicts": {
+        "createHeading_one": "The series can’t be scheduled: 1 conflict",
+        "createHeading_other": "The series can’t be scheduled: {{count}} conflicts",
+        "editHeading_one": "The series can’t be changed: 1 conflict",
+        "editHeading_other": "The series can’t be changed: {{count}} conflicts",
+        "occurrenceHeading_one": "The occurrence can’t be moved: 1 conflict",
+        "occurrenceHeading_other": "The occurrence can’t be moved: {{count}} conflicts",
+        "noOverride": "Can’t be overridden for series yet",
+        "noDate": "Other"
+      },
+      "versionConflict": "This changed since you opened it. Reload it and try again.",
+      "reload": "Reload",
+      "dialogCancel": "Close",
+      "saving": "Saving…",
+      "scope": {
+        "legend": "Which occurrences",
+        "following": "This and following occurrences",
+        "fromDate": "From",
+        "all": "All future occurrences"
+      },
+      "occurrence": {
+        "title": "Edit this occurrence",
+        "description": "Only this occurrence moves; the rest of the series stays as it is.",
+        "submit": "Save occurrence",
+        "done": "The occurrence was moved."
+      },
+      "edit": {
+        "title": "Edit series",
+        "description": "Change the time, the classroom or the weekly rule from a date on.",
+        "notice": "Past and completed classes are never changed. Edited occurrences in this range take the new times.",
+        "submit": "Save series"
+      },
+      "cancel": {
+        "title": "Cancel future occurrences",
+        "description": "The occurrences from the date you choose are cancelled, and the series ends.",
+        "reason": "Reason",
+        "notice": "Past and completed classes are never changed. The tutor and the family are notified of confirmed classes.",
+        "submit": "Cancel occurrences",
+        "submitting": "Cancelling…",
+        "done_one": "{{count}} occurrence cancelled.",
+        "done_other": "{{count}} occurrences cancelled."
+      },
+      "summary": {
+        "sentence": "Series changed: {{parts}}.",
+        "nothing": "Series changed.",
+        "moved_one": "{{count}} moved",
+        "moved_other": "{{count}} moved",
+        "cancelled_one": "{{count}} cancelled",
+        "cancelled_other": "{{count}} cancelled",
+        "created_one": "{{count}} created",
+        "created_other": "{{count}} created",
+        "skipped_closure_one": "{{count}} skipped for a closure",
+        "skipped_closure_other": "{{count}} skipped for a closure",
+        "exceptions_reset_one": "{{count}} edited occurrence reset",
+        "exceptions_reset_other": "{{count}} edited occurrences reset"
+      },
+      "page": {
+        "title": "Weekly series",
+        "ended": "Ended",
+        "noTutor": "No tutor yet",
+        "time": "Time",
+        "timeValue": "{{start}}–{{end}} ({{zone}})",
+        "continuesFrom": "Continues from an earlier series",
+        "continuedAs": "Continued as a new series",
+        "continuedAsNumbered": "Continued as new series {{number}}",
+        "editSeries": "Edit series",
+        "cancelSeries": "Cancel future occurrences",
+        "occurrences": "Occurrences from now on",
+        "noOccurrences": "No occurrences from now on.",
+        "range": "{{start}}–{{end}}",
+        "edited": "Edited",
+        "editOccurrence": "Edit this occurrence",
+        "editOccurrenceOf": "Edit this occurrence: {{date}}, {{range}}"
+      }
     }
   },
   "courses": {

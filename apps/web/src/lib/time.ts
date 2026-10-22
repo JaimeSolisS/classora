@@ -260,6 +260,12 @@ export function formatLocalDate(
   });
 }
 
+/** The ISO weekday of a calendar date: 1 = Monday … 7 = Sunday (no zone). */
+export function isoWeekday(localDate: LocalDate | string): number {
+  const day = calendarDay(localDate).getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
 /** Calendar arithmetic on a LocalDate (no zone involved). */
 export function addDays(
   localDate: LocalDate | string,

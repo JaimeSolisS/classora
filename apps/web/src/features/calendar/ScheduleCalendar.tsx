@@ -333,6 +333,7 @@ export function ScheduleCalendar({
       <SessionDialog
         item={selected}
         context={context}
+        fetchSeriesId={loaders.fetchSeriesId}
         onClose={() => setSelected(null)}
         onReturnFocus={() => {
           const element = opener.current;

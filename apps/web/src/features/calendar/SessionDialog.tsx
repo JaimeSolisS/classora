@@ -1,5 +1,7 @@
+import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import {
   Dialog,
   DialogContent,
@@ -9,14 +11,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
-import type { CalendarItem } from './api';
+import type { CalendarItem, CalendarLoaders } from './api';
 import { MarkerLabel, StateLabel } from './EventContent';
 import { sessionTimeText, studentNames, type LabelContext } from './labels';
 
 // The details of one session (#57 D8), from the item already loaded (no
 // request). No actions yet: offering, cancelling, rescheduling and
 // overrides come with #52, #58 and #62. Focus is trapped while it is open
-// and goes back to the event on close (`onCloseAutoFocus`).
+// and goes back to the event on close (`onCloseAutoFocus`). An occurrence
+// of a weekly series gets "Open series" (#54b D2), once its session is read
+// (`fetchSeriesId`; the range item has no series id).
 
 export interface SessionDialogProps {
   item: CalendarItem | null;
@@ -24,6 +28,34 @@ export interface SessionDialogProps {
   onClose: () => void;
   /** Puts the focus back on the event that opened the dialog. */
   onReturnFocus: () => void;
+  /** Reads the session's series (#54b D2); none: no "Open series" link. */
+  fetchSeriesId?: CalendarLoaders['fetchSeriesId'];
+}
+
+function OpenSeriesLink({
+  sessionId,
+  fetchSeriesId,
+}: {
+  sessionId: string;
+  fetchSeriesId: NonNullable<CalendarLoaders['fetchSeriesId']>;
+}) {
+  const { t } = useTranslation();
+  const seriesId = useQuery({
+    queryKey: ['scheduling', 'calendar', 'series-of', sessionId],
+    queryFn: ({ signal }) => fetchSeriesId(sessionId, signal),
+    retry: false,
+  });
+  if (!seriesId.data) {
+    return null;
+  }
+  return (
+    <Link
+      to={`/schedule/series/${encodeURIComponent(seriesId.data)}`}
+      className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+    >
+      {t('scheduling.calendar.dialog.openSeries')}
+    </Link>
+  );
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -40,6 +72,7 @@ export function SessionDialog({
   context,
   onClose,
   onReturnFocus,
+  fetchSeriesId,
 }: SessionDialogProps) {
   const { t } = useTranslation();
   return (
@@ -111,6 +144,9 @@ export function SessionDialog({
               </Row>
             ) : null}
           </dl>
+          {fetchSeriesId ? (
+            <OpenSeriesLink sessionId={item.id} fetchSeriesId={fetchSeriesId} />
+          ) : null}
           <DialogFooter showCloseButton />
         </DialogContent>
       ) : null}

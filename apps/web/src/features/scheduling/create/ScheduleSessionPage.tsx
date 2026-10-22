@@ -18,6 +18,8 @@ import {
   suggestTutors,
 } from './api';
 import { scheduleBody, suggestionBody, tutorSuggestionParams } from './rules';
+import { createClassSeries } from '../series/api';
+import { seriesCreateBody } from '../series/rules';
 import { ScheduleSessionForm } from './ScheduleSessionForm';
 
 // /schedule/new, "Schedule a session" (#48 F1), for schedule.manage holders:
@@ -25,7 +27,8 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // The times are in the center zone (the session's business setting).
 // Holders of schedule.override can override soft conflicts (#49). After a
 // conflict the form shows suggested times (#50). Holders of schedule.assign
-// can ask for suggested tutors (#51).
+// can ask for suggested tutors (#51). "Repeats weekly" creates a weekly
+// series (#54b A) and links to its page.
 
 export function ScheduleSessionPage() {
   const { t } = useTranslation();
@@ -81,6 +84,17 @@ export function ScheduleSessionPage() {
             className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
           >
             {t('scheduling.success.openSession')}
+          </Link>
+        )}
+        onSubmitSeries={(values, recurrence) =>
+          createClassSeries(seriesCreateBody(values, recurrence))
+        }
+        seriesLink={(seriesId) => (
+          <Link
+            to={`/schedule/series/${encodeURIComponent(seriesId)}`}
+            className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          >
+            {t('scheduling.series.success.openSeries')}
           </Link>
         )}
         onSubmit={(values, override) =>
