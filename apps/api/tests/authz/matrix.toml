@@ -697,6 +697,70 @@ allow = ["owner", "administrator"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/groups"
+access = "authenticated"
+# #56 H1/I2: record policy; schedule.view holders see every group, a student
+# only their own (no enrolled count), anyone else an empty list (200).
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body with unknown ids: 422 (subject_unknown) for every
+# allowed role ("not denied"); nothing is created. The 201 and 409 cases are
+# tested in tests/integration/test_groups_create.py.
+json = { name = "Matriz 56", subject_id = "00000000-0000-4000-8000-000000000056", max_students = 6, starts_on = "2031-01-06", start_time = "16:00", duration_minutes = 60, recurrence = { weekdays = [1, 3], interval = 1 } }
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}"
+access = "authenticated"
+# #56 H2/I2: record policy; the placeholder id is no group: 404
+# (group_not_found) for every role, never 403.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/groups/{group_id}"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder id is no group: 404 for every allowed
+# role ("not denied").
+json = { version = 1, max_students = 8 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups/{group_id}/enrollments"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder id is no group: 404 for every allowed
+# role ("not denied"). The other cases are tested in
+# tests/integration/test_group_enrollment.py.
+json = { student_id = "00000000-0000-4000-8000-000000000056" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder ids are no group: 404 for every
+# allowed role ("not denied").
+json = { version = 1 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}/sessions"
+access = "authenticated"
+# #56 H3/I2: the matrix sends no query parameters: the missing from/to gets
+# 422 for every role. The record policy (404 for a hidden group) is tested in
+# tests/integration/test_group_reads.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/guardians"
 access = "permission"
 permission = "guardian.view"

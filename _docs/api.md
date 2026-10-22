@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -117,6 +117,12 @@ Codes in use today:
 | `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned` (for a series offer, also while the series has no tutor); the item stays pending (see Assignment offers). |
 | `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
 | `session_not_editable` | 409 | `PATCH /api/v1/class-sessions/{class_session_id}` on a session that has begun (`details.reason = "started"`) or is `completed`, `cancelled` or `skipped_closure` (`details.state`); see Class sessions, "Moving a session". |
+| `group_not_found` | 404 | A tutoring group that doesn't exist or that the caller can't see (M4-11; never `403`); see Tutoring groups. |
+| `enrollment_not_found` | 404 | Withdrawing an enrollment that doesn't exist or belongs to another group (see Tutoring groups). |
+| `group_name_taken` | 409 | Creating or renaming a tutoring group to a name another group has, ignoring case (see Tutoring groups). |
+| `group_ended` | 409 | Enrolling in a group that has no series still producing sessions (see Tutoring groups). |
+| `already_enrolled` | 409 | Enrolling a student who already has an active enrollment in the group (`details.enrollment_id`; see Tutoring groups). |
+| `enrollment_not_active` | 409 | Withdrawing an enrollment that was already withdrawn (see Tutoring groups). |
 | `class_session_not_substitutable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/substitutions` on a session that is not `confirmed` (`details.reason = "state"`, `details.state`), has begun (`started`) or already has a pending substitution (`substitution_pending`, `details.substitution_id`); see Substitutions. |
 | `substitution_no_longer_valid` | 409 | The substitute accepts a substitution whose session is no longer `confirmed` with the original tutor at the offered times; nothing is written (see Substitutions). |
 | `class_session_not_cancellable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/cancel` on a session that is `completed`, `cancelled` or `skipped_closure` (`details.reason = "state"`, `details.state`) or has begun (`started`); see Class sessions, "Cancelling a session". |
@@ -1887,8 +1893,9 @@ D9) in `apps/api/app/modules/scheduling/` (`booking.py`: create and read;
 Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
 Workload warnings and suggested times: M4-05 (#50; spec §3), `workload.py`
 and `suggestions.py` (pure rules), `workload_sessions.py` and
-`slot_search.py` (the reads). Only one-off **individual** sessions so far;
-groups, courses and recurrence come with later M4 issues. Offers (M4-07,
+`slot_search.py` (the reads). The create takes one-off **individual**
+sessions; group sessions are the occurrences of a tutoring group's series
+(M4-11, Tutoring groups below) and courses come later. Offers (M4-07,
 #52): see Assignment offers below. The
 calendar's range read and tutor options (M4-12, #57) are in
 `calendar_read.py` and `markers.py`. Tutor suggestions (M4-06, #51; spec
@@ -1941,6 +1948,8 @@ instant in its series rule, kept when it is moved) are `null` for a one-off
 session; `is_exception` marks an occurrence edited apart from its series
 (M4-09); `conflict_codes` lists the codes that put a generated occurrence in
 `conflict` (informational, kept after it leaves `conflict`; `[]` otherwise).
+`group_id` is the tutoring group of a `group` session (M4-11), `null`
+otherwise.
 
 **Order of the create:**
 
@@ -2648,8 +2657,13 @@ Implemented by M4-08 (#53; spec §1, §3, §15 W1.2; ADR-0005 D4, D5, D6, D9;
 ADR-0004) in `apps/api/app/modules/scheduling/` (`recurrence.py`: the pure
 weekly rule; `series.py`: create and read; `materialize.py`: the rolling
 materialization; `tasks.py`: the nightly job; `occurrence_approval.py`: the
-inbox item; `series_edit.py`: editing and cancelling, M4-09). Only
-**individual** series so far; groups and courses (M4-11, M4-20) come later.
+inbox item; `series_edit.py`: editing and cancelling, M4-09). `POST
+/api/v1/class-series` creates **individual** series only (`kind` other than
+`individual` is `422`); a tutoring group's `group` series is created by
+`POST /api/v1/groups` (M4-11, Tutoring groups below) and has `group_id` set
+in `ClassSeriesDetail` (`null` otherwise). A series edit keeps a group
+series' `group_id` on the series a split creates. Courses (M4-20) come
+later.
 Series overrides: M4-09c (#236; `overrides.py`, `conflict_override.py`),
 "Series overrides" below.
 
@@ -3063,6 +3077,159 @@ kept); with something overridden, the override row (with
 `scheduling.occurrence_conflict` request is cancelled by the system (also
 when nothing conflicts any more, which records no override); `200` with
 `ClassSessionDetail`.
+
+### Tutoring groups
+
+Implemented by M4-11 (#56; spec §1, §3, §6, §15 W1.5; ADR-0005 D1, D2, D7,
+D9; architecture §4.2, ISSUE-J1, ISSUE-SC3) in
+`apps/api/app/modules/scheduling/` (`groups.py`: create, rename, enroll,
+withdraw; `groups_rules.py`: the pure rules; `group_reads.py`: the reads
+and the student record policy; `group_lock.py`: the group lock) and
+`apps/api/app/workflows/` (`group_enrollment.py`: the billing hook;
+`groups_router.py`: the routes, next to the workflow they call). The web
+pages are M4-11b.
+
+A group has a `name` (trimmed, 1–120, unique ignoring case), a subject
+(its level follows) and `max_students` (1–500). Its tutor, room and weekly
+rule live on its `group` series; its sessions are that series' occurrences
+(`kind = "group"`, `group_id` set), materialized like any series, with every
+enrolled student as a participant.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/groups` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `GroupDetail` plus `warnings` (`[]`). |
+| `PATCH /api/v1/groups/{group_id}` | `require("schedule.manage")` | `{version, name?, max_students?}`; `200` with `GroupDetail`. |
+| `POST /api/v1/groups/{group_id}/enrollments` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{student_id, override?: {codes, reason}}`; `201` with `GroupEnrollmentItem` plus `warnings` (`[]`). |
+| `POST /api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw` | `require("schedule.manage")` | `{version, reason?}`; `200` with `GroupEnrollmentItem`. |
+| `GET /api/v1/groups` | `authenticated()` + record policy | `?q` (name contains, ignoring case), `?subject_id`, `?status=active\|ended\|all` (default `active`: a series still producing sessions), cursor pagination (`limit` 1–100, default 25; by name, then id). |
+| `GET /api/v1/groups/{group_id}` | `authenticated()` + record policy | `GroupDetail`; hidden or unknown is `404 group_not_found`. At most 8 statements. |
+| `GET /api/v1/groups/{group_id}/sessions?from=…&to=…` | `authenticated()` + record policy | The group's sessions overlapping `[from, to)` by start, the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days). At most 6 statements. |
+
+**Create body** (unknown fields are `422`, `rrule` included):
+
+```json
+{"name": "Álgebra sábado", "subject_id": "…", "max_students": 6,
+ "tutor_user_id": "…" | null, "classroom_id": "…" | null,
+ "starts_on": "2026-11-09", "start_time": "10:00", "duration_minutes": 90,
+ "recurrence": {"weekdays": [6], "interval": 1, "until": null, "count": null},
+ "student_ids": ["…"],
+ "override": {"codes": ["group_capacity_exceeded"],
+              "pairs": [{"occurrence_start": "…", "code": "outside_operating_hours"}],
+              "reason": "…"} | null}
+```
+
+`student_ids` are the initial students (0–500, each once:
+`student_ids_duplicate`). The timing and `recurrence` follow `POST
+/api/v1/class-series`. Without a tutor the occurrences are `unassigned`;
+with one they are `offered` under a series offer (Assignment offers,
+"Series offers"). The group `override` has `codes` for the group-level
+conflict (`group_capacity_exceeded`, the #49 shape) and `pairs` for the
+occurrences' soft conflicts (the series shape); at least one of them
+(`codes_required`), and the reason as for every override.
+
+**Order of the create:** `401`/`403` → `422` schema (name `name_required` /
+`name_too_long`, `max_students` 1–500) → `403` for an `override` without
+`schedule.override` → the student locks → the zone `FOR SHARE` → `422`
+recurrence, `starts_on_in_past`, `crosses_local_date` → `422` references
+(the students with their index, `["body", "student_ids", i]`; subject,
+tutor, room), all in one response → `409 group_name_taken` → the conflicts:
+the group-level `group_capacity_exceeded` (more initial students than
+`max_students`) first, then every conflict of every occurrence in the
+horizon (with `details.occurrence_start` and `details.date`), including
+`room_capacity_exceeded` (hard) and `student_overlap` → `409
+scheduling_conflict` unless the override covers every soft one (a hard one
+never) → the group, its series, the series participants, one enrollment per
+student and the occurrences → the overrides: per occurrence as for a series
+(`scheduling.series_override`), and for the group level one row per
+enrollment above `max_students` (in body order) with the event
+`scheduling.enrollment_override`.
+
+**Capacity** (ADR-0005 D7, ISSUE-SC3): the effective capacity is
+`min(max_students, the current series' room capacity)` (`max_students`
+without a room). The group maximum counts **active enrollments** and is
+soft (`group_capacity_exceeded`, overridable); a room counts each future
+occurrence's participants and is hard (`room_capacity_exceeded`), because
+one occurrence may use another room. The nightly job never re-checks the
+maximum; a room it can't hold becomes a `conflict` occurrence with an
+inbox item. A `PATCH` can't lower `max_students` below the active
+enrollments (`422 max_students_below_enrolled`); raising it above the room
+is allowed.
+
+**Enroll** (`schedule.manage`): `422` schema → `403` override without
+`schedule.override` → the student lock → the zone `FOR SHARE` → the group
+`FOR UPDATE` (`404 group_not_found`) → the group's producing series `FOR
+UPDATE` (none: `409 group_ended`) → `422 student_unknown` /
+`student_inactive` → `409 already_enrolled` → the conflicts, all listed:
+`group_capacity_exceeded` (active enrollments + 1 over the maximum; soft)
+first, then each future occupying occurrence's `student_overlap` and
+`room_capacity_exceeded` (hard), with `details.occurrence_start` and
+`details.date`, by start → `409 scheduling_conflict` unless an `override`
+(`{codes, reason}`) lists every soft one → the enrollment, the series
+participants and the occurrences' participants → with an override, one
+override row whose subject is the enrollment and the event
+`scheduling.enrollment_override` (`override_id`, `group_enrollment_id`,
+`codes`, `conflicts`, `reason`).
+
+**Withdraw** (`schedule.manage`): `422` (reason trimmed, 1–1000 when sent:
+`reason_required` for a blank one, `reason_too_long`) → the student lock →
+the zone → the group `FOR UPDATE` (`404 group_not_found`) → the producing
+series → `404 enrollment_not_found` (unknown, or of another group) → `409
+version_conflict` → `409 enrollment_not_active`. A withdrawal never fails a
+check and changes no session state (an empty occurrence stays; cancel it
+with `POST /api/v1/class-sessions/{id}/cancel` if needed).
+
+**Mid-term rule:** an enrollment or a withdrawal takes effect at the request
+instant. It changes the group's occurrences that start **after** now in
+`unassigned`, `offered`, `confirmed`, `conflict` or `skipped_closure`, and
+the participants of every producing series (so later materializations
+follow). Past, started, `completed` and `cancelled` occurrences keep their
+participants. Only `unassigned`, `offered` and `confirmed` occurrences are
+checked; `conflict` and `skipped_closure` ones take the change without
+checks (their approve and restore re-check every participant). Every change
+bumps the `version` of the series and occurrences whose participants it
+changes.
+
+**Lock order** (every writer that changes a group occurrence's
+participants or room): students → zone → **group `FOR UPDATE`** → series →
+sessions → offers. The nightly job takes it too and, for a group series,
+re-reads the participants under the locks; when an enrollment committed in
+between it rolls that series back and retries (at most 3 times, then the
+next night). A series edit or `PATCH` of a group occurrence takes the group
+lock too; an approve of a `conflict` occurrence whose participants changed
+since it read them is `409 version_conflict`.
+
+**`GroupDetail`:** `{id, name, subject {id, name, level {id, name}},
+max_students, enrolled_count, effective_capacity, current_series {id, tutor,
+classroom, starts_on, start_time, duration_minutes, time_zone, recurrence,
+last_occurrence_on, version} | null, next_occurrences [{id, state,
+starts_at, ends_at}] (up to 10), version, created_at, updated_at, roster}`.
+`current_series` is the producing series with the latest start (`null`
+once the group has ended). `roster` (`schedule.view` holders only) lists
+the active enrollments by student name, then the withdrawn ones, latest
+first. **`GroupEnrollmentItem`:** `{id, student {id, display_name,
+is_active}, enrolled_at, enrolled_by {id, display_name}, withdrawn_at,
+withdrawn_by, withdrawal_reason, overridden, version}`.
+
+**Who sees what:** `schedule.view` holders (Owner, Administrator, Academic
+coordinator, Finance) see every group, its roster and every session. A
+**student** sees only the groups where their own profile has an active
+enrollment, with `enrolled_count` and `roster` `null`, and only the
+sessions where their profile is a participant in `confirmed` or
+`completed` (so nothing before their enrollment or after their withdrawal;
+`next_occurrences` likewise). Anyone else (tutors, guardians, a student
+account without a profile) gets an empty list and `404 group_not_found`.
+M4-22 extends this to linked guardians and assigned tutors.
+
+**The billing hook (M6-07):** `group_enrollments` keeps one row per
+enrollment period (`enrolled_at`/`_by`, then a write-once
+`withdrawn_at`/`_by`/`withdrawal_reason`; a trigger refuses deletes and
+any other change, SQLSTATE 42501). The routes call
+`app/workflows/group_enrollment.py`, whose `apply_enrollment_change`
+step receives each `GroupEnrollmentChange {enrollment_id, group_id,
+student_id, change: enrolled | withdrawn, effective_at, actor_user_id}` in
+the same Unit of Work; M6-07 adds its charge step there, and its sweeper
+reads `scheduling.service.list_group_enrollment_periods(changed_since,
+limit)`. No job is enqueued and there is no event bus.
 
 ### Course templates
 

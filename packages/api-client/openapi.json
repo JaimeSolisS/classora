@@ -10632,6 +10632,679 @@
           }
         }
       }
+    },
+    "/api/v1/groups": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Create Group",
+        "description": "Create an ongoing tutoring group with a weekly schedule. Its sessions\nare the occurrences of a `group` series, created up to the rolling\nhorizon and checked like a series (a closure date is skipped); every\ninitial student is enrolled and takes part in each one. Above\n`max_students` the create needs an `override` (`codes:\n[\"group_capacity_exceeded\"]`); above a room's capacity it is refused.\nWith a tutor the occurrences are `offered` to them, without one\n`unassigned`.",
+        "operationId": "create_group_api_v1_groups_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another group has the name, in any case (group_name_taken); or the group breaks scheduling rules (scheduling_conflict): `conflicts` lists the group-level `group_capacity_exceeded` first (more initial students than `max_students`), then every conflict of every occurrence in the horizon (with `details.occurrence_start` and `details.date`), e.g. `room_capacity_exceeded` and `student_overlap`; a hard conflict, or a soft one the `override` doesn't list, refuses. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable). Nothing is created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "List Groups",
+        "description": "The groups you can see, by name: `active` (still producing\nsessions; the default), `ended` or `all`. Staff with schedule.view see\nevery group; a student only the groups they are enrolled in (without\nthe enrolled count); anyone else an empty list.",
+        "operationId": "list_groups_api_v1_groups_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "active",
+                "ended",
+                "all"
+              ],
+              "type": "string",
+              "default": "active",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor is not valid (invalid_cursor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/groups/{group_id}": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Get Group",
+        "description": "One group: its subject, maximum, effective capacity, current series\nand next sessions; for staff with schedule.view also the roster and the\nenrolled count. A student sees only a group they are enrolled in, and\nonly their own confirmed sessions.",
+        "operationId": "get_group_api_v1_groups__group_id__get",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Group Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such group, or one you can't see (group_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Update Group",
+        "description": "Rename a group or change its maximum. The maximum can't go below the\nenrolled students; above the room's capacity the room still limits the\nsessions. The schedule, tutor and room change through the series.",
+        "operationId": "update_group_api_v1_groups__group_id__patch",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Group Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such group, or one you can't see (group_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The group changed since it was read (version_conflict), or another group has the name (group_name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/groups/{group_id}/sessions": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "List Group Sessions",
+        "description": "The group's sessions overlapping `[from, to)`, by start. Staff with\nschedule.view see every state; a student only the sessions they take\npart in that are `confirmed` or `completed`.",
+        "operationId": "list_group_sessions_api_v1_groups__group_id__sessions_get",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Group Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "From"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later.",
+              "title": "To"
+            },
+            "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSessions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such group, or one you can't see (group_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/groups/{group_id}/enrollments": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Enroll Student",
+        "description": "Enroll a student now, also after the group has started: they join\nevery future session of the group that hasn't begun (not completed or\ncancelled ones) and the later ones the schedule creates. Above\n`max_students` it needs an `override`; above a room's capacity, or\noverlapping another session of the student, it is refused.",
+        "operationId": "enroll_student_api_v1_groups__group_id__enrollments_post",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Group Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupEnrollmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEnrollmentCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such group, or one you can't see (group_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The group has no series still producing sessions (group_ended); the student is already enrolled (already_enrolled, details.enrollment_id); or the enrollment breaks scheduling rules (scheduling_conflict): `group_capacity_exceeded` (soft, can be overridden) first, then each future session's `student_overlap` and `room_capacity_exceeded` (hard), with `details.occurrence_start` and `details.date`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Withdraw Student",
+        "description": "Withdraw a student now, with an optional reason: they leave every\nfuture session of the group that hasn't begun and the later ones; past,\nbegun, completed and cancelled sessions keep them. The enrollment period\nis kept (for billing).",
+        "operationId": "withdraw_student_api_v1_groups__group_id__enrollments__enrollment_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Group Id"
+            }
+          },
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupWithdrawal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEnrollmentItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such group (group_not_found), or no such enrollment in it (enrollment_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12175,6 +12848,19 @@
             ],
             "description": "The tutor assignment; null when the series has no tutor."
           },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` series (#56); null otherwise."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -12225,6 +12911,7 @@
           "split_from_series_id",
           "split_into_series_ids",
           "assignment",
+          "group_id",
           "version",
           "created_at",
           "updated_at",
@@ -12353,6 +13040,19 @@
             ],
             "description": "The tutor assignment; null when the series has no tutor."
           },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` series (#56); null otherwise."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -12395,6 +13095,7 @@
           "split_from_series_id",
           "split_into_series_ids",
           "assignment",
+          "group_id",
           "version",
           "created_at",
           "updated_at",
@@ -12941,6 +13642,19 @@
             ],
             "description": "When and why a `cancelled` session was cancelled; null otherwise."
           },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` session (#56); null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -12973,6 +13687,7 @@
           "pending_offer",
           "pending_substitution",
           "cancellation",
+          "group_id",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -13129,6 +13844,19 @@
               }
             ],
             "description": "When and why a `cancelled` session was cancelled; null otherwise."
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` session (#56); null otherwise."
           }
         },
         "type": "object",
@@ -13153,7 +13881,8 @@
           "conflict_codes",
           "pending_offer",
           "pending_substitution",
-          "cancellation"
+          "cancellation",
+          "group_id"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -13387,6 +14116,19 @@
             ],
             "description": "When and why a `cancelled` session was cancelled; null otherwise."
           },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` session (#56); null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -13419,6 +14161,7 @@
           "pending_offer",
           "pending_substitution",
           "cancellation",
+          "group_id",
           "warnings"
         ],
         "title": "ClassSessionUpdated",
@@ -15142,6 +15885,51 @@
         "title": "EmergencyContactUpdate",
         "description": "An emergency contact in a ``PATCH``: with the ``id`` of one of this\nstudent's contacts to keep (and update) it, without one to add it."
       },
+      "EnrollmentActor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "EnrollmentActor",
+        "description": "Who enrolled or withdrew the student."
+      },
+      "EnrollmentStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "is_active"
+        ],
+        "title": "EnrollmentStudent",
+        "description": "The enrolled student."
+      },
       "ExceptionKind": {
         "type": "string",
         "enum": [
@@ -15442,6 +16230,955 @@
         ],
         "title": "FieldError",
         "type": "object"
+      },
+      "GroupCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "1-120 characters, trimmed; unique (any case)."
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "max_students": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Students",
+            "description": "The group maximum, 1-500."
+          },
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the occurrences to; null: unassigned."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "The local date the rule starts on (not before today)."
+          },
+          "start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM (whole minutes, no seconds)."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "description": "15-480 minutes."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrence"
+          },
+          "student_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Student Ids",
+            "description": "The initial students, 0-500, each once."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "subject_id",
+          "max_students",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "recurrence"
+        ],
+        "title": "GroupCreate",
+        "description": "An ongoing tutoring group and its weekly series (``POST\n/api/v1/groups``, #56 D1). The timing and ``recurrence`` follow ``POST\n/api/v1/class-series`` (#53); no ``rrule`` text. ``student_ids`` are\nthe initial students (0-500, no duplicates: ``student_ids_duplicate``).\n``override`` needs ``schedule.override``."
+      },
+      "GroupCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/GroupSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "Active enrollments; null for a student."
+          },
+          "effective_capacity": {
+            "type": "integer",
+            "title": "Effective Capacity",
+            "description": "min(max_students, the current series' room capacity)."
+          },
+          "current_series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupSeries"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The producing series with the latest start; null once ended."
+          },
+          "next_occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/GroupOccurrenceItem"
+            },
+            "type": "array",
+            "title": "Next Occurrences",
+            "description": "Up to 10 upcoming occurrences, by start."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GroupEnrollmentItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roster",
+            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student."
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subject",
+          "max_students",
+          "enrolled_count",
+          "effective_capacity",
+          "current_series",
+          "next_occurrences",
+          "version",
+          "created_at",
+          "updated_at",
+          "roster",
+          "warnings"
+        ],
+        "title": "GroupCreated",
+        "description": "The created group."
+      },
+      "GroupDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/GroupSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "Active enrollments; null for a student."
+          },
+          "effective_capacity": {
+            "type": "integer",
+            "title": "Effective Capacity",
+            "description": "min(max_students, the current series' room capacity)."
+          },
+          "current_series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupSeries"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The producing series with the latest start; null once ended."
+          },
+          "next_occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/GroupOccurrenceItem"
+            },
+            "type": "array",
+            "title": "Next Occurrences",
+            "description": "Up to 10 upcoming occurrences, by start."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GroupEnrollmentItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roster",
+            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subject",
+          "max_students",
+          "enrolled_count",
+          "effective_capacity",
+          "current_series",
+          "next_occurrences",
+          "version",
+          "created_at",
+          "updated_at",
+          "roster"
+        ],
+        "title": "GroupDetail",
+        "description": "One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student\n``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are\nonly their own confirmed sessions."
+      },
+      "GroupEnrollmentCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override `group_capacity_exceeded` with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id"
+        ],
+        "title": "GroupEnrollmentCreate",
+        "description": "Enroll a student in a group (``POST /api/v1/groups/{id}/enrollments``,\n#56 E1). ``override`` (the #49 shape) needs ``schedule.override``."
+      },
+      "GroupEnrollmentCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/EnrollmentStudent"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "enrolled_by": {
+            "$ref": "#/components/schemas/EnrollmentActor"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          },
+          "withdrawn_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrollmentActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withdrawal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawal Reason"
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "description": "Whether the enrollment went above the maximum by an override."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "enrolled_at",
+          "enrolled_by",
+          "withdrawn_at",
+          "withdrawn_by",
+          "withdrawal_reason",
+          "overridden",
+          "version",
+          "warnings"
+        ],
+        "title": "GroupEnrollmentCreated",
+        "description": "The new enrollment."
+      },
+      "GroupEnrollmentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/EnrollmentStudent"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "enrolled_by": {
+            "$ref": "#/components/schemas/EnrollmentActor"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          },
+          "withdrawn_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrollmentActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withdrawal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawal Reason"
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "description": "Whether the enrollment went above the maximum by an override."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "enrolled_at",
+          "enrolled_by",
+          "withdrawn_at",
+          "withdrawn_by",
+          "withdrawal_reason",
+          "overridden",
+          "version"
+        ],
+        "title": "GroupEnrollmentItem",
+        "description": "One enrollment period (#56 G2)."
+      },
+      "GroupLevel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "GroupLevel",
+        "description": "The subject's education level."
+      },
+      "GroupListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/GroupSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "Null for a student."
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current series' tutor."
+          },
+          "next_starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Starts At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "subject",
+          "max_students",
+          "enrolled_count",
+          "tutor",
+          "next_starts_at"
+        ],
+        "title": "GroupListItem",
+        "description": "A group in the list (#56 H1)."
+      },
+      "GroupOccurrenceItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "GroupOccurrenceItem",
+        "description": "An upcoming occurrence of the group."
+      },
+      "GroupOverride": {
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Codes",
+            "description": "Soft codes for the group-level conflicts (`group_capacity_exceeded`), no duplicates; never a hard code."
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/OverridePair"
+            },
+            "type": "array",
+            "title": "Pairs",
+            "description": "The occurrences' (occurrence_start, code) pairs to override, at most 1400, no duplicates."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the rules are overridden: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "GroupOverride",
+        "description": "The soft conflicts of a group create to override, and why (#56 D1;\nthe ``override`` of ``POST /api/v1/groups``): ``codes`` for the\ngroup-level conflicts (``group_capacity_exceeded`` of the initial\nstudents, the #49 shape) and ``pairs`` for the occurrences' (the #236\n``(occurrence_start, code)`` shape of ``POST /api/v1/class-series``). At\nleast one of them (``codes_required`` on ``override``); the reason is the\n#49 reason (trimmed, 1-1000)."
+      },
+      "GroupPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GroupListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "GroupPage",
+        "description": "A page of groups (cursor pagination)."
+      },
+      "GroupSeries": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone"
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrenceDetail"
+          },
+          "last_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Occurrence On"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tutor",
+          "classroom",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "time_zone",
+          "recurrence",
+          "last_occurrence_on",
+          "version"
+        ],
+        "title": "GroupSeries",
+        "description": "The group's current series (#56 G1): the producing series with the\nlatest start; its rule, tutor and room (the participants are the\nroster)."
+      },
+      "GroupSessionClassroom": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "GroupSessionClassroom",
+        "description": "The session's classroom."
+      },
+      "GroupSessionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupSessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at",
+          "tutor",
+          "classroom"
+        ],
+        "title": "GroupSessionItem",
+        "description": "One session of the group."
+      },
+      "GroupSessions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GroupSessionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "GroupSessions",
+        "description": "The group's sessions overlapping the range, by start."
+      },
+      "GroupSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "level": {
+            "$ref": "#/components/schemas/GroupLevel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "level"
+        ],
+        "title": "GroupSubject",
+        "description": "The group's subject and its level."
+      },
+      "GroupUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The group's version, as read."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "1-120 characters, trimmed; unique (any case)."
+          },
+          "max_students": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Students",
+            "description": "The group maximum, 1-500."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "GroupUpdate",
+        "description": "Rename a group or change its maximum (``PATCH /api/v1/groups/{id}``,\n#56 E4). At least one of ``name`` and ``max_students`` (``no_changes``\non the body)."
+      },
+      "GroupWithdrawal": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The enrollment's version, as read."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Optional: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "GroupWithdrawal",
+        "description": "Withdraw a student from a group (``POST\n/api/v1/groups/{id}/enrollments/{enrollment_id}/withdraw``, #56 E2)."
       },
       "GuardianAccount": {
         "properties": {

@@ -7,6 +7,8 @@ serialize on the series row and can't deadlock:
 
 1. ``lock_students`` for the series' participants (ascending ids);
 2. the center zone ``FOR SHARE``;
+   (a ``group`` series: the group row ``FOR UPDATE``, #56 F1; a split's new
+   series keeps the ``group_id``);
 3. the **series row ``FOR UPDATE``** (re-read);
 4. the series' rows on or after the edit date ``FOR UPDATE``, by id
    (re-read);
@@ -134,6 +136,7 @@ from app.modules.scheduling.errors import (
     SessionOverlapError,
     SessionValidationError,
 )
+from app.modules.scheduling.group_lock import lock_group
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.materialize import (
     OCCURRENCE_CONFLICT_TYPE,
@@ -332,6 +335,11 @@ async def _lock(
     student_ids = await series_participant_ids(session, found.id)
     await lock_students(session, student_ids)
     zone = await administration.get_center_time_zone(session, for_share=True)
+    if found.group_id is not None:
+        # #56 F1: a group series' room and participants change only under
+        # the group row lock; an enrollment since the client's read bumped
+        # the series version, so the check below refuses it.
+        await lock_group(session, found.group_id)
     series = await lock_series(session, found.id)
     ensure_version(series, version)
     rows = list(
@@ -588,6 +596,7 @@ def _new_series(old: ClassSeries, body: ClassSeriesEdit, start: date) -> ClassSe
         rrule=build_rrule(fields),
         last_occurrence_on=last_occurrence_on(fields, start),
         split_from_series_id=old.id,
+        group_id=old.group_id,
     )
 
 

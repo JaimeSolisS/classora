@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0040"
+HEAD = "0041"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -116,6 +116,7 @@ OVERRIDE_TABLES = ["class_session_overrides"]
 OFFER_TABLES = ["assignment_offer_sessions", "assignment_offers"]
 SERIES_TABLES = ["class_series", "class_series_participants"]
 SUBSTITUTION_TABLES = ["class_session_substitutions"]
+GROUP_TABLES = ["class_groups", "group_enrollments"]
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -311,6 +312,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *OFFER_TABLES,
             *SERIES_TABLES,
             *SUBSTITUTION_TABLES,
+            *GROUP_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4150,12 +4152,63 @@ def _of_0040(diff: Any) -> bool:
     return False
 
 
+GROUP_COLUMNS = {
+    ("class_series", "group_id"),
+    ("class_sessions", "group_id"),
+    ("class_session_overrides", "group_enrollment_id"),
+}
+GROUP_INDEXES = {
+    "ix_class_series_group_id",
+    "ix_class_sessions_group_id_starts_at",
+    "ix_class_session_overrides_group_enrollment_id",
+}
+GROUP_FKS = {
+    "fk_class_series_group_id_class_groups",
+    "fk_class_sessions_group_id_class_groups",
+    "fk_class_session_overrides_group_enrollment_id_group_en_59d0",
+}
+"""The objects revision 0041 adds to existing tables (#56 A3, A4, A6)."""
+
+
+def _of_0041(diff: Any) -> bool:
+    """A metadata difference that revision 0041 adds: the two group tables
+    (and their indexes), the ``group_id`` / ``group_enrollment_id`` columns,
+    their indexes and keys, and ``class_session_overrides.class_session_id``
+    becoming nullable."""
+    if isinstance(diff, list):
+        return all(
+            change[0] == "modify_nullable"
+            and change[2] == "class_session_overrides"
+            and change[3] == "class_session_id"
+            for change in diff
+        )
+    if diff[0] == "add_table":
+        return diff[1].name in GROUP_TABLES
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) in GROUP_COLUMNS
+    if diff[0] == "add_index":
+        return diff[1].name in GROUP_INDEXES or diff[1].table.name in GROUP_TABLES
+    if diff[0] == "add_fk":
+        # The overrides key's name is shortened to 63 characters in the
+        # database, not in the metadata.
+        return diff[1].name in GROUP_FKS or str(diff[1].name).startswith(
+            "fk_class_session_overrides_group_enrollment_id"
+        )
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
     their foreign key and unique constraint; and 0036's and 0038's
     objects."""
-    if _of_0036(diff) or _of_0038(diff) or _of_0039(diff) or _of_0040(diff):
+    if (
+        _of_0036(diff)
+        or _of_0038(diff)
+        or _of_0039(diff)
+        or _of_0040(diff)
+        or _of_0041(diff)
+    ):
         return True
     if diff[0] == "add_table":
         return diff[1].name in tables
@@ -4194,11 +4247,14 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         "original_start": ("timestamp with time zone", "YES", None, None),
         "is_exception": ("boolean", "NO", None, "false"),
         "conflict_codes": ("ARRAY", "NO", None, "'{}'::character varying[]"),
+        # 0041 (#56 A4)
+        "group_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     checks = {
         f"ck_{table}_{name}"
         for name in (
+            "group_iff_kind",
             "series_original_start_together",
             "exception_needs_series",
             "kind_valid",
@@ -4219,6 +4275,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_classroom_id_classrooms",
         f"fk_{table}_series_id_class_series",
+        f"fk_{table}_group_id_class_groups",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -4236,6 +4293,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_tutor_user_id",
         f"ix_{table}_classroom_id",
         f"ix_{table}_starts_at",
+        f"ix_{table}_group_id_starts_at",
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",
@@ -4756,33 +4814,42 @@ def test_class_session_overrides_columns_constraints_and_indexes(fresh_database_
         "id": STANDARD_COLUMNS["id"],
         "created_at": STANDARD_COLUMNS["created_at"],
         "updated_at": STANDARD_COLUMNS["updated_at"],
-        "class_session_id": ("uuid", "NO", None, None),
+        # 0041 (#56 A6): nullable, one of the two subjects.
+        "class_session_id": ("uuid", "YES", None, None),
         "codes": ("ARRAY", "NO", None, None),
         "conflicts": ("jsonb", "NO", None, None),
         "reason": ("text", "NO", None, None),
         "actor_user_id": ("uuid", "NO", None, None),
         # 0039 (#236 D1)
         "class_series_id": ("uuid", "YES", None, None),
+        # 0041 (#56 A6)
+        "group_enrollment_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
+    # The naming convention shortens it to PostgreSQL's 63 characters.
+    enrollment_fk = "fk_class_session_overrides_group_enrollment_id_group_en_59d0"
     assert set(constraints) == {
         "pk_class_session_overrides",
         "fk_class_session_overrides_class_session_id_class_sessions",
         "fk_class_session_overrides_actor_user_id_users",
         OVERRIDE_CONTEXT_FK,
+        enrollment_fk,
         "ck_class_session_overrides_codes_soft",
         "ck_class_session_overrides_reason_length",
+        "ck_class_session_overrides_one_subject",
     }
     for name in (
         "fk_class_session_overrides_class_session_id_class_sessions",
         "fk_class_session_overrides_actor_user_id_users",
         OVERRIDE_CONTEXT_FK,
+        enrollment_fk,
     ):
         assert "ON DELETE RESTRICT" in constraints[name]
     assert set(_indexes(fresh_database_url, table)) == {
         "pk_class_session_overrides",
         "ix_class_session_overrides_class_session_id",
         OVERRIDE_CONTEXT_INDEX,
+        "ix_class_session_overrides_group_enrollment_id",
     }
 
 
@@ -5088,7 +5155,7 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
     assert [
         d
         for d in metadata_diff(fresh_database_url)
-        if not (_of_0036(d) or _of_0038(d) or _of_0039(d) or _of_0040(d))
+        if not (_of_0036(d) or _of_0038(d) or _of_0039(d) or _of_0040(d) or _of_0041(d))
     ] == []
     [row] = run_sql(
         fresh_database_url,
@@ -5136,12 +5203,15 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         "assignment_from": ("date", "YES", None, None),
         # 0038 (#54 A2)
         "split_from_series_id": ("uuid", "YES", None, None),
+        # 0041 (#56 A3)
+        "group_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     foreign_keys = {
         f"fk_{table}_subject_id_subjects",
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_classroom_id_classrooms",
+        f"fk_{table}_group_id_class_groups",
         LINEAGE_FK,
     }
     assert set(constraints) == {
@@ -5161,6 +5231,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
                 "assignment_iff_tutor",
                 "assignment_from_iff_status",
                 "split_from_not_self",
+                "group_iff_kind",
             )
         ),
     }
@@ -5171,6 +5242,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_subject_id",
         f"ix_{table}_tutor_user_id",
         f"ix_{table}_classroom_id",
+        f"ix_{table}_group_id",
         LINEAGE_INDEX,
     }
 
@@ -5305,7 +5377,7 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
     assert [
         d
         for d in metadata_diff(fresh_database_url)
-        if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+        if not (_of_0038(d) or _of_0039(d) or _of_0040(d) or _of_0041(d))
     ] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
         before = offers_before if table == "assignment_offers" else series_before
@@ -5581,7 +5653,9 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
 
     assert version_nums(dsn) == ["0037"]
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0038(d) or _of_0039(d) or _of_0040(d) or _of_0041(d))
     ] == []
     sessions = _session_rows(dsn)
     for cleared in (future, past):
@@ -5627,13 +5701,17 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
     subject = _subject_row(dsn)
     old = _series(dsn, subject)
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0038(d) or _of_0039(d) or _of_0040(d) or _of_0041(d))
     ] == []
 
     command.upgrade(config, "0038")
 
     assert version_nums(dsn) == ["0038"]
-    assert [d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d) or _of_0041(d))
+    ] == []
     [row] = run_sql(
         dsn, "SELECT split_from_series_id FROM class_series WHERE id = :id", {"id": old}
     )
@@ -5658,7 +5736,9 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
     assert version_nums(dsn) == ["0037"]
     assert LINEAGE_COLUMN not in _columns(dsn, "class_series")
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d) or _of_0040(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0038(d) or _of_0039(d) or _of_0040(d) or _of_0041(d))
     ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
 
@@ -5695,7 +5775,7 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
     command.upgrade(config, "0039")
 
     assert version_nums(dsn) == ["0039"]
-    assert [d for d in metadata_diff(dsn) if not _of_0040(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0040(d) or _of_0041(d))] == []
     [row] = run_sql(
         dsn,
         "SELECT class_series_id, reason FROM class_session_overrides WHERE id = :id",
@@ -5732,7 +5812,9 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
 
     assert version_nums(dsn) == ["0038"]
     assert OVERRIDE_CONTEXT_COLUMN not in _columns(dsn, "class_session_overrides")
-    assert [d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0039(d) or _of_0040(d) or _of_0041(d))
+    ] == []
     assert len(run_sql(dsn, "SELECT id FROM class_session_overrides")) == 2
 
     command.upgrade(config, "head")
@@ -5785,7 +5867,7 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
     command.upgrade(config, "0040")
 
     assert version_nums(dsn) == ["0040"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0041(d)] == []
     assert public_tables(dsn) - before == {SUBSTITUTIONS_TABLE}
     [row] = run_sql(
         dsn, "SELECT kind FROM assignment_offers WHERE id = :id", {"id": old}
@@ -5838,7 +5920,7 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
     assert version_nums(dsn) == ["0039"]
     assert public_tables(dsn) == before
     assert "kind" not in _columns(dsn, "assignment_offers")
-    assert [d for d in metadata_diff(dsn) if not _of_0040(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0040(d) or _of_0041(d))] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM assignment_offers")} == {old}
 
     command.upgrade(config, "head")
@@ -5887,3 +5969,214 @@ def test_class_session_substitutions_columns_constraints_and_indexes(
         "uq_class_session_substitutions_offer_id",
         SUBSTITUTIONS_INDEX,
     }
+
+
+# --- 0041: tutoring groups (#56 A) ----------------------------------------------------
+
+
+def _student_row(dsn: str) -> uuid.UUID:
+    student = uuid.uuid4()
+    run_sql(
+        dsn,
+        "INSERT INTO students (id, given_names, family_names, birthdate)"
+        " VALUES (:id, 'Ana', 'Grupo', DATE '2014-03-01')",
+        {"id": student},
+    )
+    return student
+
+
+def _session_row(dsn: str, subject: uuid.UUID, **values: Any) -> uuid.UUID:
+    columns: dict[str, Any] = {
+        "kind": "individual",
+        "state": "unassigned",
+        "subject_id": subject,
+        "starts_at": datetime(2031, 1, 12, 16, tzinfo=UTC),
+        "ends_at": datetime(2031, 1, 12, 17, tzinfo=UTC),
+        "scheduled_minutes": 60,
+        **values,
+    }
+    names = ", ".join(columns)
+    params = ", ".join(f":{name}" for name in columns)
+    [row] = run_sql(
+        dsn,
+        f"INSERT INTO class_sessions ({names}) VALUES ({params}) RETURNING id",  # noqa: S608 (fixed names)
+        columns,
+    )
+    return uuid.UUID(str(row.id))
+
+
+OVERRIDE_INSERT = (
+    "INSERT INTO class_session_overrides (class_session_id, group_enrollment_id,"
+    " codes, conflicts, reason, actor_user_id) VALUES (:s, :e,"
+    " ARRAY['group_capacity_exceeded'], '[]'::jsonb, 'Motivo', :u) RETURNING id"
+)
+
+
+def test_0041_adds_the_group_tables_and_downgrade_drops_them(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0040")
+    user, subject, student = _user_row(dsn), _subject_row(dsn), _student_row(dsn)
+    session_id = _session_row(dsn, subject)
+    [kept] = run_sql(
+        dsn,
+        "INSERT INTO class_session_overrides (class_session_id, codes, conflicts,"
+        " reason, actor_user_id) VALUES (:s, ARRAY['notice_window'], '[]'::jsonb,"
+        " 'Motivo', :u) RETURNING id",
+        {"s": session_id, "u": user},
+    )
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0041")
+
+    assert version_nums(dsn) == ["0041"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(GROUP_TABLES)
+    [group] = run_sql(
+        dsn,
+        "INSERT INTO class_groups (name, subject_id, max_students)"
+        " VALUES ('Álgebra', :s, 6) RETURNING id",
+        {"s": subject},
+    )
+    enrollment_insert = (
+        "INSERT INTO group_enrollments (group_id, student_id, enrolled_at,"
+        " enrolled_by_user_id) VALUES (:g, :st, '2031-01-05T18:00Z', :u)"
+        " RETURNING id"
+    )
+    values = {"g": group.id, "st": student, "u": user}
+    [enrollment] = run_sql(dsn, enrollment_insert, values)
+    [override] = run_sql(
+        dsn, OVERRIDE_INSERT, {"s": None, "e": enrollment.id, "u": user}
+    )
+    _session_row(dsn, subject, kind="group", group_id=group.id)
+
+    # The CHECKs and the unique indexes.
+    for statement, params, constraint in (
+        (
+            "INSERT INTO class_groups (name, subject_id, max_students)"
+            " VALUES ('ÁLGEBRA', :s, 6)",
+            {"s": subject},
+            "uq_class_groups_name",
+        ),
+        (
+            "INSERT INTO class_groups (name, subject_id, max_students)"
+            " VALUES (' Otro', :s, 6)",
+            {"s": subject},
+            "ck_class_groups_name_trimmed",
+        ),
+        (
+            "INSERT INTO class_groups (name, subject_id, max_students)"
+            " VALUES ('Otro', :s, 501)",
+            {"s": subject},
+            "ck_class_groups_max_students_range",
+        ),
+        (enrollment_insert, values, "uq_group_enrollments_active"),
+        (OVERRIDE_INSERT, {"s": None, "e": None, "u": user}, "one_subject"),
+        (
+            OVERRIDE_INSERT,
+            {"s": session_id, "e": enrollment.id, "u": user},
+            "one_subject",
+        ),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, statement, params)
+    with pytest.raises(IntegrityError, match="ck_class_sessions_group_iff_kind"):
+        _session_row(dsn, subject, kind="group")
+    with pytest.raises(IntegrityError, match="ck_class_sessions_group_iff_kind"):
+        _session_row(dsn, subject, group_id=group.id)
+    with pytest.raises(IntegrityError, match="ck_class_series_group_iff_kind"):
+        _series(dsn, subject, kind="group")
+
+    # The write-once trigger: one withdrawal, then nothing.
+    run_sql(
+        dsn,
+        "UPDATE group_enrollments SET withdrawn_at = '2031-01-06T18:00Z',"
+        " withdrawn_by_user_id = :u, withdrawal_reason = 'Mudanza',"
+        " version = version + 1 WHERE id = :id",
+        {"u": user, "id": enrollment.id},
+    )
+    for statement in (
+        "UPDATE group_enrollments SET withdrawal_reason = 'Otra' WHERE id = :id",
+        "UPDATE group_enrollments SET enrolled_by_user_id = NULL WHERE id = :id",
+        "UPDATE group_enrollments SET enrolled_at = '2031-01-01T00:00Z' WHERE id = :id",
+        "DELETE FROM group_enrollments WHERE id = :id",
+    ):
+        with pytest.raises(DBAPIError) as raised:
+            run_sql(dsn, statement, {"id": enrollment.id})
+        assert getattr(raised.value.orig, "sqlstate", None) == "42501"
+    # Re-enrolling after the withdrawal is a new period.
+    run_sql(dsn, enrollment_insert, values)
+
+    command.downgrade(config, "0040")
+
+    assert version_nums(dsn) == ["0040"]
+    assert public_tables(dsn) == before
+    assert "group_id" not in _columns(dsn, "class_sessions")
+    assert "group_id" not in _columns(dsn, "class_series")
+    assert [d for d in metadata_diff(dsn) if not _of_0041(d)] == []
+    remaining = {r.id for r in run_sql(dsn, "SELECT id FROM class_session_overrides")}
+    assert remaining == {kept.id}
+    assert override.id not in remaining
+    # A group session lost its group; it must go before upgrading again.
+    run_sql(dsn, "DELETE FROM class_sessions WHERE kind = 'group'")
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_group_tables_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, "class_groups") == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "version": STANDARD_COLUMNS["version"],
+        "name": ("character varying", "NO", 120, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "max_students": ("smallint", "NO", None, None),
+    }
+    assert _columns(dsn, "group_enrollments") == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "version": STANDARD_COLUMNS["version"],
+        "group_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "NO", None, None),
+        "enrolled_at": ("timestamp with time zone", "NO", None, None),
+        "enrolled_by_user_id": ("uuid", "NO", None, None),
+        "withdrawn_at": ("timestamp with time zone", "YES", None, None),
+        "withdrawn_by_user_id": ("uuid", "YES", None, None),
+        "withdrawal_reason": ("character varying", "YES", 1000, None),
+    }
+    for table in ("class_series", "class_sessions"):
+        assert _columns(dsn, table)["group_id"] == ("uuid", "YES", None, None)
+        constraints = _constraints(dsn, table)
+        assert f"ck_{table}_group_iff_kind" in constraints
+        assert "ON DELETE RESTRICT" in constraints[f"fk_{table}_group_id_class_groups"]
+    enrollment_constraints = _constraints(dsn, "group_enrollments")
+    assert set(enrollment_constraints) == {
+        "pk_group_enrollments",
+        "fk_group_enrollments_group_id_class_groups",
+        "fk_group_enrollments_student_id_students",
+        "fk_group_enrollments_enrolled_by_user_id_users",
+        "fk_group_enrollments_withdrawn_by_user_id_users",
+        "ck_group_enrollments_withdrawn_after_enrolled",
+        "ck_group_enrollments_withdrawn_together",
+        "ck_group_enrollments_withdrawal_reason_valid",
+    }
+    indexes = _indexes(dsn, "group_enrollments")
+    assert set(indexes) == {
+        "pk_group_enrollments",
+        "ix_group_enrollments_group_id",
+        "ix_group_enrollments_student_id",
+        "uq_group_enrollments_active",
+    }
+    assert "WHERE (withdrawn_at IS NULL)" in indexes["uq_group_enrollments_active"]
+    assert (
+        "lower((name)::text)" in _indexes(dsn, "class_groups")["uq_class_groups_name"]
+    )
+    assert "ix_class_sessions_group_id_starts_at" in _indexes(dsn, "class_sessions")
+    assert "ix_class_series_group_id" in _indexes(dsn, "class_series")

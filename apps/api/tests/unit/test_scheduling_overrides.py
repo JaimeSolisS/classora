@@ -193,8 +193,8 @@ def test_the_create_body_takes_an_optional_override():
 # --- D1: the CHECK drift guard --------------------------------------------------
 
 
-def _revision() -> ModuleType:
-    [path] = VERSIONS.glob("*_scheduling_session_overrides.py")
+def _revision(name: str = "scheduling_session_overrides") -> ModuleType:
+    [path] = VERSIONS.glob(f"*_{name}.py")
     spec = importlib.util.spec_from_file_location(f"revision_{path.stem}", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -219,4 +219,6 @@ def test_the_model_check_matches_the_migration():
         if str(constraint.name).startswith(prefix)
     }
 
-    assert model_checks == revision.CHECKS
+    # #56 A6: revision 0041 adds the "exactly one subject" CHECK.
+    groups = _revision("scheduling_groups")
+    assert model_checks == {**revision.CHECKS, "one_subject": groups.ONE_SUBJECT}

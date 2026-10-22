@@ -9,7 +9,8 @@ After the route's ``401``/``403`` and the body's ``422`` (``override`` and
 
 1. ``404`` for an unknown id;
 2. the locks (:mod:`~app.modules.scheduling.series_edit` order):
-   ``lock_students`` (the session's students), the zone ``FOR SHARE``, for an
+   ``lock_students`` (the session's students), the zone ``FOR SHARE``, for a
+   group occurrence the group row ``FOR UPDATE`` (#56 F1), for an
    occurrence its series row ``FOR SHARE`` (its version is not bumped), then
    the row ``FOR UPDATE``;
 3. ``409 version_conflict`` on the session ``version``;
@@ -55,6 +56,7 @@ from app.modules.scheduling.errors import (
     SessionOverlapError,
     SessionValidationError,
 )
+from app.modules.scheduling.group_lock import lock_group
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.materialize import (
     assigned_tutor,
@@ -118,6 +120,9 @@ async def update_class_session(
     )
     await lock_students(session, student_ids)
     zone = await administration.get_center_time_zone(session, for_share=True)
+    if found.group_id is not None:
+        # #56 F1: a group occurrence's room changes under the group lock.
+        await lock_group(session, found.group_id)
     series = None
     if found.series_id is not None:
         series = await session.scalar(

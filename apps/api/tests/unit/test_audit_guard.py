@@ -56,11 +56,13 @@ from app.modules.identity.models import (
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
+    ClassGroup,
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
     ClassSessionParticipant,
     ClassSessionSubstitution,
+    GroupEnrollment,
 )
 from app.modules.staff.models import (
     TutorAvailabilityException,
@@ -104,6 +106,7 @@ def test_the_guard_scans_the_real_audited_models():
         AssignmentOffer,
         AssignmentOfferSession,
         BusinessSettings,
+        ClassGroup,
         ClassSeries,
         ClassSeriesParticipant,
         ClassSession,
@@ -122,6 +125,7 @@ def test_the_guard_scans_the_real_audited_models():
         Family,
         FamilyGuardian,
         FamilyStudent,
+        GroupEnrollment,
         Guardian,
         OperatingHours,
         PrivacyNoticeAcceptance,

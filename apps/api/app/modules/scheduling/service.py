@@ -110,6 +110,20 @@ occurrence, :mod:`~app.modules.scheduling.cancellation`; #62 reuses it)
 with its composition-root seam :func:`register_cancellation_step`, and the
 three notification types (:func:`register_substitution_notifications`).
 
+Ongoing tutoring groups (#56): :func:`create_group`, :func:`update_group`,
+:func:`enroll_in_group` and :func:`withdraw_from_group`
+(:mod:`~app.modules.scheduling.groups`: capacity, the mid-term rule and the
+lock order; the pure rules in :mod:`~app.modules.scheduling.groups_rules`),
+each returning the :class:`GroupEnrollmentChange` the
+``app.workflows.group_enrollment`` workflow (the M6-07 billing hook)
+receives; :func:`list_group_enrollment_periods` for the M6-07 sweeper; and
+the reads with the student record policy :func:`get_group`,
+:func:`list_groups`, :func:`list_group_sessions` and
+:func:`get_group_enrollment` (:mod:`~app.modules.scheduling.group_reads`).
+The group row lock (:func:`lock_group`, :mod:`~app.modules.scheduling.
+group_lock`) comes after the students and the zone for every writer that
+changes a group occurrence's participants or room.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -199,6 +213,31 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
+)
+from app.modules.scheduling.group_lock import lock_group as lock_group
+from app.modules.scheduling.group_reads import get_group as get_group
+from app.modules.scheduling.group_reads import (
+    get_group_enrollment as get_group_enrollment,
+)
+from app.modules.scheduling.group_reads import (
+    list_group_sessions as list_group_sessions,
+)
+from app.modules.scheduling.group_reads import list_groups as list_groups
+from app.modules.scheduling.groups import GroupCreation as GroupCreation
+from app.modules.scheduling.groups import (
+    GroupEnrollmentChange as GroupEnrollmentChange,
+)
+from app.modules.scheduling.groups import (
+    GroupEnrollmentPeriod as GroupEnrollmentPeriod,
+)
+from app.modules.scheduling.groups import create_group as create_group
+from app.modules.scheduling.groups import enroll_in_group as enroll_in_group
+from app.modules.scheduling.groups import (
+    list_group_enrollment_periods as list_group_enrollment_periods,
+)
+from app.modules.scheduling.groups import update_group as update_group
+from app.modules.scheduling.groups import (
+    withdraw_from_group as withdraw_from_group,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
 from app.modules.scheduling.materialize import (

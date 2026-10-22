@@ -20,7 +20,11 @@ import factory.random
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.models import Classroom, EducationLevel, Subject
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    ClassGroup,
+    ClassSession,
+    ClassSessionParticipant,
+)
 from app.modules.scheduling.service import SessionKind, SessionState
 from tests.factories.base import ClassoraFactory, persist
 from tests.factories.families import persist_student
@@ -89,6 +93,26 @@ async def persist_tutor_user(session: AsyncSession) -> uuid.UUID:
     return user.id
 
 
+async def persist_class_group(
+    session: AsyncSession,
+    *,
+    subject_id: uuid.UUID | None = None,
+    max_students: int = 6,
+) -> ClassGroup:
+    """A tutoring group (#56) with a unique name; its subject is created
+    unless given. Flushes, never commits."""
+    if subject_id is None:
+        subject_id = (await persist_subject(session)).id
+    group = ClassGroup(
+        name=f"Grupo {uuid.uuid4().hex[:8]}",
+        subject_id=subject_id,
+        max_students=max_students,
+    )
+    session.add(group)
+    await session.flush()
+    return group
+
+
 async def persist_class_session(
     session: AsyncSession,
     *,
@@ -105,6 +129,11 @@ async def persist_class_session(
     """
     if "subject_id" not in overrides:
         overrides["subject_id"] = (await persist_subject(session)).id
+    if overrides.get("kind") == SessionKind.GROUP and "group_id" not in overrides:
+        # #56 A4: a group session belongs to a group.
+        overrides["group_id"] = (
+            await persist_class_group(session, subject_id=overrides["subject_id"])
+        ).id
     state = overrides.get("state", ClassSessionFactory.state)
     wants_tutor = (
         tutor

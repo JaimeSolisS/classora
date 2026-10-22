@@ -10,7 +10,8 @@ transaction; a closure ``POST`` or ``PATCH`` (dates or ``is_active``) queues
 that job after its commit (``app.core.jobs.defer_series_materialization``).
 
 **Lock order** (the #53 one, then the rows): ``lock_students`` → the zone
-``FOR SHARE`` → the series row ``FOR UPDATE`` → the series' future rows
+``FOR SHARE`` → (a group series: the group row ``FOR UPDATE`` and the
+participant re-read, #56 C2) → the series row ``FOR UPDATE`` → the series' future rows
 ``FOR UPDATE`` by start → (session-scope offers, through
 ``withdraw_pending_offers``). One ``catalog.service.closures_between`` call
 gives the closed local dates of those rows (the date the row is held on, in
@@ -82,22 +83,21 @@ from app.modules.scheduling.errors import (
     InvalidSessionTimesError,
     SessionOverlapError,
 )
-from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.materialize import (
     OCCURRENCE_CONFLICT_TYPE,
     assigned_tutor,
     closed_dates,
+    lock_series_for_write,
     occurrence_initial_state,
     occurrence_local_date,
     revalidate_references,
-    series_participant_ids,
 )
 from app.modules.scheduling.models import (
     ClassSeries,
     ClassSession,
     ClassSessionParticipant,
 )
-from app.modules.scheduling.offer_flow import lock_series, withdraw_pending_offers
+from app.modules.scheduling.offer_flow import withdraw_pending_offers
 from app.modules.scheduling.offer_records import (
     attach_to_pending_series_offer,
     rfc3339,
@@ -181,10 +181,8 @@ async def reconcile_series_closures(
 ) -> ReconcileCounts:
     """Skip the series' future rows on closed dates and re-check the skipped
     ones whose date reopened; see the module docstring."""
-    student_ids = await series_participant_ids(session, series_id)
-    await lock_students(session, student_ids)
-    zone = await administration.get_center_time_zone(session, for_share=True)
-    series = await lock_series(session, series_id)
+    locked = await lock_series_for_write(session, series_id)
+    series, zone, student_ids = locked.series, locked.zone, locked.student_ids
     rows = await _future_rows(session, series_id, now)
     if not rows:
         return ReconcileCounts()

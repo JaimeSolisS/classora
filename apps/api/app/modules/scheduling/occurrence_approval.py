@@ -10,7 +10,9 @@ needs a reason.
 
 - **Approve = re-check and schedule.** ``lock_students`` (the session's
   students), the center zone ``FOR SHARE``, the series row ``FOR UPDATE``
-  (#233 B3), then the session ``FOR UPDATE``. A session no longer in
+  (#233 B3), then the session ``FOR UPDATE``. Participants that changed
+  after they were read (a group enrollment, #56) are ``409
+  version_conflict``. A session no longer in
   ``conflict`` is ``409 approval_transition_invalid``. The references are
   re-validated (``422`` with the #48 codes) and the #48 checks run again with ``now``
   (``center_closed`` off, as for every series occurrence): still failing is
@@ -39,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.authz import Principal
 from app.core.errors import FieldError
+from app.core.models import StaleVersionError
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.families import service as families
@@ -186,6 +189,10 @@ class OccurrenceConflictApprovalHandler:
         # the target state and must not change under us).
         series = await _locked_series(session, series_id)
         row = await _locked_conflict(session, request.subject_id)
+        if await _participants(session, row.id) != student_ids:
+            # #56: a group enrollment changed the participants after they
+            # were read; their locks weren't taken, so reload and decide.
+            raise StaleVersionError()
         local_date = occurrence_local_date(row, series.time_zone)
         tutor = assigned_tutor(series, local_date)
         # Data validity is never a conflict: 422, as the create answers.

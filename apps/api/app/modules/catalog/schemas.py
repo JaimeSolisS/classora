@@ -145,6 +145,13 @@ class ClassroomReference(BaseModel):
     is_active: bool
 
 
+class ClassroomCapacity(ClassroomReference):
+    """A classroom reference with its capacity (#56: a group's effective
+    capacity and its occurrences' room limit)."""
+
+    capacity: int
+
+
 class SubjectReference(BaseModel):
     """A subject as another module's record shows it (#44): its id, current
     name and active flag, with its level's (the level follows from the
