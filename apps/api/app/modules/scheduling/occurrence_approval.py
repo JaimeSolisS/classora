@@ -65,7 +65,10 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
 )
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
-from app.modules.scheduling.sessions import transition_class_session
+from app.modules.scheduling.sessions import (
+    flush_class_sessions,
+    transition_class_session,
+)
 from app.modules.scheduling.states import SessionState
 from app.modules.scheduling.times import validate_session_bounds
 
@@ -178,11 +181,15 @@ class OccurrenceConflictApprovalHandler:
         if conflicts:
             raise SchedulingConflictError([c.as_wire() for c in conflicts])
         target = occurrence_initial_state(series, local_date)
-        if target == SessionState.CONFIRMED:
-            # The row holds nothing in ``conflict``: it takes the series'
-            # current tutor before it is confirmed.
-            row.tutor_user_id = tutor
         try:
+            if target == SessionState.CONFIRMED and row.tutor_user_id != tutor:
+                # The row holds nothing in ``conflict`` (D2): it takes the
+                # series' current tutor before it is confirmed. Flush first
+                # (#266): the change bumps the row's version, and an
+                # autoflush inside the transition's select would make its
+                # version check fail; the version is read after the flush.
+                row.tutor_user_id = tutor
+                await flush_class_sessions(session)
             moved = await transition_class_session(
                 session,
                 row.id,
