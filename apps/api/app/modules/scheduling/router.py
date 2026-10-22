@@ -36,6 +36,13 @@
   scheduling_conflict`` listing every occurrence's conflicts → ``201``.
 - ``GET /api/v1/class-series/{class_series_id}`` (#53 I):
   ``require("schedule.view")``; every holder sees every series.
+- ``PATCH /api/v1/class-sessions/{class_session_id}`` (#54 C1):
+  ``require("schedule.manage")``; moves one session or occurrence
+  (:mod:`~app.modules.scheduling.session_edit` gives the order).
+- ``POST /api/v1/class-series/{class_series_id}/edits`` and
+  ``…/cancellations`` (#54 C3, C5): ``require("schedule.manage")``; change
+  or cancel a series from a date on
+  (:mod:`~app.modules.scheduling.series_edit` gives the orders).
 - ``POST /api/v1/class-series/{class_series_id}/offers`` (#233 C2):
   ``require("schedule.assign")``; offers a series without a tutor from a
   local date (:mod:`~app.modules.scheduling.series_offers` gives the
@@ -77,9 +84,13 @@ from app.modules.scheduling.schemas import (
     AssignmentOfferDecline,
     AssignmentOfferItem,
     AssignmentOfferPage,
+    ClassSeriesCancel,
+    ClassSeriesCancelled,
     ClassSeriesCreate,
     ClassSeriesCreated,
     ClassSeriesDetail,
+    ClassSeriesEdit,
+    ClassSeriesEdited,
     ClassSeriesOfferCreate,
     ClassSessionCalendar,
     ClassSessionCreate,
@@ -87,6 +98,8 @@ from app.modules.scheduling.schemas import (
     ClassSessionDetail,
     ClassSessionOffers,
     ClassSessionRangeQuery,
+    ClassSessionUpdate,
+    ClassSessionUpdated,
     OfferStatusFilter,
     SlotSuggestionRequest,
     SlotSuggestions,
@@ -237,6 +250,50 @@ async def get_class_session(
 ) -> ClassSessionDetail:
     """One class session with its subject, tutor, classroom and students."""
     return await service.get_class_session(uow.session, class_session_id)
+
+
+@router.patch(
+    "/{class_session_id:uuid}",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); it has"
+            " begun (session_not_editable, details.reason = started) or is"
+            " completed, cancelled or skipped for a closure"
+            " (session_not_editable, details.state); or the new time breaks"
+            " scheduling rules (scheduling_conflict, every conflict; a closure"
+            " date is center_closed). Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field (an `override` or `tutor_user_id` included); the bounds"
+            " (naive_datetime, not_whole_minutes, ends_before_start,"
+            " duration_out_of_range, crosses_local_date); the references"
+            " (classroom_unknown, classroom_inactive, and the session's"
+            " student, subject or tutor codes), in one response; or"
+            " session_unchanged."
+        ),
+    },
+)
+async def update_class_session(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    class_session_id: uuid.UUID,
+    body: ClassSessionUpdate,
+    uow: UnitOfWorkDep,
+) -> ClassSessionUpdated:
+    """Move one session (a one-off session or one occurrence of a series) to
+    new times and, optionally, another room (`classroom_id` absent keeps the
+    room, `null` removes it). The tutor, subject and students never change.
+    Every rule is checked again at the new time, the session itself
+    excluded. A series occurrence becomes an exception: later changes of
+    the series' rule never recreate its original date. Offered and confirmed
+    sessions keep their state and tutor; a session in `conflict` that now
+    passes is scheduled. The tutor (offered or confirmed) and the family
+    (confirmed) are notified. `warnings` is always empty for now."""
+    return await service.update_class_session(
+        uow.session, class_session_id, body, actor_id=principal.user_id
+    )
 
 
 @router.get(
@@ -398,6 +455,99 @@ async def get_class_series(
     """One class series with its rule, references, tutor assignment and the
     occurrences that start now or later."""
     return await service.get_class_series(uow.session, class_series_id)
+
+
+@series_router.post(
+    "/{class_series_id}/edits",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class series (not_found)."),
+        409: problem_response_doc(
+            "The series changed since it was read (version_conflict); its tutor"
+            " offer is waiting for an answer (series_offer_pending); it has no"
+            " occurrence on or after the date (series_ended); an occurrence on"
+            " the date has begun (occurrence_started); or a changed or new"
+            " occurrence breaks scheduling rules (scheduling_conflict: every"
+            " conflict of every occurrence, with `details.occurrence_start`,"
+            " the new instant, and `details.date`). Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field (an `override` included), `from_date` missing for"
+            " `following` (from_date_required) or given for `all`"
+            " (from_date_not_allowed), `start_time` not HH:MM (time_format), a"
+            " duration outside 15-480; from_date_in_past; the recurrence"
+            " (weekdays_empty, weekday_out_of_range, weekdays_duplicate,"
+            " interval_out_of_range, until_and_count, count_out_of_range,"
+            " until_before_start, no_occurrences); crosses_local_date on"
+            " start_time; the references (classroom_unknown,"
+            " classroom_inactive, and the series' student, subject or tutor"
+            " codes); or series_unchanged."
+        ),
+    },
+)
+async def edit_class_series(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    class_series_id: uuid.UUID,
+    body: ClassSeriesEdit,
+    uow: UnitOfWorkDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ClassSeriesEdited:
+    """Change a series' time, duration, room or weekly rule from a date on
+    (`following`) or from its next occurrence that hasn't begun (`all`).
+    The body carries the full new rule. Past, begun, completed and cancelled
+    occurrences are never rewritten. When the series has occurrences before
+    that date it is split: it ends the day before, and a new series (with
+    `split_from_series_id`) starts on the date; otherwise it is changed in
+    place. Future occurrences on a date the new rule keeps are moved (same
+    id; edited ones lose their exception), the others are cancelled
+    (`series_changed`), and new dates are created; a cancelled occurrence on
+    a kept date moves to the new series as it is. Every changed or new
+    occurrence is checked; any conflict refuses the whole change.
+    `warnings` is always empty for now."""
+    return await service.edit_class_series(
+        uow.session,
+        class_series_id,
+        body,
+        horizon_weeks=settings.scheduling_horizon_weeks,
+        actor_id=principal.user_id,
+    )
+
+
+@series_router.post(
+    "/{class_series_id}/cancellations",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class series (not_found)."),
+        409: problem_response_doc(
+            "The series changed since it was read (version_conflict); it has no"
+            " occurrence on or after the date (series_ended, also for a repeated"
+            " cancellation); or an occurrence on the date has begun"
+            " (occurrence_started). Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, `from_date` missing for `following` (from_date_required)"
+            " or given for `all` (from_date_not_allowed), the reason"
+            " (reason_required, reason_too_long); or from_date_in_past."
+        ),
+    },
+)
+async def cancel_class_series(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    class_series_id: uuid.UUID,
+    body: ClassSeriesCancel,
+    uow: UnitOfWorkDep,
+) -> ClassSeriesCancelled:
+    """Cancel a series' occurrences from a date on (`following`) or from its
+    next occurrence that hasn't begun (`all`), with a reason. Occurrences
+    skipped for a closure, and cancelled ones, are kept as they are; the
+    series ends the day before the date. A pending tutor offer of the series
+    is withdrawn. The tutor (offered or confirmed) and the family
+    (confirmed) are notified."""
+    return await service.cancel_class_series(
+        uow.session, class_series_id, body, actor_id=principal.user_id
+    )
 
 
 @series_router.post(

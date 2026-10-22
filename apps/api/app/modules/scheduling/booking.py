@@ -160,8 +160,20 @@ def _bounds_field(reason: str, starts_at: datetime) -> str:
     return "ends_at"
 
 
-def validate_bounds(body: ClassSessionSlot, zone: str) -> None:
-    """``422`` for the bounds (step 3; also the slot suggestions, #50)."""
+class SessionBounds(Protocol):
+    """A body with session bounds (the create, the suggestions, #54's
+    ``PATCH``)."""
+
+    @property
+    def starts_at(self) -> datetime: ...
+
+    @property
+    def ends_at(self) -> datetime: ...
+
+
+def validate_bounds(body: SessionBounds, zone: str) -> None:
+    """``422`` for the bounds (step 3; also the slot suggestions, #50, and
+    #54's ``PATCH``)."""
     try:
         validate_session_bounds(body.starts_at, body.ends_at, zone)
     except InvalidSessionTimesError as exc:

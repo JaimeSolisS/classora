@@ -47,7 +47,7 @@ at most seven statements; ``404`` for an unknown id.
 """
 
 import uuid
-from datetime import UTC
+from datetime import UTC, date
 from typing import Final
 
 from sqlalchemy import select
@@ -105,7 +105,7 @@ B6)."""
 
 MINUTES_PER_DAY: Final = 24 * 60
 
-_RECURRENCE_MESSAGES: Final = {
+RECURRENCE_MESSAGES: Final = {
     "weekdays_empty": "Choose at least one weekday.",
     "weekday_out_of_range": "Weekdays are 1 (Monday) to 7 (Sunday).",
     "weekdays_duplicate": "List each weekday only once.",
@@ -140,7 +140,7 @@ def _check_recurrence(fields: RecurrenceFields, body: ClassSeriesCreate) -> None
         path: list[str | int] = ["body", "recurrence"]
         if exc.field != "recurrence":
             path.append(exc.field)
-        raise _error(path, exc.reason, _RECURRENCE_MESSAGES[exc.reason]) from None
+        raise _error(path, exc.reason, RECURRENCE_MESSAGES[exc.reason]) from None
 
 
 def _check_times(body: ClassSeriesCreate, zone: str) -> None:
@@ -248,12 +248,18 @@ def _occurrence(row: ClassSession) -> SeriesOccurrence:
     )
 
 
+def is_ended(series: ClassSeries, today: date) -> bool:
+    """#54 A3: the series has a last occurrence date and it is before the
+    local ``today``."""
+    return series.last_occurrence_on is not None and series.last_occurrence_on < today
+
+
 async def get_class_series(
     session: AsyncSession, class_series_id: uuid.UUID
 ) -> ClassSeriesDetail:
     """``GET /api/v1/class-series/{id}``: the series, its references, its
-    tutor assignment (#233 F2) and its occurrence rows starting now or
-    later. At most eight statements."""
+    tutor assignment (#233 F2), its lineage (#54 A2) and its occurrence rows
+    starting now or later. At most nine statements."""
     series = await session.get(ClassSeries, class_series_id)
     if series is None:
         raise RecordNotFoundError()
@@ -300,6 +306,13 @@ async def get_class_series(
             for student in students.values()
         ),
         key=lambda p: (p.display_name.casefold(), str(p.student_id)),
+    )
+    split_into = list(
+        await session.scalars(
+            select(ClassSeries.id)
+            .where(ClassSeries.split_from_series_id == series.id)
+            .order_by(ClassSeries.created_at, ClassSeries.id)
+        )
     )
     assignment = None
     if tutor is not None and series.assignment_status is not None:
@@ -350,6 +363,9 @@ async def get_class_series(
         ),
         rrule=series.rrule,
         last_occurrence_on=series.last_occurrence_on,
+        ended=is_ended(series, clock.today_in(series.time_zone)),
+        split_from_series_id=series.split_from_series_id,
+        split_into_series_ids=split_into,
         assignment=assignment,
         version=series.version,
         created_at=series.created_at,

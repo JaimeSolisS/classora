@@ -116,7 +116,13 @@ Codes in use today:
 | `offer_expired` | 409 | Accepting or declining an offer at or after its `respond_by`; the expiry task closes it within five minutes (see Assignment offers). |
 | `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned` (for a series offer, also while the series has no tutor); the item stays pending (see Assignment offers). |
 | `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
-| `from_date_in_past` | 422 | A series offer whose `from_date` is before the center's local today; the field error is on `["body","from_date"]` (see Assignment offers, "Series offers"). |
+| `session_not_editable` | 409 | `PATCH /api/v1/class-sessions/{class_session_id}` on a session that has begun (`details.reason = "started"`) or is `completed`, `cancelled` or `skipped_closure` (`details.state`); see Class sessions, "Moving a session". |
+| `series_offer_pending` | 409 | A series edit while the series' tutor offer is waiting for an answer: answer or withdraw it first (see Class series, "Editing and cancelling"). |
+| `series_ended` | 409 | A series edit or cancellation from a date after the series' `last_occurrence_on`, a repeated cancellation included (see Class series, "Editing and cancelling"). |
+| `occurrence_started` | 409 | A series edit or cancellation from a date on which an occurrence of the series has begun (see Class series, "Editing and cancelling"). |
+| `from_date_in_past` | 422 | A series offer, edit or cancellation whose `from_date` is before the center's local today; the field error is on `["body","from_date"]` (see Assignment offers, "Series offers", and Class series, "Editing and cancelling"). |
+| `from_date_required` / `from_date_not_allowed` | 422 | A series edit or cancellation with `mode = "following"` and no `from_date`, or `mode = "all"` with one; on `["body","from_date"]`. |
+| `session_unchanged` / `series_unchanged` | 422 | A session move with the same times and room, or a series edit whose new rule equals the series' (and no edited occurrence is in scope); on `["body"]`. |
 | `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
 | `respond_by_requires_tutor` | 422 | `POST /api/v1/class-sessions` or `POST /api/v1/class-series` with `respond_by` but no `tutor_user_id`; the field error is on `["body","respond_by"]`. |
 | `decline_note_too_long` | 422 | A decline note over 500 characters once trimmed; the field error is on `["body","note"]` (see Assignment offers). |
@@ -742,7 +748,11 @@ preferences are M8-02 (#119); retention is M8-12 (#129).
 **Types today** (besides `dev.demo`): `staff.qualification_approved`,
 `_rejected`, `_revoked` (#44, #198); `scheduling.offer_received`,
 `_declined`, `_expired` (#52, #233); `scheduling.occurrence_skipped_closure`
-(#232, see Class series).
+(#232, see Class series); `scheduling.session_rescheduled`
+`{class_session_id, starts_at}`, `scheduling.series_changed` `{series_id,
+from_date, changed, cancelled}` (the resulting series; the recipient's own
+counts) and `scheduling.series_cancelled` `{series_id, from_date}` (#54, see
+Class sessions and Class series; no link yet).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -1893,6 +1903,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
 | `POST`/`GET /api/v1/class-sessions/{class_session_id}/offers` | `schedule.assign` / `schedule.view` | Offer an `unassigned` session to a tutor; the session's offer history (M4-07, see Assignment offers). |
+| `PATCH /api/v1/class-sessions/{class_session_id}` | `require("schedule.manage")` (Owner, Administrator) | Move one session or series occurrence (M4-09, #54), see "Moving a session" below. `200` with `ClassSessionDetail` plus `warnings` (always `[]` for now). |
 
 **Body** (unknown fields are `422`):
 
@@ -2212,6 +2223,56 @@ qualification cost nothing). The web app's "Schedule a session" form has a
 (`/schedule/sessions/:id`, M4-07) uses the replacement list in its "Offer to
 a tutor" panel.
 
+#### Moving a session
+
+`PATCH /api/v1/class-sessions/{class_session_id}` (M4-09, #54 C1;
+`scheduling/session_edit.py`) moves a one-off session or one occurrence of
+a series. Body (unknown fields are `422`, `override` and `tutor_user_id`
+included; #58 adds `override`):
+
+```json
+{"version": 3, "starts_at": "2026-12-07T18:00:00-06:00",
+ "ends_at": "2026-12-07T19:00:00-06:00", "classroom_id": "…" | null}
+```
+
+`classroom_id` absent keeps the room; `null` removes it. The tutor, the
+subject and the students never change here (offers and substitutions do
+that). **Order:**
+
+1. `401`/`403`, then `422` for the schema;
+2. `404 not_found` for an unknown id;
+3. the student locks, the zone `FOR SHARE`, for an occurrence its series
+   row `FOR SHARE` (its version is not bumped), then the session `FOR
+   UPDATE`;
+4. `409 version_conflict` on the session `version`;
+5. `409 session_not_editable`: the session has begun (`starts_at <= now`,
+   `details.reason = "started"`), or it is `completed`, `cancelled` or
+   `skipped_closure` (`details.state`; a makeup is an ordinary one-off
+   session);
+6. `422` for the bounds (the create's codes and fields);
+7. `422` for the references (the create's codes: the students, the subject,
+   the tutor the session keeps and the room), in one response;
+8. `422 session_unchanged` when the times and the room are the same;
+9. every Class sessions check at the new time with the session's own tutor
+   (for a `conflict` occurrence, the tutor its series assigns on its date),
+   `center_closed` included (moving onto a closure date is deliberate), the
+   session itself left out of the overlaps: any conflict is `409
+   scheduling_conflict`;
+10. the update, `200`.
+
+An **occurrence** becomes an exception (`is_exception = true`) and keeps
+its `original_start`, so the nightly job never recreates its date and never
+touches the row again. A `conflict` occurrence that passes takes the
+occurrence state of its date (`unassigned`, `offered` with the pending
+series offer, or `confirmed`; `conflict_codes` are kept) and its
+`scheduling.occurrence_conflict` request is cancelled by the system.
+`offered` and `confirmed` sessions keep their state and tutor; a pending
+offer's `respond_by` is capped at its first covered start (ADR-0005 D3).
+`scheduling.session_rescheduled` goes to the tutor of an `offered` or
+`confirmed` session and, for `confirmed`, to the student's login and its
+linked guardians (see Notifications). An `EXCLUDE` race is `409
+scheduling_conflict` with that one conflict.
+
 ### Assignment offers
 
 Implemented by M4-07 (#52; spec §3, §9, §15 W1.3–W1.4; ADR-0005 D2, D3,
@@ -2435,16 +2496,17 @@ Implemented by M4-08 (#53; spec §1, §3, §15 W1.2; ADR-0005 D4, D5, D6, D9;
 ADR-0004) in `apps/api/app/modules/scheduling/` (`recurrence.py`: the pure
 weekly rule; `series.py`: create and read; `materialize.py`: the rolling
 materialization; `tasks.py`: the nightly job; `occurrence_approval.py`: the
-inbox item). Only **individual** series so far; groups and courses (M4-11,
-M4-20), editing (M4-09), series overrides (M4-09c),
-closures added or removed after occurrences exist (M4-08b) and the web form
-(M4-09b) come later.
+inbox item; `series_edit.py`: editing and cancelling, M4-09). Only
+**individual** series so far; groups and courses (M4-11, M4-20), series
+overrides (M4-09c) and the web form (M4-09b) come later.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `POST /api/v1/class-series` | `require("schedule.manage")` (Owner, Administrator) | Body below. `201` with `ClassSeriesDetail` plus `warnings` (always `[]` for now). |
-| `GET /api/v1/class-series/{class_series_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSeriesDetail`; `404 not_found` for an unknown id. Every holder sees every series. At most 8 statements. |
+| `GET /api/v1/class-series/{class_series_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSeriesDetail`; `404 not_found` for an unknown id. Every holder sees every series. At most 9 statements. |
 | `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` | Offer a series without a tutor (see Assignment offers, "Series offers"). |
+| `POST /api/v1/class-series/{class_series_id}/edits` | `require("schedule.manage")` (Owner, Administrator) | Change the rule from a date on (M4-09, #54); `200` with `ClassSeriesEdited`. See "Editing and cancelling". |
+| `POST /api/v1/class-series/{class_series_id}/cancellations` | `require("schedule.manage")` | Cancel the occurrences from a date on (M4-09); `200` with `ClassSeriesCancelled`. See "Editing and cancelling". |
 
 **Body** (unknown fields are `422`, `override` and `rrule` included: the
 API never takes rule text):
@@ -2533,9 +2595,14 @@ participant and each session and session participant.
 `ClassSeriesDetail` is `{id, kind, subject {…}, tutor {…} | null,
 classroom {…} | null, participants [...], starts_on, start_time (HH:MM),
 duration_minutes, time_zone, recurrence {weekdays, interval, until, count},
-rrule, last_occurrence_on, assignment, version, created_at, updated_at,
+rrule, last_occurrence_on, ended, split_from_series_id,
+split_into_series_ids, assignment, version, created_at, updated_at,
 occurrences [{id, state, starts_at, ends_at, original_start,
-is_exception}]}`. `assignment` (M4-07b) is `null` without a tutor, else
+is_exception}]}`. `last_occurrence_on` means "no occurrence after this
+date"; `ended` (M4-09) is true when it is set and before the center's local
+today, so the web never compares dates itself. `split_from_series_id` is
+the series this one was split from, `split_into_series_ids` the series
+split from it (oldest first). `assignment` (M4-07b) is `null` without a tutor, else
 `{status (pending | accepted), tutor {id, display_name}, from_date,
 offer_id, respond_by}` (`respond_by` only while `pending`); the
 occurrences are the series' rows starting now or later, by start. The web
@@ -2611,7 +2678,11 @@ UPDATE`; one `closures_between` call.
   `conflict_codes` and one `scheduling.occurrence_conflict` request, as
   above. A row that was a conflict before keeps its one request: a decided
   (or cancelled) request goes back to `pending`, with its reason and
-  resolver cleared, and is decided again like a new one. A tutor or room overlap that appears between the checks and the
+  resolver cleared, and is decided again like a new one. Only a row whose
+  rule date the series' current rule still produces, on or before its
+  `last_occurrence_on`, is restored (M4-09): a skipped row an edit or a
+  cancellation left on a dropped date or after the series' end stays
+  `skipped_closure`. A tutor or room overlap that appears between the checks and the
   write makes that row `conflict` too; the rest of the series still goes
   through. A restore notifies nobody.
 - **Idempotent:** a rerun changes nothing and writes no event, notification
@@ -2621,6 +2692,120 @@ UPDATE`; one `closures_between` call.
   write: `POST /api/v1/closures`, and a `PATCH` that changes the dates or
   `is_active`, queue the job after they commit (see Academic periods and
   closures).
+
+#### Editing and cancelling
+
+M4-09 (#54; spec §3, W1.5; ADR-0005 D4; `scheduling/series_edit.py`). One
+occurrence is moved with `PATCH /api/v1/class-sessions/{id}` (Class
+sessions, "Moving a session"); it becomes an exception. A series changes
+from a date on:
+
+```json
+POST /api/v1/class-series/{id}/edits
+{"mode": "following" | "all", "from_date": "2026-12-07" | null, "version": 3,
+ "start_time": "17:00", "duration_minutes": 60, "classroom_id": "…" | null,
+ "recurrence": {"weekdays": [2, 4], "interval": 1, "until": null, "count": null}}
+
+POST /api/v1/class-series/{id}/cancellations
+{"mode": "following" | "all", "from_date": "2026-12-07" | null,
+ "reason": "…", "version": 3}
+```
+
+The edit body is the **full** new rule (not a patch), with the create's
+field rules; unknown fields are `422`, `override` included (M4-09c adds it
+to edits). An edit changes the time, the duration, the room and the weekly
+rule only; the tutor changes through offers and substitutions, a student or
+subject change is a new series, and cancelling one occurrence is M4-10.
+The cancellation `reason` is trimmed, 1–1000 characters (`reason_required`,
+`reason_too_long`).
+
+**The date `D`.** `following` starts on `from_date` (a local date);
+`all` (with `from_date = null`) starts on the local date of the series'
+earliest occurrence that hasn't begun (`starts_on`, or today, when there is
+none).
+
+**Order** (both routes): `401`/`403`, `422` for the schema; `404`; the
+student locks, the zone `FOR SHARE`, the series row `FOR UPDATE`, then its
+rows from `D` `FOR UPDATE` by id, then the offers (the nightly job's order:
+they never deadlock); `409 version_conflict` (the series `version`); for an
+edit only, `409 series_offer_pending` while its tutor offer waits for an
+answer; `422 from_date_in_past`; `409 series_ended` when `D` is after
+`last_occurrence_on`; `409 occurrence_started` when an occurrence on `D`
+has begun. Then, for an edit: the recurrence `422`s (the create's codes;
+`until_before_start` is against `D`), `422 crosses_local_date` on
+`start_time`, the references `422` (the series' students, subject and tutor
+and the new room), `422 series_unchanged` (same rule and no edited
+occurrence from `D`), the checks below, the write, `200`.
+
+**Never rewritten.** An occurrence has *begun* when `starts_at <= now`.
+Past, begun, `completed` and `cancelled` occurrences are never changed by
+an edit or a cancellation (a test compares them column by column); the one
+exception is the re-point below.
+
+**In place or split.** When the series has no occurrence row before `D`,
+the series itself takes the new rule (`starts_on = D`, version bumped; no
+lineage). Otherwise it is **split**: the old series ends with `until = D −
+1` (a `COUNT` series becomes an `UNTIL` one; `last_occurrence_on` is its
+last date before `D`) and a **new series** starts on `D` with the same
+kind, subject, students, zone and tutor assignment (from the later of its
+from-date and `D`), the new rule and `split_from_series_id`. The web
+pre-fills the new rule's end as the old `last_occurrence_on`, so the end
+stays the same.
+
+**Occurrences from `D`** (the ones that haven't begun), matched to the new
+rule's dates in `[now, now + SCHEDULING_HORIZON_WEEKS)` by **local date**:
+
+| Occurrence | Result |
+| ---------- | ------ |
+| on a kept date, `unassigned` / `offered` / `confirmed` / `conflict` | **moved**: same id, the new series, rule instant, times and room; tutor, students and state kept (a `conflict` one that passes takes the occurrence state, its request cancelled); an edited one loses its exception (`exceptions_reset`); on a closed date it becomes `skipped_closure` |
+| on a kept date, `skipped_closure` | moved with the new times; the nightly reconciliation restores it if its date is open |
+| on a kept date, `cancelled` | **re-pointed**: only `series_id` and `original_start` change, so the date doesn't come back |
+| on a dropped date, `unassigned` / `offered` / `confirmed` / `conflict` | `cancelled`, reason `series_changed` |
+| on a dropped date, `skipped_closure` / `cancelled` | untouched (left on the old series) |
+| a new date | created as the nightly job would (`skipped_closure` on a closed date) |
+
+**Checks.** Every created occurrence and every moved one whose times or
+room change (or that is in `conflict`) gets every Class sessions check
+except `center_closed` (a closed date gives `skipped_closure`), with its own
+tutor; the occurrences the edit moves, re-points or cancels are left out of
+the overlaps, so an edit never conflicts with itself. Any conflict refuses
+the whole edit: `409 scheduling_conflict` in the create's per-occurrence
+format (`details.occurrence_start` is the **new** instant) and nothing is
+written. `warnings` is always `[]`.
+
+**`ClassSeriesEdited`** is `{series: ClassSeriesDetail (the new one after a
+split), previous_series_id | null, split, summary {moved, created,
+cancelled, skipped_closure, exceptions_reset}, warnings: []}`.
+
+**A cancellation** cancels every occurrence from `D` in `unassigned`,
+`offered`, `confirmed` or `conflict` with the reason; `skipped_closure` and
+`cancelled` ones are kept. A pending tutor offer of the series is withdrawn
+(its offered rows go back to `unassigned`). The series ends with `until =
+last_occurrence_on = D − 1` (which can be before `starts_on` when nothing
+was held), so the nightly job creates nothing more; a repeated cancellation
+is `409 series_ended`. **`ClassSeriesCancelled`** is `{series, summary
+{cancelled, skipped_closure_kept}}`.
+
+**Side effects**, in the same transaction:
+
+- a row that leaves `conflict` (moved or cancelled) has its open
+  `scheduling.occurrence_conflict` request cancelled by the system;
+- a cancelled (or skipped) `offered` row's pending offer is `withdrawn`; a
+  moved one keeps its offer, with `respond_by` capped at its first covered
+  start;
+- notifications `scheduling.series_changed` / `scheduling.series_cancelled`
+  (see Notifications): the tutor of the `offered` or `confirmed` rows
+  changed or cancelled and, for `confirmed` rows, the student's login and
+  its linked guardians; one per recipient per write, never the actor;
+- audit: the automatic events plus one named event on the series,
+  `scheduling.series_changed` `{series_id, new_series_id | null, mode,
+  from_date, moved, created, cancelled, exceptions_reset}` or
+  `scheduling.series_cancelled` `{series_id, from_date, cancelled}`.
+
+**The nightly job** extends the new series of a split (its pre-filter sees
+the moved and re-pointed rows, so no date is held twice) and stops selecting
+the old one once its `last_occurrence_on` has passed. It re-reads the series
+row under its lock, so it always sees the rule an edit committed.
 
 ### Course templates
 

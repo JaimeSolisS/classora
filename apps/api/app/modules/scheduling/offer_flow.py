@@ -627,6 +627,52 @@ async def withdraw_pending_offers(
     return offer_ids
 
 
+async def cap_offer_deadlines(
+    session: AsyncSession, class_session_ids: Sequence[uuid.UUID]
+) -> list[uuid.UUID]:
+    """#54 B6 seam (D3): after the caller moved these sessions, every pending
+    offer (either scope) covering one of them gets ``respond_by = min(
+    respond_by, first covered start)``, the first start among its covered
+    sessions that are still ``offered``. The caller has locked the sessions
+    (the lock order); the offers are locked here, by id. Returns the ids of
+    the offers whose deadline moved."""
+    if not class_session_ids:
+        return []
+    offer_ids = list(
+        await session.scalars(
+            select(AssignmentOffer.id)
+            .join(
+                AssignmentOfferSession,
+                AssignmentOfferSession.offer_id == AssignmentOffer.id,
+            )
+            .where(AssignmentOfferSession.class_session_id.in_(class_session_ids))
+            .where(AssignmentOffer.status == OFFER_PENDING)
+            .distinct()
+            .order_by(AssignmentOffer.id)
+        )
+    )
+    moved: list[uuid.UUID] = []
+    for offer_id in offer_ids:
+        offer = await _lock_offer(session, offer_id)
+        first = await session.scalar(
+            select(func.min(ClassSession.starts_at))
+            .join(
+                AssignmentOfferSession,
+                AssignmentOfferSession.class_session_id == ClassSession.id,
+            )
+            .where(
+                AssignmentOfferSession.offer_id == offer_id,
+                ClassSession.state == SessionState.OFFERED,
+            )
+        )
+        if offer.status == OFFER_PENDING and first is not None:
+            if first < offer.respond_by:
+                offer.respond_by = first
+                moved.append(offer.id)
+    await session.flush()
+    return moved
+
+
 async def withdraw_series_offer(
     session: AsyncSession, class_series_id: uuid.UUID, *, by_user_id: uuid.UUID | None
 ) -> uuid.UUID | None:

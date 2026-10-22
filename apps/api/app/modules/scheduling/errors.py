@@ -149,3 +149,51 @@ class SeriesNotOfferableError(AppError):
 
     def __init__(self, reason: str) -> None:
         super().__init__(details={"reason": reason})
+
+
+# --- Editing sessions and series (#54) -------------------------------------------
+
+
+class SessionNotEditableError(AppError):
+    """``409 session_not_editable`` (#54 C1 step 6): the session can't be
+    moved. ``details`` is ``{"reason": "started"}`` when it has begun
+    (``starts_at <= now``), else ``{"state": <state>}`` for a
+    ``completed``, ``cancelled`` or ``skipped_closure`` session."""
+
+    status = 409
+    code = "session_not_editable"
+    detail = "This session can no longer be changed."
+
+    def __init__(self, *, state: str | None = None, started: bool = False) -> None:
+        details = {"reason": "started"} if started else {"state": state or ""}
+        super().__init__(details=details)
+
+
+class SeriesOfferPendingError(AppError):
+    """``409 series_offer_pending`` (#54 C3 step 6): the series' tutor offer
+    is waiting for an answer; answer or withdraw it first."""
+
+    status = 409
+    code = "series_offer_pending"
+    detail = (
+        "This series has a tutor offer waiting for an answer. It must be"
+        " answered or withdrawn first."
+    )
+
+
+class SeriesEndedError(AppError):
+    """``409 series_ended`` (#54 C3 step 8, C5): the date is after the
+    series' last occurrence (``last_occurrence_on``)."""
+
+    status = 409
+    code = "series_ended"
+    detail = "This series has no occurrence on or after that date."
+
+
+class OccurrenceStartedError(AppError):
+    """``409 occurrence_started`` (#54 C3 step 9): an occurrence of the series
+    on the date has already begun, so the change can't start there."""
+
+    status = 409
+    code = "occurrence_started"
+    detail = "An occurrence on that date has already begun."

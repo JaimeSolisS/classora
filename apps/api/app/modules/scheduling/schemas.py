@@ -36,6 +36,7 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from app.modules.scheduling.conflicts import HARD, SOFT
 from app.modules.scheduling.models import (
+    CANCELLATION_REASON_MAX_LENGTH,
     DECLINE_NOTE_MAX_LENGTH,
     OVERRIDE_REASON_MAX_LENGTH,
 )
@@ -891,7 +892,28 @@ class ClassSeriesDetail(BaseModel):
     recurrence: SeriesRecurrenceDetail
     rrule: str = Field(description="The normalized RFC 5545 rule (derived).")
     last_occurrence_on: date | None = Field(
-        description="The local date of the last occurrence; null: open-ended."
+        description=(
+            "No occurrence after this local date; null: open-ended. A series"
+            " cancelled before its first remaining occurrence ends the day"
+            " before the cancellation date, which can be before `starts_on`."
+        )
+    )
+    ended: bool = Field(
+        description=(
+            "Whether the series is over: `last_occurrence_on` is set and before"
+            " the center's local today (#54)."
+        )
+    )
+    split_from_series_id: uuid.UUID | None = Field(
+        description=(
+            "The series a 'this and following' edit split this one from (#54);"
+            " null: none."
+        )
+    )
+    split_into_series_ids: list[uuid.UUID] = Field(
+        description=(
+            "The series split from this one by later edits, oldest first (#54)."
+        )
     )
     assignment: SeriesAssignment | None = Field(
         description="The tutor assignment; null when the series has no tutor."
@@ -913,3 +935,166 @@ class ClassSeriesCreated(ClassSeriesDetail):
     warnings: list[SchedulingWarning] = Field(
         description="Always empty for a series for now."
     )
+
+
+# --- Editing sessions and series (#54 C) ------------------------------------------
+
+
+class ClassSessionUpdate(BaseModel):
+    """Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new
+    instants and optionally a new room. The tutor, the subject and the
+    students never change here. ``classroom_id`` absent keeps the room;
+    ``null`` removes it. No ``override`` yet (#58 adds it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(description="The session's version, as read.")
+    starts_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    ends_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    classroom_id: uuid.UUID | None = Field(
+        default=None,
+        description="The new classroom; null is no room; absent keeps the room.",
+    )
+
+
+class ClassSessionUpdated(ClassSessionDetail):
+    """The moved session and its warnings."""
+
+    warnings: list[SchedulingWarning] = Field(
+        description="Always empty for an edit for now."
+    )
+
+
+type SeriesEditMode = Literal["following", "all"]
+
+
+def _check_from_date(value: date | None, info: ValidationInfo) -> date | None:
+    mode = info.data.get("mode")
+    if mode == "following" and value is None:
+        raise PydanticCustomError(
+            "from_date_required", "Give the date the change starts on."
+        )
+    if mode == "all" and value is not None:
+        raise PydanticCustomError(
+            "from_date_not_allowed", "A change of the whole series takes no date."
+        )
+    return value
+
+
+class ClassSeriesEdit(BaseModel):
+    """Change a series from a date on (``POST
+    /api/v1/class-series/{id}/edits``, #54 C3): the **full** new rule, not a
+    patch. ``mode = "following"`` starts on ``from_date`` (a local date);
+    ``"all"`` starts on the next occurrence that hasn't begun and takes
+    ``from_date = null``. The recurrence ``422`` codes are the create's
+    (``until_before_start`` is against the start date of the change). No
+    ``override`` yet (#236)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: SeriesEditMode
+    from_date: date | None = Field(
+        description="Required for `following`; null for `all`."
+    )
+    version: int = Field(description="The series' version, as read.")
+    start_time: time = Field(
+        description="The local start time, HH:MM (whole minutes, no seconds)."
+    )
+    duration_minutes: int = Field(ge=15, le=480, description="15-480 minutes.")
+    classroom_id: uuid.UUID | None = Field(
+        description="The classroom; null is no room."
+    )
+    recurrence: SeriesRecurrence
+
+    _start_time = field_validator("start_time", mode="before")(_check_start_time)
+    _from_date = field_validator("from_date")(_check_from_date)
+
+
+class SeriesEditSummary(BaseModel):
+    """What an edit did to the occurrence rows."""
+
+    moved: int = Field(description="Rows kept (same id) with the new rule.")
+    created: int = Field(description="Rows created for dates the old rule lacked.")
+    cancelled: int = Field(
+        description="Rows cancelled (`series_changed`): their date left the rule."
+    )
+    skipped_closure: int = Field(
+        description="Moved or created rows that are on a closure date."
+    )
+    exceptions_reset: int = Field(
+        description="Edited occurrences that took the new rule's times."
+    )
+
+
+class ClassSeriesEdited(BaseModel):
+    """The result of a series edit."""
+
+    series: ClassSeriesDetail = Field(
+        description="The resulting series: the new one after a split."
+    )
+    previous_series_id: uuid.UUID | None = Field(
+        description="The series that was split (it ends the day before); null in place."
+    )
+    split: bool
+    summary: SeriesEditSummary
+    warnings: list[SchedulingWarning] = Field(
+        description="Always empty for a series for now."
+    )
+
+
+def _check_cancel_reason(value: Any) -> Any:
+    if value is None:
+        raise PydanticCustomError("reason_required", "Give a reason.")
+    if not isinstance(value, str):
+        return value
+    reason = value.strip()
+    if not reason:
+        raise PydanticCustomError("reason_required", "Give a reason.")
+    if len(reason) > CANCELLATION_REASON_MAX_LENGTH:
+        raise PydanticCustomError(
+            "reason_too_long", "The reason is at most 1000 characters."
+        )
+    return reason
+
+
+class ClassSeriesCancel(BaseModel):
+    """Cancel a series' occurrences from a date on (``POST
+    /api/v1/class-series/{id}/cancellations``, #54 C5); ``mode`` and
+    ``from_date`` as in :class:`ClassSeriesEdit`. ``reason`` is trimmed,
+    1-1000 characters (``reason_required`` / ``reason_too_long``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: SeriesEditMode
+    from_date: date | None = Field(
+        description="Required for `following`; null for `all`."
+    )
+    reason: str = Field(description="Why: 1-1000 characters, trimmed.")
+    version: int = Field(description="The series' version, as read.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _missing_reason(cls, data: Any) -> Any:
+        # A missing reason is reason_required, not pydantic's "missing".
+        if isinstance(data, dict):
+            return {"reason": None} | data
+        return data
+
+    _from_date = field_validator("from_date")(_check_from_date)
+    _reason = field_validator("reason", mode="before")(_check_cancel_reason)
+
+
+class SeriesCancelSummary(BaseModel):
+    """What a cancellation did to the occurrence rows."""
+
+    cancelled: int
+    skipped_closure_kept: int = Field(
+        description="Rows skipped for a closure, left as they are."
+    )
+
+
+class ClassSeriesCancelled(BaseModel):
+    """The result of a series cancellation."""
+
+    series: ClassSeriesDetail
+    summary: SeriesCancelSummary
