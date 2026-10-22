@@ -531,6 +531,7 @@ def test_reruns_change_nothing(module_seeded_url, client, caplog):
         )
 
     before = snapshot()
+    caplog.clear()
     with caplog.at_level("INFO", logger=tasks.__name__):
         again = run(url, tl.now)
     assert snapshot() == before
