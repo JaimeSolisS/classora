@@ -130,7 +130,7 @@ from app.modules.scheduling.workload_sessions import session_warnings
 TUTOR_ROLE: Final = "tutor"
 ACTIVE: Final = "active"
 
-_REFERENCE_MESSAGES: Final = {
+REFERENCE_MESSAGES: Final = {
     "student_unknown": "Choose an existing student.",
     "student_inactive": "The student is inactive.",
     "subject_unknown": "Choose an existing subject.",
@@ -222,7 +222,7 @@ async def references(
     errors: list[FieldError] = []
 
     def reject(field: str, code: str) -> None:
-        errors.append(_field_error(field, code, _REFERENCE_MESSAGES[code]))
+        errors.append(_field_error(field, code, REFERENCE_MESSAGES[code]))
 
     student = (await families.student_references(session, [body.student_id])).get(
         body.student_id
@@ -379,6 +379,7 @@ def _detail(
         pending_offer=pending_offer,
         pending_substitution=pending_substitution,
         cancellation=cancellation,
+        group_id=row.group_id,
     )
 
 

@@ -7,6 +7,7 @@ writes of both, and the closure checks other modules use
 :func:`is_center_closed_at`). Classrooms (#39) are implemented in
 :mod:`app.modules.catalog.classrooms` and re-exported below, with the checks
 other modules use (:func:`get_classroom`, :func:`classroom_references`,
+:func:`classroom_capacities` (#56),
 :func:`active_classroom_ids`, :func:`is_classroom_available`; for the
 M4-05 slot search, :func:`classroom_weekly_windows`, one statement, and the
 pure :func:`windows_cover`).
@@ -68,6 +69,9 @@ from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.catalog.classrooms import (
     active_classroom_ids as active_classroom_ids,
+)
+from app.modules.catalog.classrooms import (
+    classroom_capacities as classroom_capacities,
 )
 from app.modules.catalog.classrooms import (
     classroom_references as classroom_references,

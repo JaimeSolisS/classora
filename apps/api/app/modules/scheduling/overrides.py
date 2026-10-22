@@ -53,6 +53,16 @@ context column ``class_series_id``) with one flush, and **one** named event
 occurrence_start, codes}]``, ``reason``); the full conflicts stay on the
 rows. #56's group series create reuses both functions.
 
+**Group enrollments (#56 E1 step 12, D2).** An enrollment above the group
+maximum (``group_capacity_exceeded``) is overridden with the #49 body
+``{codes, reason}`` and :func:`evaluate_override`; the accepted override
+is one row whose subject is the enrollment (``group_enrollment_id``, no
+session) and the named event ``scheduling.enrollment_override``
+(:func:`record_enrollment_override`). A group create decides its
+group-level conflicts with :func:`evaluate_listed` (the override's
+``codes``) and its occurrences' with :func:`evaluate_series_override` (the
+``pairs``).
+
 **No carry-forward (#236 G1).** Nothing reads these rows to decide a later
 write: the nightly materialization and #232's closure restore never
 consult them, and an edit that re-checks an overridden occurrence needs a
@@ -77,10 +87,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import record_audit_event
 from app.modules.scheduling.conflicts import Conflict
 from app.modules.scheduling.models import ClassSession, ClassSessionOverride
-from app.modules.scheduling.schemas import SeriesOverride, SessionOverride
+from app.modules.scheduling.schemas import (
+    GroupOverride,
+    SeriesOverride,
+    SessionOverride,
+)
 
 OVERRIDE_EVENT: Final = "scheduling.session_override"
 SERIES_OVERRIDE_EVENT: Final = "scheduling.series_override"
+ENROLLMENT_OVERRIDE_EVENT: Final = "scheduling.enrollment_override"
 
 SeriesWrite = Literal["create", "edit"]
 
@@ -100,6 +115,14 @@ def evaluate_override(
     """The decision for the conflicts just computed (see the module
     docstring). Pure."""
     return _decide(conflicts, None if override is None else override.codes)
+
+
+def evaluate_listed(
+    conflicts: Sequence[Conflict], listed: Collection[str] | None
+) -> OverrideDecision:
+    """:func:`evaluate_override` for a list of codes (``None``: no override
+    was sent); a group create's group-level conflicts (#56 D2). Pure."""
+    return _decide(conflicts, listed)
 
 
 def _decide(
@@ -148,7 +171,8 @@ def _utc(value: datetime) -> datetime:
 
 
 def evaluate_series_override(
-    conflicts: Sequence[OccurrenceConflict], override: SeriesOverride | None
+    conflicts: Sequence[OccurrenceConflict],
+    override: SeriesOverride | GroupOverride | None,
 ) -> SeriesOverrideDecision:
     """The decision for a series write's recomputed conflicts (see the module
     docstring): the :func:`evaluate_override` rule once per occurrence, with
@@ -216,12 +240,13 @@ async def record_session_override(
 
 
 def _override_row(
-    class_session_id: uuid.UUID,
+    class_session_id: uuid.UUID | None,
     conflicts: Sequence[Conflict],
     reason: str,
     *,
     actor_id: uuid.UUID,
     class_series_id: uuid.UUID | None,
+    group_enrollment_id: uuid.UUID | None = None,
 ) -> ClassSessionOverride:
     if not conflicts or any(c.severity != "soft" for c in conflicts):
         raise ValueError("only soft conflicts are overridden")
@@ -229,6 +254,7 @@ def _override_row(
         id=uuid.uuid7(),
         class_session_id=class_session_id,
         class_series_id=class_series_id,
+        group_enrollment_id=group_enrollment_id,
         codes=overridden_codes(conflicts),
         conflicts=[{"code": c.code, "details": c.details} for c in conflicts],
         reason=reason,
@@ -304,3 +330,43 @@ async def record_series_overrides(
         },
     )
     return rows
+
+
+async def record_enrollment_override(
+    session: AsyncSession,
+    *,
+    group_enrollment_id: uuid.UUID,
+    conflicts: Sequence[Conflict],
+    reason: str,
+    actor_id: uuid.UUID,
+) -> ClassSessionOverride:
+    """Store the override of a group enrollment's soft conflicts (#56 E1 step
+    12; ``group_capacity_exceeded``) and write the named event
+    ``scheduling.enrollment_override`` (``override_id``,
+    ``group_enrollment_id``, ``codes``, ``conflicts``, ``reason``), in the
+    caller's transaction, after the enrollment row is flushed."""
+    row = _override_row(
+        None,
+        conflicts,
+        reason,
+        actor_id=actor_id,
+        class_series_id=None,
+        group_enrollment_id=group_enrollment_id,
+    )
+    codes, wire = row.codes, row.conflicts
+    session.add(row)
+    await session.flush()
+    record_audit_event(
+        session,
+        action=ENROLLMENT_OVERRIDE_EVENT,
+        record_type="group_enrollments",
+        record_id=group_enrollment_id,
+        details={
+            "override_id": row.id,
+            "group_enrollment_id": group_enrollment_id,
+            "codes": codes,
+            "conflicts": wire,
+            "reason": reason,
+        },
+    )
+    return row

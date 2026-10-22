@@ -55,8 +55,8 @@ at most seven statements; ``404`` for an unknown id.
 """
 
 import uuid
-from datetime import UTC, date
-from typing import Final
+from datetime import UTC, date, time
+from typing import Final, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,6 +97,7 @@ from app.modules.scheduling.schemas import (
     ClassSeriesDetail,
     SeriesAssignment,
     SeriesOccurrence,
+    SeriesRecurrence,
     SeriesRecurrenceDetail,
     SessionClassroom,
     SessionParticipant,
@@ -132,7 +133,38 @@ def _error(path: list[str | int], code: str, message: str) -> SessionValidationE
     return SessionValidationError([error])
 
 
-def _fields(body: ClassSeriesCreate) -> RecurrenceFields:
+class SeriesRuleBody(Protocol):
+    """The timing members of a series create body (``POST
+    /api/v1/class-series``; the group create, #56 D1)."""
+
+    @property
+    def starts_on(self) -> date: ...
+
+    @property
+    def start_time(self) -> time: ...
+
+    @property
+    def duration_minutes(self) -> int: ...
+
+    @property
+    def recurrence(self) -> SeriesRecurrence: ...
+
+
+def series_fields(body: SeriesRuleBody) -> RecurrenceFields:
+    """The structured rule of a create body."""
+    return _fields(body)
+
+
+def check_series_rule(body: SeriesRuleBody, zone: str) -> RecurrenceFields:
+    """Steps 3-5 of the create (the ``422`` recurrence, ``starts_on_in_past``
+    and ``crosses_local_date`` checks); returns the structured rule."""
+    fields = _fields(body)
+    _check_recurrence(fields, body)
+    _check_times(body, zone)
+    return fields
+
+
+def _fields(body: SeriesRuleBody) -> RecurrenceFields:
     rule = body.recurrence
     return RecurrenceFields(
         weekdays=tuple(rule.weekdays),
@@ -142,7 +174,7 @@ def _fields(body: ClassSeriesCreate) -> RecurrenceFields:
     )
 
 
-def _check_recurrence(fields: RecurrenceFields, body: ClassSeriesCreate) -> None:
+def _check_recurrence(fields: RecurrenceFields, body: SeriesRuleBody) -> None:
     try:
         validate_recurrence(fields, body.starts_on)
         last_occurrence_on(fields, body.starts_on)
@@ -153,7 +185,7 @@ def _check_recurrence(fields: RecurrenceFields, body: ClassSeriesCreate) -> None
         raise _error(path, exc.reason, RECURRENCE_MESSAGES[exc.reason]) from None
 
 
-def _check_times(body: ClassSeriesCreate, zone: str) -> None:
+def _check_times(body: SeriesRuleBody, zone: str) -> None:
     if body.starts_on < clock.today_in(zone):
         raise _error(
             ["body", "starts_on"],
@@ -399,6 +431,7 @@ async def get_class_series(
         split_from_series_id=series.split_from_series_id,
         split_into_series_ids=split_into,
         assignment=assignment,
+        group_id=series.group_id,
         version=series.version,
         created_at=series.created_at,
         updated_at=series.updated_at,

@@ -48,6 +48,7 @@ from app.modules.catalog.models import (
 from app.modules.catalog.schemas import (
     AvailabilityWindow,
     CatalogStatus,
+    ClassroomCapacity,
     ClassroomCreate,
     ClassroomDetail,
     ClassroomReference,
@@ -181,6 +182,27 @@ async def classroom_references(
     )
     return {
         row.id: ClassroomReference(id=row.id, name=row.name, is_active=row.is_active)
+        for row in rows
+    }
+
+
+async def classroom_capacities(
+    session: AsyncSession, ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, ClassroomCapacity]:
+    """The classrooms with these ids with their capacity, active or not
+    (unknown ids are left out; #56 group capacity). One statement (none for
+    an empty collection)."""
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(
+            Classroom.id, Classroom.name, Classroom.is_active, Classroom.capacity
+        ).where(Classroom.id.in_(set(ids)))
+    )
+    return {
+        row.id: ClassroomCapacity(
+            id=row.id, name=row.name, is_active=row.is_active, capacity=row.capacity
+        )
         for row in rows
     }
 

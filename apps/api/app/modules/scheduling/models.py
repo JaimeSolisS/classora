@@ -101,7 +101,28 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   ``Audited``; append-only. The rules are in
   :mod:`~app.modules.scheduling.substitutions`.
 
-Groups and cohorts add their own columns and tables (#56, #65).
+- ``class_groups`` (#56 A2; ISSUE-G2 naming): an ongoing tutoring group:
+  ``name`` (trimmed, 1-120, unique case-insensitively), ``subject_id`` and
+  ``max_students`` (1-500). Its tutor, classroom and timing live on its
+  ``group`` series (``class_series.group_id``), so #54 splits and #55
+  substitutions keep one source of truth. ``Audited``, versioned.
+- ``group_enrollments`` (#56 A5): one row per enrollment **period** of a
+  student in a group (``enrolled_at`` / ``enrolled_by_user_id``, then a
+  write-once ``withdrawn_at`` / ``withdrawn_by_user_id`` /
+  ``withdrawal_reason``). At most one active (not withdrawn) row per group
+  and student (``uq_group_enrollments_active``). The trigger
+  :data:`GROUP_ENROLLMENTS_WRITE_ONCE_TRIGGER` rejects every ``DELETE`` and
+  any ``UPDATE`` other than the one-time withdrawal (SQLSTATE 42501): the
+  periods are the billing record M6-07 charges from (spec §6).
+  ``Audited``, versioned.
+- ``class_series.group_id`` / ``class_sessions.group_id`` (#56 A3, A4): set
+  exactly for ``kind = 'group'``; an occurrence copies it from its series.
+- ``class_session_overrides.group_enrollment_id`` (#56 A6): an override of
+  an enrollment's ``group_capacity_exceeded``. Exactly one of
+  ``class_session_id`` and ``group_enrollment_id`` is set
+  (``class_series_id`` is context, never a subject, #236).
+
+Cohorts add their own columns and tables (#65).
 """
 
 import uuid
@@ -121,6 +142,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     and_,
+    func,
     text,
 )
 from sqlalchemy import column as sql_column
@@ -150,6 +172,12 @@ CONFLICT_CODE_MAX_LENGTH: Final = 40
 SERIES_DURATION_MIN: Final = 15
 SERIES_DURATION_MAX: Final = 480
 OVERRIDES_IMMUTABLE_TRIGGER: Final = "class_session_overrides_immutable"
+GROUP_ENROLLMENTS_WRITE_ONCE_TRIGGER: Final = "group_enrollments_write_once"
+GROUP_NAME_UNIQUE: Final = "uq_class_groups_name"
+GROUP_ENROLLMENT_ACTIVE_UNIQUE: Final = "uq_group_enrollments_active"
+GROUP_NAME_MAX_LENGTH: Final = 120
+GROUP_MAX_STUDENTS_MAX: Final = 500
+WITHDRAWAL_REASON_MAX_LENGTH: Final = 1000
 OVERRIDE_REASON_MAX_LENGTH: Final = 1000
 SOFT_CODES_IN_ORDER: Final = tuple(code for code in CODE_ORDER if code in SOFT)
 """The seven soft codes in rule order: the override ``codes`` CHECK."""
@@ -245,6 +273,10 @@ class ClassSession(Audited, VersionedMixin, Model):
         UniqueConstraint(
             "series_id", "original_start", name=SERIES_ORIGINAL_START_UNIQUE
         ),
+        CheckConstraint(
+            "(kind = 'group') = (group_id IS NOT NULL)", name="group_iff_kind"
+        ),
+        Index("ix_class_sessions_group_id_starts_at", "group_id", "starts_at"),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -290,6 +322,11 @@ class ClassSession(Audited, VersionedMixin, Model):
         server_default=text("'{}'"),
         default=list,
     )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_groups.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
 
 class ClassSessionParticipant(Audited, Model):
@@ -313,10 +350,13 @@ class ClassSessionParticipant(Audited, Model):
 class ClassSessionOverride(Model):
     """One override of a session's soft conflicts (#49 D1). Append-only (a
     trigger rejects ``UPDATE`` and ``DELETE``); not audited, the
-    ``scheduling.session_override`` / ``scheduling.series_override`` event is
-    its record. ``class_series_id`` (#236 D1) is **context**, not a second
-    subject: the series a series write (or a ``conflict``-row override)
-    targeted; ``NULL`` for a one-off session's override."""
+    ``scheduling.session_override`` / ``scheduling.series_override`` /
+    ``scheduling.enrollment_override`` event is its record. Its **subject**
+    is exactly one of ``class_session_id`` and ``group_enrollment_id`` (#56
+    A6: a group enrollment's ``group_capacity_exceeded``).
+    ``class_series_id`` (#236 D1) is **context**, not a subject: the series
+    a series write (or a ``conflict``-row override) targeted; ``NULL`` for a
+    one-off session's or an enrollment's override."""
 
     __tablename__ = "class_session_overrides"
     __table_args__ = (
@@ -330,11 +370,22 @@ class ClassSessionOverride(Model):
             f"char_length(btrim(reason)) BETWEEN 1 AND {OVERRIDE_REASON_MAX_LENGTH}",
             name="reason_length",
         ),
+        CheckConstraint(
+            "num_nonnulls(class_session_id, group_enrollment_id) = 1",
+            name="one_subject",
+        ),
     )
 
-    class_session_id: Mapped[uuid.UUID] = mapped_column(
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    group_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("group_enrollments.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     class_series_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -394,6 +445,9 @@ class ClassSeries(Audited, VersionedMixin, Model):
             name="assignment_from_iff_status",
         ),
         CheckConstraint("split_from_series_id <> id", name="split_from_not_self"),
+        CheckConstraint(
+            "(kind = 'group') = (group_id IS NOT NULL)", name="group_iff_kind"
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -427,6 +481,12 @@ class ClassSeries(Audited, VersionedMixin, Model):
     split_from_series_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_series.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_groups.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )
@@ -623,3 +683,85 @@ class ClassSessionSubstitution(Audited, Model):
     )
     slot_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     slot_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Ongoing tutoring groups (#56 A) -----------------------------------------------
+
+
+class ClassGroup(Audited, VersionedMixin, Model):
+    """An ongoing tutoring group (#56 A2; spec §3). See the module
+    docstring."""
+
+    __tablename__ = "class_groups"
+    __table_args__ = (
+        CheckConstraint(
+            f"name = btrim(name) AND char_length(name) BETWEEN 1"
+            f" AND {GROUP_NAME_MAX_LENGTH}",
+            name="name_trimmed",
+        ),
+        CheckConstraint(
+            f"max_students BETWEEN 1 AND {GROUP_MAX_STUDENTS_MAX}",
+            name="max_students_range",
+        ),
+        Index(GROUP_NAME_UNIQUE, func.lower(sql_column("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(GROUP_NAME_MAX_LENGTH))
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), index=True
+    )
+    max_students: Mapped[int] = mapped_column(SmallInteger)
+
+
+class GroupEnrollment(Audited, VersionedMixin, Model):
+    """One enrollment period of a student in a group (#56 A5). See the
+    module docstring; the write-once trigger is created by the migration."""
+
+    __tablename__ = "group_enrollments"
+    __table_args__ = (
+        CheckConstraint(
+            "withdrawn_at IS NULL OR withdrawn_at >= enrolled_at",
+            name="withdrawn_after_enrolled",
+        ),
+        CheckConstraint(
+            "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL)",
+            name="withdrawn_together",
+        ),
+        CheckConstraint(
+            "withdrawal_reason IS NULL OR (withdrawn_at IS NOT NULL"
+            " AND withdrawal_reason = btrim(withdrawal_reason)"
+            " AND withdrawal_reason <> '')",
+            name="withdrawal_reason_valid",
+        ),
+        Index(
+            GROUP_ENROLLMENT_ACTIVE_UNIQUE,
+            "group_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text("withdrawn_at IS NULL"),
+        ),
+    )
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_groups.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    enrolled_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    withdrawn_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    withdrawn_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    withdrawal_reason: Mapped[str | None] = mapped_column(
+        String(WITHDRAWAL_REASON_MAX_LENGTH), nullable=True
+    )

@@ -267,3 +267,80 @@ class ClassSessionNotCancellableError(AppError):
         if state is not None:
             details["state"] = state
         super().__init__(details=details)
+
+
+# --- Ongoing tutoring groups (#56) --------------------------------------------------
+
+
+class GroupNotFoundError(AppError):
+    """``404 group_not_found``: no such group, or one the caller can't see
+    (#56 H2: never ``403``)."""
+
+    status = 404
+    code = "group_not_found"
+    detail = "No such group."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EnrollmentNotFoundError(AppError):
+    """``404 enrollment_not_found`` (#56 E2): no such enrollment in this
+    group."""
+
+    status = 404
+    code = "enrollment_not_found"
+    detail = "No such enrollment in this group."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class GroupNameTakenError(AppError):
+    """``409 group_name_taken`` (#56 D2 step 6, E4): another group has this
+    name (compared case-insensitively)."""
+
+    status = 409
+    code = "group_name_taken"
+    detail = "Another group already has this name."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class GroupEndedError(AppError):
+    """``409 group_ended`` (#56 E1 step 6): no series of the group is still
+    producing occurrences."""
+
+    status = 409
+    code = "group_ended"
+    detail = "This group has ended."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AlreadyEnrolledError(AppError):
+    """``409 already_enrolled`` (#56 E1 step 8): the student has an active
+    enrollment in the group (``details.enrollment_id``)."""
+
+    status = 409
+    code = "already_enrolled"
+    detail = "The student is already enrolled in this group."
+
+    def __init__(self, enrollment_id: str | None) -> None:
+        super().__init__(
+            details=None if enrollment_id is None else {"enrollment_id": enrollment_id}
+        )
+
+
+class EnrollmentNotActiveError(AppError):
+    """``409 enrollment_not_active`` (#56 E2): the enrollment was already
+    withdrawn."""
+
+    status = 409
+    code = "enrollment_not_active"
+    detail = "This enrollment was already withdrawn."
+
+    def __init__(self) -> None:
+        super().__init__()

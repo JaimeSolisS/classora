@@ -34,6 +34,7 @@ from tests.factories.families import persist_student
 from tests.factories.scheduling import (
     ClassSessionFactory,
     add_participant,
+    persist_class_group,
     persist_class_session,
     persist_classroom,
     persist_subject,
@@ -101,6 +102,13 @@ def columns(refs: Refs, **overrides: Any) -> dict[str, Any]:
         int((values["ends_at"] - values["starts_at"]).total_seconds() // 60),
     )
     return values
+
+
+def new_group(url: str, refs: Refs) -> uuid.UUID:
+    async def _make(session: AsyncSession) -> uuid.UUID:
+        return (await persist_class_group(session, subject_id=refs.subject)).id
+
+    return in_uow(url, _make)
 
 
 def insert_raw(url: str, values: dict[str, Any]) -> Any:
@@ -249,6 +257,9 @@ def test_invalid_rows_are_rejected_through_the_orm(
     ],
 )
 def test_valid_rows_are_stored(module_seeded_url, refs, overrides):
+    if overrides.get("kind") == "group":
+        # #56 A4: a group session belongs to a group.
+        overrides = {**overrides, "group_id": new_group(module_seeded_url, refs)}
     session_id = insert_raw(module_seeded_url, columns(refs, **overrides))
 
     [row] = run_sql(

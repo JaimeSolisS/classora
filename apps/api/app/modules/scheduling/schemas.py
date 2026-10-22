@@ -395,6 +395,9 @@ class ClassSessionDetail(BaseModel):
     cancellation: SessionCancellation | None = Field(
         description="When and why a `cancelled` session was cancelled; null otherwise.",
     )
+    group_id: uuid.UUID | None = Field(
+        description="The tutoring group of a `group` session (#56); null otherwise."
+    )
 
 
 type SchedulingWarningCode = Literal[
@@ -1075,6 +1078,9 @@ class ClassSeriesDetail(BaseModel):
     assignment: SeriesAssignment | None = Field(
         description="The tutor assignment; null when the series has no tutor."
     )
+    group_id: uuid.UUID | None = Field(
+        description="The tutoring group of a `group` series (#56); null otherwise."
+    )
     version: int
     created_at: datetime
     updated_at: datetime
@@ -1378,3 +1384,380 @@ class ClassSessionCancel(BaseModel):
         return data
 
     _reason = field_validator("reason", mode="before")(_check_cancel_reason)
+
+
+# --- Ongoing tutoring groups (#56 D, E, G, H) --------------------------------------
+
+GROUP_NAME_MAX: Final = 120
+GROUP_STUDENTS_MAX: Final = 500
+GROUP_REASON_MAX: Final = 1000
+GROUPS_DEFAULT_LIMIT: Final = 25
+GROUPS_MAX_LIMIT: Final = 100
+
+
+def _check_group_name(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    name = value.strip()
+    if not name:
+        raise PydanticCustomError("name_required", "Give the group a name.")
+    if len(name) > GROUP_NAME_MAX:
+        raise PydanticCustomError(
+            "name_too_long", "A group name is at most 120 characters."
+        )
+    return name
+
+
+def _check_codes_optional(codes: list[str]) -> list[str]:
+    return _check_codes(codes) if codes else codes
+
+
+def _check_pairs_optional(pairs: list[OverridePair]) -> list[OverridePair]:
+    return _check_pairs(pairs) if pairs else pairs
+
+
+class GroupOverride(BaseModel):
+    """The soft conflicts of a group create to override, and why (#56 D1;
+    the ``override`` of ``POST /api/v1/groups``): ``codes`` for the
+    group-level conflicts (``group_capacity_exceeded`` of the initial
+    students, the #49 shape) and ``pairs`` for the occurrences' (the #236
+    ``(occurrence_start, code)`` shape of ``POST /api/v1/class-series``). At
+    least one of them (``codes_required`` on ``override``); the reason is the
+    #49 reason (trimmed, 1-1000)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    codes: list[str] = Field(
+        default_factory=list,
+        max_length=OVERRIDE_CODES_MAX,
+        description=(
+            "Soft codes for the group-level conflicts"
+            " (`group_capacity_exceeded`), no duplicates; never a hard code."
+        ),
+    )
+    pairs: list[OverridePair] = Field(
+        default_factory=list,
+        description=(
+            "The occurrences' (occurrence_start, code) pairs to override, at"
+            " most 1400, no duplicates."
+        ),
+    )
+    reason: str = Field(
+        description="Why the rules are overridden: 1-1000 characters, trimmed."
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _missing_reason(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {"reason": None} | data
+        return data
+
+    @model_validator(mode="after")
+    def _something_listed(self) -> GroupOverride:
+        if not self.codes and not self.pairs:
+            raise PydanticCustomError("codes_required", "List the rules to override.")
+        return self
+
+    _reason = field_validator("reason", mode="before")(_check_reason)
+    _codes = field_validator("codes")(_check_codes_optional)
+    _pairs = field_validator("pairs")(_check_pairs_optional)
+
+
+class GroupCreate(BaseModel):
+    """An ongoing tutoring group and its weekly series (``POST
+    /api/v1/groups``, #56 D1). The timing and ``recurrence`` follow ``POST
+    /api/v1/class-series`` (#53); no ``rrule`` text. ``student_ids`` are
+    the initial students (0-500, no duplicates: ``student_ids_duplicate``).
+    ``override`` needs ``schedule.override``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="1-120 characters, trimmed; unique (any case).")
+    subject_id: uuid.UUID
+    max_students: int = Field(ge=1, le=500, description="The group maximum, 1-500.")
+    tutor_user_id: uuid.UUID | None = Field(
+        default=None,
+        description="The tutor to offer the occurrences to; null: unassigned.",
+    )
+    classroom_id: uuid.UUID | None = Field(
+        default=None, description="The classroom; null is no room."
+    )
+    starts_on: date = Field(
+        description="The local date the rule starts on (not before today)."
+    )
+    start_time: time = Field(
+        description="The local start time, HH:MM (whole minutes, no seconds)."
+    )
+    duration_minutes: int = Field(ge=15, le=480, description="15-480 minutes.")
+    recurrence: SeriesRecurrence
+    student_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        max_length=GROUP_STUDENTS_MAX,
+        description="The initial students, 0-500, each once.",
+    )
+    override: GroupOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts with a reason (needs"
+            " schedule.override). Null or absent: every conflict blocks."
+        ),
+    )
+
+    _name = field_validator("name", mode="before")(_check_group_name)
+    _start_time = field_validator("start_time", mode="before")(_check_start_time)
+
+    @field_validator("student_ids")
+    @classmethod
+    def _unique_students(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise PydanticCustomError(
+                "student_ids_duplicate", "List each student only once."
+            )
+        return value
+
+
+class GroupUpdate(BaseModel):
+    """Rename a group or change its maximum (``PATCH /api/v1/groups/{id}``,
+    #56 E4). At least one of ``name`` and ``max_students`` (``no_changes``
+    on the body)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(description="The group's version, as read.")
+    name: str | None = Field(
+        default=None, description="1-120 characters, trimmed; unique (any case)."
+    )
+    max_students: int | None = Field(
+        default=None, ge=1, le=500, description="The group maximum, 1-500."
+    )
+
+    _name = field_validator("name", mode="before")(_check_group_name)
+
+    @model_validator(mode="after")
+    def _something_changes(self) -> GroupUpdate:
+        if self.name is None and self.max_students is None:
+            raise PydanticCustomError("no_changes", "Change the name or the maximum.")
+        return self
+
+
+class GroupEnrollmentCreate(BaseModel):
+    """Enroll a student in a group (``POST /api/v1/groups/{id}/enrollments``,
+    #56 E1). ``override`` (the #49 shape) needs ``schedule.override``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: uuid.UUID
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override `group_capacity_exceeded` with a reason (needs"
+            " schedule.override). Null or absent: every conflict blocks."
+        ),
+    )
+
+
+def _check_withdrawal_reason(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    reason = value.strip()
+    if not reason:
+        raise PydanticCustomError("reason_required", "Give a reason or leave it out.")
+    if len(reason) > GROUP_REASON_MAX:
+        raise PydanticCustomError(
+            "reason_too_long", "The reason is at most 1000 characters."
+        )
+    return reason
+
+
+class GroupWithdrawal(BaseModel):
+    """Withdraw a student from a group (``POST
+    /api/v1/groups/{id}/enrollments/{enrollment_id}/withdraw``, #56 E2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(description="The enrollment's version, as read.")
+    reason: str | None = Field(
+        default=None, description="Optional: 1-1000 characters, trimmed."
+    )
+
+    _reason = field_validator("reason", mode="before")(_check_withdrawal_reason)
+
+
+class GroupLevel(BaseModel):
+    """The subject's education level."""
+
+    id: uuid.UUID
+    name: str
+
+
+class GroupSubject(BaseModel):
+    """The group's subject and its level."""
+
+    id: uuid.UUID
+    name: str
+    level: GroupLevel
+
+
+class GroupSeries(BaseModel):
+    """The group's current series (#56 G1): the producing series with the
+    latest start; its rule, tutor and room (the participants are the
+    roster)."""
+
+    id: uuid.UUID
+    tutor: SessionTutor | None
+    classroom: SessionClassroom | None
+    starts_on: date
+    start_time: str = Field(description="The local start time, HH:MM.")
+    duration_minutes: int
+    time_zone: str
+    recurrence: SeriesRecurrenceDetail
+    last_occurrence_on: date | None
+    version: int
+
+
+class GroupOccurrenceItem(BaseModel):
+    """An upcoming occurrence of the group."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+
+
+class EnrollmentStudent(BaseModel):
+    """The enrolled student."""
+
+    id: uuid.UUID
+    display_name: str
+    is_active: bool
+
+
+class EnrollmentActor(BaseModel):
+    """Who enrolled or withdrew the student."""
+
+    id: uuid.UUID
+    display_name: str
+
+
+class GroupEnrollmentItem(BaseModel):
+    """One enrollment period (#56 G2)."""
+
+    id: uuid.UUID
+    student: EnrollmentStudent
+    enrolled_at: datetime
+    enrolled_by: EnrollmentActor
+    withdrawn_at: datetime | None
+    withdrawn_by: EnrollmentActor | None
+    withdrawal_reason: str | None
+    overridden: bool = Field(
+        description="Whether the enrollment went above the maximum by an override."
+    )
+    version: int
+
+
+class GroupEnrollmentCreated(GroupEnrollmentItem):
+    """The new enrollment."""
+
+    warnings: list[SchedulingWarning] = Field(description="Always empty for now.")
+
+
+class GroupDetail(BaseModel):
+    """One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student
+    ``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are
+    only their own confirmed sessions."""
+
+    id: uuid.UUID
+    name: str
+    subject: GroupSubject
+    max_students: int
+    enrolled_count: int | None = Field(
+        description="Active enrollments; null for a student."
+    )
+    effective_capacity: int = Field(
+        description="min(max_students, the current series' room capacity)."
+    )
+    current_series: GroupSeries | None = Field(
+        description="The producing series with the latest start; null once ended."
+    )
+    next_occurrences: list[GroupOccurrenceItem] = Field(
+        description="Up to 10 upcoming occurrences, by start."
+    )
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    roster: list[GroupEnrollmentItem] | None = Field(
+        description=(
+            "schedule.view holders only: active enrollments by student name,"
+            " then withdrawn ones, latest first; null for a student."
+        )
+    )
+
+
+class GroupCreated(GroupDetail):
+    """The created group."""
+
+    warnings: list[SchedulingWarning] = Field(description="Always empty for now.")
+
+
+type GroupStatus = Literal["active", "ended", "all"]
+
+
+class GroupListItem(BaseModel):
+    """A group in the list (#56 H1)."""
+
+    id: uuid.UUID
+    name: str
+    subject: GroupSubject
+    max_students: int
+    enrolled_count: int | None = Field(description="Null for a student.")
+    tutor: SessionTutor | None = Field(description="The current series' tutor.")
+    next_starts_at: datetime | None
+
+
+class GroupPage(BaseModel):
+    """A page of groups (cursor pagination)."""
+
+    items: list[GroupListItem]
+    next_cursor: str | None
+
+
+class GroupSessionsQuery(BaseModel):
+    """The query of ``GET /api/v1/groups/{id}/sessions`` (#56 H3; the #57
+    range rules)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_: datetime = Field(
+        alias="from", description="An instant with an offset (RFC 3339)."
+    )
+    to: datetime = Field(
+        description=(
+            "An instant with an offset (RFC 3339), after `from` and at most"
+            " 45 days later."
+        )
+    )
+
+
+class GroupSessionClassroom(BaseModel):
+    """The session's classroom."""
+
+    id: uuid.UUID
+    name: str
+
+
+class GroupSessionItem(BaseModel):
+    """One session of the group."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    tutor: SessionTutor | None
+    classroom: GroupSessionClassroom | None
+
+
+class GroupSessions(BaseModel):
+    """The group's sessions overlapping the range, by start."""
+
+    items: list[GroupSessionItem]

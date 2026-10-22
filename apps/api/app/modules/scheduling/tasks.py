@@ -31,7 +31,10 @@ created and re-checks the skipped ones whose date reopened. A closure write
 also queues this task after its commit
 (``app.core.jobs.defer_series_materialization``). A failing series never
 blocks the others: its error is logged with the series id and the error
-class, and the next run retries it.
+class, and the next run retries it. A **group** series whose participants
+changed between the participant read and the series lock (an enrollment
+committed in between, #56 C2) is rolled back and retried at once, at most
+:data:`GROUP_RETRIES` times in all, then counted as failed.
 
 Both ``run_*`` functions build their own direct engine and dispose of it, so
 they can also be run by hand::
@@ -47,7 +50,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from procrastinate import App
@@ -66,10 +69,12 @@ from app.core.jobs import (
 from app.core.uow import UnitOfWork
 from app.modules.administration import service as administration
 from app.modules.scheduling.closure_changes import (
+    ReconcileCounts,
     reconcile_series_closures,
     register_closure_notifications,
 )
-from app.modules.scheduling.materialize import materialize_series
+from app.modules.scheduling.group_lock import SeriesParticipantsChangedError
+from app.modules.scheduling.materialize import MaterializeCounts, materialize_series
 from app.modules.scheduling.models import ClassSeries
 from app.modules.scheduling.occurrence_approval import OCCURRENCE_CONFLICT_HANDLER
 from app.modules.scheduling.offer_flow import expire_offer, overdue_offer_ids
@@ -88,6 +93,9 @@ MATERIALIZE_TASK_NAME: Final = MATERIALIZE_SERIES_TASK
 MATERIALIZE_CRON: Final = "0 8 * * *"
 MATERIALIZE_PERIODIC_ID: Final = "scheduling-materialize-series"
 MATERIALIZE_QUEUEING_LOCK: Final = MATERIALIZE_SERIES_QUEUEING_LOCK
+GROUP_RETRIES: Final = 3
+"""How many times one run tries a group series whose participants changed
+under it (#56 C2)."""
 
 
 @dataclass(frozen=True)
@@ -169,6 +177,34 @@ async def series_to_materialize(
     return list(rows)
 
 
+async def _materialize_one(
+    sessionmaker: Any, series_id: uuid.UUID, *, now: datetime, settings: Settings
+) -> tuple[ReconcileCounts, MaterializeCounts]:
+    """One series in its own Unit of Work: the closure reconcile, then the
+    extension. A group series whose participants changed under the locks is
+    rolled back and tried again (#56 C2), at most :data:`GROUP_RETRIES`
+    times; the last failure propagates."""
+    for attempt in range(1, GROUP_RETRIES + 1):
+        try:
+            async with UnitOfWork(sessionmaker, actor_id=None) as uow:
+                reconciled = await reconcile_series_closures(
+                    uow.session, series_id, now=now
+                )
+                counts = await materialize_series(
+                    uow.session,
+                    series_id,
+                    now=now,
+                    horizon_weeks=settings.scheduling_horizon_weeks,
+                    mode="extend",
+                )
+        except SeriesParticipantsChangedError:
+            if attempt == GROUP_RETRIES:
+                raise
+            continue
+        return reconciled, counts
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 async def run_materialization(
     settings: Settings, *, now: datetime | None = None
 ) -> MaterializationResult:
@@ -191,17 +227,9 @@ async def run_materialization(
         for series_id in ids:
             series += 1
             try:
-                async with UnitOfWork(sessionmaker, actor_id=None) as uow:
-                    reconciled = await reconcile_series_closures(
-                        uow.session, series_id, now=at
-                    )
-                    counts = await materialize_series(
-                        uow.session,
-                        series_id,
-                        now=at,
-                        horizon_weeks=settings.scheduling_horizon_weeks,
-                        mode="extend",
-                    )
+                reconciled, counts = await _materialize_one(
+                    sessionmaker, series_id, now=at, settings=settings
+                )
             except Exception as exc:  # noqa: BLE001 - one series never blocks the rest
                 failed += 1
                 logger.error(

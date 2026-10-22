@@ -2338,6 +2338,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Groups
+         * @description The groups you can see, by name: `active` (still producing
+         *     sessions; the default), `ended` or `all`. Staff with schedule.view see
+         *     every group; a student only the groups they are enrolled in (without
+         *     the enrolled count); anyone else an empty list.
+         */
+        get: operations["list_groups_api_v1_groups_get"];
+        put?: never;
+        /**
+         * Create Group
+         * @description Create an ongoing tutoring group with a weekly schedule. Its sessions
+         *     are the occurrences of a `group` series, created up to the rolling
+         *     horizon and checked like a series (a closure date is skipped); every
+         *     initial student is enrolled and takes part in each one. Above
+         *     `max_students` the create needs an `override` (`codes:
+         *     ["group_capacity_exceeded"]`); above a room's capacity it is refused.
+         *     With a tutor the occurrences are `offered` to them, without one
+         *     `unassigned`.
+         */
+        post: operations["create_group_api_v1_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Group
+         * @description One group: its subject, maximum, effective capacity, current series
+         *     and next sessions; for staff with schedule.view also the roster and the
+         *     enrolled count. A student sees only a group they are enrolled in, and
+         *     only their own confirmed sessions.
+         */
+        get: operations["get_group_api_v1_groups__group_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Group
+         * @description Rename a group or change its maximum. The maximum can't go below the
+         *     enrolled students; above the room's capacity the room still limits the
+         *     sessions. The schedule, tutor and room change through the series.
+         */
+        patch: operations["update_group_api_v1_groups__group_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Group Sessions
+         * @description The group's sessions overlapping `[from, to)`, by start. Staff with
+         *     schedule.view see every state; a student only the sessions they take
+         *     part in that are `confirmed` or `completed`.
+         */
+        get: operations["list_group_sessions_api_v1_groups__group_id__sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll Student
+         * @description Enroll a student now, also after the group has started: they join
+         *     every future session of the group that hasn't begun (not completed or
+         *     cancelled ones) and the later ones the schedule creates. Above
+         *     `max_students` it needs an `override`; above a room's capacity, or
+         *     overlapping another session of the student, it is refused.
+         */
+        post: operations["enroll_student_api_v1_groups__group_id__enrollments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Student
+         * @description Withdraw a student now, with an optional reason: they leave every
+         *     future session of the group that hasn't begun and the later ones; past,
+         *     begun, completed and cancelled sessions keep them. The enrollment period
+         *     is kept (for billing).
+         */
+        post: operations["withdraw_student_api_v1_groups__group_id__enrollments__enrollment_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3061,6 +3193,11 @@ export interface components {
             split_into_series_ids: string[];
             /** @description The tutor assignment; null when the series has no tutor. */
             assignment: components["schemas"]["SeriesAssignment"] | null;
+            /**
+             * Group Id
+             * @description The tutoring group of a `group` series (#56); null otherwise.
+             */
+            group_id: string | null;
             /** Version */
             version: number;
             /**
@@ -3149,6 +3286,11 @@ export interface components {
             split_into_series_ids: string[];
             /** @description The tutor assignment; null when the series has no tutor. */
             assignment: components["schemas"]["SeriesAssignment"] | null;
+            /**
+             * Group Id
+             * @description The tutoring group of a `group` series (#56); null otherwise.
+             */
+            group_id: string | null;
             /** Version */
             version: number;
             /**
@@ -3451,6 +3593,11 @@ export interface components {
             /** @description When and why a `cancelled` session was cancelled; null otherwise. */
             cancellation: components["schemas"]["SessionCancellation"] | null;
             /**
+             * Group Id
+             * @description The tutoring group of a `group` session (#56); null otherwise.
+             */
+            group_id: string | null;
+            /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
              */
@@ -3531,6 +3678,11 @@ export interface components {
             pending_substitution: components["schemas"]["PendingSubstitution"] | null;
             /** @description When and why a `cancelled` session was cancelled; null otherwise. */
             cancellation: components["schemas"]["SessionCancellation"] | null;
+            /**
+             * Group Id
+             * @description The tutoring group of a `group` session (#56); null otherwise.
+             */
+            group_id: string | null;
         };
         /**
          * ClassSessionOffers
@@ -3654,6 +3806,11 @@ export interface components {
             pending_substitution: components["schemas"]["PendingSubstitution"] | null;
             /** @description When and why a `cancelled` session was cancelled; null otherwise. */
             cancellation: components["schemas"]["SessionCancellation"] | null;
+            /**
+             * Group Id
+             * @description The tutoring group of a `group` session (#56); null otherwise.
+             */
+            group_id: string | null;
             /**
              * Warnings
              * @description Always empty for an edit for now.
@@ -4402,6 +4559,34 @@ export interface components {
             /** Id */
             id?: string | null;
         };
+        /**
+         * EnrollmentActor
+         * @description Who enrolled or withdrew the student.
+         */
+        EnrollmentActor: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * EnrollmentStudent
+         * @description The enrolled student.
+         */
+        EnrollmentStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
         /** @enum {string} */
         ExceptionKind: "unavailable" | "available";
         /**
@@ -4555,6 +4740,482 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /**
+         * GroupCreate
+         * @description An ongoing tutoring group and its weekly series (``POST
+         *     /api/v1/groups``, #56 D1). The timing and ``recurrence`` follow ``POST
+         *     /api/v1/class-series`` (#53); no ``rrule`` text. ``student_ids`` are
+         *     the initial students (0-500, no duplicates: ``student_ids_duplicate``).
+         *     ``override`` needs ``schedule.override``.
+         */
+        GroupCreate: {
+            /**
+             * Name
+             * @description 1-120 characters, trimmed; unique (any case).
+             */
+            name: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Max Students
+             * @description The group maximum, 1-500.
+             */
+            max_students: number;
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the occurrences to; null: unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The local date the rule starts on (not before today).
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * Format: time
+             * @description The local start time, HH:MM (whole minutes, no seconds).
+             */
+            start_time: string;
+            /**
+             * Duration Minutes
+             * @description 15-480 minutes.
+             */
+            duration_minutes: number;
+            recurrence: components["schemas"]["SeriesRecurrence"];
+            /**
+             * Student Ids
+             * @description The initial students, 0-500, each once.
+             */
+            student_ids?: string[];
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["GroupOverride"] | null;
+        };
+        /**
+         * GroupCreated
+         * @description The created group.
+         */
+        GroupCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            subject: components["schemas"]["GroupSubject"];
+            /** Max Students */
+            max_students: number;
+            /**
+             * Enrolled Count
+             * @description Active enrollments; null for a student.
+             */
+            enrolled_count: number | null;
+            /**
+             * Effective Capacity
+             * @description min(max_students, the current series' room capacity).
+             */
+            effective_capacity: number;
+            /** @description The producing series with the latest start; null once ended. */
+            current_series: components["schemas"]["GroupSeries"] | null;
+            /**
+             * Next Occurrences
+             * @description Up to 10 upcoming occurrences, by start.
+             */
+            next_occurrences: components["schemas"]["GroupOccurrenceItem"][];
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Roster
+             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student.
+             */
+            roster: components["schemas"]["GroupEnrollmentItem"][] | null;
+            /**
+             * Warnings
+             * @description Always empty for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * GroupDetail
+         * @description One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student
+         *     ``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are
+         *     only their own confirmed sessions.
+         */
+        GroupDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            subject: components["schemas"]["GroupSubject"];
+            /** Max Students */
+            max_students: number;
+            /**
+             * Enrolled Count
+             * @description Active enrollments; null for a student.
+             */
+            enrolled_count: number | null;
+            /**
+             * Effective Capacity
+             * @description min(max_students, the current series' room capacity).
+             */
+            effective_capacity: number;
+            /** @description The producing series with the latest start; null once ended. */
+            current_series: components["schemas"]["GroupSeries"] | null;
+            /**
+             * Next Occurrences
+             * @description Up to 10 upcoming occurrences, by start.
+             */
+            next_occurrences: components["schemas"]["GroupOccurrenceItem"][];
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Roster
+             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student.
+             */
+            roster: components["schemas"]["GroupEnrollmentItem"][] | null;
+        };
+        /**
+         * GroupEnrollmentCreate
+         * @description Enroll a student in a group (``POST /api/v1/groups/{id}/enrollments``,
+         *     #56 E1). ``override`` (the #49 shape) needs ``schedule.override``.
+         */
+        GroupEnrollmentCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** @description Override `group_capacity_exceeded` with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * GroupEnrollmentCreated
+         * @description The new enrollment.
+         */
+        GroupEnrollmentCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["EnrollmentStudent"];
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            enrolled_by: components["schemas"]["EnrollmentActor"];
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            withdrawn_by: components["schemas"]["EnrollmentActor"] | null;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /**
+             * Overridden
+             * @description Whether the enrollment went above the maximum by an override.
+             */
+            overridden: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Warnings
+             * @description Always empty for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * GroupEnrollmentItem
+         * @description One enrollment period (#56 G2).
+         */
+        GroupEnrollmentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["EnrollmentStudent"];
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            enrolled_by: components["schemas"]["EnrollmentActor"];
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            withdrawn_by: components["schemas"]["EnrollmentActor"] | null;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /**
+             * Overridden
+             * @description Whether the enrollment went above the maximum by an override.
+             */
+            overridden: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * GroupLevel
+         * @description The subject's education level.
+         */
+        GroupLevel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * GroupListItem
+         * @description A group in the list (#56 H1).
+         */
+        GroupListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            subject: components["schemas"]["GroupSubject"];
+            /** Max Students */
+            max_students: number;
+            /**
+             * Enrolled Count
+             * @description Null for a student.
+             */
+            enrolled_count: number | null;
+            /** @description The current series' tutor. */
+            tutor: components["schemas"]["SessionTutor"] | null;
+            /** Next Starts At */
+            next_starts_at: string | null;
+        };
+        /**
+         * GroupOccurrenceItem
+         * @description An upcoming occurrence of the group.
+         */
+        GroupOccurrenceItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+        };
+        /**
+         * GroupOverride
+         * @description The soft conflicts of a group create to override, and why (#56 D1;
+         *     the ``override`` of ``POST /api/v1/groups``): ``codes`` for the
+         *     group-level conflicts (``group_capacity_exceeded`` of the initial
+         *     students, the #49 shape) and ``pairs`` for the occurrences' (the #236
+         *     ``(occurrence_start, code)`` shape of ``POST /api/v1/class-series``). At
+         *     least one of them (``codes_required`` on ``override``); the reason is the
+         *     #49 reason (trimmed, 1-1000).
+         */
+        GroupOverride: {
+            /**
+             * Codes
+             * @description Soft codes for the group-level conflicts (`group_capacity_exceeded`), no duplicates; never a hard code.
+             */
+            codes?: string[];
+            /**
+             * Pairs
+             * @description The occurrences' (occurrence_start, code) pairs to override, at most 1400, no duplicates.
+             */
+            pairs?: components["schemas"]["OverridePair"][];
+            /**
+             * Reason
+             * @description Why the rules are overridden: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * GroupPage
+         * @description A page of groups (cursor pagination).
+         */
+        GroupPage: {
+            /** Items */
+            items: components["schemas"]["GroupListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * GroupSeries
+         * @description The group's current series (#56 G1): the producing series with the
+         *     latest start; its rule, tutor and room (the participants are the
+         *     roster).
+         */
+        GroupSeries: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * @description The local start time, HH:MM.
+             */
+            start_time: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Time Zone */
+            time_zone: string;
+            recurrence: components["schemas"]["SeriesRecurrenceDetail"];
+            /** Last Occurrence On */
+            last_occurrence_on: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * GroupSessionClassroom
+         * @description The session's classroom.
+         */
+        GroupSessionClassroom: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * GroupSessionItem
+         * @description One session of the group.
+         */
+        GroupSessionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["GroupSessionClassroom"] | null;
+        };
+        /**
+         * GroupSessions
+         * @description The group's sessions overlapping the range, by start.
+         */
+        GroupSessions: {
+            /** Items */
+            items: components["schemas"]["GroupSessionItem"][];
+        };
+        /**
+         * GroupSubject
+         * @description The group's subject and its level.
+         */
+        GroupSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            level: components["schemas"]["GroupLevel"];
+        };
+        /**
+         * GroupUpdate
+         * @description Rename a group or change its maximum (``PATCH /api/v1/groups/{id}``,
+         *     #56 E4). At least one of ``name`` and ``max_students`` (``no_changes``
+         *     on the body).
+         */
+        GroupUpdate: {
+            /**
+             * Version
+             * @description The group's version, as read.
+             */
+            version: number;
+            /**
+             * Name
+             * @description 1-120 characters, trimmed; unique (any case).
+             */
+            name?: string | null;
+            /**
+             * Max Students
+             * @description The group maximum, 1-500.
+             */
+            max_students?: number | null;
+        };
+        /**
+         * GroupWithdrawal
+         * @description Withdraw a student from a group (``POST
+         *     /api/v1/groups/{id}/enrollments/{enrollment_id}/withdraw``, #56 E2).
+         */
+        GroupWithdrawal: {
+            /**
+             * Version
+             * @description The enrollment's version, as read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Optional: 1-1000 characters, trimmed.
+             */
+            reason?: string | null;
         };
         /**
          * GuardianAccount
@@ -14583,6 +15244,463 @@ export interface operations {
                 };
             };
             /** @description The offer was already answered, expired or withdrawn (offer_not_pending, details.status), or its deadline has passed (offer_expired). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_groups_api_v1_groups_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                subject_id?: string | null;
+                status?: "active" | "ended" | "all";
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupPage"];
+                };
+            };
+            /** @description The cursor is not valid (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_group_api_v1_groups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another group has the name, in any case (group_name_taken); or the group breaks scheduling rules (scheduling_conflict): `conflicts` lists the group-level `group_capacity_exceeded` first (more initial students than `max_students`), then every conflict of every occurrence in the horizon (with `details.occurrence_start` and `details.date`), e.g. `room_capacity_exceeded` and `student_overlap`; a hard conflict, or a soft one the `override` doesn't list, refuses. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable). Nothing is created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_group_api_v1_groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such group, or one you can't see (group_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_group_api_v1_groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such group, or one you can't see (group_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The group changed since it was read (version_conflict), or another group has the name (group_name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_group_sessions_api_v1_groups__group_id__sessions_get: {
+        parameters: {
+            query: {
+                /** @description An instant with an offset (RFC 3339). */
+                from: string;
+                /** @description An instant with an offset (RFC 3339), after `from` and at most 45 days later. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupSessions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such group, or one you can't see (group_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    enroll_student_api_v1_groups__group_id__enrollments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupEnrollmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEnrollmentCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such group, or one you can't see (group_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The group has no series still producing sessions (group_ended); the student is already enrolled (already_enrolled, details.enrollment_id); or the enrollment breaks scheduling rules (scheduling_conflict): `group_capacity_exceeded` (soft, can be overridden) first, then each future session's `student_overlap` and `room_capacity_exceeded` (hard), with `details.occurrence_start` and `details.date`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    withdraw_student_api_v1_groups__group_id__enrollments__enrollment_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                enrollment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupWithdrawal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEnrollmentItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such group (group_not_found), or no such enrollment in it (enrollment_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active). */
             409: {
                 headers: {
                     [name: string]: unknown;

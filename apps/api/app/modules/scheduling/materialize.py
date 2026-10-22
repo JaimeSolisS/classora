@@ -16,10 +16,22 @@ reaches the past.
 
 1. ``lock_students`` for the series' participants (ascending ids);
 2. the center zone ``FOR SHARE``;
-3. the **series row ``FOR UPDATE``**.
+3. for a ``group`` series, the **group row ``FOR UPDATE``** (#56 C2, F1:
+   :mod:`~app.modules.scheduling.group_lock`);
+4. the **series row ``FOR UPDATE``**.
 
 The create takes steps 1 and 2 itself before inserting the series (so in
-``create`` mode they are already held); the extend mode takes all three.
+``create`` mode they are already held); the extend mode takes all four
+(:func:`lock_series_for_write`). **Group series (#56 C2):** after the series
+lock the participants are read again; when they differ from the locked set
+(an enrollment or withdrawal committed in between),
+:class:`~app.modules.scheduling.group_lock.SeriesParticipantsChangedError`
+is raised: the nightly job rolls that series' unit back and retries it (at
+most 3 times, then counts it as failed and the next night retries). A
+group occurrence copies ``group_id`` from its series and takes one
+participant per series participant. The job never re-checks the group
+maximum (the enrollment enforced or overrode it), only each occurrence's
+room capacity (``room_capacity_exceeded`` → a ``conflict`` row).
 
 **Each occurrence**, in order:
 
@@ -90,6 +102,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Final, Literal
@@ -111,6 +124,10 @@ from app.modules.scheduling.errors import (
     SessionOverlapError,
     SessionValidationError,
 )
+from app.modules.scheduling.group_lock import (
+    SeriesParticipantsChangedError,
+    lock_group,
+)
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.models import (
     SERIES_ASSIGNMENT_ACCEPTED,
@@ -122,11 +139,13 @@ from app.modules.scheduling.models import (
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
 from app.modules.scheduling.overrides import (
     OccurrenceConflict,
+    OverrideDecision,
     SeriesOverrideDecision,
+    evaluate_listed,
     evaluate_series_override,
 )
 from app.modules.scheduling.recurrence import Occurrence, expand, horizon_end
-from app.modules.scheduling.schemas import SeriesOverride
+from app.modules.scheduling.schemas import GroupOverride, SeriesOverride
 from app.modules.scheduling.sessions import flush_class_sessions
 from app.modules.scheduling.states import SessionState
 from app.modules.scheduling.times import validate_session_bounds
@@ -147,6 +166,9 @@ class MaterializeCounts:
     override: SeriesOverrideDecision | None = None
     """Create mode: the allowed override decision (#236), for the caller to
     record; ``None`` otherwise."""
+    group_override: OverrideDecision | None = None
+    """Create mode of a group (#56 D2): the allowed decision on the
+    group-level conflicts; ``None`` otherwise."""
 
 
 @dataclass(frozen=True)
@@ -336,6 +358,39 @@ async def _locked_series(session: AsyncSession, series_id: uuid.UUID) -> ClassSe
     return series
 
 
+@dataclass(frozen=True)
+class LockedSeries:
+    """A series under the materialization lock order."""
+
+    series: ClassSeries
+    zone: str
+    student_ids: list[uuid.UUID]
+
+
+async def lock_series_for_write(
+    session: AsyncSession, series_id: uuid.UUID
+) -> LockedSeries:
+    """Steps 1-4 of the lock order for a series write that reads the
+    participants first (the nightly extension, #232's reconcile). For a
+    group series the participants are re-read under the series lock;
+    a change raises :class:`SeriesParticipantsChangedError` (#56 C2)."""
+    found = await session.get(ClassSeries, series_id)
+    if found is None:
+        raise LookupError(f"no class series {series_id}")
+    group_id = found.group_id  # never changes for a series
+    student_ids = await series_participant_ids(session, series_id)
+    await lock_students(session, student_ids)
+    zone = await administration.get_center_time_zone(session, for_share=True)
+    if group_id is not None:
+        await lock_group(session, group_id)
+    series = await _locked_series(session, series_id)
+    if group_id is not None and (
+        await series_participant_ids(session, series_id) != student_ids
+    ):
+        raise SeriesParticipantsChangedError(str(series_id))
+    return LockedSeries(series=series, zone=zone, student_ids=student_ids)
+
+
 async def _existing_starts(
     session: AsyncSession, series_id: uuid.UUID, window_start: datetime
 ) -> set[datetime]:
@@ -355,21 +410,30 @@ async def materialize_series(
     now: datetime,
     horizon_weeks: int,
     mode: Mode,
-    override: SeriesOverride | None = None,
+    override: SeriesOverride | GroupOverride | None = None,
+    group_conflicts: Sequence[Conflict] = (),
+    group_codes: Collection[str] | None = None,
 ) -> MaterializeCounts:
     """Create the series' missing occurrences in ``[now, horizon_end)``; see
     the module docstring. Returns the inserted counts. In ``create`` mode a
     conflict that ``override`` doesn't cover raises
     :class:`SchedulingConflictError` (and a bounds failure
     :class:`SessionValidationError`); the caller holds the student locks
-    and the zone ``FOR SHARE``. ``override`` is for ``create`` mode only."""
-    if override is not None and mode != "create":
+    and the zone ``FOR SHARE``. ``override`` is for ``create`` mode only.
+
+    A group create (#56 D2) passes its group-level conflicts
+    (``group_capacity_exceeded``) and the codes its override lists for them
+    (``group_codes``; ``None``: no override): they are decided with the
+    #49 rule and refused together with the occurrences' conflicts, group
+    level first, in one ``409``."""
+    if (override is not None or group_conflicts) and mode != "create":
         raise ValueError("only a create carries an override")
-    student_ids = await series_participant_ids(session, series_id)
     if mode == "extend":
-        await lock_students(session, student_ids)
-        await administration.get_center_time_zone(session, for_share=True)
-    series = await _locked_series(session, series_id)
+        locked = await lock_series_for_write(session, series_id)
+        student_ids, series = locked.student_ids, locked.series
+    else:
+        student_ids = await series_participant_ids(session, series_id)
+        series = await _locked_series(session, series_id)
     zone = series.time_zone
 
     window_start = now
@@ -385,8 +449,13 @@ async def materialize_series(
     if mode == "extend":
         existing = await _existing_starts(session, series.id, window_start)
         occurrences = [o for o in occurrences if o.original_start not in existing]
+    group_decision = evaluate_listed(group_conflicts, group_codes)
     if not occurrences:
-        return MaterializeCounts()
+        if not group_decision.allowed:
+            raise SchedulingConflictError([c.as_wire() for c in group_conflicts])
+        return MaterializeCounts(
+            group_override=group_decision if mode == "create" else None
+        )
 
     closed = closed_dates(
         await catalog.closures_between(
@@ -447,8 +516,10 @@ async def materialize_series(
     decision = None
     if mode == "create":
         decision = evaluate_series_override(found, override)
-        if not decision.allowed:
-            raise SchedulingConflictError(refused)
+        if not (decision.allowed and group_decision.allowed):
+            raise SchedulingConflictError(
+                [c.as_wire() for c in group_conflicts] + refused
+            )
 
     rows = await insert_occurrences(session, series, planned, student_ids, mode=mode)
     if mode == "extend":
@@ -475,6 +546,7 @@ async def materialize_series(
         skipped_closure=skipped,
         conflicts=conflicted,
         override=decision,
+        group_override=group_decision if mode == "create" else None,
     )
 
 
@@ -505,6 +577,7 @@ async def insert_occurrences(
             original_start=occurrence.original_start,
             is_exception=False,
             conflict_codes=item.codes,
+            group_id=series.group_id,
         )
         session.add(row)
         try:

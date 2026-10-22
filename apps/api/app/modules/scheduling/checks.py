@@ -76,6 +76,13 @@ class SlotCandidate:
     classroom_id: uuid.UUID | None
     starts_at: datetime
     ends_at: datetime
+    group_max: int | None = None
+    """For ``kind = 'group'`` (#56 C1): the group maximum the participants
+    are checked against (``group_capacity_exceeded``, soft); ``None``
+    leaves it out. The group create checks the maximum once for the whole
+    group (it is the same for every occurrence) and the nightly job never
+    re-checks it, so both pass ``None``; the room capacity is always
+    checked."""
 
 
 def _overlapping(slot: LocalSlot) -> Any:
@@ -171,7 +178,8 @@ async def _capacity_conflicts(
 ) -> list[Conflict]:
     """D4 / ADR-0005 D7: one path for every kind. An individual session never
     exceeds a room (a room holds at least 1, #39), so nothing comes back
-    here; #56 / #65 make it reachable."""
+    here; a group occurrence (#56 C1) is checked against its room and, with
+    ``group_max``, the group maximum."""
     participants = len(candidate.student_ids)
     room_capacity = None
     if candidate.classroom_id is not None:
@@ -181,7 +189,10 @@ async def _capacity_conflicts(
     return [
         Conflict(code, {"participants": participants, "room_capacity": room_capacity})
         for code in capacity_violations(
-            candidate.kind, participants, group_max=None, room_capacity=room_capacity
+            candidate.kind,
+            participants,
+            group_max=candidate.group_max,
+            room_capacity=room_capacity,
         )
     ]
 
@@ -321,3 +332,27 @@ async def find_offer_conflicts(
         session, slot, check_center_closed=check_center_closed
     )
     return sort_conflicts(conflicts)
+
+
+async def student_overlap_ids(
+    session: AsyncSession,
+    student_id: uuid.UUID,
+    starts_at: datetime,
+    ends_at: datetime,
+    *,
+    zone: str,
+    exclude_session_ids: frozenset[uuid.UUID] = frozenset(),
+) -> list[str]:
+    """The ids (at most :data:`OVERLAP_IDS_LIMIT`) of the student's sessions
+    in ``STUDENT_OCCUPYING_STATES`` overlapping ``[starts_at, ends_at)``,
+    without ``exclude_session_ids``: the #48 ``student_overlap`` query, for
+    a group enrollment's occurrences (#56 E1 step 9). The caller holds the
+    student's lock."""
+    return await _overlap_ids(
+        session,
+        local_slot(starts_at, ends_at, zone),
+        STUDENT_OCCUPYING_STATES,
+        ClassSessionParticipant.student_id,
+        student_id,
+        exclude_session_ids,
+    )
