@@ -1,5 +1,5 @@
 import { CircleStop, PencilLine } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ export interface SeriesViewProps {
   now?: number;
   /** A just-made change, announced at the top. */
   notice?: string | null;
+  /** Move the focus to the notice (its trigger may be gone). */
+  focusNotice?: boolean;
   onEditOccurrence: (occurrence: SeriesOccurrence) => void;
   onEditSeries: () => void;
   onCancelSeries: () => void;
@@ -47,6 +49,7 @@ export function SeriesView({
   canManage,
   now,
   notice,
+  focusNotice = false,
   onEditOccurrence,
   onEditSeries,
   onCancelSeries,
@@ -54,6 +57,12 @@ export function SeriesView({
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
   const id = useId();
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (notice && focusNotice) {
+      noticeRef.current?.focus();
+    }
+  }, [notice, focusNotice]);
   // The time the page was shown: rows are judged against it (B3).
   const [shownAt] = useState(() => Date.now());
   const over = isSeriesOver(series, timeZone);
@@ -68,8 +77,10 @@ export function SeriesView({
     <div className="flex w-full max-w-3xl min-w-0 flex-col gap-6">
       {notice ? (
         <p
+          ref={noticeRef}
           role="status"
-          className="rounded-md border border-border p-3 break-words"
+          tabIndex={-1}
+          className="rounded-md border border-border p-3 break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           {notice}
         </p>

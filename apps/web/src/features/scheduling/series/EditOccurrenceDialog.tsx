@@ -119,7 +119,12 @@ function EditOccurrenceContent({
   const message = useFieldMessage();
   const id = useId();
   const [values, setValues] = useState<OccurrenceValues>(() =>
-    occurrenceValues(occurrence, session?.classroom?.id ?? null, timeZone),
+    // The session as read (after a reload: its current times, not the row's).
+    occurrenceValues(
+      session ?? occurrence,
+      session?.classroom?.id ?? null,
+      timeZone,
+    ),
   );
   const [errors, setErrors] = useState<SlotErrors>({});
   const [formError, setFormError] = useState<string | null>(null);

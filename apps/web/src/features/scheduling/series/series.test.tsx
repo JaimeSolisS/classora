@@ -892,6 +892,54 @@ describe('the dialogs (C1-C4)', () => {
     );
   });
 
+  it('refills the times, room and version from the session after a reload (QA D1)', async () => {
+    const changed = {
+      ...OCCURRENCE_SESSION,
+      version: 5,
+      starts_at: '2031-01-06T20:00:00Z',
+      ends_at: '2031-01-06T21:00:00Z',
+      classroom: null,
+    };
+    const { api } = await openOccurrence({
+      [SESSION]: [
+        () => jsonResponse(200, OCCURRENCE_SESSION),
+        () => jsonResponse(200, changed),
+      ],
+      [PATCH]: [
+        () => problem(409, 'version_conflict'),
+        () => jsonResponse(200, { ...changed, version: 6 }),
+      ],
+    });
+    let dialog = openDialog()!;
+    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00');
+    await click(buttonNamed(dialog, 'Save occurrence'));
+    await click(buttonNamed(dialog, 'Reload'));
+    await settle();
+
+    // Someone moved it to 14:00-15:00 without a room meanwhile.
+    dialog = openDialog()!;
+    expect(fieldByLabel(dialog, 'Date').value).toBe('2031-01-06');
+    expect(fieldByLabel(dialog, 'Start').value).toBe('14:00');
+    expect(fieldByLabel(dialog, 'End').value).toBe('15:00');
+    const room = [...dialog.querySelectorAll('label')].find(
+      (l) => l.textContent === 'Classroom',
+    )!;
+    expect(
+      (document.getElementById(room.htmlFor) as HTMLSelectElement).value,
+    ).toBe('');
+    expect(dialog.textContent).not.toContain(
+      'This changed since you opened it',
+    );
+
+    await click(buttonNamed(dialog, 'Save occurrence'));
+    expect(api.calls(PATCH)[1]!.body).toEqual({
+      version: 5,
+      starts_at: '2031-01-06T20:00:00.000Z',
+      ends_at: '2031-01-06T21:00:00.000Z',
+      classroom_id: null,
+    });
+  });
+
   it('returns the focus to the trigger on Escape', async () => {
     const { trigger } = await openOccurrence({});
     expect(openDialog()).not.toBeNull();
@@ -1027,6 +1075,10 @@ describe('the dialogs (C1-C4)', () => {
     });
     expect(openDialog()).toBeNull();
     expect(main().textContent).toContain('4 occurrences cancelled.');
+    // The trigger is gone with the actions: the notice takes the focus.
+    expect(document.activeElement?.textContent).toBe(
+      '4 occurrences cancelled.',
+    );
     expect(main().textContent).toContain('Ended');
     expect(main().querySelectorAll('button')).toHaveLength(0);
   });

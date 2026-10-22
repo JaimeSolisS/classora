@@ -64,6 +64,7 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
   const canManage = useCan('schedule.manage');
   const client = useQueryClient();
   const [localNotice, setLocalNotice] = useState<string | null>(null);
+  const [localNoticeFocus, setLocalNoticeFocus] = useState(false);
   const [editing, setEditing] = useState<SeriesOccurrence | null>(null);
   const [editingSeries, setEditingSeries] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -85,6 +86,12 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
 
   const navigationNotice = (location.state as PageNotice | null)?.notice;
   const notice = localNotice ?? navigationNotice ?? null;
+  // After a cancellation or an edit the trigger may be gone (an ended
+  // series, a new page): the notice takes the focus. Not after moving one
+  // occurrence, whose row button stays.
+  const noticeFocus = localNotice
+    ? localNoticeFocus
+    : Boolean(navigationNotice);
 
   async function refresh() {
     await Promise.all([
@@ -133,6 +140,7 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
             timeZone={timeZone}
             canManage={canManage}
             notice={notice}
+            focusNotice={noticeFocus}
             onEditOccurrence={(occurrence) => setEditing(occurrence)}
             onEditSeries={() => setEditingSeries(true)}
             onCancelSeries={() => setCancelling(true)}
@@ -160,6 +168,7 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
                   });
                   await refresh();
                   setEditing(null);
+                  setLocalNoticeFocus(false);
                   setLocalNotice(t('scheduling.series.occurrence.done'));
                 }}
               />
@@ -213,6 +222,7 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
                   client.setQueryData(seriesKey(detail.id), result.series);
                   await refresh();
                   setCancelling(false);
+                  setLocalNoticeFocus(true);
                   setLocalNotice(
                     t('scheduling.series.cancel.done', {
                       count: result.summary.cancelled,
