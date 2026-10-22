@@ -1516,7 +1516,8 @@
         "time": "Horario",
         "timeValue": "{{time}} ({{zone}})",
         "state": "Estado",
-        "markers": "Avisos"
+        "markers": "Avisos",
+        "openSeries": "Abrir la serie"
       }
     },
     "states": {
@@ -1658,6 +1659,140 @@
       "seriesPending": "ofrecida a {{tutor}}, responde antes del {{when}}",
       "seriesPendingNoDeadline": "ofrecida a {{tutor}}",
       "seriesAccepted": "{{tutor}} desde el {{date}}"
+    },
+    "series": {
+      "repeats": "Se repite cada semana",
+      "startsOn": "Empieza el",
+      "weekdays": "Se repite los",
+      "interval": "Repetir",
+      "intervalOption_one": "Cada semana",
+      "intervalOption_many": "Cada {{count}} semanas",
+      "intervalOption_other": "Cada {{count}} semanas",
+      "ends": "Termina",
+      "endsOptions": {
+        "never": "Nunca",
+        "until": "En una fecha",
+        "count": "Después de un número de sesiones"
+      },
+      "untilDate": "Fecha de fin",
+      "count": "Número de sesiones",
+      "countHelp": "De 1 a {{max}} sesiones en total, contando las omitidas por un cierre del centro.",
+      "rule": "Se repite",
+      "submit": "Programar serie",
+      "describe": {
+        "everyWeek": "Cada semana, los días {{days}}",
+        "everyWeeks_one": "Cada {{count}} semana, los días {{days}}",
+        "everyWeeks_many": "Cada {{count}} semanas, los días {{days}}",
+        "everyWeeks_other": "Cada {{count}} semanas, los días {{days}}",
+        "until": "{{rule}}, hasta el {{date}}",
+        "count_one": "{{rule}}, {{count}} sesión en total",
+        "count_many": "{{rule}}, {{count}} sesiones en total",
+        "count_other": "{{rule}}, {{count}} sesiones en total",
+        "noEnd": "{{rule}}, sin fecha de fin"
+      },
+      "validation": {
+        "weekdaysRequired": "Elige al menos un día de la semana.",
+        "intervalRange": "Elige cada 1 a 4 semanas.",
+        "untilRequired": "Escribe la fecha de fin.",
+        "untilBeforeStart": "La fecha de fin no puede ser anterior a la de inicio.",
+        "countRange": "Escribe un número entero del 1 al 200.",
+        "fromDateRequired": "Escribe la fecha desde la que aplica el cambio.",
+        "reasonRequired": "Escribe un motivo.",
+        "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres."
+      },
+      "success": {
+        "heading": "Serie semanal programada",
+        "upcoming_one": "{{count}} sesión creada por ahora; las siguientes se agregan automáticamente.",
+        "upcoming_many": "{{count}} sesiones creadas por ahora; las siguientes se agregan automáticamente.",
+        "upcoming_other": "{{count}} sesiones creadas por ahora; las siguientes se agregan automáticamente.",
+        "skipped_one": "{{count}} de ellas se omite por un cierre del centro.",
+        "skipped_many": "{{count}} de ellas se omiten por cierres del centro.",
+        "skipped_other": "{{count}} de ellas se omiten por cierres del centro.",
+        "openSeries": "Abrir la serie"
+      },
+      "conflicts": {
+        "createHeading_one": "No se puede programar la serie: 1 conflicto",
+        "createHeading_many": "No se puede programar la serie: {{count}} conflictos",
+        "createHeading_other": "No se puede programar la serie: {{count}} conflictos",
+        "editHeading_one": "No se puede cambiar la serie: 1 conflicto",
+        "editHeading_many": "No se puede cambiar la serie: {{count}} conflictos",
+        "editHeading_other": "No se puede cambiar la serie: {{count}} conflictos",
+        "occurrenceHeading_one": "No se puede mover la sesión: 1 conflicto",
+        "occurrenceHeading_many": "No se puede mover la sesión: {{count}} conflictos",
+        "occurrenceHeading_other": "No se puede mover la sesión: {{count}} conflictos",
+        "noOverride": "Aún no admite excepciones en series",
+        "noDate": "Otros"
+      },
+      "versionConflict": "Esto cambió desde que lo abriste. Recárgalo e inténtalo de nuevo.",
+      "reload": "Recargar",
+      "dialogCancel": "Cerrar",
+      "saving": "Guardando…",
+      "scope": {
+        "legend": "Qué sesiones",
+        "following": "Esta y las siguientes sesiones",
+        "fromDate": "Desde",
+        "all": "Todas las sesiones futuras"
+      },
+      "occurrence": {
+        "title": "Editar esta sesión",
+        "description": "Solo se mueve esta sesión; el resto de la serie queda igual.",
+        "submit": "Guardar sesión",
+        "done": "Se movió la sesión."
+      },
+      "edit": {
+        "title": "Editar serie",
+        "description": "Cambia la hora, el aula o la regla semanal a partir de una fecha.",
+        "notice": "Las clases pasadas o impartidas nunca cambian. Las sesiones editadas dentro de este rango toman los nuevos horarios.",
+        "submit": "Guardar serie"
+      },
+      "cancel": {
+        "title": "Cancelar sesiones futuras",
+        "description": "Se cancelan las sesiones desde la fecha que elijas y la serie termina.",
+        "reason": "Motivo",
+        "notice": "Las clases pasadas o impartidas nunca cambian. Se avisa al tutor y a la familia de las clases confirmadas.",
+        "submit": "Cancelar sesiones",
+        "submitting": "Cancelando…",
+        "done_one": "{{count}} sesión cancelada.",
+        "done_many": "{{count}} sesiones canceladas.",
+        "done_other": "{{count}} sesiones canceladas."
+      },
+      "summary": {
+        "sentence": "Serie cambiada: {{parts}}.",
+        "nothing": "Serie cambiada.",
+        "moved_one": "{{count}} movida",
+        "moved_many": "{{count}} movidas",
+        "moved_other": "{{count}} movidas",
+        "cancelled_one": "{{count}} cancelada",
+        "cancelled_many": "{{count}} canceladas",
+        "cancelled_other": "{{count}} canceladas",
+        "created_one": "{{count}} creada",
+        "created_many": "{{count}} creadas",
+        "created_other": "{{count}} creadas",
+        "skipped_closure_one": "{{count}} omitida por un cierre",
+        "skipped_closure_many": "{{count}} omitidas por un cierre",
+        "skipped_closure_other": "{{count}} omitidas por un cierre",
+        "exceptions_reset_one": "{{count}} sesión editada restablecida",
+        "exceptions_reset_many": "{{count}} sesiones editadas restablecidas",
+        "exceptions_reset_other": "{{count}} sesiones editadas restablecidas"
+      },
+      "page": {
+        "title": "Serie semanal",
+        "ended": "Terminada",
+        "noTutor": "Sin tutor por ahora",
+        "time": "Horario",
+        "timeValue": "{{start}}–{{end}} ({{zone}})",
+        "continuesFrom": "Continúa una serie anterior",
+        "continuedAs": "Continúa como una serie nueva",
+        "continuedAsNumbered": "Continúa como la serie nueva {{number}}",
+        "editSeries": "Editar serie",
+        "cancelSeries": "Cancelar sesiones futuras",
+        "occurrences": "Sesiones a partir de ahora",
+        "noOccurrences": "No hay sesiones a partir de ahora.",
+        "range": "{{start}}–{{end}}",
+        "edited": "Editada",
+        "editOccurrence": "Editar esta sesión",
+        "editOccurrenceOf": "Editar esta sesión: {{date}}, {{range}}"
+      }
     }
   },
   "courses": {

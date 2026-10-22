@@ -4,6 +4,7 @@ import {
   DEFAULT_CENTER_TIME_ZONE,
   formatUtcOffset,
   hasOffsetChange,
+  isoWeekday,
   formatInstant,
   formatLocalDate,
   localDateTimeToInstant,
@@ -310,5 +311,15 @@ describe('calendar helpers (#57)', () => {
     expect(hasOffsetChange('2026-03-08', 'America/Tijuana')).toBe(true);
     expect(hasOffsetChange('2026-11-02', 'America/Tijuana')).toBe(false);
     expect(hasOffsetChange('2026-11-01', 'America/Mexico_City')).toBe(false);
+  });
+});
+
+describe('isoWeekday (#54b)', () => {
+  it('numbers the days Monday 1 to Sunday 7, whatever the host zone', () => {
+    expect(isoWeekday('2026-11-09')).toBe(1);
+    expect(isoWeekday('2026-11-11')).toBe(3);
+    expect(isoWeekday('2026-11-15')).toBe(7);
+    // A DST change day in Tijuana is still a Sunday.
+    expect(isoWeekday('2026-03-08')).toBe(7);
   });
 });

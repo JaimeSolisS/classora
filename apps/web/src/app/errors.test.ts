@@ -89,6 +89,10 @@ const API_CODES = [
   'reassignment_still_needed',
   'invalid_effective_from',
   'policy_version_in_effect',
+  'session_not_editable',
+  'series_offer_pending',
+  'series_ended',
+  'occurrence_started',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

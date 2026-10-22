@@ -98,6 +98,11 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['reassignment_still_needed', 'reassignment_still_needed'],
   ['invalid_effective_from', 'invalid_effective_from'],
   ['policy_version_in_effect', 'policy_version_in_effect'],
+  // Editing and cancelling series (#54).
+  ['session_not_editable', 'session_not_editable'],
+  ['series_offer_pending', 'series_offer_pending'],
+  ['series_ended', 'series_ended'],
+  ['occurrence_started', 'occurrence_started'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

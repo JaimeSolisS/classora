@@ -258,6 +258,17 @@ export const routes: RouteObject[] = [
             element: <SessionPage />,
             handle: { permission: 'schedule.view' },
           },
+          // #54b B1: a weekly series (code-split; its actions need
+          // schedule.manage).
+          {
+            path: 'schedule/series/:seriesId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/scheduling/series/SeriesPage')
+              ).SeriesPage,
+            }),
+            handle: { permission: 'schedule.view' },
+          },
           // #52 H1: the tutor's own offers (the API filters by caller).
           {
             path: 'offers',

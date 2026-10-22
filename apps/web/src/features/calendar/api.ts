@@ -118,12 +118,34 @@ export async function fetchRoomOptions(
   }));
 }
 
+/**
+ * The series of one session (#54b D2): the event dialog's "Open series"
+ * link. The range item has no `series_id`, so the dialog reads the
+ * session (schedule.view, like the calendar).
+ */
+export async function fetchSessionSeriesId(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const session = await apiCall(
+    () =>
+      api.GET('/api/v1/class-sessions/{class_session_id}', {
+        params: { path: { class_session_id: sessionId } },
+        signal,
+      }),
+    { signal },
+  );
+  return session.series_id;
+}
+
 /** The loaders the calendar needs (stubs in stories and tests). */
 export interface CalendarLoaders {
   fetchCalendar: typeof fetchCalendar;
   searchTutors: typeof searchTutorOptions;
   searchStudents: typeof searchStudentOptions;
   fetchRooms: typeof fetchRoomOptions;
+  /** none: the event dialog has no "Open series" link. */
+  fetchSeriesId?: typeof fetchSessionSeriesId;
 }
 
 export const API_LOADERS: CalendarLoaders = {
@@ -131,4 +153,5 @@ export const API_LOADERS: CalendarLoaders = {
   searchTutors: searchTutorOptions,
   searchStudents: searchStudentOptions,
   fetchRooms: fetchRoomOptions,
+  fetchSeriesId: fetchSessionSeriesId,
 };
