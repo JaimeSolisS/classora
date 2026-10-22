@@ -25,7 +25,11 @@ Overrides of soft conflicts (#49, :mod:`~app.modules.scheduling.overrides`):
 :func:`evaluate_override` (pure: a hard conflict or an unlisted soft one
 refuses) and :func:`record_session_override` (the append-only row plus the
 ``scheduling.session_override`` audit event). Every later write path that
-runs the conflict checks uses both.
+runs the conflict checks uses both. Series writes (#236) use
+:func:`evaluate_series_override` and :func:`record_series_overrides`
+(occurrence and code pairs; #56 reuses them), and
+:func:`override_conflict_occurrence` overrides one ``conflict`` occurrence
+(:mod:`~app.modules.scheduling.conflict_override`).
 
 Workload warnings and slot suggestions (#50): the pure rules
 :func:`workload_warnings` / :func:`sort_warnings`
@@ -140,6 +144,9 @@ from app.modules.scheduling.closure_changes import (
 from app.modules.scheduling.closure_changes import (
     register_closure_notifications as register_closure_notifications,
 )
+from app.modules.scheduling.conflict_override import (
+    override_conflict_occurrence as override_conflict_occurrence,
+)
 from app.modules.scheduling.conflicts import HARD as HARD
 from app.modules.scheduling.conflicts import SOFT as SOFT
 from app.modules.scheduling.conflicts import WARNING as WARNING
@@ -228,10 +235,22 @@ from app.modules.scheduling.offers import (
     resolve_respond_by as resolve_respond_by,
 )
 from app.modules.scheduling.overrides import (
+    OccurrenceConflict as OccurrenceConflict,
+)
+from app.modules.scheduling.overrides import (
     OverrideDecision as OverrideDecision,
 )
 from app.modules.scheduling.overrides import (
+    SeriesOverrideDecision as SeriesOverrideDecision,
+)
+from app.modules.scheduling.overrides import (
     evaluate_override as evaluate_override,
+)
+from app.modules.scheduling.overrides import (
+    evaluate_series_override as evaluate_series_override,
+)
+from app.modules.scheduling.overrides import (
+    record_series_overrides as record_series_overrides,
 )
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,

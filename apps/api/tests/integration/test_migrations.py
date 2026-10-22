@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0038"
+HEAD = "0039"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -4110,12 +4110,33 @@ def _of_0038(diff: Any) -> bool:
     return False
 
 
+OVERRIDE_CONTEXT_COLUMN = "class_series_id"
+OVERRIDE_CONTEXT_INDEX = "ix_class_session_overrides_class_series_id"
+OVERRIDE_CONTEXT_FK = "fk_class_session_overrides_class_series_id_class_series"
+"""The objects revision 0039 adds to class_session_overrides (#236 D1)."""
+
+
+def _of_0039(diff: Any) -> bool:
+    """A metadata difference that revision 0039 adds (the series override
+    context column, its index and its foreign key)."""
+    if diff[0] == "add_column":
+        return (
+            diff[2] == "class_session_overrides"
+            and diff[3].name == OVERRIDE_CONTEXT_COLUMN
+        )
+    if diff[0] == "add_index":
+        return diff[1].name == OVERRIDE_CONTEXT_INDEX
+    if diff[0] == "add_fk":
+        return diff[1].name == OVERRIDE_CONTEXT_FK
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
     their foreign key and unique constraint; and 0036's and 0038's
     objects."""
-    if _of_0036(diff) or _of_0038(diff):
+    if _of_0036(diff) or _of_0038(diff) or _of_0039(diff):
         return True
     if diff[0] == "add_table":
         return diff[1].name in tables
@@ -4721,23 +4742,28 @@ def test_class_session_overrides_columns_constraints_and_indexes(fresh_database_
         "conflicts": ("jsonb", "NO", None, None),
         "reason": ("text", "NO", None, None),
         "actor_user_id": ("uuid", "NO", None, None),
+        # 0039 (#236 D1)
+        "class_series_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     assert set(constraints) == {
         "pk_class_session_overrides",
         "fk_class_session_overrides_class_session_id_class_sessions",
         "fk_class_session_overrides_actor_user_id_users",
+        OVERRIDE_CONTEXT_FK,
         "ck_class_session_overrides_codes_soft",
         "ck_class_session_overrides_reason_length",
     }
     for name in (
         "fk_class_session_overrides_class_session_id_class_sessions",
         "fk_class_session_overrides_actor_user_id_users",
+        OVERRIDE_CONTEXT_FK,
     ):
         assert "ON DELETE RESTRICT" in constraints[name]
     assert set(_indexes(fresh_database_url, table)) == {
         "pk_class_session_overrides",
         "ix_class_session_overrides_class_session_id",
+        OVERRIDE_CONTEXT_INDEX,
     }
 
 
@@ -5037,7 +5063,9 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
     )
     # Only 0036's and 0038's objects differ.
     assert [
-        d for d in metadata_diff(fresh_database_url) if not (_of_0036(d) or _of_0038(d))
+        d
+        for d in metadata_diff(fresh_database_url)
+        if not (_of_0036(d) or _of_0038(d) or _of_0039(d))
     ] == []
     [row] = run_sql(
         fresh_database_url,
@@ -5251,7 +5279,9 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
 
     command.upgrade(config, "0036")
 
-    assert [d for d in metadata_diff(fresh_database_url) if not _of_0038(d)] == []
+    assert [
+        d for d in metadata_diff(fresh_database_url) if not (_of_0038(d) or _of_0039(d))
+    ] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
         before = offers_before if table == "assignment_offers" else series_before
         assert set(_columns(fresh_database_url, table)) - before == added
@@ -5525,7 +5555,7 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
     command.upgrade(config, "0037")
 
     assert version_nums(dsn) == ["0037"]
-    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
     sessions = _session_rows(dsn)
     for cleared in (future, past):
         state, tutor_id, version = sessions_before[cleared]
@@ -5569,12 +5599,12 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
     command.upgrade(config, "0037")
     subject = _subject_row(dsn)
     old = _series(dsn, subject)
-    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
 
     command.upgrade(config, "0038")
 
     assert version_nums(dsn) == ["0038"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0039(d)] == []
     [row] = run_sql(
         dsn, "SELECT split_from_series_id FROM class_series WHERE id = :id", {"id": old}
     )
@@ -5598,8 +5628,81 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
 
     assert version_nums(dsn) == ["0037"]
     assert LINEAGE_COLUMN not in _columns(dsn, "class_series")
-    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0038(d) or _of_0039(d))] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+# --- 0039: the series override context (#236 D1) ------------------------------------
+
+
+def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0038")
+    subject = _subject_row(dsn)
+    series = _series(dsn, subject)
+    [session] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes) VALUES ('individual', 'unassigned', :subject,"
+        " '2031-01-12 16:00Z', '2031-01-12 17:00Z', 60) RETURNING id",
+        {"subject": subject},
+    )
+    actor = _user_row(dsn)
+    [old] = run_sql(
+        dsn,
+        "INSERT INTO class_session_overrides"
+        " (class_session_id, codes, conflicts, reason, actor_user_id)"
+        " VALUES (:s, ARRAY['notice_window'], '[]', 'Antes', :a) RETURNING id",
+        {"s": session.id, "a": actor},
+    )
+
+    command.upgrade(config, "0039")
+
+    assert version_nums(dsn) == ["0039"]
+    assert metadata_diff(dsn) == []
+    [row] = run_sql(
+        dsn,
+        "SELECT class_series_id, reason FROM class_session_overrides WHERE id = :id",
+        {"id": old.id},
+    )
+    assert (row.class_series_id, row.reason) == (None, "Antes")
+    [new] = run_sql(
+        dsn,
+        "INSERT INTO class_session_overrides"
+        " (class_session_id, class_series_id, codes, conflicts, reason,"
+        " actor_user_id) VALUES (:s, :series, ARRAY['notice_window'], '[]',"
+        " 'Con serie', :a) RETURNING id",
+        {"s": session.id, "series": series, "a": actor},
+    )
+    # Still append-only, with the context column too (42501).
+    for statement in (
+        "UPDATE class_session_overrides SET class_series_id = NULL WHERE id = :id",
+        "DELETE FROM class_session_overrides WHERE id = :id",
+    ):
+        with pytest.raises(DBAPIError) as raised:
+            run_sql(dsn, statement, {"id": new.id})
+        assert _sqlstate(raised.value) == "42501", raised.value
+    with pytest.raises(IntegrityError, match=OVERRIDE_CONTEXT_FK):
+        run_sql(
+            dsn,
+            "INSERT INTO class_session_overrides"
+            " (class_session_id, class_series_id, codes, conflicts, reason,"
+            " actor_user_id) VALUES (:s, :series, ARRAY['notice_window'], '[]',"
+            " 'x', :a)",
+            {"s": session.id, "series": uuid.uuid4(), "a": actor},
+        )
+
+    command.downgrade(config, "0038")
+
+    assert version_nums(dsn) == ["0038"]
+    assert OVERRIDE_CONTEXT_COLUMN not in _columns(dsn, "class_session_overrides")
+    assert [d for d in metadata_diff(dsn) if not _of_0039(d)] == []
+    assert len(run_sql(dsn, "SELECT id FROM class_session_overrides")) == 2
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]

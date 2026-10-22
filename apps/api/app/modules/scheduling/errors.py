@@ -197,3 +197,19 @@ class OccurrenceStartedError(AppError):
     status = 409
     code = "occurrence_started"
     detail = "An occurrence on that date has already begun."
+
+
+# --- Series overrides (#236) ------------------------------------------------------
+
+
+class SessionNotInConflictError(AppError):
+    """``409 session_not_in_conflict`` (#236 G3 step 7): only a ``conflict``
+    occurrence can have its conflicts overridden this way; ``details`` is
+    ``{"state": <state>}``."""
+
+    status = 409
+    code = "session_not_in_conflict"
+    detail = "This session is not waiting on a scheduling conflict."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})

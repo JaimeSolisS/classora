@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -38,7 +38,13 @@ export interface OverrideDialogProps {
   /** Resends the create with the trimmed reason. */
   onConfirm: (reason: string) => Promise<void>;
   onCancel: () => void;
+  onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  /**
+   * A failure that needs fresh data (#236: a version conflict on a series
+   * row) shows a "Reload" button calling this.
+   */
+  reload?: { when: (error: unknown) => boolean; onReload: () => void };
   /** The reason to start from (stories). */
   initialReason?: string;
   /**
@@ -46,6 +52,11 @@ export interface OverrideDialogProps {
    * offer"); default: the create's.
    */
   labels?: OverrideDialogLabels;
+  /**
+   * The read-only list of what is overridden, in place of the flat list of
+   * `conflicts` (#236: a series groups them by local date).
+   */
+  rules?: ReactNode;
 }
 
 export interface OverrideDialogLabels {
@@ -60,9 +71,12 @@ export function OverrideDialog({
   conflicts,
   onConfirm,
   onCancel,
+  onOpenAutoFocus,
   onCloseAutoFocus,
+  reload,
   initialReason = '',
   labels,
+  rules,
 }: OverrideDialogProps) {
   const sending = useRef(false);
   return (
@@ -79,10 +93,13 @@ export function OverrideDialog({
           conflicts={conflicts}
           onConfirm={onConfirm}
           onCancel={onCancel}
+          onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
+          reload={reload}
           initialReason={initialReason}
           sendingRef={sending}
           labels={labels}
+          rules={rules}
         />
       ) : null}
     </Dialog>
@@ -93,10 +110,13 @@ function OverrideContent({
   conflicts,
   onConfirm,
   onCancel,
+  onOpenAutoFocus,
   onCloseAutoFocus,
+  reload,
   initialReason,
   sendingRef,
   labels,
+  rules,
 }: Omit<OverrideDialogProps, 'open'> & {
   initialReason: string;
   sendingRef: { current: boolean };
@@ -161,9 +181,10 @@ function OverrideContent({
 
   return (
     <DialogContent
+      onOpenAutoFocus={onOpenAutoFocus}
       onCloseAutoFocus={onCloseAutoFocus}
       onInteractOutside={(event) => event.preventDefault()}
-      className="sm:max-w-lg"
+      className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
     >
       <DialogHeader>
         <DialogTitle>
@@ -178,7 +199,17 @@ function OverrideContent({
         onSubmit={onSubmit}
         className="flex min-w-0 flex-col gap-4"
       >
-        {failure ? <ErrorAlert error={failure} /> : null}
+        {failure ? (
+          reload?.when(failure) ? (
+            <ErrorAlert
+              error={failure}
+              onRetry={reload.onReload}
+              retryLabel={t('scheduling.series.reload')}
+            />
+          ) : (
+            <ErrorAlert error={failure} />
+          )
+        ) : null}
         <section
           aria-labelledby={`${id}-rules`}
           className="flex flex-col gap-2"
@@ -186,13 +217,15 @@ function OverrideContent({
           <h3 id={`${id}-rules`} className="font-medium">
             {t('scheduling.override.rules')}
           </h3>
-          <ul className="flex list-disc flex-col gap-1 pl-5">
-            {conflicts.map((conflict, index) => (
-              <li key={`${conflict.code}-${index}`} className="break-words">
-                {message(conflict)}
-              </li>
-            ))}
-          </ul>
+          {rules ?? (
+            <ul className="flex list-disc flex-col gap-1 pl-5">
+              {conflicts.map((conflict, index) => (
+                <li key={`${conflict.code}-${index}`} className="break-words">
+                  {message(conflict)}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
         <div className="flex flex-col gap-2">
           <label htmlFor={reasonId} className="text-sm font-medium">

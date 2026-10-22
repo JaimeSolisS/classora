@@ -10,10 +10,12 @@ import { conflictsByDate } from '../session/rules';
 
 // A series 409 scheduling_conflict (#54b A3, C1, C2): the #48 panel with
 // its severity labels, grouped by each occurrence's local date
-// (`details.date`), hard first within a date. Overrides for series come
-// with M4-09c, so a soft conflict says "Can't be overridden for series
-// yet". role="alert"; the focus moves to the heading when the list
-// changes. One occurrence's 409 (the PATCH) is one plain list.
+// (`details.date`), hard first within a date. A series create or edit can
+// override its soft conflicts (#236 H1), so they say "Can be overridden";
+// the PATCH of one occurrence takes no override until #58
+// (`overridable={false}`: "Can't be overridden here yet"). role="alert";
+// the focus moves to the heading when the list changes. One occurrence's
+// 409 (the PATCH) is one plain list.
 
 export interface SeriesConflictPanelProps {
   conflicts: readonly SchedulingConflict[];
@@ -21,12 +23,15 @@ export interface SeriesConflictPanelProps {
   heading: string;
   /** false: one list, no dates (one occurrence). */
   grouped?: boolean;
+  /** false: soft conflicts can't be overridden on this write (the PATCH). */
+  overridable?: boolean;
 }
 
 export function SeriesConflictPanel({
   conflicts,
   heading,
   grouped = true,
+  overridable = true,
 }: SeriesConflictPanelProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -49,7 +54,9 @@ export function SeriesConflictPanel({
             <span className="w-fit shrink-0 rounded-sm border border-border px-1.5 text-xs font-medium">
               {conflict.severity === 'hard'
                 ? t('scheduling.severity.hard')
-                : t('scheduling.series.conflicts.noOverride')}
+                : overridable
+                  ? t('scheduling.severity.soft')
+                  : t('scheduling.series.conflicts.noOverride')}
             </span>
             <span className="min-w-0 break-words">{message(conflict)}</span>
           </li>

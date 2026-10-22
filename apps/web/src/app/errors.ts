@@ -102,6 +102,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['session_not_editable', 'session_not_editable'],
   ['series_offer_pending', 'series_offer_pending'],
   ['series_ended', 'series_ended'],
+  // Overriding a conflict occurrence (#236).
+  ['session_not_in_conflict', 'session_not_in_conflict'],
   ['occurrence_started', 'occurrence_started'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],

@@ -15,11 +15,18 @@ An ``override`` (#49 B) lists the soft codes to override and a reason. Its
 ``override.codes``; ``code_not_overridable`` (a hard code) /
 ``code_unknown`` (a warning code or any other string) on
 ``override.codes[i]``. The sets are :mod:`~app.modules.scheduling.conflicts`'.
+
+A series ``override`` (#236 B, :class:`SeriesOverride`) lists
+``(occurrence_start, code)`` pairs instead of codes: ``pairs_required`` /
+``pairs_too_many`` / ``duplicate_pair`` on ``override.pairs``;
+``code_not_overridable`` / ``code_unknown`` on ``override.pairs[i].code``;
+``occurrence_start_invalid`` (naive, or not a whole minute) on
+``override.pairs[i].occurrence_start``; the reason as above.
 """
 
 import re
 import uuid
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import Any, Final, Literal
 
 from pydantic import (
@@ -115,6 +122,94 @@ class SessionOverride(BaseModel):
 
     _reason = field_validator("reason", mode="before")(_check_reason)
     _codes = field_validator("codes")(_check_codes)
+
+
+SERIES_OVERRIDE_PAIRS_MAX: Final = 1400
+"""At most 7 soft codes for each of the 200 occurrences a ``COUNT`` allows
+(#236 B1)."""
+
+
+def _check_occurrence_start(value: datetime) -> datetime:
+    # An aware whole-minute instant, as the 409 body writes it.
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise PydanticCustomError(
+            "occurrence_start_invalid", "Give the occurrence's instant with an offset."
+        )
+    if value.second or value.microsecond:
+        raise PydanticCustomError(
+            "occurrence_start_invalid", "The occurrence starts on a whole minute."
+        )
+    return value
+
+
+def _check_pair_code(code: str) -> str:
+    if (error := _code_error(code)) is not None:
+        raise error
+    return code
+
+
+class OverridePair(BaseModel):
+    """One soft conflict of one occurrence (#236 B1; ADR-0005 D4):
+    ``occurrence_start`` is ``details.occurrence_start`` of the ``409``
+    (for an edit, the occurrence's **new** instant)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    occurrence_start: datetime = Field(
+        description="The occurrence's instant, with an offset (RFC 3339)."
+    )
+    code: str = Field(description="A soft conflict code; never a hard one.")
+
+    _occurrence_start = field_validator("occurrence_start")(_check_occurrence_start)
+    _code = field_validator("code")(_check_pair_code)
+
+
+def _check_pairs(pairs: list[OverridePair]) -> list[OverridePair]:
+    if not pairs:  # empty, or missing (SeriesOverride._missing_members)
+        raise PydanticCustomError("pairs_required", "List the conflicts to override.")
+    if len(pairs) > SERIES_OVERRIDE_PAIRS_MAX:
+        raise PydanticCustomError(
+            "pairs_too_many", "List at most 1400 occurrence and rule pairs."
+        )
+    keys = {(pair.occurrence_start.astimezone(UTC), pair.code) for pair in pairs}
+    if len(keys) != len(pairs):
+        raise PydanticCustomError(
+            "duplicate_pair", "List each occurrence and rule only once."
+        )
+    return pairs
+
+
+class SeriesOverride(BaseModel):
+    """The soft conflicts of a series write to override, occurrence by
+    occurrence, and why (#236 B1; ADR-0005 D4: "listed occurrence and code
+    pairs"). The server recomputes every occurrence's conflicts: a hard one
+    is never overridden, every soft one must be listed with its occurrence,
+    and listed pairs that don't occur are ignored. ``reason`` is the #49
+    reason (trimmed, 1-1000)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pairs: list[OverridePair] = Field(
+        description=(
+            "The (occurrence_start, code) pairs to override, 1-1400, no"
+            " duplicates (instants compared in UTC)."
+        )
+    )
+    reason: str = Field(
+        description="Why the rules are overridden: 1-1000 characters, trimmed."
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _missing_members(cls, data: Any) -> Any:
+        # A missing reason is reason_required and missing pairs are
+        # pairs_required, not pydantic's "missing".
+        if isinstance(data, dict):
+            return {"pairs": [], "reason": None} | data
+        return data
+
+    _reason = field_validator("reason", mode="before")(_check_reason)
+    _pairs = field_validator("pairs")(_check_pairs)
 
 
 class ClassSessionSlot(BaseModel):
@@ -807,7 +902,8 @@ class ClassSeriesCreate(BaseModel):
 
     ``starts_on`` is the local date of the rule's start (DTSTART) and
     ``start_time`` the local wall-clock time (``HH:MM``) in the center zone.
-    No ``override`` (#236) and no ``rrule`` text: both are ``422``."""
+    No ``rrule`` text (``422``). ``override`` (#236) needs
+    ``schedule.override``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -836,6 +932,14 @@ class ClassSeriesCreate(BaseModel):
             " and no later than the default; truncated to whole minutes."
         ),
     )
+    override: SeriesOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts, occurrence by occurrence, with"
+            " a reason (needs schedule.override). Null or absent: every"
+            " conflict blocks."
+        ),
+    )
 
     _start_time = field_validator("start_time", mode="before")(_check_start_time)
 
@@ -858,6 +962,18 @@ class SeriesOccurrence(BaseModel):
     ends_at: datetime
     original_start: datetime
     is_exception: bool
+    overridden: bool = Field(
+        description=(
+            "Whether at least one override of its soft conflicts names it (#236)."
+        )
+    )
+    conflict_codes: list[str] = Field(
+        description=(
+            "The codes that put it in `conflict` (informational; kept after it"
+            " leaves `conflict`; #236)."
+        )
+    )
+    version: int = Field(description="The session's version (#236).")
 
 
 class SeriesAssignment(BaseModel):
@@ -987,8 +1103,9 @@ class ClassSeriesEdit(BaseModel):
     patch. ``mode = "following"`` starts on ``from_date`` (a local date);
     ``"all"`` starts on the next occurrence that hasn't begun and takes
     ``from_date = null``. The recurrence ``422`` codes are the create's
-    (``until_before_start`` is against the start date of the change). No
-    ``override`` yet (#236)."""
+    (``until_before_start`` is against the start date of the change).
+    ``override`` (#236) names the **new** instants and needs
+    ``schedule.override``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1005,6 +1122,14 @@ class ClassSeriesEdit(BaseModel):
         description="The classroom; null is no room."
     )
     recurrence: SeriesRecurrence
+    override: SeriesOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts of the changed and new"
+            " occurrences (their new instants) with a reason (needs"
+            " schedule.override). Null or absent: every conflict blocks."
+        ),
+    )
 
     _start_time = field_validator("start_time", mode="before")(_check_start_time)
     _from_date = field_validator("from_date")(_check_from_date)
@@ -1098,3 +1223,17 @@ class ClassSeriesCancelled(BaseModel):
 
     series: ClassSeriesDetail
     summary: SeriesCancelSummary
+
+
+# --- Overriding a conflict occurrence (#236 G3) ----------------------------------
+
+
+class ConflictOverrideCreate(BaseModel):
+    """Override the soft conflicts of one ``conflict`` occurrence and schedule
+    it (``POST /api/v1/class-sessions/{id}/conflict-overrides``, #236 G3):
+    the #49 ``{codes, reason}`` member, required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(description="The session's version, as read.")
+    override: SessionOverride

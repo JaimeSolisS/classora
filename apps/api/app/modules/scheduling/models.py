@@ -305,7 +305,10 @@ class ClassSessionParticipant(Audited, Model):
 class ClassSessionOverride(Model):
     """One override of a session's soft conflicts (#49 D1). Append-only (a
     trigger rejects ``UPDATE`` and ``DELETE``); not audited, the
-    ``scheduling.session_override`` event is its record."""
+    ``scheduling.session_override`` / ``scheduling.series_override`` event is
+    its record. ``class_series_id`` (#236 D1) is **context**, not a second
+    subject: the series a series write (or a ``conflict``-row override)
+    targeted; ``NULL`` for a one-off session's override."""
 
     __tablename__ = "class_session_overrides"
     __table_args__ = (
@@ -324,6 +327,12 @@ class ClassSessionOverride(Model):
     class_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    class_series_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_series.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     codes: Mapped[list[str]] = mapped_column(ARRAY(Text))

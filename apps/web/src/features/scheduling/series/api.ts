@@ -4,7 +4,8 @@ import { api, apiCall } from '@/app/api';
 // The calls of the weekly series (#54b): the create (#53), the read (shared
 // with the session page, session/api.ts), moving one occurrence (PATCH
 // /class-sessions/{id}), and editing or cancelling the series from a date
-// (#54). The web never sends or parses RRULE text (ADR-0005 D4).
+// (#54), and overriding one `conflict` occurrence (#236). The web never
+// sends or parses RRULE text (ADR-0005 D4).
 
 export type ClassSeriesCreate = components['schemas']['ClassSeriesCreate'];
 export type ClassSeriesCreated = components['schemas']['ClassSeriesCreated'];
@@ -45,6 +46,19 @@ export function editClassSeries(
   return apiCall(() =>
     api.POST('/api/v1/class-series/{class_series_id}/edits', {
       params: { path: { class_series_id: id } },
+      body,
+    }),
+  );
+}
+
+/** #236 G3: override one `conflict` occurrence's soft codes and schedule it. */
+export function overrideConflictOccurrence(
+  id: string,
+  body: components['schemas']['ConflictOverrideCreate'],
+): Promise<components['schemas']['ClassSessionDetail']> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-sessions/{class_session_id}/conflict-overrides', {
+      params: { path: { class_session_id: id } },
       body,
     }),
   );

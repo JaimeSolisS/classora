@@ -216,6 +216,7 @@ function EditOccurrenceContent({
           <SeriesConflictPanel
             conflicts={conflicts}
             grouped={false}
+            overridable={false}
             heading={t('scheduling.series.conflicts.occurrenceHeading', {
               count: conflicts.length,
             })}

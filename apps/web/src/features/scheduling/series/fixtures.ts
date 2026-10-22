@@ -31,6 +31,9 @@ function row(
     ends_at: `${date}T${hours[1]}:00:00Z`,
     original_start: `${date}T16:00:00Z`,
     is_exception: isException,
+    overridden: false,
+    conflict_codes: state === 'conflict' ? ['outside_operating_hours'] : [],
+    version: 1,
   };
 }
 
@@ -213,4 +216,36 @@ export const SERIES_EDITED: ClassSeriesEdited = {
 export const SERIES_CANCELLED: ClassSeriesCancelled = {
   series: CANCELLED_SERIES,
   summary: { cancelled: 4, skipped_closure_kept: 1 },
+};
+
+/** A Sunday series 409 with only soft conflicts on three dates (#236). */
+export const SOFT_SERIES_CONFLICTS: SchedulingConflict[] = [
+  '2031-01-12',
+  '2031-01-19',
+  '2031-01-26',
+].map((date) => ({
+  code: 'outside_operating_hours',
+  severity: 'soft',
+  details: {
+    date,
+    opens_at: null,
+    closes_at: null,
+    occurrence_start: `${date}T16:00:00Z`,
+  },
+}));
+
+/**
+ * #236 H3: the first row overridden, a `conflict` row with a soft code
+ * (overridable) and one with a data-validity code (fix it instead).
+ */
+export const OVERRIDE_SERIES: ClassSeriesDetail = {
+  ...SERIES_DETAIL,
+  occurrences: [
+    { ...OCCURRENCES[0]!, overridden: true },
+    ...OCCURRENCES.slice(1),
+    {
+      ...row(7, '2031-01-27', 'conflict'),
+      conflict_codes: ['tutor_inactive'],
+    },
+  ],
 };

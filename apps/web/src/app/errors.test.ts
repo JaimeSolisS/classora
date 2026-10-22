@@ -92,6 +92,7 @@ const API_CODES = [
   'session_not_editable',
   'series_offer_pending',
   'series_ended',
+  'session_not_in_conflict',
   'occurrence_started',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).

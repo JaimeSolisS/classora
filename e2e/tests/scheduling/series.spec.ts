@@ -18,9 +18,17 @@ import { createSubjectViaApi } from '../support/tutors';
 // 3. that page has no axe violations, light and dark;
 // 4. "Cancel future occurrences", all of them, with a reason: "Ended".
 //
+// A second test (#236 I8): a weekly Sunday series, 10:00-11:00, no tutor and
+// no room, from the first Sunday at least 14 days ahead, ending after 3.
+// Sundays are closed (the seeded hours; settings.spec only opens Sunday
+// 07:00-08:00 for a moment), so the panel lists 3 dates whose conflict "Can
+// be overridden"; the Owner overrides them with a reason (axe with the
+// dialog open), the success panel says "Scheduled with overrides on 3
+// occurrences" and the series page shows "Overridden" on each row.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
-// no registration (two API creates with the shared Owner session; no tutor
-// is invited). It never changes the zone, the scheduling policy or the
+// no registration (API creates with the shared Owner session; no tutor is
+// invited). It never changes the zone, the scheduling policy or the
 // closures.
 
 const ZONE = 'America/Mexico_City';
@@ -40,6 +48,20 @@ function firstMondayAhead(): string {
     date.setUTCDate(date.getUTCDate() + 1);
   }
   return date.toISOString().slice(0, 10);
+}
+
+/** The first Sunday at least 14 days after today, in the center zone. */
+function firstSundayAhead(): string {
+  const monday = firstMondayAhead();
+  return plusDays(monday, -1) >= plusDays(today(), 14)
+    ? plusDays(monday, -1)
+    : plusDays(monday, 6);
+}
+
+function today(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: ZONE }).format(
+    new Date(),
+  );
 }
 
 function plusDays(isoDate: string, days: number): string {
@@ -228,6 +250,105 @@ test('an Owner schedules, edits and cancels a weekly series', async ({
   await expect(
     main.getByRole('button', { name: series.page.editSeries }),
   ).toHaveCount(0);
+
+  expect(await cspViolations(page)).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('an Owner overrides the closed Sundays of a weekly series', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const suffix = `${testInfo.workerIndex}${Date.now().toString(36)}`;
+  const familyNames = `Domingo ${suffix}`;
+  const studentName = `Lucía ${familyNames}`;
+  const subjectName = `Materia domingo ${suffix}`;
+  await recordCspViolations(page);
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text());
+    }
+  });
+  const main = page.getByRole('main');
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await createStudentViaApi(page, { givenNames: 'Lucía', familyNames });
+  await createSubjectViaApi(page, 'Primaria', subjectName);
+
+  // A Sunday series, 10:00-11:00, ending after 3 sessions.
+  const sunday = firstSundayAhead();
+  await page.goto('/schedule/new');
+  await expect(
+    main.getByRole('heading', { level: 1, name: common.scheduling.title }),
+  ).toBeVisible();
+  await pickStudent(page, familyNames, studentName);
+  await main
+    .getByLabel(common.scheduling.fields.subject, { exact: true })
+    .selectOption({ label: subjectName });
+  await main.getByRole('switch', { name: series.repeats }).check();
+  await main.getByLabel(series.startsOn, { exact: true }).fill(sunday);
+  await main
+    .getByLabel(common.scheduling.fields.start, { exact: true })
+    .fill('10:00');
+  await main
+    .getByLabel(common.scheduling.fields.end, { exact: true })
+    .fill('11:00');
+  await expect(
+    main.getByRole('checkbox', { name: common.weeklyWindows.weekdays['7'] }),
+  ).toBeChecked();
+  await main.getByRole('radio', { name: series.endsOptions.count }).check();
+  await main.getByLabel(series.count, { exact: true }).fill('3');
+  await main.getByRole('button', { name: series.submit, exact: true }).click();
+
+  // The panel: 3 dates, each "Can be overridden".
+  const panel = main.getByRole('alert');
+  await expect(panel.locator('h3')).toHaveCount(3);
+  await expect(
+    panel.getByText(common.scheduling.severity.soft, { exact: true }),
+  ).toHaveCount(3);
+  await main
+    .getByRole('button', { name: common.scheduling.override.action })
+    .click();
+  const dialog = page.getByRole('dialog', {
+    name: common.scheduling.override.title,
+  });
+  await expect(dialog.locator('h4')).toHaveCount(3);
+  await dialog
+    .getByLabel(common.scheduling.override.reason, { exact: true })
+    .fill('Clases de regularización acordadas con la familia.');
+  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  expect(
+    results.violations.map(
+      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
+    ),
+  ).toEqual([]);
+  await dialog
+    .getByRole('button', {
+      name: common.scheduling.override.submit,
+      exact: true,
+    })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    main.getByRole('heading', { name: series.success.heading }),
+  ).toBeVisible();
+  await expect(
+    main.getByText(fill(series.override.scheduledWith_other, { count: 3 })),
+  ).toBeVisible();
+
+  // The series page: "Overridden" on every row.
+  await main
+    .getByRole('link', { name: series.success.openSeries, exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/schedule\/series\/[0-9a-f-]+$/);
+  const rows = main.locator('ol > li');
+  await expect(rows).toHaveCount(3);
+  for (let index = 0; index < 3; index += 1) {
+    await expect(rows.nth(index)).toContainText(series.page.overridden);
+  }
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);

@@ -84,6 +84,8 @@ type Common = {
         done_other: string;
       };
       summary: { moved_other: string };
+      // #236: series overrides.
+      override: { scheduledWith_other: string };
       page: Record<
         | 'title'
         | 'ended'
@@ -91,7 +93,8 @@ type Common = {
         | 'editOccurrence'
         | 'editSeries'
         | 'cancelSeries'
-        | 'continuesFrom',
+        | 'continuesFrom'
+        | 'overridden',
         string
       >;
     };

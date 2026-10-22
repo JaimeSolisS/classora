@@ -158,8 +158,9 @@ unless a bullet says otherwise.
   qualification, classroom availability, center closures, operating hours
   and booking notice, and lists every conflict. An Owner, or an
   Administrator with the delegated override permission, can override soft
-  conflicts with a reason, which is audited; overlaps and room capacity are
-  never overridable.
+  conflicts with a reason, which is audited, for one-off sessions and
+  recurring series (occurrence by occurrence); overlaps and room capacity
+  are never overridable.
 - The same page creates weekly recurring series ("Repeats weekly": the days,
   every 1 to 4 weeks, ending never, on a date or after a number of
   sessions). Each series has its own page, where staff move one occurrence,

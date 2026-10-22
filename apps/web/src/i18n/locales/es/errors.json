@@ -102,6 +102,7 @@
   "respond_by_requires_tutor": "Un plazo necesita un tutor que responda.",
   "decline_note_too_long": "La nota puede tener como máximo 500 caracteres.",
   "session_not_editable": "Esta sesión ya no se puede cambiar: ya empezó, o está impartida, cancelada u omitida.",
+  "session_not_in_conflict": "Esta sesión ya no está pendiente por un conflicto de horario. Vuelve a cargarla.",
   "series_offer_pending": "La oferta de tutor de la serie espera respuesta. Espera la respuesta o retira la oferta primero.",
   "series_ended": "La serie no tiene sesiones en esa fecha ni después.",
   "occurrence_started": "Una sesión de esa fecha ya empezó. Elige una fecha posterior.",

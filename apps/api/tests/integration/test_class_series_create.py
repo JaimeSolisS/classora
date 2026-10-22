@@ -419,7 +419,11 @@ def test_other_422s(module_seeded_url, client, refs):
     assert crossing == [("start_time", "crosses_local_date")]
     # Ending exactly at midnight is allowed (only operating hours refuse it).
     assert [c["code"] for c in conflicts_of(midnight)] == ["outside_operating_hours"]
-    assert override == [("override", "extra_forbidden")]
+    # #236 B: a series override takes pairs, never codes.
+    assert override == [
+        ("override.pairs", "pairs_required"),
+        ("override.codes", "extra_forbidden"),
+    ]
     assert rrule == [("rrule", "extra_forbidden")]
     assert group == [("kind", "literal_error")]
     assert seconds == [("start_time", "time_format")]

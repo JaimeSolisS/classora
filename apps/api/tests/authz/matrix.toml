@@ -387,6 +387,18 @@ allow = ["owner", "administrator"]
 json = { version = 1, starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
 
 [[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/conflict-overrides"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #236 G3/I7: a valid body; the placeholder id is no session: 404 for every
+# allowed role, before the schedule.override check ("not denied" for the
+# Administrator too). The 200, 403, 409 and 422 cases are tested in
+# tests/integration/test_class_series_conflict_overrides.py.
+json = { version = 1, override = { codes = ["outside_operating_hours"], reason = "Matrix" } }
+
+[[route]]
 method = "GET"
 path = "/api/v1/class-sessions/{class_session_id}/offers"
 access = "permission"

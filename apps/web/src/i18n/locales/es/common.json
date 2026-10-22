@@ -1720,7 +1720,7 @@
         "occurrenceHeading_one": "No se puede mover la sesión: 1 conflicto",
         "occurrenceHeading_many": "No se puede mover la sesión: {{count}} conflictos",
         "occurrenceHeading_other": "No se puede mover la sesión: {{count}} conflictos",
-        "noOverride": "Aún no admite excepciones en series",
+        "noOverride": "Aún no admite excepciones aquí",
         "noDate": "Otros"
       },
       "versionConflict": "Esto cambió desde que lo abriste. Recárgalo e inténtalo de nuevo.",
@@ -1791,7 +1791,21 @@
         "range": "{{start}}–{{end}}",
         "edited": "Editada",
         "editOccurrence": "Editar esta sesión",
-        "editOccurrenceOf": "Editar esta sesión: {{date}}, {{range}}"
+        "editOccurrenceOf": "Editar esta sesión: {{date}}, {{range}}",
+        "overridden": "Con excepción",
+        "conflictCodes": "Conflictos: {{codes}}",
+        "fixConflict": "Corrige esta sesión editándola a ella o a la serie, o recházala en la bandeja de aprobaciones.",
+        "overrideOf": "Programar con excepción: {{date}}, {{range}}"
+      },
+      "override": {
+        "description_one": "La serie se programa a pesar de estas reglas en {{count}} sesión. El motivo se guarda en la bitácora de auditoría.",
+        "description_many": "La serie se programa a pesar de estas reglas en {{count}} sesiones. El motivo se guarda en la bitácora de auditoría.",
+        "description_other": "La serie se programa a pesar de estas reglas en {{count}} sesiones. El motivo se guarda en la bitácora de auditoría.",
+        "rowDescription": "Esta sesión se programa a pesar de estas reglas. El motivo se guarda en la bitácora de auditoría.",
+        "scheduledWith_one": "Programada con excepciones en {{count}} sesión.",
+        "scheduledWith_many": "Programada con excepciones en {{count}} sesiones.",
+        "scheduledWith_other": "Programada con excepciones en {{count}} sesiones.",
+        "rowDone": "La sesión se programó con una excepción."
       }
     }
   },
