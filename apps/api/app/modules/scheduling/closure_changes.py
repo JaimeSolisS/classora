@@ -52,7 +52,11 @@ rule date:
   savepoint, so the rest of the series still goes through.
 
 A restore sends no notification (the row returns to a state families never
-saw; the inbox item covers a conflict).
+saw; the inbox item covers a conflict). Only a row whose rule date the
+series' current rule still produces, on or before its
+``last_occurrence_on``, is restored (:func:`still_in_rule`, #54 QA D1): a
+row a series edit or cancellation left on a dropped date or after the new
+end stays ``skipped_closure``.
 
 **Idempotent:** a second run finds nothing to change and writes no audit
 event, no notification and no inbox item. Every function runs in the
@@ -62,7 +66,7 @@ caller's Unit of Work and never commits.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Final, Literal
 from zoneinfo import ZoneInfo
 
@@ -98,6 +102,7 @@ from app.modules.scheduling.offer_records import (
     attach_to_pending_series_offer,
     rfc3339,
 )
+from app.modules.scheduling.recurrence import iter_local_starts
 from app.modules.scheduling.sessions import transition_class_session
 from app.modules.scheduling.states import SessionState
 from app.modules.scheduling.times import validate_session_bounds
@@ -195,16 +200,49 @@ async def reconcile_series_closures(
         for row in rows
         if row.state in SKIPPABLE_STATES and held_on[row.id] in closed
     ]
-    to_restore = [
-        row
-        for row in rows
-        if row.state == SessionState.SKIPPED_CLOSURE and held_on[row.id] not in closed
-    ]
+    to_restore = still_in_rule(
+        series,
+        [
+            row
+            for row in rows
+            if row.state == SessionState.SKIPPED_CLOSURE
+            and held_on[row.id] not in closed
+        ],
+    )
     await _skip(session, series, to_skip)
     restored, conflicts = await _restore(
         session, series, to_restore, student_ids, zone=zone, now=now
     )
     return ReconcileCounts(skipped=len(to_skip), restored=restored, conflicts=conflicts)
+
+
+def still_in_rule(
+    series: ClassSeries, rows: Sequence[ClassSession]
+) -> list[ClassSession]:
+    """#54 QA D1: the skipped rows a reopened date may restore are only the
+    ones whose rule date (``original_start`` in the series zone) the
+    series' **current** rule still produces, on or before its
+    ``last_occurrence_on``. A series edit or cancellation leaves skipped
+    rows on dates it dropped or after the series' new end; they stay
+    ``skipped_closure`` (they hold nothing and are never billable). Pure."""
+    if not rows:
+        return []
+    days = {row.id: occurrence_local_date(row, series.time_zone) for row in rows}
+    first, last = min(days.values()), max(days.values())
+    produced: set[date] = set()
+    for local in iter_local_starts(
+        series.rrule, starts_on=series.starts_on, start_time=time()
+    ):
+        if local.date() > last:
+            break
+        if local.date() >= first:
+            produced.add(local.date())
+    end = series.last_occurrence_on
+    return [
+        row
+        for row in rows
+        if days[row.id] in produced and (end is None or days[row.id] <= end)
+    ]
 
 
 async def _skip(

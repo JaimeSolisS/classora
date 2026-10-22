@@ -306,18 +306,29 @@ def set_row(url: str, row_id: Any, **values: Any) -> None:
     in_uow(url, _set)
 
 
-def add_closure(url: str, starts_on: date, ends_on: date | None = None) -> None:
-    async def _add(session: AsyncSession) -> None:
-        session.add(
-            Closure(
-                name="Día festivo",
-                closure_type="holiday",
-                starts_on=starts_on,
-                ends_on=ends_on or starts_on,
-            )
+def add_closure(url: str, starts_on: date, ends_on: date | None = None) -> uuid.UUID:
+    async def _add(session: AsyncSession) -> uuid.UUID:
+        closure = Closure(
+            name="Día festivo",
+            closure_type="holiday",
+            starts_on=starts_on,
+            ends_on=ends_on or starts_on,
         )
+        session.add(closure)
+        await session.flush()
+        return closure.id
 
-    in_uow(url, _add)
+    found: uuid.UUID = in_uow(url, _add)
+    return found
+
+
+def lift_closure(url: str, closure_id: uuid.UUID) -> None:
+    """Deactivate a closure (its dates reopen at the next reconcile)."""
+
+    async def _lift(session: AsyncSession) -> None:
+        await change(session, Closure, closure_id, is_active=False)
+
+    in_uow(url, _lift)
 
 
 def make_conflict(url: str, row_id: Any, codes: list[str]) -> None:

@@ -20,12 +20,14 @@ from tests.integration.series_edit_support import (
     Ctx,
     add_closure,
     cancel_series,
+    lift_closure,
     make_ctx,
     make_series,
     notes,
     offers_of,
     on_day,
     read_series_at,
+    row_by_id,
     rows_of,
     run_job,
     series_row,
@@ -203,3 +205,17 @@ def test_confirmed_rows_tell_the_tutor_and_the_family_once(ctx):
     assert sorted(n.recipient_user_id for n in found) == sorted(
         [ctx.tutor.id, student_user, guardian_user]
     )
+
+
+def test_a_lifted_closure_never_restores_a_row_after_the_cancellation(ctx):
+    # #54 QA D1 (a): the kept skipped row is after the series' new end.
+    closure = add_closure(ctx.url, ctx.tl.week(5, 3))
+    series = make_series(ctx, tutor=True, accept=True)
+    skipped = on_day(rows_of(ctx.url, series["id"]), ctx, ctx.tl.week(5, 3))
+    assert code_of(cancel(ctx, series)) == OK
+    lift_closure(ctx.url, closure)
+
+    run_job(ctx.url, ctx.tl.now)
+
+    after = row_by_id(ctx.url, skipped.id)
+    assert (after.state, after.version) == ("skipped_closure", skipped.version)

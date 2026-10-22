@@ -30,6 +30,7 @@ from tests.integration.series_edit_support import (
     conflict_requests,
     edit_body,
     edit_series,
+    lift_closure,
     make_conflict,
     make_ctx,
     make_series,
@@ -576,3 +577,38 @@ def test_the_named_event_and_one_notification_per_recipient(ctx):
         "cancelled": 10,
         "exceptions_reset": 0,
     }
+
+
+# --- #54 QA D1: a lifted closure restores only dates the rule keeps -----------
+
+
+@pytest.mark.parametrize("mode", ["following", "all"])
+def test_a_lifted_closure_never_restores_a_dropped_weekday(ctx, mode):
+    # (b) a split from week 3 / (c) an in-place "all" edit, both to Mondays
+    # only; the closure covers Monday to Wednesday of week 5.
+    closure = add_closure(ctx.url, ctx.tl.week(5), ctx.tl.week(5, 3))
+    series = make_series(ctx, tutor=True, accept=True)
+    rows = rows_of(ctx.url, series["id"])
+    wednesday = on_day(rows, ctx, ctx.tl.week(5, 3))
+    monday = on_day(rows, ctx, ctx.tl.week(5))
+    data = ok(
+        edit(
+            ctx,
+            series,
+            mode=mode,
+            from_date=ctx.tl.week(3) if mode == "following" else None,
+            weekdays=[1],
+            until=last_wednesday(ctx),
+        )
+    )
+    assert data["split"] is (mode == "following")
+    dropped = row_by_id(ctx.url, wednesday.id)
+    assert (str(dropped.series_id), dropped.state) == (series["id"], "skipped_closure")
+    lift_closure(ctx.url, closure)
+
+    run_job(ctx.url, ctx.tl.now)
+
+    after = row_by_id(ctx.url, wednesday.id)
+    assert (after.state, after.version) == ("skipped_closure", dropped.version)
+    # The kept Monday on the same closure is restored, as before.
+    assert row_by_id(ctx.url, monday.id).state == "confirmed"

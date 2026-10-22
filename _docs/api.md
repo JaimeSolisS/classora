@@ -2678,7 +2678,11 @@ UPDATE`; one `closures_between` call.
   `conflict_codes` and one `scheduling.occurrence_conflict` request, as
   above. A row that was a conflict before keeps its one request: a decided
   (or cancelled) request goes back to `pending`, with its reason and
-  resolver cleared, and is decided again like a new one. A tutor or room overlap that appears between the checks and the
+  resolver cleared, and is decided again like a new one. Only a row whose
+  rule date the series' current rule still produces, on or before its
+  `last_occurrence_on`, is restored (M4-09): a skipped row an edit or a
+  cancellation left on a dropped date or after the series' end stays
+  `skipped_closure`. A tutor or room overlap that appears between the checks and the
   write makes that row `conflict` too; the rest of the series still goes
   through. A restore notifies nobody.
 - **Idempotent:** a rerun changes nothing and writes no event, notification
