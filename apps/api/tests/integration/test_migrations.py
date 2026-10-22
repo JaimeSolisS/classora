@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0037"
+HEAD = "0038"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -4092,11 +4092,30 @@ def _of_0036(diff: Any) -> bool:
     return False
 
 
+LINEAGE_COLUMN = "split_from_series_id"
+LINEAGE_INDEX = "ix_class_series_split_from_series_id"
+LINEAGE_FK = "fk_class_series_split_from_series_id_class_series"
+"""The objects revision 0038 adds to class_series (#54 A2)."""
+
+
+def _of_0038(diff: Any) -> bool:
+    """A metadata difference that revision 0038 adds (the series lineage
+    column, its index and its foreign key)."""
+    if diff[0] == "add_column":
+        return diff[2] == "class_series" and diff[3].name == LINEAGE_COLUMN
+    if diff[0] == "add_index":
+        return diff[1].name == LINEAGE_INDEX
+    if diff[0] == "add_fk":
+        return diff[1].name == LINEAGE_FK
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
-    their foreign key and unique constraint; and 0036's objects."""
-    if _of_0036(diff):
+    their foreign key and unique constraint; and 0036's and 0038's
+    objects."""
+    if _of_0036(diff) or _of_0038(diff):
         return True
     if diff[0] == "add_table":
         return diff[1].name in tables
@@ -5016,8 +5035,10 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
     assert set(_columns(fresh_database_url, "class_sessions")) - columns_before == set(
         SERIES_SESSION_COLUMNS
     )
-    # Only 0036's objects differ.
-    assert [d for d in metadata_diff(fresh_database_url) if not _of_0036(d)] == []
+    # Only 0036's and 0038's objects differ.
+    assert [
+        d for d in metadata_diff(fresh_database_url) if not (_of_0036(d) or _of_0038(d))
+    ] == []
     [row] = run_sql(
         fresh_database_url,
         "SELECT series_id, original_start, is_exception, conflict_codes"
@@ -5062,12 +5083,15 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         # 0036 (#233 A2)
         "assignment_status": ("character varying", "YES", 20, None),
         "assignment_from": ("date", "YES", None, None),
+        # 0038 (#54 A2)
+        "split_from_series_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     foreign_keys = {
         f"fk_{table}_subject_id_subjects",
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_classroom_id_classrooms",
+        LINEAGE_FK,
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -5085,6 +5109,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
                 "assignment_status_valid",
                 "assignment_iff_tutor",
                 "assignment_from_iff_status",
+                "split_from_not_self",
             )
         ),
     }
@@ -5095,6 +5120,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_subject_id",
         f"ix_{table}_tutor_user_id",
         f"ix_{table}_classroom_id",
+        LINEAGE_INDEX,
     }
 
     participants = "class_series_participants"
@@ -5225,7 +5251,7 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
 
     command.upgrade(config, "0036")
 
-    assert metadata_diff(fresh_database_url) == []
+    assert [d for d in metadata_diff(fresh_database_url) if not _of_0038(d)] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
         before = offers_before if table == "assignment_offers" else series_before
         assert set(_columns(fresh_database_url, table)) - before == added
@@ -5499,7 +5525,7 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
     command.upgrade(config, "0037")
 
     assert version_nums(dsn) == ["0037"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
     sessions = _session_rows(dsn)
     for cleared in (future, past):
         state, tutor_id, version = sessions_before[cleared]
@@ -5535,3 +5561,46 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
     assert _session_rows(dsn)[s3_row][:2] == ("unassigned", None)
     assert run_sql(dsn, BROKEN_PENDING_SERIES) == []
     assert run_sql(dsn, UNCOVERED_OFFERED_SESSIONS) == []
+
+
+def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0037")
+    subject = _subject_row(dsn)
+    old = _series(dsn, subject)
+    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
+
+    command.upgrade(config, "0038")
+
+    assert version_nums(dsn) == ["0038"]
+    assert metadata_diff(dsn) == []
+    [row] = run_sql(
+        dsn, "SELECT split_from_series_id FROM class_series WHERE id = :id", {"id": old}
+    )
+    assert row.split_from_series_id is None
+    new = _series(dsn, subject)
+    run_sql(
+        dsn,
+        "UPDATE class_series SET split_from_series_id = :old WHERE id = :id",
+        {"old": old, "id": new},
+    )
+    with pytest.raises(IntegrityError, match="split_from_not_self"):
+        run_sql(
+            dsn,
+            "UPDATE class_series SET split_from_series_id = id WHERE id = :id",
+            {"id": old},
+        )
+    with pytest.raises(IntegrityError, match=LINEAGE_FK):
+        run_sql(dsn, "DELETE FROM class_series WHERE id = :id", {"id": old})
+
+    command.downgrade(config, "0037")
+
+    assert version_nums(dsn) == ["0037"]
+    assert LINEAGE_COLUMN not in _columns(dsn, "class_series")
+    assert [d for d in metadata_diff(dsn) if not _of_0038(d)] == []
+    assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
