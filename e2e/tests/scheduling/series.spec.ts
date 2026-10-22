@@ -6,6 +6,10 @@ import { common } from '../support/catalog';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
+// Chromium logs every 4xx resource as a console error: the expected 409.
+const EXPECTED_RESOURCE_ERROR =
+  /Failed to load resource: the server responded with a status of 409/;
+
 // A weekly series (#54b E4). The demo Owner (the shared state;
 // schedule.manage) creates a student and a subject through the API, then on
 // "Schedule a session" turns on "Repeats weekly": Monday and Wednesday,
@@ -267,7 +271,10 @@ test('an Owner overrides the closed Sundays of a weekly series', async ({
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (
+      message.type() === 'error' &&
+      !EXPECTED_RESOURCE_ERROR.test(message.text())
+    ) {
       consoleErrors.push(message.text());
     }
   });

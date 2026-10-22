@@ -248,7 +248,8 @@ async def attach_to_pending_series_offer(
     """#233 B2: the ``offered`` rows a series writer has just created from
     :func:`~app.modules.scheduling.materialize.occurrence_initial_state`
     join the series' pending offer, in the caller's transaction (the caller
-    holds the series row ``FOR UPDATE``). The offer's ``respond_by`` is never
+    holds the series row ``FOR UPDATE``, or ``FOR SHARE`` on the #236
+    conflict-override route). The offer's ``respond_by`` is never
     moved: these rows start after its first covered occurrence. Rows of a
     series without a pending assignment are a programming error.
 
