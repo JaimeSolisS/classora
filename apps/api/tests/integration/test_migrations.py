@@ -67,7 +67,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0036"
+HEAD = "0037"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -5348,3 +5348,190 @@ def test_the_series_assignment_is_tied_to_the_tutor(fresh_database_url):
     insert_series(tutor, "pending", monday)
     insert_series(tutor, "accepted", monday)
     insert_series(None, None, None)
+
+
+# --- 0037: clear the series assignments 0036 backfilled (#263 C) ----------------------
+
+BROKEN_PENDING_SERIES = (
+    "SELECT s.id FROM class_series s WHERE s.assignment_status = 'pending'"
+    " AND NOT EXISTS (SELECT 1 FROM assignment_offers o WHERE o.scope = 'series'"
+    " AND o.status = 'pending' AND o.class_series_id = s.id"
+    " AND o.tutor_user_id = s.tutor_user_id)"
+)
+"""#233 A3: a pending series has a pending series offer of its tutor."""
+UNCOVERED_OFFERED_SESSIONS = (
+    "SELECT cs.id FROM class_sessions cs WHERE cs.state = 'offered'"
+    " AND NOT EXISTS (SELECT 1 FROM assignment_offer_sessions aos"
+    " JOIN assignment_offers o ON o.id = aos.offer_id"
+    " WHERE aos.class_session_id = cs.id AND o.status = 'pending')"
+)
+"""#233 A3: a pending offer covers every offered session."""
+
+
+def _occurrence(
+    dsn: str,
+    subject_id: uuid.UUID,
+    series_id: uuid.UUID,
+    starts_at: datetime,
+    state: str,
+    tutor_id: uuid.UUID | None,
+) -> uuid.UUID:
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, tutor_user_id,"
+        " starts_at, ends_at, scheduled_minutes, series_id, original_start)"
+        " VALUES ('individual', :state, :subject, :tutor, :starts_at, :ends_at, 60,"
+        " :series, :starts_at) RETURNING id",
+        {
+            "state": state,
+            "subject": subject_id,
+            "tutor": tutor_id,
+            "starts_at": starts_at,
+            "ends_at": starts_at + timedelta(hours=1),
+            "series": series_id,
+        },
+    )
+    return uuid.UUID(str(row.id))
+
+
+def _cover(dsn: str, offer_id: Any, session_id: uuid.UUID) -> None:
+    run_sql(
+        dsn,
+        "INSERT INTO assignment_offer_sessions (offer_id, class_session_id)"
+        " VALUES (:o, :s)",
+        {"o": offer_id, "s": session_id},
+    )
+
+
+def _session_rows(dsn: str) -> dict[uuid.UUID, tuple[Any, ...]]:
+    return {
+        uuid.UUID(str(row.id)): (row.state, row.tutor_user_id, row.version)
+        for row in run_sql(
+            dsn, "SELECT id, state, tutor_user_id, version FROM class_sessions"
+        )
+    }
+
+
+def _series_rows(dsn: str) -> dict[uuid.UUID, tuple[Any, ...]]:
+    return {
+        uuid.UUID(str(row.id)): (
+            row.tutor_user_id,
+            row.assignment_status,
+            row.assignment_from,
+            row.version,
+        )
+        for row in run_sql(
+            dsn,
+            "SELECT id, tutor_user_id, assignment_status, assignment_from, version"
+            " FROM class_series",
+        )
+    }
+
+
+def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0035")
+    subject = _subject_row(dsn)
+    tutor = _user_row(dsn)
+    monday = datetime(2031, 1, 6, 22, tzinfo=UTC)
+    # S1: a #53 series with a tutor and offered rows without a series offer.
+    s1 = _series(dsn, subject)
+    run_sql(
+        dsn,
+        "UPDATE class_series SET tutor_user_id = :t WHERE id = :id",
+        {"t": tutor, "id": s1},
+    )
+    future = _occurrence(dsn, subject, s1, monday, "offered", tutor)
+    past = _occurrence(
+        dsn, subject, s1, datetime(2020, 1, 6, 22, tzinfo=UTC), "offered", tutor
+    )
+    covered = _occurrence(
+        dsn, subject, s1, monday + timedelta(days=2), "offered", tutor
+    )
+    conflict = _occurrence(
+        dsn, subject, s1, monday + timedelta(days=7), "conflict", tutor
+    )
+    # A #52 "This session only" offer (revision 0034 columns).
+    [session_offer] = run_sql(
+        dsn,
+        "INSERT INTO assignment_offers (scope, tutor_user_id, offered_at,"
+        " offered_by_user_id, respond_by) VALUES ('session', :u,"
+        " '2031-01-01T12:00:00Z', :u, '2031-01-03T12:00:00Z') RETURNING id",
+        {"u": tutor},
+    )
+    _cover(dsn, session_offer.id, covered)
+    # S2: no tutor.
+    s2 = _series(dsn, subject)
+    unassigned = _occurrence(
+        dsn, subject, s2, monday + timedelta(days=9), "unassigned", None
+    )
+
+    command.upgrade(config, "0036")
+
+    # The broken state 0036 leaves.
+    assert [row.id for row in run_sql(dsn, BROKEN_PENDING_SERIES)] == [s1]
+    # S3: a proper pending series with its offer covering its offered row.
+    s3 = _series(dsn, subject)
+    run_sql(
+        dsn,
+        "UPDATE class_series SET tutor_user_id = :t, assignment_status = 'pending',"
+        " assignment_from = starts_on WHERE id = :id",
+        {"t": tutor, "id": s3},
+    )
+    s3_row = _occurrence(
+        dsn, subject, s3, monday + timedelta(days=14), "offered", tutor
+    )
+    series_offer = _insert_offer(
+        dsn,
+        tutor,
+        scope="series",
+        class_series_id=s3,
+        from_date=date(2031, 1, 6),
+    )
+    _cover(dsn, series_offer, s3_row)
+    sessions_before = _session_rows(dsn)
+    series_before = _series_rows(dsn)
+    offers_before = run_sql(
+        dsn, "SELECT id, status, tutor_user_id FROM assignment_offers ORDER BY id"
+    )
+
+    command.upgrade(config, "0037")
+
+    assert version_nums(dsn) == ["0037"]
+    assert metadata_diff(dsn) == []
+    sessions = _session_rows(dsn)
+    for cleared in (future, past):
+        state, tutor_id, version = sessions_before[cleared]
+        assert (state, tutor_id) == ("offered", tutor)
+        assert sessions[cleared] == ("unassigned", None, version + 1)
+    for kept in (covered, conflict, unassigned, s3_row):
+        assert sessions[kept] == sessions_before[kept]
+    series = _series_rows(dsn)
+    assert series[s1] == (None, None, None, series_before[s1][3] + 1)
+    assert series[s2] == series_before[s2] == (None, None, None, 1)
+    assert series[s3] == series_before[s3]
+    assert (
+        run_sql(
+            dsn, "SELECT id, status, tutor_user_id FROM assignment_offers ORDER BY id"
+        )
+        == offers_before
+    )
+    # #233 A3 holds over the whole database.
+    assert run_sql(dsn, BROKEN_PENDING_SERIES) == []
+    assert run_sql(dsn, UNCOVERED_OFFERED_SESSIONS) == []
+
+    # The downgrade is a no-op and a second run changes nothing.
+    command.downgrade(config, "0036")
+    command.upgrade(config, "0037")
+    assert _session_rows(dsn) == sessions
+    assert _series_rows(dsn) == series
+    # A 0036 round trip deletes S3's offer and backfills it again without one;
+    # the same upgrade clears it.
+    command.downgrade(config, "0035")
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert _series_rows(dsn)[s3] == (None, None, None, series[s3][3] + 1)
+    assert _session_rows(dsn)[s3_row][:2] == ("unassigned", None)
+    assert run_sql(dsn, BROKEN_PENDING_SERIES) == []
+    assert run_sql(dsn, UNCOVERED_OFFERED_SESSIONS) == []

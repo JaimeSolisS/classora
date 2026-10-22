@@ -97,7 +97,7 @@
   "offer_not_pending": "This offer has already been answered.",
   "offer_expired": "The deadline to answer this offer has passed.",
   "class_session_not_offerable": "This session can't be offered to a tutor now. Reload the page.",
-  "reassignment_still_needed": "The session still has no tutor. Offer it to a tutor first.",
+  "reassignment_still_needed": "There is still no tutor for this session or series. Offer it to a tutor first.",
   "respond_by_invalid": "The deadline must be after now and no later than the default deadline.",
   "respond_by_requires_tutor": "A deadline needs a tutor to answer it.",
   "decline_note_too_long": "The note can be at most 500 characters long."

@@ -132,7 +132,9 @@ class ReassignmentStillNeededError(AppError):
 
     status = 409
     code = "reassignment_still_needed"
-    detail = "The session still has no tutor. Offer it to a tutor first."
+    detail = (
+        "There is still no tutor for this session or series. Offer it to a tutor first."
+    )
 
 
 class SeriesNotOfferableError(AppError):
