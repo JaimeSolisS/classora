@@ -56,7 +56,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # (class_sessions and class_session_participants, M4-02;
     # scheduling_policies in administration, M4-16; class_session_overrides,
     # M4-04; assignment_offers and assignment_offer_sessions, M4-07;
-    # class_series and class_series_participants, M4-08), then
+    # class_series and class_series_participants, M4-08;
+    # class_session_substitutions, M4-10), then
     # courses (course_templates, _subjects, _modules, _assessments and
     # _snapshots, M4-19);
     # audit_events
@@ -84,6 +85,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "assignment_offer_sessions",
         "class_series",
         "class_series_participants",
+        "class_session_substitutions",
         "users",
         "roles",
         "permissions",

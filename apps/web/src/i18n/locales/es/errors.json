@@ -119,5 +119,10 @@
   "until_before_start": "La fecha de fin no puede ser anterior a la de inicio.",
   "no_occurrences": "Esta regla no da ninguna sesión. Revisa los días y el fin.",
   "starts_on_in_past": "La serie no puede empezar antes de hoy.",
-  "time_format": "Escribe la hora en horas y minutos."
+  "time_format": "Escribe la hora en horas y minutos.",
+  "class_session_not_substitutable": "Esta sesión no se puede dar a un suplente ahora. Vuelve a cargar la página.",
+  "class_session_not_cancellable": "Esta sesión no se puede cancelar: ya empezó, o está completada, cancelada u omitida. Vuelve a cargar la página.",
+  "substitution_no_longer_valid": "Esta sesión cambió después de ofrecer la suplencia, así que no se puede tomar.",
+  "substitute_busy": "Ya tienes una clase a esa hora, así que no puedes tomar esta. Aún puedes rechazarla.",
+  "substitute_is_current_tutor": "Elige un tutor distinto al de la sesión."
 }

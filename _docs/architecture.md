@@ -433,7 +433,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
   - Session states: `unassigned`, `offered`, `confirmed`, `completed`, `cancelled`, `skipped_closure`, `conflict`. There is no `draft`. `completed` and `cancelled` are final.
   - The tutor is occupied in `offered`, `confirmed` and `completed`; the room and students in `unassigned`, `offered`, `confirmed` and `completed`.
-  - An offer covers one session or one series assignment from a date onward. Substitutions are one-occurrence offers. Offers are rows (`pending`, `accepted`, `declined`, `expired`, `withdrawn`).
+  - An offer covers one session or one series assignment from a date onward. Substitutions are one-occurrence offers: the session stays `confirmed` with its tutor until the substitute accepts ([ADR-0005 amendment A1](adr/0005-scheduling-invariants-overrides-and-recurrence.md#a1--substitution-offers-55-e1-2026-10-22-owner-delegated), #55). Offers are rows (`pending`, `accepted`, `declined`, `expired`, `withdrawn`).
   - Deadline: `respond_by = min(offered_at + response_hours, first covered start)`, with `response_hours` in the M4-16 policy (default 48); the administrator may choose an earlier one. A periodic task expires offers every 5 minutes.
   - On decline or expiry the covered sessions go to `unassigned` with the tutor cleared (room and students stay held), and a system-raised inbox item plus a notification are created.
   - Families see only `confirmed` and `completed` sessions, plus cancelled or skipped occurrences of sessions they had already seen.

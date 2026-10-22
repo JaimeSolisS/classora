@@ -1,4 +1,5 @@
-"""The offer expiry task (#52 E3, I2; series offers #233 I2):
+"""The offer expiry task (#52 E3, I2; series offers #233 I2; substitution
+offers #55 I2):
 ``scheduling.tasks.run_expire_offers`` with a frozen clock, on a database of
 its own per test (the run scans every offer).
 """
@@ -19,6 +20,7 @@ from app.modules.scheduling.schemas import (
     ClassSeriesCreate,
     ClassSessionCreate,
     SeriesRecurrence,
+    SubstitutionCreate,
 )
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import create_user
@@ -287,3 +289,83 @@ def test_an_overdue_series_offer_expires_and_the_series_is_reassigned(seeded_url
     )
     assert notice.params["class_series_id"] == str(series_id)
     assert notice.params["occurrence_count"] == 24
+
+
+# --- Substitution offers (#55 D2, D3, I2) --------------------------------------------
+
+
+def substitution_offered(url: str, refs: dict[str, uuid.UUID]) -> tuple[Any, Any]:
+    """A session confirmed by ``refs["tutor"]`` with a pending substitution
+    to ``refs["other_tutor"]``: ``(session id, substitution item)``."""
+    created = offered(url, refs)
+    in_uow(
+        url,
+        lambda session: scheduling.answer_offer(
+            session, created.pending_offer.id, caller_id=refs["tutor"], accept=True
+        ),
+    )
+
+    async def _substitute(session: AsyncSession) -> Any:
+        [row] = await lock_sessions(session, [created.id])
+        made = await scheduling.substitute_class_session(
+            session,
+            created.id,
+            SubstitutionCreate(
+                substitute_tutor_user_id=refs["other_tutor"],
+                version=row.version,
+                reason="Enfermedad",
+            ),
+            actor_id=refs["owner"],
+        )
+        return made.substitution
+
+    return created.id, in_uow(url, _substitute)
+
+
+def test_an_overdue_substitution_expires_and_leaves_the_session(seeded_url, refs):
+    session_id, item = substitution_offered(seeded_url, refs)
+
+    with frozen_clock(item.respond_by + timedelta(minutes=3)):
+        result = run(seeded_url)
+        again = run(seeded_url)
+
+    assert result == tasks.ExpiryResult(expired=1, skipped=0)
+    assert again == tasks.ExpiryResult(expired=0, skipped=0)
+    row = offer_row(seeded_url, item.offer_id)
+    assert (row.status, row.state, row.tutor_user_id) == (
+        "expired",
+        "confirmed",
+        refs["tutor"],
+    )
+    [found] = inbox(seeded_url, item.offer_id)
+    assert (found.status, found.requester_user_id) == ("pending", None)
+    [notice] = run_sql(
+        seeded_url,
+        "SELECT params FROM notifications WHERE recipient_user_id = :u"
+        " AND notification_type = 'scheduling.offer_expired'"
+        " AND params->>'offer_id' = :o",
+        {"u": refs["owner"], "o": str(item.offer_id)},
+    )
+    assert notice.params["kind"] == "substitution"
+    assert notice.params["class_session_id"] == str(session_id)
+    assert "reason" not in notice.params
+
+
+def test_a_withdrawn_substitution_is_skipped(seeded_url, refs):
+    session_id, item = substitution_offered(seeded_url, refs)
+    in_uow(
+        seeded_url,
+        lambda session: scheduling.withdraw_substitution(session, session_id, item.id),
+    )
+
+    changed = in_uow(
+        seeded_url,
+        lambda session: scheduling.expire_offer(
+            session, item.offer_id, item.respond_by + timedelta(minutes=1)
+        ),
+    )
+
+    assert changed is False
+    assert offer_row(seeded_url, item.offer_id).status == "withdrawn"
+    assert inbox(seeded_url, item.offer_id) == []
+    assert expired_notices(seeded_url, item.offer_id) == 0

@@ -106,3 +106,67 @@ export function offerClassSeries(
     }),
   );
 }
+
+// Substitutions and cancellations (#55 H1): the session's substitutions,
+// a substitution of its tutor, withdrawing one, and cancelling the session.
+
+export type SubstitutionItem = components['schemas']['SubstitutionItem'];
+export type SubstitutionCreate = components['schemas']['SubstitutionCreate'];
+export type SubstitutionCreated = components['schemas']['SubstitutionCreated'];
+export type ClassSessionSubstitutions =
+  components['schemas']['ClassSessionSubstitutions'];
+export type ClassSessionCancel = components['schemas']['ClassSessionCancel'];
+
+export function fetchSessionSubstitutions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ClassSessionSubstitutions> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/class-sessions/{class_session_id}/substitutions', {
+        params: { path: { class_session_id: id } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function substituteClassSession(
+  id: string,
+  body: SubstitutionCreate,
+): Promise<SubstitutionCreated> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-sessions/{class_session_id}/substitutions', {
+      params: { path: { class_session_id: id } },
+      body,
+    }),
+  );
+}
+
+export function withdrawSubstitution(
+  id: string,
+  substitutionId: string,
+): Promise<SubstitutionItem> {
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw',
+      {
+        params: {
+          path: { class_session_id: id, substitution_id: substitutionId },
+        },
+      },
+    ),
+  );
+}
+
+export function cancelClassSession(
+  id: string,
+  body: ClassSessionCancel,
+): Promise<ClassSessionDetail> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-sessions/{class_session_id}/cancel', {
+      params: { path: { class_session_id: id } },
+      body,
+    }),
+  );
+}

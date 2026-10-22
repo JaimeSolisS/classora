@@ -181,6 +181,9 @@ unless a bullet says otherwise.
   for reassignment through the approval inbox, and staff offer it again from
   the session's page (for a weekly series, that session and the following
   ones).
+- Staff can hand one upcoming session to a substitute tutor (the substitute
+  accepts in My offers; the original tutor and the family are notified) and
+  cancel a single session with a reason.
 
 **Courses**
 
@@ -208,7 +211,8 @@ unless a bullet says otherwise.
 - New notifications arrive live (Server-Sent Events); when the live
   connection isn't available, the bell checks every 30 seconds instead.
 - Today they tell tutors about qualification decisions and revocations and
-  new session offers, and tell staff when an offer is declined or expires. In
+  new session offers, tell staff when an offer is declined or expires, and
+  tell tutors and families about substitutions and cancelled sessions. In
   local and dev, signed-in users can create a test notification for
   themselves.
 

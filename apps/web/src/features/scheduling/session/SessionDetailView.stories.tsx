@@ -1,10 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, within } from 'storybook/test';
+import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { SOFT_CONFLICTS, TUTOR_SUGGESTIONS, TUTORS } from '../create/fixtures';
 import {
   ACCEPTED_SERIES,
+  CANCELLED_SESSION,
+  CONFIRMED_SESSION,
   DECLINED,
+  DECLINED_SUBSTITUTION,
+  NEW_SUBSTITUTION,
+  PENDING_SUBSTITUTION,
+  SUBSTITUTED_SESSION,
   NEW_OFFER,
   NEW_SERIES_OFFER,
   OFFERED_SESSION,
@@ -14,14 +21,20 @@ import {
   SERIES_ROW,
   UNASSIGNED_SESSION,
 } from './fixtures';
+import type { SubstitutionCreated } from './api';
+import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
 import { SessionDetailView } from './SessionDetailView';
+import { SubstitutionSection } from './SubstitutionSection';
 
 // The staff session page (#52 H4): with its offer history, with the "Offer
 // to a tutor" panel, and with a conflict (the #48 panel and the #49
 // override action); an offered session with its pending offer; an
 // occurrence of a weekly series (#233 G4): the series choice, a series 409
-// grouped by date, and the pending and accepted series assignment. No request:
+// grouped by date, and the pending and accepted series assignment; #55 H4:
+// the "Find a substitute" panel (with suggestions, with a conflict), a
+// pending substitution with its history, the cancel dialog with an error
+// and the cancelled banner. No request:
 // the panel's calls are stubs. Axe runs in light and dark.
 
 const meta = {
@@ -186,5 +199,141 @@ export const SeriesAccepted: Story = {
       offers: [{ ...NEW_SERIES_OFFER.offer, status: 'accepted' }],
     },
     series: ACCEPTED_SERIES,
+  },
+};
+
+// --- Substitutions and cancellations (#55 H4) ---------------------------------
+
+const substitutePanel = (conflicts?: typeof SOFT_CONFLICTS) => (
+  <OfferPanel<SubstitutionCreated>
+    variant="substitute"
+    tutors={TUTORS.slice(1)}
+    timeZone="America/Mexico_City"
+    canOverride
+    onSuggest={fn(() => Promise.resolve(TUTOR_SUGGESTIONS))}
+    onSubmit={fn(() => Promise.resolve(NEW_SUBSTITUTION))}
+    onOffered={fn()}
+    initialConflicts={conflicts}
+  />
+);
+
+const cancelAction = (
+  <div>
+    <button
+      type="button"
+      className="rounded-md border border-border px-3 py-1.5 text-sm"
+    >
+      {i18n.t('scheduling.cancel.action')}
+    </button>
+  </div>
+);
+
+export const SubstitutePanel: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    offerPanel: substitutePanel(),
+    actions: cancelAction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('scheduling.substitution.heading')),
+    ).toBeInTheDocument();
+    canvas
+      .getByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.button'),
+      })
+      .click();
+    await expect(
+      await canvas.findByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.chooseTutor', {
+          name: TUTOR_SUGGESTIONS.items[0]!.tutor.display_name,
+        }),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SubstituteConflict: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    offerPanel: substitutePanel(SOFT_CONFLICTS),
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole('button', {
+        name: i18n.t('scheduling.substitution.overrideAction'),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const PendingSubstitution: Story = {
+  args: {
+    state: { status: 'ready', session: SUBSTITUTED_SESSION, offers: [] },
+    actions: cancelAction,
+    substitutions: (
+      <SubstitutionSection
+        items={[PENDING_SUBSTITUTION, DECLINED_SUBSTITUTION]}
+        timeZone="America/Mexico_City"
+        canWithdraw
+        onWithdraw={fn(() => Promise.resolve())}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('scheduling.substitution.withdraw'),
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(
+        i18n.t('offers.card.note', {
+          note: DECLINED_SUBSTITUTION.decline_note,
+        }),
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+export const CancelDialogWithError: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    actions: (
+      <CancelSessionDialog
+        open
+        onConfirm={fn(() => Promise.resolve())}
+        onCancel={fn()}
+        initialReason="Cierre por mantenimiento."
+        initialError={
+          new ApiError({
+            code: 'class_session_not_cancellable',
+            status: 409,
+          })
+        }
+      />
+    ),
+  },
+};
+
+export const Cancelled: Story = {
+  args: {
+    state: { status: 'ready', session: CANCELLED_SESSION, offers: [] },
+    actions: cancelAction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('heading', {
+        name: i18n.t('scheduling.cancel.banner'),
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', {
+        name: i18n.t('scheduling.cancel.action'),
+      }),
+    ).not.toBeInTheDocument();
   },
 };

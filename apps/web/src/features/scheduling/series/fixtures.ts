@@ -197,6 +197,8 @@ export const OCCURRENCE_SESSION: ClassSessionDetail = {
   is_exception: false,
   conflict_codes: [],
   pending_offer: null,
+  pending_substitution: null,
+  cancellation: null,
 };
 
 export const SERIES_EDITED: ClassSeriesEdited = {

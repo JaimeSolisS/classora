@@ -17,6 +17,8 @@ const OWNER = {
 export const PENDING_OFFER: AssignmentOfferItem = {
   id: '00000000-0000-4000-8000-0000000007f1',
   scope: 'session',
+  kind: 'assignment',
+  substitution: null,
   status: 'pending',
   tutor: TUTOR,
   offered_at: '2031-01-03T10:00:00Z',
@@ -149,4 +151,18 @@ export const ACCEPTED_SERIES_OFFER: AssignmentOfferItem = {
   status: 'accepted',
   responded_at: '2031-01-03T11:00:00Z',
   sessions: seriesSessions(10, 'confirmed'),
+};
+
+/** A substitution offer (#55 H2): the session stays confirmed with Carmen. */
+export const SUBSTITUTION_OFFER: AssignmentOfferItem = {
+  ...PENDING_OFFER,
+  id: '00000000-0000-4000-8000-0000000007f9',
+  kind: 'substitution',
+  substitution: {
+    original_tutor: {
+      id: '00000000-0000-4000-8000-0000000007c9',
+      display_name: 'Carmen Ruiz',
+    },
+  },
+  sessions: [{ ...PENDING_OFFER.sessions[0]!, state: 'confirmed' }],
 };

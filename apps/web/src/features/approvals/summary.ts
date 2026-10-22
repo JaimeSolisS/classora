@@ -135,6 +135,10 @@ interface ReassignmentSubject {
   class_series_id?: string | null;
   from_date?: string | null;
   occurrence_count?: number | null;
+  /** #55 D2: `substitution` for a substitute's declined or expired offer. */
+  kind?: 'assignment' | 'substitution';
+  /** The tutor still teaching a substitution's session (#55). */
+  original_tutor_name?: string | null;
 }
 
 function isReassignment(subject: unknown): subject is ReassignmentSubject {
@@ -241,6 +245,8 @@ export function registrationSubject(
  * subject (level)"; for an offer reassignment (#52) "Declined by tutor ·
  * subject · date time" (or "Expired …"), and for a series offer (#233 G3)
  * "Declined by tutor · subject · weekly series from date (n sessions)";
+ * for a substitute's offer (#55 H3) "Substitute tutor declined · subject ·
+ * date time · still taught by original";
  * for a series occurrence in conflict
  * (#53) "Series occurrence <date, time> — <students> · <subject>: <codes>";
  * for an unknown type the type code.
@@ -278,6 +284,23 @@ export function approvalSummary(
         subject: reassignment.subject_name,
         date: formatDate(reassignment.from_date),
         count: reassignment.occurrence_count ?? 0,
+      },
+    );
+  }
+  if (
+    reassignment?.starts_at &&
+    reassignment.kind === 'substitution' &&
+    reassignment.original_tutor_name
+  ) {
+    return t(
+      reassignment.outcome === 'declined'
+        ? 'approvals.summary.substitutionDeclined'
+        : 'approvals.summary.substitutionExpired',
+      {
+        tutor: reassignment.tutor_name,
+        subject: reassignment.subject_name,
+        when: formatInstant(reassignment.starts_at),
+        original: reassignment.original_tutor_name,
       },
     );
   }

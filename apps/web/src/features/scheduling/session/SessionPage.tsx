@@ -5,23 +5,38 @@ import { Link, useParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { useCan } from '@/features/auth/useSession';
+import { Button } from '@/components/ui/button';
 import { CALENDAR_KEY } from '@/features/calendar/api';
 import { fetchTutorOptions, SCHEDULE_OPTIONS_KEY } from '../create/api';
 import type { SchedulingWarning } from '../create/api';
 import { toLocalDate } from '@/lib/time';
 import {
+  cancelClassSession,
   fetchClassSeries,
   fetchClassSession,
   fetchReplacementTutors,
   fetchSessionOffers,
+  fetchSessionSubstitutions,
   offerClassSeries,
   offerClassSession,
   seriesKey,
   sessionKey,
+  substituteClassSession,
+  withdrawSubstitution,
+  type SubstitutionCreated,
 } from './api';
+import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
-import { offerBody, seriesOfferBody } from './rules';
+import {
+  canCancel,
+  canSubstitute,
+  isStaleSessionError,
+  offerBody,
+  seriesOfferBody,
+  substitutionBody,
+} from './rules';
 import { SessionDetailView, type SessionState } from './SessionDetailView';
+import { SubstitutionSection } from './SubstitutionSection';
 
 // /schedule/sessions/:id (#52 H2), for schedule.view holders: the session,
 // its pending offer and offer history. Holders of schedule.assign get the
@@ -32,6 +47,13 @@ import { SessionDetailView, type SessionState } from './SessionDetailView';
 // series: its assignment is shown, and while the series has no tutor the
 // panel can offer "This and following sessions" (the series from this
 // occurrence's local date, with the series version).
+//
+// #55 H1: holders of schedule.assign get "Find a substitute" for a confirmed
+// session that hasn't started (no pending substitution) and can withdraw a
+// pending one; holders of schedule.manage get "Cancel session". A write
+// refused because the session changed (409 class_session_not_substitutable
+// / _not_cancellable / version_conflict) shows its message and reloads the
+// session.
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -40,11 +62,14 @@ export function SessionPage() {
   const timeZone = useCenterTimeZone();
   const canAssign = useCan('schedule.assign');
   const canOverride = useCan('schedule.override');
+  const canManage = useCan('schedule.manage');
+  const [cancelling, setCancelling] = useState(false);
   const client = useQueryClient();
   const [offered, setOffered] = useState<{
     tutorName: string;
     warnings: readonly SchedulingWarning[];
     series?: boolean;
+    substitution?: boolean;
   } | null>(null);
   const session = useQuery({
     queryKey: [...sessionKey(sessionId), 'detail'],
@@ -54,6 +79,10 @@ export function SessionPage() {
     queryKey: [...sessionKey(sessionId), 'offers'],
     queryFn: ({ signal }) => fetchSessionOffers(sessionId, signal),
   });
+  const substitutions = useQuery({
+    queryKey: [...sessionKey(sessionId), 'substitutions'],
+    queryFn: ({ signal }) => fetchSessionSubstitutions(sessionId, signal),
+  });
   const seriesId = session.data?.series_id ?? null;
   const series = useQuery({
     queryKey: seriesKey(seriesId ?? ''),
@@ -61,14 +90,43 @@ export function SessionPage() {
     enabled: seriesId !== null,
   });
   const showPanel = canAssign && session.data?.state === 'unassigned';
+  const now = new Date();
+  const showSubstitute = session.data
+    ? canSubstitute(session.data, now, canAssign)
+    : false;
+  const showCancel = session.data
+    ? canCancel(session.data, now, canManage)
+    : false;
   const tutors = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'tutors'],
     queryFn: ({ signal }) => fetchTutorOptions(signal),
-    enabled: showPanel,
+    enabled: showPanel || showSubstitute,
   });
 
+  function refresh() {
+    void client.invalidateQueries({ queryKey: sessionKey(sessionId) });
+    if (seriesId) {
+      void client.invalidateQueries({ queryKey: seriesKey(seriesId) });
+    }
+    void client.invalidateQueries({ queryKey: CALENDAR_KEY });
+  }
+
+  /** Reloads the session after a refused write, then rethrows. */
+  async function reloadingOnStale<T>(call: Promise<T>): Promise<T> {
+    try {
+      return await call;
+    } catch (caught) {
+      if (isStaleSessionError(caught)) {
+        refresh();
+      }
+      throw caught;
+    }
+  }
+
   let state: SessionState;
-  const failed = [session, offers, series].find((query) => query.isError);
+  const failed = [session, offers, substitutions, series].find(
+    (query) => query.isError,
+  );
   if (failed) {
     state = {
       status: 'error',
@@ -76,6 +134,7 @@ export function SessionPage() {
       onRetry: () => {
         void session.refetch();
         void offers.refetch();
+        void substitutions.refetch();
         if (seriesId) {
           void series.refetch();
         }
@@ -140,6 +199,72 @@ export function SessionPage() {
         }}
       />
     ) : null;
+  const substitutePanel =
+    showSubstitute && detail && tutors.data ? (
+      <OfferPanel<SubstitutionCreated>
+        key={`substitute-${detail.version}`}
+        variant="substitute"
+        tutors={tutors.data.filter((tutor) => tutor.id !== detail.tutor?.id)}
+        timeZone={timeZone}
+        canOverride={canOverride}
+        onSuggest={() => fetchReplacementTutors(sessionId)}
+        onSubmit={(values, override) =>
+          reloadingOnStale(
+            substituteClassSession(
+              sessionId,
+              substitutionBody(values, detail.version, timeZone, override),
+            ),
+          )
+        }
+        onOffered={(created) => {
+          setOffered({
+            tutorName: created.substitution.substitute_tutor.display_name,
+            warnings: created.warnings,
+            substitution: true,
+          });
+          refresh();
+        }}
+      />
+    ) : null;
+  const substitutionSection = substitutions.data ? (
+    <SubstitutionSection
+      items={substitutions.data.items}
+      timeZone={timeZone}
+      canWithdraw={canAssign}
+      onWithdraw={async (item) => {
+        await reloadingOnStale(withdrawSubstitution(sessionId, item.id));
+        setOffered(null);
+        refresh();
+      }}
+    />
+  ) : null;
+  const actions =
+    showCancel && detail ? (
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setCancelling(true)}
+        >
+          {t('scheduling.cancel.action')}
+        </Button>
+        <CancelSessionDialog
+          open={cancelling}
+          onCancel={() => setCancelling(false)}
+          onConfirm={async (reason) => {
+            await reloadingOnStale(
+              cancelClassSession(sessionId, {
+                version: detail.version,
+                reason,
+              }),
+            );
+            setCancelling(false);
+            setOffered(null);
+            refresh();
+          }}
+        />
+      </div>
+    ) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,9 +282,11 @@ export function SessionPage() {
       <SessionDetailView
         state={state}
         timeZone={timeZone}
-        offerPanel={offerPanel}
+        offerPanel={offerPanel ?? substitutePanel}
         offered={offered}
         series={seriesDetail ?? null}
+        actions={actions}
+        substitutions={substitutionSection}
       />
     </div>
   );

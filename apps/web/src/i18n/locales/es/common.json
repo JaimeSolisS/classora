@@ -305,7 +305,9 @@
       "seriesReassignmentDeclined_other": "Rechazada por {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
       "seriesReassignmentExpired_one": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesión)",
       "seriesReassignmentExpired_many": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
-      "seriesReassignmentExpired_other": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)"
+      "seriesReassignmentExpired_other": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
+      "substitutionDeclined": "El suplente {{tutor}} rechazó · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
+      "substitutionExpired": "El suplente {{tutor}} no respondió · {{subject}} · {{when}} · la sigue impartiendo {{original}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -1375,7 +1377,13 @@
       "scheduling_occurrence_skipped_closure": "La clase del {{starts_at}} no se imparte porque el centro está cerrado.",
       "scheduling_session_rescheduled": "Una clase se cambió al {{starts_at}}.",
       "scheduling_series_changed": "Una serie semanal cambia desde el {{from_date}} (clases cambiadas: {{changed}}, canceladas: {{cancelled}}).",
-      "scheduling_series_cancelled": "Una serie semanal se cancela desde el {{from_date}}."
+      "scheduling_series_cancelled": "Una serie semanal se cancela desde el {{from_date}}.",
+      "scheduling_offer_received_substitution": "Suplencia de {{original_tutor_name}}: {{subject_name}}, {{starts_at}}. Responde antes de {{respond_by}}.",
+      "scheduling_offer_declined_substitution": "{{tutor_name}} rechazó suplir a {{original_tutor_name}}: {{subject_name}}, {{starts_at}}. {{original_tutor_name}} sigue impartiéndola.",
+      "scheduling_offer_expired_substitution": "La suplencia de {{original_tutor_name}} ({{subject_name}}, {{starts_at}}) ofrecida a {{tutor_name}} venció sin respuesta. {{original_tutor_name}} sigue impartiéndola.",
+      "scheduling_tutor_substituted": "Tu clase del {{starts_at}} ahora la imparte un suplente.",
+      "scheduling_session_tutor_changed": "Una clase del {{starts_at}} tiene un nuevo tutor.",
+      "scheduling_session_cancelled": "Una clase del {{starts_at}} se canceló."
     }
   },
   "scheduling": {
@@ -1807,6 +1815,47 @@
         "scheduledWith_other": "Programada con excepciones en {{count}} sesiones.",
         "rowDone": "La sesión se programó con una excepción."
       }
+    },
+    "substitution": {
+      "heading": "Buscar suplente",
+      "intro": "El suplente recibe una notificación y responde en Mis ofertas. La sesión sigue con su tutor hasta que el suplente acepte. Todas las reglas se revisan de nuevo para el suplente.",
+      "tutor": "Suplente",
+      "chooseTutor": "Elige un suplente",
+      "reason": "Motivo (obligatorio; el suplente no lo ve)",
+      "counter": "{{length}}/{{max}} caracteres",
+      "submit": "Ofrecer al suplente",
+      "submitting": "Ofreciendo…",
+      "overrideAction": "Hacer una excepción y ofrecer",
+      "overrideDescription": "La suplencia se ofrece a pesar de estas reglas. El motivo se guarda en el registro de auditoría.",
+      "validation": {
+        "reasonRequired": "Indica un motivo.",
+        "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres."
+      },
+      "offeredTo": "Ofrecida a {{tutor}} como suplente. La sesión sigue con su tutor hasta que acepte.",
+      "pendingLabel": "Suplencia pendiente",
+      "historyHeading": "Suplencias",
+      "pendingText": "Suplencia pendiente: {{tutor}}, responde antes de {{when}}",
+      "pendingHelp": "{{tutor}} sigue impartiendo la sesión hasta que el suplente acepte.",
+      "withdraw": "Retirar la suplencia",
+      "withdrawTitle": "¿Retirar la suplencia?",
+      "withdrawBody": "{{tutor}} ya no podrá aceptarla. La sesión no cambia y no se notifica a nadie.",
+      "change": "{{from}} → {{to}}",
+      "reasonText": "Motivo: {{reason}}"
+    },
+    "cancel": {
+      "action": "Cancelar sesión",
+      "title": "Cancelar esta sesión",
+      "description": "Se notifica al tutor y a la familia, y se retiran las ofertas pendientes. No se puede deshacer.",
+      "reason": "Motivo (obligatorio)",
+      "keep": "Conservar la sesión",
+      "submit": "Cancelar la sesión",
+      "submitting": "Cancelando…",
+      "validation": {
+        "reasonRequired": "Indica un motivo.",
+        "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres."
+      },
+      "banner": "Cancelada",
+      "bannerWhen": "Cancelada el {{when}}."
     }
   },
   "courses": {
@@ -2017,6 +2066,9 @@
       "more_other": "y {{count}} más",
       "acceptTitle": "¿Aceptar esta serie semanal?",
       "acceptDescription": "Impartirás la {{offer}}. Todas sus sesiones actuales y futuras desde esa fecha quedan confirmadas en cuanto la aceptas."
+    },
+    "substitution": {
+      "for": "Suplencia de {{tutor}}"
     }
   }
 }

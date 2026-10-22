@@ -140,3 +140,78 @@ describe('the series and session edit notifications (#54 D3)', () => {
     }
   });
 });
+
+// #55 F4: the substitution and cancellation notifications, with the start in
+// the center zone (a Tijuana DST date: 2031-03-10 is the Monday after the
+// switch, so 17:00Z is 10:00 there and 11:00 in Mexico City), and the
+// substitution variants of the offer types (never a reason).
+
+describe('substitutions and cancellations (#55 F4)', () => {
+  const session = {
+    class_session_id: '00000000-0000-4000-8000-000000000055',
+    starts_at: '2031-03-10T17:00:00Z',
+  };
+
+  it('names the start in the center zone, in both languages', () => {
+    expect(edited('en', 'scheduling.session_cancelled', session)).toBe(
+      'A class on Mar 10, 2031, 11:00 AM is cancelled.',
+    );
+    expect(
+      edited('es', 'scheduling.session_cancelled', session, 'America/Tijuana'),
+    ).toBe('Una clase del 10 mar 2031, 10:00 se canceló.');
+    expect(
+      edited('en', 'scheduling.tutor_substituted', session, 'America/Tijuana'),
+    ).toBe(
+      'Your class on Mar 10, 2031, 10:00 AM is now taught by a substitute.',
+    );
+    expect(edited('es', 'scheduling.session_tutor_changed', session)).toBe(
+      'Una clase del 10 mar 2031, 11:00 tiene un nuevo tutor.',
+    );
+    for (const type of [
+      'scheduling.session_cancelled',
+      'scheduling.tutor_substituted',
+      'scheduling.session_tutor_changed',
+    ]) {
+      expect(edited('en', type, session)).not.toContain(
+        session.class_session_id,
+      );
+      expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+    }
+  });
+
+  it('uses the substitution variant of the offer types', () => {
+    const offer = {
+      offer_id: 'o-1',
+      subject_name: 'Álgebra',
+      starts_at: session.starts_at,
+      respond_by: '2031-03-08T17:00:00Z',
+      kind: 'substitution',
+      original_tutor_name: 'Carmen Ruiz',
+    };
+    expect(edited('en', 'scheduling.offer_received', offer)).toBe(
+      'Substitute for Carmen Ruiz: Álgebra, Mar 10, 2031, 11:00 AM. Answer by Mar 8, 2031, 11:00 AM.',
+    );
+    const closed = {
+      offer_id: 'o-1',
+      class_session_id: session.class_session_id,
+      subject_name: 'Álgebra',
+      starts_at: session.starts_at,
+      tutor_name: 'Diego Torres',
+      kind: 'substitution',
+      original_tutor_name: 'Carmen Ruiz',
+    };
+    expect(edited('es', 'scheduling.offer_declined', closed)).toBe(
+      'Diego Torres rechazó suplir a Carmen Ruiz: Álgebra, 10 mar 2031, 11:00. Carmen Ruiz sigue impartiéndola.',
+    );
+    expect(edited('en', 'scheduling.offer_expired', closed)).toContain(
+      'Carmen Ruiz still teaches it.',
+    );
+    // An assignment offer keeps its message.
+    expect(
+      edited('en', 'scheduling.offer_received', {
+        ...offer,
+        kind: 'assignment',
+      }),
+    ).toContain('You have a new session offer');
+  });
+});

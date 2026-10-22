@@ -19,6 +19,11 @@ import type {
 // An occurrence of a series (#233 G2) says so and shows the series'
 // assignment: none, pending (the tutor and the deadline) or accepted (the
 // tutor and the date it covers from).
+//
+// #55 H1: a cancelled session shows a "Cancelled" banner (when and why) and
+// no actions; a pending substitution shows in the summary; the page passes
+// the "Cancel session" action, the substitute panel (in `offerPanel`), the
+// substitutions section and a notice for a refused write.
 
 export type SessionState =
   | { status: 'loading' }
@@ -39,7 +44,14 @@ export interface SessionDetailViewProps {
     tutorName: string;
     warnings: readonly SchedulingWarning[];
     series?: boolean;
+    substitution?: boolean;
   } | null;
+  /** "Cancel session" (#55), or nothing. */
+  actions?: ReactNode;
+  /** The substitutions section (#55), or nothing. */
+  substitutions?: ReactNode;
+  /** A refused write's message (#55 H1: the page reloads the session). */
+  notice?: string | null;
   /** The session's series, once read (#233 G2). */
   series?: ClassSeriesDetail | null;
 }
@@ -58,6 +70,9 @@ export function SessionDetailView({
   offerPanel,
   offered,
   series,
+  actions,
+  substitutions,
+  notice,
 }: SessionDetailViewProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -74,6 +89,8 @@ export function SessionDetailView({
   }
   const { session, offers } = state;
   const pending = session.pending_offer;
+  const pendingSubstitution = session.pending_substitution;
+  const cancellation = session.cancellation;
 
   function seriesAssignmentText(detail: ClassSeriesDetail): string {
     const assignment = detail.assignment;
@@ -98,19 +115,48 @@ export function SessionDetailView({
 
   return (
     <div className="flex w-full max-w-3xl min-w-0 flex-col gap-6">
+      {cancellation ? (
+        <section
+          aria-labelledby={`${id}-cancelled`}
+          className="flex flex-col gap-1 rounded-md border-2 border-foreground p-3"
+        >
+          <h2 id={`${id}-cancelled`} className="font-semibold">
+            {t('scheduling.cancel.banner')}
+          </h2>
+          <p className="text-sm">
+            {t('scheduling.cancel.bannerWhen', {
+              when: when(cancellation.cancelled_at),
+            })}
+          </p>
+          <p className="text-sm break-words">
+            {t('scheduling.substitution.reasonText', {
+              reason: cancellation.reason,
+            })}
+          </p>
+        </section>
+      ) : null}
+      {notice ? (
+        <p role="alert" className="text-sm font-medium">
+          {notice}
+        </p>
+      ) : null}
       {offered ? (
         <div
           role="status"
           className="flex flex-col gap-1 rounded-md border border-border p-3"
         >
           <p className="font-medium">
-            {offered.series
-              ? t('scheduling.session.seriesOfferedTo', {
+            {offered.substitution
+              ? t('scheduling.substitution.offeredTo', {
                   tutor: offered.tutorName,
                 })
-              : t('scheduling.session.offeredTo', {
-                  tutor: offered.tutorName,
-                })}
+              : offered.series
+                ? t('scheduling.session.seriesOfferedTo', {
+                    tutor: offered.tutorName,
+                  })
+                : t('scheduling.session.offeredTo', {
+                    tutor: offered.tutorName,
+                  })}
           </p>
           {offered.warnings.length > 0 ? (
             <>
@@ -184,6 +230,19 @@ export function SessionDetailView({
               </dd>
             </>
           ) : null}
+          {pendingSubstitution ? (
+            <>
+              <dt className="font-medium">
+                {t('scheduling.substitution.pendingLabel')}
+              </dt>
+              <dd className="break-words">
+                {t('scheduling.session.pendingOfferText', {
+                  tutor: pendingSubstitution.substitute.display_name,
+                  when: when(pendingSubstitution.respond_by),
+                })}
+              </dd>
+            </>
+          ) : null}
           {session.series_id ? (
             <>
               <dt className="font-medium">{t('scheduling.session.series')}</dt>
@@ -200,7 +259,9 @@ export function SessionDetailView({
           ) : null}
         </dl>
       </section>
-      {offerPanel}
+      {cancellation ? null : actions}
+      {cancellation ? null : offerPanel}
+      {substitutions}
       <section
         aria-labelledby={`${id}-history`}
         className="flex flex-col gap-3"

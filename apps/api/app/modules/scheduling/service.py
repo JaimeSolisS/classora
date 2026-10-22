@@ -99,6 +99,17 @@ lock order, the "started" rule and the split algorithm),
 the three edit notification types (:func:`register_edit_notifications`,
 :mod:`~app.modules.scheduling.notifications`).
 
+Substitutions and cancellations (#55): :func:`substitute_class_session`,
+:func:`withdraw_substitution` and :func:`list_session_substitutions`
+(:mod:`~app.modules.scheduling.substitution_flow`; the rules, invariants
+and lock order in :mod:`~app.modules.scheduling.substitutions`; the
+substitute answers through :func:`answer_offer`),
+:func:`withdraw_pending_substitutions` (the seam of writers that move a
+``confirmed`` row), :func:`cancel_class_session` (one session or
+occurrence, :mod:`~app.modules.scheduling.cancellation`; #62 reuses it)
+with its composition-root seam :func:`register_cancellation_step`, and the
+three notification types (:func:`register_substitution_notifications`).
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -117,6 +128,15 @@ from app.modules.scheduling.calendar_read import (
 )
 from app.modules.scheduling.calendar_read import (
     list_tutor_options as list_tutor_options,
+)
+from app.modules.scheduling.cancellation import (
+    CancellationInitiator as CancellationInitiator,
+)
+from app.modules.scheduling.cancellation import (
+    cancel_class_session as cancel_class_session,
+)
+from app.modules.scheduling.cancellation import (
+    register_cancellation_step as register_cancellation_step,
 )
 from app.modules.scheduling.capacity import (
     GROUP_CAPACITY_EXCEEDED as GROUP_CAPACITY_EXCEEDED,
@@ -222,6 +242,9 @@ from app.modules.scheduling.offer_flow import (
     withdraw_pending_offers as withdraw_pending_offers,
 )
 from app.modules.scheduling.offer_flow import (
+    withdraw_pending_substitutions as withdraw_pending_substitutions,
+)
+from app.modules.scheduling.offer_flow import (
     withdraw_series_offer as withdraw_series_offer,
 )
 from app.modules.scheduling.offer_records import (
@@ -312,6 +335,21 @@ from app.modules.scheduling.states import SessionKind as SessionKind
 from app.modules.scheduling.states import SessionState as SessionState
 from app.modules.scheduling.states import can_transition as can_transition
 from app.modules.scheduling.states import is_family_visible as is_family_visible
+from app.modules.scheduling.substitution_flow import (
+    list_session_substitutions as list_session_substitutions,
+)
+from app.modules.scheduling.substitution_flow import (
+    substitute_class_session as substitute_class_session,
+)
+from app.modules.scheduling.substitution_flow import (
+    withdraw_substitution as withdraw_substitution,
+)
+from app.modules.scheduling.substitution_records import (
+    register_substitution_notifications as register_substitution_notifications,
+)
+from app.modules.scheduling.substitutions import (
+    substitution_refusal as substitution_refusal,
+)
 from app.modules.scheduling.suggestions import SlotContext as SlotContext
 from app.modules.scheduling.suggestions import (
     candidate_slots as candidate_slots,

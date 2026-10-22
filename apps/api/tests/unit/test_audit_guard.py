@@ -60,6 +60,7 @@ from app.modules.scheduling.models import (
     ClassSeriesParticipant,
     ClassSession,
     ClassSessionParticipant,
+    ClassSessionSubstitution,
 )
 from app.modules.staff.models import (
     TutorAvailabilityException,
@@ -107,6 +108,7 @@ def test_the_guard_scans_the_real_audited_models():
         ClassSeriesParticipant,
         ClassSession,
         ClassSessionParticipant,
+        ClassSessionSubstitution,
         Classroom,
         ClassroomAvailabilityWindow,
         Closure,

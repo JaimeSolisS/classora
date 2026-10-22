@@ -164,6 +164,7 @@ from app.modules.scheduling.offer_flow import (
     lock_series,
     lock_sessions,
     withdraw_pending_offers,
+    withdraw_pending_substitutions,
     withdraw_series_offer,
 )
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
@@ -440,9 +441,11 @@ async def _cancel_rows(
     affected = [
         Affected(row.id, row.state, row.tutor_user_id, "cancelled") for row in rows
     ]
+    # #55 G2/G3: the session-scope offers of either kind (an offered row's
+    # assignment, a confirmed row's pending substitution).
     await withdraw_pending_offers(
         session,
-        [row.id for row in rows if row.state == SessionState.OFFERED],
+        [row.id for row in rows],
         by_user_id=actor_id,
     )
     for row in rows:
@@ -872,10 +875,19 @@ async def _apply_moves(
         and m.row.state
         in (SessionState.UNASSIGNED, SessionState.OFFERED, SessionState.CONFIRMED)
     ]
+    # #55 G3: skipped rows lose their session-scope offers of either kind;
+    # a confirmed row moved to a new slot or room loses its pending
+    # substitution (its snapshot no longer matches).
     await withdraw_pending_offers(
+        session, [m.row.id for m in to_skip], by_user_id=actor_id
+    )
+    await withdraw_pending_substitutions(
         session,
-        [m.row.id for m in to_skip if m.row.state == SessionState.OFFERED],
-        by_user_id=actor_id,
+        [
+            m.row.id
+            for m in moves
+            if not m.closed and m.slot_changed and m.row.state == SessionState.CONFIRMED
+        ],
     )
     for move in to_skip:
         # Skip first, at the old times: the row then holds nothing (D2).

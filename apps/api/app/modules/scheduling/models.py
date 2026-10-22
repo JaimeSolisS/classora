@@ -93,6 +93,14 @@ database agree (the integration drift test reads them back). See
 The rules (the "``offered`` iff exactly one pending offer" invariant and the
 lock order) are in :mod:`~app.modules.scheduling.offers`.
 
+- ``assignment_offers.kind`` (#55 A1): ``assignment`` (the default) or
+  ``substitution``; a substitution offer is always session scope.
+- ``class_session_substitutions`` (#55 A2): one row per ``substitution``
+  offer (``UNIQUE offer_id``): the original tutor and the substitute (never
+  the same), the trimmed reason, the requester and the slot snapshot.
+  ``Audited``; append-only. The rules are in
+  :mod:`~app.modules.scheduling.substitutions`.
+
 Groups and cohorts add their own columns and tables (#56, #65).
 """
 
@@ -465,6 +473,15 @@ OFFER_STATUSES: Final = (
 DECLINE_NOTE_MAX_LENGTH: Final = 500
 OFFER_SESSION_UNIQUE: Final = "uq_assignment_offer_sessions_offer_session"
 
+OFFER_KIND_ASSIGNMENT: Final = "assignment"
+OFFER_KIND_SUBSTITUTION: Final = "substitution"
+OFFER_KINDS: Final = (OFFER_KIND_ASSIGNMENT, OFFER_KIND_SUBSTITUTION)
+"""The offer kinds (#55 A1): an ``assignment`` gives sessions a tutor
+(#52, #233); a ``substitution`` offers one ``confirmed`` session to another
+tutor while it stays with its original tutor until accepted (ADR-0005 D3
+amendment)."""
+SUBSTITUTION_REASON_MAX_LENGTH: Final = 1000
+
 
 class AssignmentOffer(Audited, VersionedMixin, Model):
     """An offer of sessions to a tutor (ADR-0005 D3; #52 A1). See the module
@@ -473,6 +490,11 @@ class AssignmentOffer(Audited, VersionedMixin, Model):
     __tablename__ = "assignment_offers"
     __table_args__ = (
         CheckConstraint(f"scope IN ({_quoted(OFFER_SCOPES)})", name="scope_valid"),
+        CheckConstraint(f"kind IN ({_quoted(OFFER_KINDS)})", name="kind_valid"),
+        CheckConstraint(
+            "kind = 'assignment' OR scope = 'session'",
+            name="substitution_session_scope",
+        ),
         CheckConstraint(f"status IN ({_quoted(OFFER_STATUSES)})", name="status_valid"),
         CheckConstraint("respond_by > offered_at", name="respond_by_after_offered"),
         CheckConstraint(
@@ -506,6 +528,11 @@ class AssignmentOffer(Audited, VersionedMixin, Model):
     )
 
     scope: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(
+        String(20),
+        default=OFFER_KIND_ASSIGNMENT,
+        server_default=text("'assignment'"),
+    )
     class_series_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_series.id", ondelete="RESTRICT"),
@@ -550,3 +577,49 @@ class AssignmentOfferSession(Audited, Model):
         ForeignKey("class_sessions.id", ondelete="RESTRICT"),
         index=True,
     )
+
+
+# --- Substitutions (#55 A2) --------------------------------------------------------
+
+
+class ClassSessionSubstitution(Audited, Model):
+    """One substitution of a ``confirmed`` session's tutor (#55 A2; spec §2
+    "Substitution"): the ``substitution`` offer it was made with (its status
+    is the offer's), the original tutor and the substitute, the reason, who
+    asked, and the session's times when it was offered (the slot snapshot
+    the accept re-checks). Not versioned and **append-only**: no code path
+    updates or deletes a row."""
+
+    __tablename__ = "class_session_substitutions"
+    __table_args__ = (
+        CheckConstraint(
+            "original_tutor_user_id <> substitute_tutor_user_id",
+            name="substitute_differs",
+        ),
+        CheckConstraint(
+            "reason = btrim(reason) AND reason <> ''", name="reason_trimmed"
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    offer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assignment_offers.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    original_tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    substitute_tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    reason: Mapped[str] = mapped_column(String(SUBSTITUTION_REASON_MAX_LENGTH))
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    slot_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    slot_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

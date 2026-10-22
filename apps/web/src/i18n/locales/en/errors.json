@@ -119,5 +119,10 @@
   "until_before_start": "The end date can't be before the start date.",
   "no_occurrences": "This rule gives no session. Check the days and the end.",
   "starts_on_in_past": "The series can't start before today.",
-  "time_format": "Enter the time as hours and minutes."
+  "time_format": "Enter the time as hours and minutes.",
+  "class_session_not_substitutable": "This session can't be given to a substitute now. Reload the page.",
+  "class_session_not_cancellable": "This session can't be cancelled: it has started, or it is completed, cancelled or skipped. Reload the page.",
+  "substitution_no_longer_valid": "This session changed after the substitution was offered, so it can't be taken.",
+  "substitute_busy": "You already have a class at that time, so you can't take this one. You can still decline it.",
+  "substitute_is_current_tutor": "Choose a tutor other than the session's tutor."
 }

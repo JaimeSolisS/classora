@@ -63,6 +63,16 @@
   /api/v1/assignment-offers/{offer_id}/accept|decline`` are
   ``authenticated()`` with a record policy: only the offered tutor's own
   offers; anyone else gets an empty list or ``404``, never ``403``.
+- Substitutions (#55; :mod:`~app.modules.scheduling.substitution_flow`):
+  ``POST /api/v1/class-sessions/{class_session_id}/substitutions`` and
+  ``…/substitutions/{substitution_id}/withdraw``
+  (``require("schedule.assign")``; an ``override`` needs
+  ``schedule.override``), ``GET …/substitutions``
+  (``require("schedule.view")``). The substitute answers through the
+  assignment-offer routes.
+- ``POST /api/v1/class-sessions/{class_session_id}/cancel`` (#55 C1):
+  ``require("schedule.manage")`` (Owners and Administrators); cancels one
+  session or occurrence (:mod:`~app.modules.scheduling.cancellation`).
 """
 
 import uuid
@@ -100,17 +110,22 @@ from app.modules.scheduling.schemas import (
     ClassSeriesEdited,
     ClassSeriesOfferCreate,
     ClassSessionCalendar,
+    ClassSessionCancel,
     ClassSessionCreate,
     ClassSessionCreated,
     ClassSessionDetail,
     ClassSessionOffers,
     ClassSessionRangeQuery,
+    ClassSessionSubstitutions,
     ClassSessionUpdate,
     ClassSessionUpdated,
     ConflictOverrideCreate,
     OfferStatusFilter,
     SlotSuggestionRequest,
     SlotSuggestions,
+    SubstitutionCreate,
+    SubstitutionCreated,
+    SubstitutionItem,
     TutorOptions,
     TutorSuggestionList,
     TutorSuggestionQuery,
@@ -808,3 +823,138 @@ async def decline_assignment_offer(
         accept=False,
         note=None if body is None else body.note,
     )
+
+
+@router.post(
+    "/{class_session_id}/substitutions",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): no schedule.assign, or an"
+            " `override` without schedule.override. The privacy notice must be"
+            " accepted first (privacy_notice_required); a failed Origin or"
+            " X-CSRF-Token check (csrf_failed)."
+        ),
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); it is not"
+            " confirmed (class_session_not_substitutable, details.reason = state,"
+            " details.state), has begun (details.reason = started) or already has"
+            " a pending substitution (details.reason = substitution_pending,"
+            " details.substitution_id); or the substitute breaks scheduling"
+            " rules (scheduling_conflict, every conflict listed). Nothing is"
+            " changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, a naive `respond_by`, the reason (reason_required,"
+            " reason_too_long), the `override` (reason_required,"
+            " reason_too_long, codes_required, duplicate_code,"
+            " code_not_overridable, code_unknown); the substitute"
+            " (tutor_unknown, tutor_inactive, substitute_is_current_tutor) or"
+            " `respond_by` (respond_by_invalid), in one response."
+        ),
+    },
+)
+async def substitute_class_session(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    class_session_id: uuid.UUID,
+    body: SubstitutionCreate,
+    uow: UnitOfWorkDep,
+) -> SubstitutionCreated:
+    """Offer one confirmed session that hasn't begun to a substitute tutor,
+    with a reason. The session stays confirmed with its tutor until the
+    substitute accepts in My offers; a decline or an expiry leaves it as it
+    is and raises an inbox item. Checked for the substitute: overlap (hard),
+    availability, qualification, center closure (one-off sessions only),
+    operating hours and the room's availability (soft; an `override` with
+    schedule.override allows them). The substitute is notified, without the
+    reason. `warnings` lists the substitute's workload warnings."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
+    return await service.substitute_class_session(
+        uow.session, class_session_id, body, actor_id=principal.user_id
+    )
+
+
+@router.get(
+    "/{class_session_id}/substitutions",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class session (not_found)."),
+    },
+)
+async def list_class_session_substitutions(
+    principal: Annotated[Principal, require(SCHEDULE_VIEW)],
+    class_session_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> ClassSessionSubstitutions:
+    """The session's substitutions, newest first, with their status, reason
+    and answer."""
+    return await service.list_session_substitutions(uow.session, class_session_id)
+
+
+@router.post(
+    "/{class_session_id}/substitutions/{substitution_id}/withdraw",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc(
+            "No such class session, or no such substitution of it (not_found)."
+        ),
+        409: problem_response_doc(
+            "The substitution was already answered, expired or withdrawn"
+            " (offer_not_pending, details.status)."
+        ),
+    },
+)
+async def withdraw_class_session_substitution(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    class_session_id: uuid.UUID,
+    substitution_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> SubstitutionItem:
+    """Withdraw a pending substitution: the session is unchanged and nobody
+    is notified."""
+    return await service.withdraw_substitution(
+        uow.session, class_session_id, substitution_id
+    )
+
+
+@router.post(
+    "/{class_session_id}/cancel",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); or it is"
+            " completed, cancelled or skipped for a closure"
+            " (class_session_not_cancellable, details.reason = state,"
+            " details.state) or has begun (details.reason = started). Nothing is"
+            " changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, or the reason (reason_required, reason_too_long)."
+        ),
+    },
+)
+async def cancel_class_session(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    class_session_id: uuid.UUID,
+    body: ClassSessionCancel,
+    uow: UnitOfWorkDep,
+) -> ClassSessionDetail:
+    """Cancel one session or one occurrence of a series that hasn't begun,
+    with a reason. Its pending offers and substitution are withdrawn and its
+    open inbox items closed. The tutor (offered or confirmed), a pending
+    substitute and the family (confirmed) are notified, without the reason.
+    The series itself is unchanged and never re-creates the occurrence."""
+    await service.cancel_class_session(
+        uow.session,
+        class_session_id,
+        expected_version=body.version,
+        reason=body.reason,
+        by_user_id=principal.user_id,
+    )
+    return await service.get_class_session(uow.session, class_session_id)

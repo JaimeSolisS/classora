@@ -18,6 +18,9 @@ commits.
   subject_name, starts_at, tutor_name}``. The decline note is never a param
   (the #44 rule); staff read it in the offer history and the inbox.
 
+A **substitution** offer (#55 F1, D2) adds ``kind = "substitution"`` and
+``original_tutor_name`` to the same three types (never the reason).
+
 A **series** offer (#233 E1) adds ``class_series_id``, ``from_date`` (the
 local date) and ``occurrence_count`` (the covered sessions at the time of
 the event) to the same three types; a session offer's params don't carry
@@ -47,6 +50,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.administration import service as administration
 from app.modules.identity import service as identity
 from app.modules.scheduling.models import (
+    OFFER_KIND_ASSIGNMENT,
+    OFFER_KIND_SUBSTITUTION,
     OFFER_PENDING,
     OFFER_SCOPE_SERIES,
     OFFER_SCOPE_SESSION,
@@ -67,14 +72,22 @@ SERIES_SCOPE: Final = OFFER_SCOPE_SERIES
 SERIES_PARAMS: Final = ("class_series_id", "from_date", "occurrence_count")
 """The series keys of the offer params (#233 E1); absent for a session
 offer."""
+SUBSTITUTION_PARAMS: Final = ("kind", "original_tutor_name")
+"""The substitution keys of the offer params (#55 F1, F4): ``kind =
+"substitution"`` and the original tutor's name; absent for an assignment
+offer. The substitution's reason is never a param."""
+OPTIONAL_PARAMS: Final = SERIES_PARAMS + SUBSTITUTION_PARAMS
 
 
 class _OfferParams(BaseModel):
-    """The series keys, left out of the stored params when unset."""
+    """The series and substitution keys, left out of the stored params when
+    unset."""
 
     class_series_id: str | None = None
     from_date: str | None = None
     occurrence_count: int | None = None
+    kind: str | None = None
+    original_tutor_name: str | None = None
 
     @model_serializer(mode="wrap")
     def _without_unset_series_keys(
@@ -84,7 +97,7 @@ class _OfferParams(BaseModel):
         return {
             key: value
             for key, value in data.items()
-            if key not in SERIES_PARAMS or value is not None
+            if key not in OPTIONAL_PARAMS or value is not None
         }
 
 
@@ -121,6 +134,16 @@ def series_params(
     }
 
 
+def substitution_params(
+    offer: AssignmentOffer, original_tutor_name: str | None
+) -> dict[str, str]:
+    """The substitution keys of ``offer``'s params (empty for an
+    assignment offer)."""
+    if offer.kind != OFFER_KIND_SUBSTITUTION or original_tutor_name is None:
+        return {}
+    return {"kind": OFFER_KIND_SUBSTITUTION, "original_tutor_name": original_tutor_name}
+
+
 def register_offer_notifications() -> None:
     """Register the three offer notification types (again: a no-op)."""
     administration.register_notification_type(OFFER_RECEIVED, OfferReceivedParams)
@@ -143,13 +166,16 @@ async def insert_offer(
     class_session_ids: Iterable[uuid.UUID],
     class_series_id: uuid.UUID | None = None,
     from_date: date | None = None,
+    kind: str = OFFER_KIND_ASSIGNMENT,
 ) -> AssignmentOffer:
     """A new ``pending`` offer and its covered-session rows, flushed
     (audited ``create`` events): session scope, or series scope with
-    ``class_series_id`` and ``from_date`` (#233)."""
+    ``class_series_id`` and ``from_date`` (#233); ``kind`` ``substitution``
+    for a substitution (#55, session scope only)."""
     offer = AssignmentOffer(
         id=uuid.uuid7(),
         scope=SESSION_SCOPE if class_series_id is None else SERIES_SCOPE,
+        kind=kind,
         class_series_id=class_series_id,
         from_date=from_date,
         tutor_user_id=tutor_user_id,
@@ -175,8 +201,10 @@ async def notify_offer_received(
     subject_name: str,
     starts_at: datetime,
     occurrence_count: int = 1,
+    original_tutor_name: str | None = None,
 ) -> None:
-    """F1: tell the offered tutor (in the caller's transaction)."""
+    """F1: tell the offered tutor (in the caller's transaction); a
+    substitution (#55 F1) adds ``kind`` and ``original_tutor_name``."""
     await administration.create_notification(
         session,
         recipient_user_id=offer.tutor_user_id,
@@ -188,6 +216,7 @@ async def notify_offer_received(
                 "starts_at": rfc3339(starts_at),
                 "respond_by": rfc3339(offer.respond_by),
                 **series_params(offer, occurrence_count),
+                **substitution_params(offer, original_tutor_name),
             }
         ),
     )
@@ -203,9 +232,11 @@ async def notify_offer_closed(
     starts_at: datetime,
     tutor_name: str,
     occurrence_count: int = 1,
+    original_tutor_name: str | None = None,
 ) -> None:
     """F2: tell every active holder of ``schedule.assign`` that the offer was
-    declined or expired."""
+    declined or expired; a substitution (#55 D2) adds ``kind`` and
+    ``original_tutor_name``."""
     params = OfferClosedParams.model_validate(
         {
             "offer_id": str(offer.id),
@@ -216,6 +247,7 @@ async def notify_offer_closed(
             "starts_at": rfc3339(starts_at),
             "tutor_name": tutor_name,
             **series_params(offer, occurrence_count),
+            **substitution_params(offer, original_tutor_name),
         }
     )
     for user_id in await identity.active_user_ids_with_permission(

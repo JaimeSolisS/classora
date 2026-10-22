@@ -329,6 +329,21 @@ class PendingOffer(BaseModel):
     respond_by: datetime
 
 
+class PendingSubstitution(BaseModel):
+    """The pending substitution of a ``confirmed`` session (#55 E3)."""
+
+    id: uuid.UUID
+    substitute: SessionTutor
+    respond_by: datetime
+
+
+class SessionCancellation(BaseModel):
+    """When and why a session was cancelled (#55 E3)."""
+
+    cancelled_at: datetime
+    reason: str
+
+
 class ClassSessionDetail(BaseModel):
     """One class session (``GET /api/v1/class-sessions/{id}``)."""
 
@@ -370,6 +385,15 @@ class ClassSessionDetail(BaseModel):
     )
     pending_offer: PendingOffer | None = Field(
         description=("The pending offer of an `offered` session (#52); null otherwise.")
+    )
+    pending_substitution: PendingSubstitution | None = Field(
+        description=(
+            "The pending substitution of a `confirmed` session (#55): the"
+            " session stays with its tutor until the substitute accepts."
+        ),
+    )
+    cancellation: SessionCancellation | None = Field(
+        description="When and why a `cancelled` session was cancelled; null otherwise.",
     )
 
 
@@ -658,6 +682,7 @@ class TutorSuggestionList(BaseModel):
 # --- Assignment offers (#52 C, D, G) ----------------------------------------------
 
 type OfferScopeCode = Literal["session", "series"]
+type OfferKindCode = Literal["assignment", "substitution"]
 type OfferStatusCode = Literal[
     "pending", "accepted", "declined", "expired", "withdrawn"
 ]
@@ -776,11 +801,27 @@ class OfferSeries(BaseModel):
     last_occurrence_on: date | None
 
 
+class OfferSubstitution(BaseModel):
+    """What a substitute sees of a substitution (#55 E4): the original tutor,
+    never the reason."""
+
+    original_tutor: OfferPerson
+
+
 class AssignmentOfferItem(BaseModel):
     """One assignment offer (#52 G1; a series offer, #233 F1)."""
 
     id: uuid.UUID
     scope: OfferScopeCode
+    kind: OfferKindCode = Field(
+        description=(
+            "`assignment` gives the sessions a tutor; `substitution` (#55) hands"
+            " one confirmed session over from its original tutor."
+        )
+    )
+    substitution: OfferSubstitution | None = Field(
+        description="For a substitution offer, whom it replaces; null otherwise."
+    )
     status: OfferStatusCode
     tutor: OfferPerson
     offered_at: datetime
@@ -1237,3 +1278,103 @@ class ConflictOverrideCreate(BaseModel):
 
     version: int = Field(description="The session's version, as read.")
     override: SessionOverride
+
+
+# --- Substitutions and cancellations (#55) ---------------------------------------
+
+
+class SubstitutionCreate(BaseModel):
+    """Offer one ``confirmed`` session to a substitute tutor (``POST
+    /api/v1/class-sessions/{id}/substitutions``, #55 B2). ``reason`` is
+    trimmed, 1-1000 characters (``reason_required`` /
+    ``reason_too_long``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    substitute_tutor_user_id: uuid.UUID
+    version: int = Field(description="The session's version, as last read.")
+    reason: str = Field(
+        description=(
+            "Why the tutor is replaced, for the staff (never shown to the"
+            " substitute): 1-1000 characters, trimmed."
+        )
+    )
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "An earlier deadline for the substitute's answer, after now and no"
+            " later than the default; truncated to whole minutes."
+        ),
+    )
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts with a reason (needs"
+            " schedule.override)."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _missing_reason(cls, data: Any) -> Any:
+        # A missing reason is reason_required, not pydantic's "missing".
+        if isinstance(data, dict):
+            return {"reason": None} | data
+        return data
+
+    _reason = field_validator("reason", mode="before")(_check_cancel_reason)
+
+
+class SubstitutionItem(BaseModel):
+    """One substitution of a session's tutor (#55 E1); ``status`` is its
+    offer's."""
+
+    id: uuid.UUID
+    class_session_id: uuid.UUID
+    status: OfferStatusCode
+    offer_id: uuid.UUID
+    original_tutor: OfferPerson
+    substitute_tutor: OfferPerson
+    reason: str
+    requested_by: OfferPerson
+    requested_at: datetime
+    respond_by: datetime
+    responded_at: datetime | None
+    decline_note: str | None
+
+
+class SubstitutionCreated(BaseModel):
+    """The new substitution and the substitute's workload warnings."""
+
+    substitution: SubstitutionItem
+    warnings: list[SchedulingWarning] = Field(
+        description=(
+            "The substitute's workload warnings for the session. They never block."
+        )
+    )
+
+
+class ClassSessionSubstitutions(BaseModel):
+    """A session's substitutions, newest first (#55 E2)."""
+
+    items: list[SubstitutionItem]
+
+
+class ClassSessionCancel(BaseModel):
+    """Cancel one session or occurrence (``POST
+    /api/v1/class-sessions/{id}/cancel``, #55 C1). ``reason`` is trimmed,
+    1-1000 characters (``reason_required`` / ``reason_too_long``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(description="The session's version, as last read.")
+    reason: str = Field(description="Why: 1-1000 characters, trimmed.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _missing_reason(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {"reason": None} | data
+        return data
+
+    _reason = field_validator("reason", mode="before")(_check_cancel_reason)

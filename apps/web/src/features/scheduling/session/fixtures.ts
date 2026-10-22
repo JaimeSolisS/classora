@@ -5,6 +5,8 @@ import type {
   AssignmentOfferItem,
   ClassSeriesDetail,
   ClassSessionDetail,
+  SubstitutionCreated,
+  SubstitutionItem,
 } from './api';
 
 // The staff session page's sample data (#52 H4): an unassigned session
@@ -39,6 +41,8 @@ export const OFFERED_SESSION: ClassSessionDetail = {
 export const DECLINED: AssignmentOfferItem = {
   id: '00000000-0000-4000-8000-0000000006f1',
   scope: 'session',
+  kind: 'assignment',
+  substitution: null,
   status: 'declined',
   tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
   offered_at: '2026-10-21T12:00:00Z',
@@ -183,3 +187,63 @@ export const SERIES_CONFLICTS: SchedulingConflict[] = [
     },
   },
 ];
+
+// Substitutions and cancellations (#55 H4): a confirmed session, a pending
+// substitution and its history, the 201 of a new one, and a cancelled
+// session.
+
+export const CONFIRMED_SESSION: ClassSessionDetail = {
+  ...DETAIL,
+  state: 'confirmed',
+  version: 5,
+  pending_offer: null,
+};
+
+export const PENDING_SUBSTITUTION: SubstitutionItem = {
+  id: '00000000-0000-4000-8000-0000000007a1',
+  class_session_id: CREATED.id,
+  status: 'pending',
+  offer_id: '00000000-0000-4000-8000-0000000007b1',
+  original_tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
+  substitute_tutor: { id: TUTORS[1]!.id, display_name: 'Diego Torres' },
+  reason: 'Carmen está enferma.',
+  requested_by: OWNER,
+  requested_at: '2026-10-22T09:00:00Z',
+  respond_by: '2026-10-24T09:00:00Z',
+  responded_at: null,
+  decline_note: null,
+};
+
+export const DECLINED_SUBSTITUTION: SubstitutionItem = {
+  ...PENDING_SUBSTITUTION,
+  id: '00000000-0000-4000-8000-0000000007a2',
+  offer_id: '00000000-0000-4000-8000-0000000007b2',
+  status: 'declined',
+  requested_at: '2026-10-21T09:00:00Z',
+  responded_at: '2026-10-21T11:00:00Z',
+  decline_note: 'No puedo ese día.',
+};
+
+export const SUBSTITUTED_SESSION: ClassSessionDetail = {
+  ...CONFIRMED_SESSION,
+  pending_substitution: {
+    id: PENDING_SUBSTITUTION.id,
+    substitute: PENDING_SUBSTITUTION.substitute_tutor,
+    respond_by: PENDING_SUBSTITUTION.respond_by,
+  },
+};
+
+export const NEW_SUBSTITUTION: SubstitutionCreated = {
+  substitution: PENDING_SUBSTITUTION,
+  warnings: WARNINGS,
+};
+
+export const CANCELLED_SESSION: ClassSessionDetail = {
+  ...CONFIRMED_SESSION,
+  state: 'cancelled',
+  version: 6,
+  cancellation: {
+    cancelled_at: '2026-10-22T10:00:00Z',
+    reason: 'Cierre por mantenimiento.',
+  },
+};

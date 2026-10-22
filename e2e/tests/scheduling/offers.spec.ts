@@ -15,7 +15,7 @@ import {
 } from '../support/auth';
 import { common, fill, signedInAs } from '../support/catalog';
 import { createStudentViaApi } from '../support/students';
-import { createSubjectViaApi } from '../support/tutors';
+import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 
 // Assignment offers (#52 I6). The demo Owner (the shared state;
 // schedule.manage, schedule.assign and schedule.override) creates a student
@@ -40,8 +40,20 @@ import { createSubjectViaApi } from '../support/tutors';
 // both sessions are then confirmed (API). Series offers take no override,
 // so the tutor's availability and qualification are real here.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 1 login (demo.tutor), no
-// one-time-link redemption, no registration. It never changes the zone, the
+// Substitution and cancellation (#55 I7), in the same test: a second
+// active tutor (createApprovedTutor: a self-registration the Owner approves,
+// then a role change in the Owner's own reauthenticated API context; the
+// substitute never signs in). On the accepted session's page the Owner
+// finds a substitute, overrides the substitute's missing availability and
+// qualification, sees "Suplencia pendiente", withdraws it (the history shows
+// "Retirada") and cancels the session with a reason ("Cancelada" banner).
+// The signed-in tutor's bell then has the cancellation. Axe on the page with
+// the substitute panel and with the cancel dialog.
+//
+// Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
+// the reauthenticated Owner context of createApprovedTutor, #55), no
+// one-time-link redemption, 1 registration (the substitute, #55). It never
+// changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
 // specs use the first weekday two weeks ahead, 10:00–12:00).
@@ -173,6 +185,14 @@ async function signInTutor(browser: Browser) {
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// The Owner's substitution is first refused with a 409 (the conflict panel),
+// which Chromium logs as a failed resource.
+const CONFLICT_409 =
+  /Failed to load resource: the server responded with a status of 409/;
+
+/** The text of a message template before its first placeholder. */
+const textBefore = (template: string) => template.split('{{')[0]!;
+
 /** The ISO weekday (1 = Monday) of a YYYY-MM-DD date. */
 function isoWeekday(date: string): number {
   const day = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -294,6 +314,8 @@ async function createSeriesViaApi(
 test('a tutor accepts one offer and declines another; staff see the reassignment', async ({
   page,
   browser,
+  playwright,
+  baseURL,
 }, testInfo: TestInfo) => {
   test.setTimeout(TEST_TIMEOUT_MS);
   const suffix = `${testInfo.workerIndex}${Date.now().toString(36)}`;
@@ -306,7 +328,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   // Six weeks ahead (and never on a retry's one-off date).
   const seriesDate = firstWeekdayAhead(42 + 14 * testInfo.retry);
   await recordCspViolations(page);
-  const ownerErrors = watchConsole(page);
+  const ownerErrors = watchConsole(page, CONFLICT_409);
 
   // 1. Setup through the API with the shared Owner session.
   await page.goto('/');
@@ -319,7 +341,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   const declinedId = await createSubjectViaApi(page, LEVEL, declined);
   const weeklyId = await createSubjectViaApi(page, LEVEL, weekly);
   const tutorId = await demoTutorId(page);
-  await offerViaApi(page, {
+  const acceptedSession = await offerViaApi(page, {
     studentId,
     subjectId: acceptedId,
     tutorId,
@@ -461,6 +483,100 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       'confirmed',
       'confirmed',
     ]);
+
+    // 6. Substitution and cancellation (#55 I7) of the accepted session.
+    const substituteName = `Suplente ${suffix}`;
+    await createApprovedTutor(page, playwright.request, baseURL!, {
+      username: `e2e.substitute.${suffix}`,
+      displayName: substituteName,
+      password: 'e2e-substitute-password',
+    });
+    await page.goto(`/schedule/sessions/${acceptedSession}`);
+    const sessionMain = page.getByRole('main');
+    const substitute = sessionMain.getByRole('region', {
+      name: common.scheduling.substitution.heading,
+    });
+    await substitute
+      .getByLabel(common.scheduling.substitution.tutor, { exact: true })
+      .selectOption({ label: substituteName });
+    await substitute
+      .getByLabel(common.scheduling.substitution.reason, { exact: true })
+      .fill('La tutora tiene un compromiso ese día.');
+    expect(await axeViolations(page)).toEqual([]);
+    await substitute
+      .getByRole('button', { name: common.scheduling.substitution.submit })
+      .click();
+    await substitute
+      .getByRole('button', {
+        name: common.scheduling.substitution.overrideAction,
+      })
+      .click();
+    const override = page.getByRole('dialog', {
+      name: common.scheduling.substitution.overrideAction,
+    });
+    await override
+      .getByLabel(common.scheduling.override.reason, { exact: true })
+      .fill('Suplencia urgente acordada con la familia.');
+    await override
+      .getByRole('button', {
+        name: common.scheduling.substitution.overrideAction,
+      })
+      .click();
+    await expect(override).toBeHidden();
+    const substitutions = sessionMain.getByRole('region', {
+      name: common.scheduling.substitution.historyHeading,
+    });
+    await expect(substitutions).toContainText(
+      `${textBefore(common.scheduling.substitution.pendingText)}${substituteName}`,
+    );
+    await substitutions
+      .getByRole('button', { name: common.scheduling.substitution.withdraw })
+      .click();
+    const withdraw = page.getByRole('dialog', {
+      name: common.scheduling.substitution.withdrawTitle,
+    });
+    await withdraw
+      .getByRole('button', { name: common.scheduling.substitution.withdraw })
+      .click();
+    await expect(withdraw).toBeHidden();
+    await expect(substitutions).toContainText(common.offers.status.withdrawn);
+    await expect(substitutions).not.toContainText(
+      textBefore(common.scheduling.substitution.pendingText),
+    );
+
+    await sessionMain
+      .getByRole('button', { name: common.scheduling.cancel.action })
+      .click();
+    const cancel = page.getByRole('dialog', {
+      name: common.scheduling.cancel.title,
+    });
+    expect(await axeViolations(page)).toEqual([]);
+    await cancel
+      .getByLabel(common.scheduling.cancel.reason, { exact: true })
+      .fill('Cierre por mantenimiento.');
+    await cancel
+      .getByRole('button', { name: common.scheduling.cancel.submit })
+      .click();
+    await expect(cancel).toBeHidden();
+    await expect(
+      sessionMain.getByRole('heading', {
+        name: common.scheduling.cancel.banner,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      sessionMain.getByRole('button', {
+        name: common.scheduling.cancel.action,
+      }),
+    ).toBeHidden();
+
+    // The signed-in tutor's bell has the cancellation.
+    await tutor.page.goto('/offers');
+    await bell.click();
+    await expect(panel).toContainText(
+      textBefore(common.notifications.types.scheduling_session_cancelled),
+    );
+    await tutor.page.keyboard.press('Escape');
 
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
