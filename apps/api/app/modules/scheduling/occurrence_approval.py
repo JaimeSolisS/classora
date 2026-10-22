@@ -123,6 +123,42 @@ def _race_conflict(code: str, row: ClassSession) -> Conflict:
     return Conflict(TUTOR_OVERLAP, {"class_session_ids": []})
 
 
+async def schedule_conflict_row(
+    session: AsyncSession, row: ClassSession, series: ClassSeries
+) -> ClassSession:
+    """The approve's move of a ``conflict`` row (locked, checks passed) to
+    :func:`~app.modules.scheduling.materialize.occurrence_initial_state` for
+    its local date, with the series' assigned tutor; an ``offered`` row joins
+    the pending series offer. An ``EXCLUDE`` race is the #48 single-conflict
+    ``409``. Shared with the conflict-override route (#236 G3)."""
+    local_date = occurrence_local_date(row, series.time_zone)
+    tutor = assigned_tutor(series, local_date)
+    target = occurrence_initial_state(series, local_date)
+    try:
+        if target == SessionState.CONFIRMED and row.tutor_user_id != tutor:
+            # The row holds nothing in ``conflict`` (D2): it takes the
+            # series' current tutor before it is confirmed. Flush first
+            # (#266): the change bumps the row's version, and an
+            # autoflush inside the transition's select would make its
+            # version check fail; the version is read after the flush.
+            row.tutor_user_id = tutor
+            await flush_class_sessions(session)
+        moved = await transition_class_session(
+            session,
+            row.id,
+            to_state=target,
+            expected_version=row.version,
+            tutor_user_id=tutor if target == SessionState.OFFERED else None,
+        )
+    except SessionOverlapError as exc:
+        raise SchedulingConflictError(
+            [_race_conflict(exc.code, row).as_wire()]
+        ) from None
+    if target == SessionState.OFFERED:
+        await attach_to_pending_series_offer(session, series, [moved])
+    return moved
+
+
 class OccurrenceConflictApprovalHandler:
     """The :class:`~app.modules.administration.service.ApprovalHandler` of
     ``conflict`` series occurrences; the subject is the class session."""
@@ -180,29 +216,7 @@ class OccurrenceConflictApprovalHandler:
         )
         if conflicts:
             raise SchedulingConflictError([c.as_wire() for c in conflicts])
-        target = occurrence_initial_state(series, local_date)
-        try:
-            if target == SessionState.CONFIRMED and row.tutor_user_id != tutor:
-                # The row holds nothing in ``conflict`` (D2): it takes the
-                # series' current tutor before it is confirmed. Flush first
-                # (#266): the change bumps the row's version, and an
-                # autoflush inside the transition's select would make its
-                # version check fail; the version is read after the flush.
-                row.tutor_user_id = tutor
-                await flush_class_sessions(session)
-            moved = await transition_class_session(
-                session,
-                row.id,
-                to_state=target,
-                expected_version=row.version,
-                tutor_user_id=tutor if target == SessionState.OFFERED else None,
-            )
-        except SessionOverlapError as exc:
-            raise SchedulingConflictError(
-                [_race_conflict(exc.code, row).as_wire()]
-            ) from None
-        if target == SessionState.OFFERED:
-            await attach_to_pending_series_offer(session, series, [moved])
+        await schedule_conflict_row(session, row, series)
 
     async def reject(
         self,

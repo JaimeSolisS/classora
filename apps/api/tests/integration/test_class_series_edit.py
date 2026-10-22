@@ -455,10 +455,15 @@ def test_body_errors(ctx):
     assert errors_of(late) == [("start_time", "crosses_local_date")]
     room = edit(ctx, series, from_date=d, classroom_id=uuid.uuid4(), until=until)
     assert errors_of(room) == [("classroom_id", "classroom_unknown")]
+    # #236 B3: the override member is pairs (the cases are in
+    # test_class_series_edit_overrides.py).
     override = edit(
         ctx, series, from_date=d, start_time="17:00", override={"pairs": []}
     )
-    assert code_of(override) == INVALID
+    assert errors_of(override) == [
+        ("pairs", "pairs_required"),
+        ("reason", "reason_required"),
+    ]
 
 
 def test_an_exception_makes_an_unchanged_rule_an_edit(ctx):

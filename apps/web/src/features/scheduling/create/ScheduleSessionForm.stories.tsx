@@ -22,7 +22,11 @@ import {
   UNASSIGNED,
 } from './fixtures';
 import type { SessionOverride } from './rules';
-import { SERIES_CONFLICTS, SERIES_CREATED } from '../series/fixtures';
+import {
+  SERIES_CONFLICTS,
+  SERIES_CREATED,
+  SOFT_SERIES_CONFLICTS,
+} from '../series/fixtures';
 import { ScheduleSessionForm } from './ScheduleSessionForm';
 
 // "Schedule a session" (#48 F4, #49 F5): empty, filled, submitting, the
@@ -602,11 +606,56 @@ export const RepeatsConflicts: Story = {
       canvas.getByRole('button', { name: seriesSubmitName() }),
     );
     const alert = await canvas.findByRole('alert');
-    await expect(alert).toHaveTextContent(
-      i18n.t('scheduling.series.conflicts.noOverride'),
-    );
+    await expect(alert).toHaveTextContent(i18n.t('scheduling.severity.soft'));
     await expect(alert.querySelectorAll('h3')).toHaveLength(2);
     await waitFor(() => expect(alert.querySelector('h2')).toHaveFocus());
+    await expect(
+      canvas.getByText(i18n.t('scheduling.override.fixHardFirst')),
+    ).toBeVisible();
+  },
+};
+
+// #236: only soft conflicts, so the Owner can override them all.
+export const RepeatsOverride: Story = {
+  args: {
+    ...REPEATS,
+    onSubmitSeries: fn(
+      (_values: unknown, _recurrence: unknown, override?: unknown) =>
+        override
+          ? Promise.resolve({
+              ...SERIES_CREATED,
+              occurrences: SERIES_CREATED.occurrences.map((o) => ({
+                ...o,
+                overridden: o.state !== 'skipped_closure',
+              })),
+            })
+          : Promise.reject(conflictError(SOFT_SERIES_CONFLICTS)),
+    ),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      canvas.getByRole('button', { name: seriesSubmitName() }),
+    );
+    await userEvent.click(
+      await canvas.findByRole('button', {
+        name: i18n.t('scheduling.override.action'),
+      }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.type(
+      dialog.getByLabelText(i18n.t('scheduling.override.reason')),
+      'Domingos acordados',
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('scheduling.override.submit'),
+      }),
+    );
+    await expect(
+      await canvas.findByText(
+        i18n.t('scheduling.series.override.scheduledWith', { count: 2 }),
+      ),
+    ).toBeVisible();
   },
 };
 

@@ -72,6 +72,21 @@ room) are ``422`` first. Any conflict refuses the whole write with one
 moved row whose slot doesn't change is not re-checked (nothing about it
 changes).
 
+**Overrides (#236 F).** With an ``override`` (pairs; the route checked
+``schedule.override`` before the ``404``) the conflicts go through
+:func:`~app.modules.scheduling.overrides.evaluate_series_override`
+instead of the plain refusal: pairs name the **new** instant, a hard
+conflict or an unlisted soft pair is the same ``409``, and after the
+writes :func:`~app.modules.scheduling.overrides.record_series_overrides`
+stores one row per overridden occurrence with ``class_series_id`` = the
+resulting series (the new one after a split) and one
+``scheduling.series_override`` event (``write = "edit"``). An edit needs
+its own override: a row overridden earlier and re-checked here must be
+listed again if its soft conflict still occurs; its older rows stay as
+history and are never consulted. ``series_unchanged`` stays ``422`` with an
+override (re-checking an unchanged row is the conflict-override route's
+job).
+
 **In place or split (C3).** With no old-series row before ``D`` the series
 itself takes the new rule (``starts_on = D``; no lineage). Otherwise the old
 series ends (``until_on = D - 1``, ``count`` cleared, the rule rebuilt,
@@ -104,7 +119,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.audit import record_audit_event
 from app.core.authz import RecordNotFoundError
-from app.core.errors import FieldError, SchedulingConflict
+from app.core.errors import FieldError
 from app.core.models import ensure_version
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
@@ -152,6 +167,11 @@ from app.modules.scheduling.offer_flow import (
     withdraw_series_offer,
 )
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
+from app.modules.scheduling.overrides import (
+    OccurrenceConflict,
+    evaluate_series_override,
+    record_series_overrides,
+)
 from app.modules.scheduling.recurrence import (
     InvalidRecurrenceError,
     Occurrence,
@@ -516,7 +536,7 @@ async def _check(
     tutor: uuid.UUID | None,
     classroom_id: uuid.UUID | None,
     exclude: frozenset[uuid.UUID],
-) -> list[SchedulingConflict]:
+) -> list[Conflict]:
     try:
         validate_session_bounds(occurrence.starts_at, occurrence.ends_at, ctx.zone)
     except InvalidSessionTimesError:
@@ -537,7 +557,7 @@ async def _check(
         check_center_closed=False,
         exclude_session_ids=exclude,
     )
-    return [occurrence_wire(conflict, occurrence) for conflict in conflicts]
+    return conflicts
 
 
 def _new_series(old: ClassSeries, body: ClassSeriesEdit, start: date) -> ClassSeries:
@@ -680,7 +700,7 @@ async def edit_class_series(
             )
         )
     planned: list[PlannedOccurrence] = []
-    checks: list[tuple[datetime, list[SchedulingConflict]]] = []
+    checks: list[tuple[Occurrence, list[Conflict]]] = []
     for move in moves:
         state = SessionState(move.row.state)
         if state == SessionState.SKIPPED_CLOSURE or move.closed:
@@ -694,7 +714,7 @@ async def edit_class_series(
             move.tutor = move.row.tutor_user_id
         checks.append(
             (
-                move.occurrence.starts_at,
+                move.occurrence,
                 await _check(
                     session,
                     ctx,
@@ -712,7 +732,7 @@ async def edit_class_series(
             continue
         checks.append(
             (
-                occurrence.starts_at,
+                occurrence,
                 await _check(
                     session,
                     ctx,
@@ -726,12 +746,22 @@ async def edit_class_series(
         planned.append(
             PlannedOccurrence(occurrence, occurrence_initial_state(target, day))
         )
+    checks.sort(key=lambda item: item[0].starts_at)
     refused = [
-        conflict
-        for _, found in sorted(checks, key=lambda item: item[0])
+        occurrence_wire(conflict, occurrence)
+        for occurrence, found in checks
         for conflict in found
     ]
-    if refused:
+    # #236 F1 step 5: pairs name the new instants (details.occurrence_start).
+    decision = evaluate_series_override(
+        [
+            OccurrenceConflict(occurrence.original_start, conflict)
+            for occurrence, found in checks
+            for conflict in found
+        ],
+        body.override,
+    )
+    if not decision.allowed:
         raise SchedulingConflictError(refused)
 
     # C2 step 5: write. The series first (a split's new series must exist
@@ -771,6 +801,15 @@ async def edit_class_series(
         session,
         [m.row.id for m in moves if m.row.state == SessionState.OFFERED],
     )
+    if body.override is not None:
+        await record_series_overrides(
+            session,
+            class_series_id=target.id,
+            decision=decision,
+            reason=body.override.reason,
+            write="edit",
+            actor_id=actor_id,
+        )
 
     summary = SeriesEditSummary(
         moved=len(moves),

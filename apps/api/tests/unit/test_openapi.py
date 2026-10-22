@@ -94,6 +94,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/class-sessions/{class_session_id}",
         "/api/v1/class-sessions/{class_session_id}/replacement-tutors",
         "/api/v1/class-sessions/{class_session_id}/offers",
+        "/api/v1/class-sessions/{class_session_id}/conflict-overrides",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",
         "/api/v1/assignment-offers/{offer_id}/decline",

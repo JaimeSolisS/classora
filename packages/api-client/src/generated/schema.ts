@@ -1921,6 +1921,31 @@ export interface paths {
         patch: operations["update_class_session_api_v1_class_sessions__class_session_id__patch"];
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/conflict-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Override Conflict Occurrence
+         * @description Override the soft conflicts of one series occurrence in `conflict`
+         *     (the nightly job never reuses earlier overrides) and schedule it, as an
+         *     approval of its inbox item would: every rule is checked again now; a
+         *     hard conflict, or a soft one not listed in `override.codes`, refuses.
+         *     The override is stored with the reason and audited, and the
+         *     occurrence's inbox item is cancelled. Needs schedule.override.
+         */
+        post: operations["override_conflict_occurrence_api_v1_class_sessions__class_session_id__conflict_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/class-sessions/{class_session_id}/replacement-tutors": {
         parameters: {
             query?: never;
@@ -2050,8 +2075,10 @@ export interface paths {
          *     now and checked like a one-off session (a closure date is stored as
          *     `skipped_closure` instead); any conflict refuses the whole series. Later
          *     occurrences are created by the nightly job. With a tutor the occurrences
-         *     are `offered` to them, without one `unassigned`. `warnings` is always
-         *     empty for now.
+         *     are `offered` to them, without one `unassigned`. With an `override`
+         *     (pairs of occurrence instant and soft code, plus a reason) the listed
+         *     soft conflicts are allowed, stored per occurrence with the reason and
+         *     audited. `warnings` is always empty for now.
          */
         post: operations["create_class_series_api_v1_class_series_post"];
         delete?: never;
@@ -2102,8 +2129,10 @@ export interface paths {
          *     id; edited ones lose their exception), the others are cancelled
          *     (`series_changed`), and new dates are created; a cancelled occurrence on
          *     a kept date moves to the new series as it is. Every changed or new
-         *     occurrence is checked; any conflict refuses the whole change.
-         *     `warnings` is always empty for now.
+         *     occurrence is checked; any conflict refuses the whole change, unless an
+         *     `override` lists every soft conflict as a pair with the occurrence's
+         *     new instant (stored per occurrence and audited). `warnings` is always
+         *     empty for now.
          */
         post: operations["edit_class_series_api_v1_class_series__class_series_id__edits_post"];
         delete?: never;
@@ -2832,7 +2861,8 @@ export interface components {
          *
          *     ``starts_on`` is the local date of the rule's start (DTSTART) and
          *     ``start_time`` the local wall-clock time (``HH:MM``) in the center zone.
-         *     No ``override`` (#236) and no ``rrule`` text: both are ``422``.
+         *     No ``rrule`` text (``422``). ``override`` (#236) needs
+         *     ``schedule.override``.
          */
         ClassSeriesCreate: {
             /**
@@ -2883,6 +2913,8 @@ export interface components {
              * @description With a tutor: an earlier deadline for the series offer, after now and no later than the default; truncated to whole minutes.
              */
             respond_by?: string | null;
+            /** @description Override the listed soft conflicts, occurrence by occurrence, with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SeriesOverride"] | null;
         };
         /**
          * ClassSeriesCreated
@@ -3061,8 +3093,9 @@ export interface components {
          *     patch. ``mode = "following"`` starts on ``from_date`` (a local date);
          *     ``"all"`` starts on the next occurrence that hasn't begun and takes
          *     ``from_date = null``. The recurrence ``422`` codes are the create's
-         *     (``until_before_start`` is against the start date of the change). No
-         *     ``override`` yet (#236).
+         *     (``until_before_start`` is against the start date of the change).
+         *     ``override`` (#236) names the **new** instants and needs
+         *     ``schedule.override``.
          */
         ClassSeriesEdit: {
             mode: components["schemas"]["SeriesEditMode"];
@@ -3093,6 +3126,8 @@ export interface components {
              */
             classroom_id: string | null;
             recurrence: components["schemas"]["SeriesRecurrence"];
+            /** @description Override the listed soft conflicts of the changed and new occurrences (their new instants) with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SeriesOverride"] | null;
         };
         /**
          * ClassSeriesEdited
@@ -3684,6 +3719,20 @@ export interface components {
             ends_on?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * ConflictOverrideCreate
+         * @description Override the soft conflicts of one ``conflict`` occurrence and schedule
+         *     it (``POST /api/v1/class-sessions/{id}/conflict-overrides``, #236 G3):
+         *     the #49 ``{codes, reason}`` member, required.
+         */
+        ConflictOverrideCreate: {
+            /**
+             * Version
+             * @description The session's version, as read.
+             */
+            version: number;
+            override: components["schemas"]["SessionOverride"];
         };
         /**
          * ConsentCreate
@@ -5027,6 +5076,25 @@ export interface components {
             display_name: string;
         };
         /**
+         * OverridePair
+         * @description One soft conflict of one occurrence (#236 B1; ADR-0005 D4):
+         *     ``occurrence_start`` is ``details.occurrence_start`` of the ``409``
+         *     (for an edit, the occurrence's **new** instant).
+         */
+        OverridePair: {
+            /**
+             * Occurrence Start
+             * Format: date-time
+             * @description The occurrence's instant, with an offset (RFC 3339).
+             */
+            occurrence_start: string;
+            /**
+             * Code
+             * @description A soft conflict code; never a hard one.
+             */
+            code: string;
+        };
+        /**
          * PasswordChange
          * @description The signed-in user's current and new password (``POST /auth/password``).
          */
@@ -5624,6 +5692,42 @@ export interface components {
             original_start: string;
             /** Is Exception */
             is_exception: boolean;
+            /**
+             * Overridden
+             * @description Whether at least one override of its soft conflicts names it (#236).
+             */
+            overridden: boolean;
+            /**
+             * Conflict Codes
+             * @description The codes that put it in `conflict` (informational; kept after it leaves `conflict`; #236).
+             */
+            conflict_codes: string[];
+            /**
+             * Version
+             * @description The session's version (#236).
+             */
+            version: number;
+        };
+        /**
+         * SeriesOverride
+         * @description The soft conflicts of a series write to override, occurrence by
+         *     occurrence, and why (#236 B1; ADR-0005 D4: "listed occurrence and code
+         *     pairs"). The server recomputes every occurrence's conflicts: a hard one
+         *     is never overridden, every soft one must be listed with its occurrence,
+         *     and listed pairs that don't occur are ignored. ``reason`` is the #49
+         *     reason (trimmed, 1-1000).
+         */
+        SeriesOverride: {
+            /**
+             * Pairs
+             * @description The (occurrence_start, code) pairs to override, 1-1400, no duplicates (instants compared in UTC).
+             */
+            pairs: components["schemas"]["OverridePair"][];
+            /**
+             * Reason
+             * @description Why the rules are overridden: 1-1000 characters, trimmed.
+             */
+            reason: string;
         };
         /**
          * SeriesRecurrence
@@ -13090,6 +13194,77 @@ export interface operations {
             };
         };
     };
+    override_conflict_occurrence_api_v1_class_sessions__class_session_id__conflict_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictOverrideCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSessionDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or no schedule.override (checked after the 404). The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); it is not a `conflict` occurrence (session_not_in_conflict, details.state); it has begun (session_not_editable, details.reason = started); or a hard conflict, or a soft one the `override` doesn't list, is found (scheduling_conflict, every conflict). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_replacement_tutors_api_v1_class_sessions__class_session_id__replacement_tutors_get: {
         parameters: {
             query?: {
@@ -13435,7 +13610,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence. Nothing is created. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable, details.reason = ended). */
+            /** @description An occurrence breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence in the horizon, each with `details.occurrence_start` and `details.date`, by occurrence; with an `override`, a hard conflict or a soft one whose (occurrence_start, code) pair isn't listed still refuses. Nothing is created. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable, details.reason = ended). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -13564,7 +13739,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The series changed since it was read (version_conflict); its tutor offer is waiting for an answer (series_offer_pending); it has no occurrence on or after the date (series_ended); an occurrence on the date has begun (occurrence_started); or a changed or new occurrence breaks scheduling rules (scheduling_conflict: every conflict of every occurrence, with `details.occurrence_start`, the new instant, and `details.date`). Nothing is changed. */
+            /** @description The series changed since it was read (version_conflict); its tutor offer is waiting for an answer (series_offer_pending); it has no occurrence on or after the date (series_ended); an occurrence on the date has begun (occurrence_started); or a changed or new occurrence breaks scheduling rules (scheduling_conflict: every conflict of every occurrence, with `details.occurrence_start`, the new instant, and `details.date`; an `override` must list every soft one as a pair and never covers a hard one). Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

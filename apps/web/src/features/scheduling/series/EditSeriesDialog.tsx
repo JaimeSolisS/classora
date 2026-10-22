@@ -35,7 +35,8 @@ import {
   type SeriesEditErrors,
   type SeriesEditValues,
 } from './rules';
-import { SeriesConflictPanel } from './SeriesConflictPanel';
+import { seriesOverride, type SeriesOverride } from './overrides';
+import { SeriesOverrideSection } from './SeriesOverrideSection';
 
 // "Edit series" (#54b C2): the scope ("This and following, from <date>",
 // the date defaulting to the next occurrence, or "All future
@@ -47,7 +48,9 @@ import { SeriesConflictPanel } from './SeriesConflictPanel';
 // with a reload, and the other 409s (series_offer_pending, series_ended,
 // occurrence_started) in the shared ErrorAlert. Before submit it says that
 // past and completed classes never change and edited occurrences in scope
-// take the new times.
+// take the new times. Under the 409 the #236 override branches apply: the
+// override dialog (nested) resends the same edit with every soft pair (the
+// new instants the 409 names) and the reason.
 
 export interface EditSeriesDialogProps {
   open: boolean;
@@ -56,8 +59,13 @@ export interface EditSeriesDialogProps {
   defaultFromDate: string;
   classrooms: readonly Option[];
   timeZone: string;
-  /** Sends the edit; resolves once the dialog may close. */
-  onSubmit: (values: SeriesEditValues) => Promise<void>;
+  /** Sends the edit (with the override); resolves once the dialog may close. */
+  onSubmit: (
+    values: SeriesEditValues,
+    override?: SeriesOverride,
+  ) => Promise<void>;
+  /** Whether the user holds schedule.override (#236). */
+  canOverride: boolean;
   onCancel: () => void;
   onReload: () => void;
   /** Stories: values and an outcome to start from. */
@@ -115,6 +123,7 @@ function EditSeriesContent({
   initialValues,
   initialFailure,
   initialConflicts,
+  canOverride,
   busyRef,
 }: EditSeriesDialogProps & { busyRef: { current: boolean } }) {
   const { t } = useTranslation();
@@ -169,25 +178,42 @@ function EditSeriesContent({
     try {
       await onSubmit(values);
     } catch (caught) {
-      const list = conflictsOf(caught);
-      if (list) {
-        setConflicts(list);
-      } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
-        const mapped = seriesEditServerErrors(caught.fieldErrors);
-        const onBody = bodyError(caught.fieldErrors);
-        if (hasErrors(mapped) || onBody) {
-          setErrors(mapped);
-          setFormError(onBody);
-          focus(mapped);
-        } else {
-          setFailure(caught);
-        }
-      } else {
-        setFailure(caught);
-      }
+      handleFailure(caught);
     } finally {
       busyRef.current = false;
       setSubmitting(false);
+    }
+  }
+
+  function handleFailure(caught: unknown) {
+    const list = conflictsOf(caught);
+    if (list) {
+      setConflicts(list);
+      return;
+    }
+    setConflicts(null);
+    if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
+      const mapped = seriesEditServerErrors(caught.fieldErrors);
+      const onBody = bodyError(caught.fieldErrors);
+      if (hasErrors(mapped) || onBody) {
+        setErrors(mapped);
+        setFormError(onBody);
+        focus(mapped);
+        return;
+      }
+    }
+    setFailure(caught);
+  }
+
+  async function override(reason: string) {
+    if (!conflicts) {
+      return;
+    }
+    busyRef.current = true;
+    try {
+      await onSubmit(values, seriesOverride(conflicts, reason));
+    } finally {
+      busyRef.current = false;
     }
   }
 
@@ -209,11 +235,14 @@ function EditSeriesContent({
       className="flex min-w-0 flex-col gap-4"
     >
       {conflicts ? (
-        <SeriesConflictPanel
+        <SeriesOverrideSection
           conflicts={conflicts}
           heading={t('scheduling.series.conflicts.editHeading', {
             count: conflicts.length,
           })}
+          canOverride={canOverride}
+          onOverride={override}
+          onRefused={handleFailure}
         />
       ) : null}
       {failure ? <DialogFailure error={failure} onReload={onReload} /> : null}

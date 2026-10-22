@@ -13,6 +13,7 @@ import type {
   SeriesEditSummary,
   SeriesOccurrence,
 } from './api';
+import type { SeriesOverride } from './overrides';
 import {
   durationMinutes,
   endTime,
@@ -39,8 +40,10 @@ import {
 export function seriesCreateBody(
   values: ScheduleValues,
   recurrence: RecurrenceValues,
+  override?: SeriesOverride,
 ): ClassSeriesCreate {
   return {
+    ...(override ? { override } : {}),
     kind: 'individual',
     student_id: values.student?.id ?? '',
     subject_id: values.subjectId,
@@ -363,8 +366,10 @@ export function validateSeriesEdit(
 export function seriesEditBody(
   values: SeriesEditValues,
   version: number,
+  override?: SeriesOverride,
 ): ClassSeriesEdit {
   return {
+    ...(override ? { override } : {}),
     mode: values.mode,
     from_date: values.mode === 'following' ? values.fromDate : null,
     version,

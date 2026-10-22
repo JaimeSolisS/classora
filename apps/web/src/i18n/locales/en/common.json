@@ -1705,7 +1705,7 @@
         "editHeading_other": "The series can’t be changed: {{count}} conflicts",
         "occurrenceHeading_one": "The occurrence can’t be moved: 1 conflict",
         "occurrenceHeading_other": "The occurrence can’t be moved: {{count}} conflicts",
-        "noOverride": "Can’t be overridden for series yet",
+        "noOverride": "Can’t be overridden here yet",
         "noDate": "Other"
       },
       "versionConflict": "This changed since you opened it. Reload it and try again.",
@@ -1770,7 +1770,19 @@
         "range": "{{start}}–{{end}}",
         "edited": "Edited",
         "editOccurrence": "Edit this occurrence",
-        "editOccurrenceOf": "Edit this occurrence: {{date}}, {{range}}"
+        "editOccurrenceOf": "Edit this occurrence: {{date}}, {{range}}",
+        "overridden": "Overridden",
+        "conflictCodes": "Conflicts: {{codes}}",
+        "fixConflict": "Fix this occurrence by editing it or the series, or reject it in the inbox.",
+        "overrideOf": "Override and schedule: {{date}}, {{range}}"
+      },
+      "override": {
+        "description_one": "The series is scheduled despite these rules on {{count}} occurrence. The reason is saved in the audit log.",
+        "description_other": "The series is scheduled despite these rules on {{count}} occurrences. The reason is saved in the audit log.",
+        "rowDescription": "This occurrence is scheduled despite these rules. The reason is saved in the audit log.",
+        "scheduledWith_one": "Scheduled with overrides on {{count}} occurrence.",
+        "scheduledWith_other": "Scheduled with overrides on {{count}} occurrences.",
+        "rowDone": "The occurrence was scheduled with an override."
       }
     }
   },

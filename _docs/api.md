@@ -109,7 +109,7 @@ Codes in use today:
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
 | `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
-| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). For a series (M4-08) the list covers every occurrence, each with `details.occurrence_start` and `details.date`. See Class sessions and Class series. |
+| `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). For a series (M4-08) the list covers every occurrence, each with `details.occurrence_start` and `details.date`; a series `override` lists (occurrence, code) pairs (M4-09c). See Class sessions and Class series. |
 | `class_session_not_assignable` | 409 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` for a session that is `completed`, `cancelled` or `skipped_closure`: it can no longer take a tutor (see Class sessions, "Tutor suggestions"). |
 | `class_session_not_offerable` | 409 | Offering a session that is not `unassigned` (`details.state`), or one that has begun (`details.reason = "started"`; also a create with a tutor whose start is not after now). See Assignment offers. |
 | `offer_not_pending` | 409 | Accepting or declining an offer that was already answered, expired or withdrawn; `details.status` is its status (see Assignment offers). |
@@ -117,6 +117,7 @@ Codes in use today:
 | `reassignment_still_needed` | 409 | "Mark resolved" (approve) on a `scheduling.offer_reassignment` inbox item while its session is still `unassigned` (for a series offer, also while the series has no tutor); the item stays pending (see Assignment offers). |
 | `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
 | `session_not_editable` | 409 | `PATCH /api/v1/class-sessions/{class_session_id}` on a session that has begun (`details.reason = "started"`) or is `completed`, `cancelled` or `skipped_closure` (`details.state`); see Class sessions, "Moving a session". |
+| `session_not_in_conflict` | 409 | `POST /api/v1/class-sessions/{class_session_id}/conflict-overrides` on a session that isn't a `conflict` occurrence (`details.state`); see Class series, "Series overrides". |
 | `series_offer_pending` | 409 | A series edit while the series' tutor offer is waiting for an answer: answer or withdraw it first (see Class series, "Editing and cancelling"). |
 | `series_ended` | 409 | A series edit or cancellation from a date after the series' `last_occurrence_on`, a repeated cancellation included (see Class series, "Editing and cancelling"). |
 | `occurrence_started` | 409 | A series edit or cancellation from a date on which an occurrence of the series has begun (see Class series, "Editing and cancelling"). |
@@ -1903,6 +1904,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
 | `POST`/`GET /api/v1/class-sessions/{class_session_id}/offers` | `schedule.assign` / `schedule.view` | Offer an `unassigned` session to a tutor; the session's offer history (M4-07, see Assignment offers). |
+| `POST /api/v1/class-sessions/{class_session_id}/conflict-overrides` | `require("schedule.manage")` plus `schedule.override` (checked after the `404`) | Override the soft conflicts of one `conflict` series occurrence and schedule it (M4-09c); `200` with `ClassSessionDetail`. See Class series, "Series overrides". |
 | `PATCH /api/v1/class-sessions/{class_session_id}` | `require("schedule.manage")` (Owner, Administrator) | Move one session or series occurrence (M4-09, #54), see "Moving a session" below. `200` with `ClassSessionDetail` plus `warnings` (always `[]` for now). |
 
 **Body** (unknown fields are `422`):
@@ -2223,6 +2225,10 @@ qualification cost nothing). The web app's "Schedule a session" form has a
 (`/schedule/sessions/:id`, M4-07) uses the replacement list in its "Offer to
 a tutor" panel.
 
+Overrides written by a series write or the conflict-override route (M4-09c)
+carry the series in `class_series_id` (context, not a second subject; `null`
+for a one-off session's override); see Class series, "Series overrides".
+
 #### Moving a session
 
 `PATCH /api/v1/class-sessions/{class_session_id}` (M4-09, #54 C1;
@@ -2497,8 +2503,9 @@ ADR-0004) in `apps/api/app/modules/scheduling/` (`recurrence.py`: the pure
 weekly rule; `series.py`: create and read; `materialize.py`: the rolling
 materialization; `tasks.py`: the nightly job; `occurrence_approval.py`: the
 inbox item; `series_edit.py`: editing and cancelling, M4-09). Only
-**individual** series so far; groups and courses (M4-11, M4-20), series
-overrides (M4-09c) and the web form (M4-09b) come later.
+**individual** series so far; groups and courses (M4-11, M4-20) come later.
+Series overrides: M4-09c (#236; `overrides.py`, `conflict_override.py`),
+"Series overrides" below.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -2508,15 +2515,17 @@ overrides (M4-09c) and the web form (M4-09b) come later.
 | `POST /api/v1/class-series/{class_series_id}/edits` | `require("schedule.manage")` (Owner, Administrator) | Change the rule from a date on (M4-09, #54); `200` with `ClassSeriesEdited`. See "Editing and cancelling". |
 | `POST /api/v1/class-series/{class_series_id}/cancellations` | `require("schedule.manage")` | Cancel the occurrences from a date on (M4-09); `200` with `ClassSeriesCancelled`. See "Editing and cancelling". |
 
-**Body** (unknown fields are `422`, `override` and `rrule` included: the
-API never takes rule text):
+**Body** (unknown fields are `422`, `rrule` included: the API never takes
+rule text; `override` is the series pairs member, "Series overrides"
+below):
 
 ```json
 {"kind": "individual", "student_id": "…", "subject_id": "…",
  "tutor_user_id": "…" | null, "classroom_id": "…" | null,
  "starts_on": "2026-11-09", "start_time": "16:00", "duration_minutes": 60,
  "recurrence": {"weekdays": [1, 3], "interval": 1, "until": "2026-12-18" | null, "count": null},
- "respond_by": "…" | null}
+ "respond_by": "…" | null,
+ "override": {"pairs": [{"occurrence_start": "2026-11-09T22:00:00Z", "code": "outside_operating_hours"}], "reason": "…"} | null}
 ```
 
 - `respond_by` (M4-07b; only with a tutor, else `422
@@ -2543,7 +2552,9 @@ occurrence (`null` for an open-ended one).
 
 **Order of the create:**
 
-1. `401`/`403`, then `422` for the schema;
+1. `401`/`403`, then `422` for the schema (the `override` codes included);
+   then `403 permission_denied` when `override` is sent without
+   `schedule.override`, before anything is read (M4-09c);
 2. the per-student advisory lock (as Class sessions);
 3. the center time zone, read `FOR SHARE`;
 4. `422` for the recurrence, on `recurrence.weekdays` (`weekdays_empty`,
@@ -2566,11 +2577,15 @@ occurrence (`null` for an open-ended one).
 9. any conflict: `409 scheduling_conflict` with **every** conflict of
    **every** occurrence, by occurrence then in the Class sessions order,
    each `details` with `occurrence_start` (the instant, UTC) and `date`
-   (the local date). Nothing is created; overrides for series come later
-   (M4-09c);
+   (the local date). Nothing is created. With an `override`, the series
+   override decision instead ("Series overrides"): a hard conflict or an
+   unlisted soft pair is the same `409`;
 10. the series, its participant and every occurrence (with its
-    participant) are stored; with a tutor, the pending series offer over
-    every `offered` occurrence and the tutor's notification (M4-07b); `201`.
+    participant) are stored (an overridden occurrence in its clean state,
+    without `conflict_codes`); with a tutor, the pending series offer over
+    every `offered` occurrence and the tutor's notification (M4-07b); with
+    something overridden, the override rows and the
+    `scheduling.series_override` event (M4-09c); `201`.
 
 A series that starts after the horizon is created with no occurrence: the
 nightly job creates and checks them when they enter the window.
@@ -2598,7 +2613,9 @@ duration_minutes, time_zone, recurrence {weekdays, interval, until, count},
 rrule, last_occurrence_on, ended, split_from_series_id,
 split_into_series_ids, assignment, version, created_at, updated_at,
 occurrences [{id, state, starts_at, ends_at, original_start,
-is_exception}]}`. `last_occurrence_on` means "no occurrence after this
+is_exception, overridden, conflict_codes, version}]}` (`overridden`: at
+least one override row names the session, read in the same statement;
+`conflict_codes` and `version` as on the session, M4-09c). `last_occurrence_on` means "no occurrence after this
 date"; `ended` (M4-09) is true when it is set and before the center's local
 today, so the web never compares dates itself. `split_from_series_id` is
 the series this one was split from, `split_into_series_ids` the series
@@ -2647,6 +2664,10 @@ subject_name, student_display_names, tutor_display_name, conflict_codes}`.
   `unassigned`). A start already in the past fails `notice_window`: reject
   it instead.
 - **Reject = cancel the occurrence** with the reviewer's reason.
+
+Approving never overrides; a `conflict` row's soft conflicts are overridden
+with `POST /api/v1/class-sessions/{id}/conflict-overrides` ("Series
+overrides" below). The job never reads earlier overrides.
 
 **Closure changes on existing occurrences** (M4-08b, #232; ADR-0005 D6;
 `scheduling/closure_changes.py`). For each series, in the same transaction
@@ -2712,8 +2733,9 @@ POST /api/v1/class-series/{id}/cancellations
 ```
 
 The edit body is the **full** new rule (not a patch), with the create's
-field rules; unknown fields are `422`, `override` included (M4-09c adds it
-to edits). An edit changes the time, the duration, the room and the weekly
+field rules, plus the optional `override` pairs member (M4-09c; the pairs
+name the **new** instants); unknown fields are `422`, and `override` on a
+cancellation is `422` (it runs no checks). An edit changes the time, the duration, the room and the weekly
 rule only; the tutor changes through offers and substitutions, a student or
 subject change is a new series, and cancelling one occurrence is M4-10.
 The cancellation `reason` is trimmed, 1–1000 characters (`reason_required`,
@@ -2724,7 +2746,9 @@ The cancellation `reason` is trimmed, 1–1000 characters (`reason_required`,
 earliest occurrence that hasn't begun (`starts_on`, or today, when there is
 none).
 
-**Order** (both routes): `401`/`403`, `422` for the schema; `404`; the
+**Order** (both routes): `401`/`403`, `422` for the schema; for an edit
+with an `override`, `403 permission_denied` without `schedule.override`
+(before the `404`: nothing is read); `404`; the
 student locks, the zone `FOR SHARE`, the series row `FOR UPDATE`, then its
 rows from `D` `FOR UPDATE` by id, then the offers (the nightly job's order:
 they never deadlock); `409 version_conflict` (the series `version`); for an
@@ -2771,7 +2795,8 @@ tutor; the occurrences the edit moves, re-points or cancels are left out of
 the overlaps, so an edit never conflicts with itself. Any conflict refuses
 the whole edit: `409 scheduling_conflict` in the create's per-occurrence
 format (`details.occurrence_start` is the **new** instant) and nothing is
-written. `warnings` is always `[]`.
+written, unless an `override` covers them ("Series overrides"). `warnings`
+is always `[]`.
 
 **`ClassSeriesEdited`** is `{series: ClassSeriesDetail (the new one after a
 split), previous_series_id | null, split, summary {moved, created,
@@ -2806,6 +2831,92 @@ is `409 series_ended`. **`ClassSeriesCancelled`** is `{series, summary
 the moved and re-pointed rows, so no date is held twice) and stops selecting
 the old one once its `last_occurrence_on` has passed. It re-reads the series
 row under its lock, so it always sees the rule an edit committed.
+
+#### Series overrides
+
+M4-09c (#236; spec §3, W1.6; ADR-0005 D1, D4 "soft conflicts can be
+overridden for listed occurrence and code pairs", "Conflict wire format and
+overrides"; `scheduling/overrides.py`). The holders of `schedule.override`
+are the one-off sessions' (the Owner by role, an Administrator only while an
+Owner's delegation is active; checked on the effective permissions per
+request). `POST /api/v1/class-series` and `…/edits` take:
+
+```json
+"override": {"pairs": [{"occurrence_start": "2026-11-15T16:00:00Z", "code": "outside_operating_hours"}, …],
+             "reason": "…"}
+```
+
+- `422` codes: `pairs_required` (missing or empty), `pairs_too_many` (more
+  than 1400: 7 soft codes × 200 occurrences) and `duplicate_pair` (the same
+  instant, compared in UTC, and code twice) on `override.pairs`;
+  `code_not_overridable` (a hard code) / `code_unknown` (a warning code or
+  any other string) on `override.pairs[i].code`; `occurrence_start_invalid`
+  (naive, or not a whole minute) on `override.pairs[i].occurrence_start`;
+  the reason as for a session (`reason_required`, `reason_too_long`;
+  trimmed, 1–1000). A `codes` member is `422 extra_forbidden`.
+- `403 permission_denied` when `override` is sent without
+  `schedule.override`, right after the schema and before anything is read
+  (also before an edit's `404`, and even when nothing would conflict).
+- **The decision** (`evaluate_series_override`, pure): the conflicts are
+  recomputed inside the write's transaction, under its locks, and grouped by
+  `details.occurrence_start` (instants compared as UTC values, never as
+  text). For each occurrence, the one-off rule (`evaluate_override`) runs
+  with the codes paired with that instant: **any hard conflict on any
+  occurrence**, or **any soft conflict whose (occurrence, code) pair isn't
+  listed**, refuses the whole write with the complete per-occurrence `409`
+  (it doesn't echo the override) and nothing is written. Listed pairs that
+  don't occur (an occurrence out of the window or no longer conflicting, an
+  instant that matches no occurrence, a `skipped_closure` date) are ignored
+  and never stored. With no conflict at all the write goes ahead as without
+  an override: no row, no event. A conflict that appeared after the first
+  `409` (an occurrence that entered the horizon, say) is answered with a
+  `409` again.
+- **Edits:** pairs name the occurrence's **new** instant. An edit needs its
+  own override: an occurrence overridden earlier that the edit re-checks
+  must be listed again if its soft conflict still occurs; its older rows
+  stay as history and are never consulted. `series_unchanged` stays `422`
+  with an override.
+- **Rows:** one append-only `class_session_overrides` row per overridden
+  occurrence (its own `class_session_id`, the computed `codes` and
+  `conflicts`, the reason, the actor) with the **context** column
+  `class_series_id`: the series the write targeted (the new series after a
+  split). All rows of a write are inserted with one flush.
+- **Audit:** one named event per write, `scheduling.series_override` on the
+  series (`record_type` `class_series`), `details {write: create | edit,
+  occurrence_count, occurrences [{override_id, class_session_id,
+  occurrence_start, codes}], reason}`; the full conflicts stay on the rows.
+  The automatic events and an edit's `scheduling.series_changed` are
+  unchanged. No notification about the override.
+- **No carry-forward.** The nightly job and the closure restore never read
+  override rows: an occurrence the job creates later that fails a soft check
+  is a `conflict` row with an inbox item, whatever earlier writes
+  overrode. Each override is a fresh authorization against conflicts
+  recomputed at that moment (a qualification revoked later must not stay
+  overridden). The inbox approve still only re-checks.
+
+**Overriding one `conflict` occurrence:** `POST
+/api/v1/class-sessions/{class_session_id}/conflict-overrides`
+(`require("schedule.manage")` plus `schedule.override`;
+`scheduling/conflict_override.py`), body `{version, override: {codes,
+reason}}` (the one-off session member, required; unknown fields `422`).
+Order: `401`/`403`; `422` for the schema; `404` for an unknown id (before
+the permission, so an Administrator without the delegation sees `404` for
+an unknown id); `403 permission_denied` without `schedule.override`; the
+student locks, the zone `FOR SHARE`, the series `FOR SHARE`, the session
+`FOR UPDATE`; `409 version_conflict`; `409 session_not_in_conflict`
+(`details.state`) unless it is `conflict`; `409 session_not_editable`
+(`details.reason = started`) when it has begun; `422` for its references
+with the create's codes (`tutor_inactive`, …: data validity is never
+overridable) and its bounds; the checks with `now` (`center_closed` off)
+and the series' tutor for its date; the one-off override decision (`409
+scheduling_conflict` with the single-session body, no
+`occurrence_start`); the approve's transition (the occurrence state of its
+date; an `offered` row joins the pending series offer; `conflict_codes`
+kept); with something overridden, the override row (with
+`class_series_id`) and `scheduling.session_override`; its open
+`scheduling.occurrence_conflict` request is cancelled by the system (also
+when nothing conflicts any more, which records no override); `200` with
+`ClassSessionDetail`.
 
 ### Course templates
 

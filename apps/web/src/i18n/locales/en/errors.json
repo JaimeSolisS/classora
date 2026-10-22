@@ -102,6 +102,7 @@
   "respond_by_requires_tutor": "A deadline needs a tutor to answer it.",
   "decline_note_too_long": "The note can be at most 500 characters long.",
   "session_not_editable": "This session can't be changed any more: it has started, or it is completed, cancelled or skipped.",
+  "session_not_in_conflict": "This session is not waiting on a scheduling conflict any more. Reload it.",
   "series_offer_pending": "The series' tutor offer is waiting for an answer. Wait for the answer or withdraw the offer first.",
   "series_ended": "The series has no occurrence on or after that date.",
   "occurrence_started": "An occurrence on that date has already begun. Choose a later date.",

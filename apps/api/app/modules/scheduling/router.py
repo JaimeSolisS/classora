@@ -39,6 +39,13 @@
 - ``PATCH /api/v1/class-sessions/{class_session_id}`` (#54 C1):
   ``require("schedule.manage")``; moves one session or occurrence
   (:mod:`~app.modules.scheduling.session_edit` gives the order).
+- ``POST /api/v1/class-sessions/{class_session_id}/conflict-overrides``
+  (#236 G3): ``require("schedule.manage")`` plus ``schedule.override`` in
+  the service (after the ``404``); overrides one ``conflict`` occurrence
+  and schedules it (:mod:`~app.modules.scheduling.conflict_override`).
+- An ``override`` on ``POST /api/v1/class-series`` and ``…/edits`` (#236)
+  needs ``schedule.override``: ``403`` right after the body's ``422``,
+  before anything is read (before the edit's ``404``).
 - ``POST /api/v1/class-series/{class_series_id}/edits`` and
   ``…/cancellations`` (#54 C3, C5): ``require("schedule.manage")``; change
   or cancel a series from a date on
@@ -100,6 +107,7 @@ from app.modules.scheduling.schemas import (
     ClassSessionRangeQuery,
     ClassSessionUpdate,
     ClassSessionUpdated,
+    ConflictOverrideCreate,
     OfferStatusFilter,
     SlotSuggestionRequest,
     SlotSuggestions,
@@ -296,6 +304,50 @@ async def update_class_session(
     )
 
 
+@router.post(
+    "/{class_session_id}/conflict-overrides",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): no schedule.manage, or no"
+            " schedule.override (checked after the 404). The privacy notice must"
+            " be accepted first (privacy_notice_required)."
+        ),
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); it is not"
+            " a `conflict` occurrence (session_not_in_conflict, details.state);"
+            " it has begun (session_not_editable, details.reason = started); or"
+            " a hard conflict, or a soft one the `override` doesn't list, is"
+            " found (scheduling_conflict, every conflict). Nothing is changed."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, the `override` (reason_required, reason_too_long,"
+            " codes_required, duplicate_code, code_not_overridable,"
+            " code_unknown); or the occurrence's references (student_inactive,"
+            " subject_inactive, tutor_inactive, classroom_inactive and the"
+            " _unknown codes): data validity is never overridable."
+        ),
+    },
+)
+async def override_conflict_occurrence(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    class_session_id: uuid.UUID,
+    body: ConflictOverrideCreate,
+    uow: UnitOfWorkDep,
+) -> ClassSessionDetail:
+    """Override the soft conflicts of one series occurrence in `conflict`
+    (the nightly job never reuses earlier overrides) and schedule it, as an
+    approval of its inbox item would: every rule is checked again now; a
+    hard conflict, or a soft one not listed in `override.codes`, refuses.
+    The override is stored with the reason and audited, and the
+    occurrence's inbox item is cancelled. Needs schedule.override."""
+    return await service.override_conflict_occurrence(
+        uow.session, class_session_id, body, principal=principal
+    )
+
+
 @router.get(
     "/{class_session_id}/replacement-tutors",
     responses={
@@ -400,13 +452,18 @@ async def list_tutor_suggestions(
             "An occurrence breaks scheduling rules (scheduling_conflict):"
             " `conflicts` lists every conflict of every occurrence in the"
             " horizon, each with `details.occurrence_start` and `details.date`,"
-            " by occurrence. Nothing is created. With a tutor, a series with no"
+            " by occurrence; with an `override`, a hard conflict or a soft one"
+            " whose (occurrence_start, code) pair isn't listed still refuses."
+            " Nothing is created. With a tutor, a series with no"
             " occurrence still to come can't be offered (series_not_offerable,"
             " details.reason = ended)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
-            " field (an `override` or `rrule` included), a kind other than"
+            " field (an `rrule` included); the `override` (reason_required,"
+            " reason_too_long, pairs_required, pairs_too_many, duplicate_pair,"
+            " code_not_overridable, code_unknown, occurrence_start_invalid); a"
+            " kind other than"
             " individual, `start_time` not HH:MM (time_format), a duration"
             " outside 15-480; the recurrence (weekdays_empty,"
             " weekday_out_of_range, weekdays_duplicate, interval_out_of_range,"
@@ -430,8 +487,12 @@ async def create_class_series(
     now and checked like a one-off session (a closure date is stored as
     `skipped_closure` instead); any conflict refuses the whole series. Later
     occurrences are created by the nightly job. With a tutor the occurrences
-    are `offered` to them, without one `unassigned`. `warnings` is always
-    empty for now."""
+    are `offered` to them, without one `unassigned`. With an `override`
+    (pairs of occurrence instant and soft code, plus a reason) the listed
+    soft conflicts are allowed, stored per occurrence with the reason and
+    audited. `warnings` is always empty for now."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
     return await service.create_class_series(
         uow.session,
         body,
@@ -469,11 +530,13 @@ async def get_class_series(
             " the date has begun (occurrence_started); or a changed or new"
             " occurrence breaks scheduling rules (scheduling_conflict: every"
             " conflict of every occurrence, with `details.occurrence_start`,"
-            " the new instant, and `details.date`). Nothing is changed."
+            " the new instant, and `details.date`; an `override` must list every"
+            " soft one as a pair and never covers a hard one). Nothing is"
+            " changed."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
-            " field (an `override` included), `from_date` missing for"
+            " field; the `override` (as for the create); `from_date` missing for"
             " `following` (from_date_required) or given for `all`"
             " (from_date_not_allowed), `start_time` not HH:MM (time_format), a"
             " duration outside 15-480; from_date_in_past; the recurrence"
@@ -503,8 +566,12 @@ async def edit_class_series(
     id; edited ones lose their exception), the others are cancelled
     (`series_changed`), and new dates are created; a cancelled occurrence on
     a kept date moves to the new series as it is. Every changed or new
-    occurrence is checked; any conflict refuses the whole change.
-    `warnings` is always empty for now."""
+    occurrence is checked; any conflict refuses the whole change, unless an
+    `override` lists every soft conflict as a pair with the occurrence's
+    new instant (stored per occurrence and audited). `warnings` is always
+    empty for now."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
     return await service.edit_class_series(
         uow.session,
         class_series_id,

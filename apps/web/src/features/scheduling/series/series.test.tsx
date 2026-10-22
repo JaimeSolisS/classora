@@ -14,7 +14,13 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, openDialog, typeInto } from '@/test/dom';
+import {
+  click,
+  fieldByLabel,
+  openDialog,
+  pressEscape,
+  typeInto,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -36,14 +42,24 @@ import {
   LINEAGE_SERIES,
   OCCURRENCE_SESSION,
   OCCURRENCES,
+  OVERRIDE_SERIES,
   SERIES_CANCELLED,
   SERIES_CONFLICTS,
   SERIES_CREATED,
   SERIES_DETAIL,
   SERIES_EDITED,
   SERIES_ID,
+  SOFT_SERIES_CONFLICTS,
   SPLIT_SERIES,
 } from './fixtures';
+import {
+  affectedOccurrences,
+  conflictOverrideBody,
+  conflictRowAction,
+  overriddenCount,
+  seriesOverride,
+  seriesOverridePairs,
+} from './overrides';
 import {
   durationMinutes,
   EMPTY_RECURRENCE,
@@ -672,7 +688,7 @@ describe('the create form with "Repeats weekly" (A1-A3)', () => {
     expect(link?.getAttribute('href')).toBe(`/schedule/series/${SERIES_ID}`);
   });
 
-  it('shows a 409 grouped by date without an override', async () => {
+  it('shows a 409 grouped by date; without schedule.override no override', async () => {
     stub(MANAGER, { [CREATE]: () => conflictResponse() });
     app = await renderApp('/schedule/new');
     await fillSeriesForm();
@@ -692,10 +708,13 @@ describe('the create form with "Repeats weekly" (A1-A3)', () => {
     expect(items).toEqual([
       'Not allowedThe classroom is already in use at this time.',
       'Not allowedThe student already has a class at this time.',
-      'Can’t be overridden for series yetThe tutor is not available at this time (time off).',
+      'Can be overriddenThe tutor is not available at this time (time off).',
     ]);
     expect(panel.textContent).not.toContain('Server detail');
     expect(main().textContent).not.toContain('Override and schedule');
+    expect(main().textContent).toContain(
+      'Only an Owner, or an Administrator with the override permission, can override these conflicts.',
+    );
     expect(main().textContent).not.toContain('Suggested times');
     expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
   });
@@ -1133,5 +1152,358 @@ describe('the calendar entry point (D2)', () => {
     act(() => root.unmount());
     container.remove();
     client.clear();
+  });
+});
+
+// --- #236: series overrides --------------------------------------------------
+
+const OVERRIDER: SessionUserBody = {
+  ...MANAGER,
+  permissions: [...MANAGER.permissions, 'schedule.override'],
+};
+const OVERRIDE_ROUTE = `POST /api/v1/class-sessions/${OCCURRENCES[4]!.id}/conflict-overrides`;
+const REASON = 'Domingos acordados con la familia';
+
+/** The top-most dialog (the override dialog over "Edit series"). */
+function topDialog(): HTMLElement {
+  const all = document.querySelectorAll<HTMLElement>('[role="dialog"]');
+  return all[all.length - 1]!;
+}
+
+function typeReason(value: string) {
+  const dialog = topDialog();
+  const label = [...dialog.querySelectorAll('label')].find(
+    (l) => l.textContent === 'Reason',
+  )!;
+  const area = document.getElementById(label.htmlFor) as HTMLTextAreaElement;
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  act(() => {
+    setter?.call(area, value);
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  return area;
+}
+
+function withOverrides<T extends { occurrences: unknown[] }>(
+  series: T,
+  overridden: number,
+): T {
+  return {
+    ...series,
+    occurrences: series.occurrences.map((o, index) => ({
+      ...(o as object),
+      overridden: index < overridden,
+    })),
+  };
+}
+
+describe('the series override rules (#236 H)', () => {
+  it('pairs every soft conflict with its instant exactly as sent', () => {
+    const offset = {
+      ...SOFT_SERIES_CONFLICTS[0]!,
+      details: {
+        ...SOFT_SERIES_CONFLICTS[0]!.details,
+        occurrence_start: '2031-01-12T10:00:00-06:00',
+      },
+    };
+    const conflicts = [
+      offset,
+      ...SOFT_SERIES_CONFLICTS.slice(1),
+      { ...SOFT_SERIES_CONFLICTS[1]! },
+      ...SERIES_CONFLICTS,
+    ];
+
+    expect(seriesOverridePairs(conflicts)).toEqual([
+      {
+        occurrence_start: '2031-01-12T10:00:00-06:00',
+        code: 'outside_operating_hours',
+      },
+      {
+        occurrence_start: '2031-01-19T16:00:00Z',
+        code: 'outside_operating_hours',
+      },
+      {
+        occurrence_start: '2031-01-26T16:00:00Z',
+        code: 'outside_operating_hours',
+      },
+      { occurrence_start: '2031-01-15T16:00:00Z', code: 'tutor_unavailable' },
+    ]);
+    expect(seriesOverride(SOFT_SERIES_CONFLICTS, `  ${REASON}  `)).toEqual({
+      pairs: seriesOverridePairs(SOFT_SERIES_CONFLICTS),
+      reason: REASON,
+    });
+    expect(affectedOccurrences(conflicts)).toBe(4);
+    expect(overriddenCount(OVERRIDE_SERIES.occurrences)).toBe(1);
+  });
+
+  it('offers a conflict row override by permission, state, start and codes', () => {
+    const row = OCCURRENCES[4]!;
+    const holder = { canManage: true, canOverride: true };
+    expect(conflictRowAction(row, holder, NOW)).toBe('override');
+    expect(
+      conflictRowAction(row, { canManage: true, canOverride: false }, NOW),
+    ).toBeNull();
+    expect(
+      conflictRowAction(row, { canManage: false, canOverride: true }, NOW),
+    ).toBeNull();
+    expect(conflictRowAction(OCCURRENCES[0]!, holder, NOW)).toBeNull();
+    expect(
+      conflictRowAction(row, holder, Date.parse(row.starts_at)),
+    ).toBeNull();
+    for (const codes of [['tutor_overlap'], ['tutor_inactive'], []]) {
+      expect(
+        conflictRowAction({ ...row, conflict_codes: codes }, holder, NOW),
+      ).toBe('fix');
+    }
+    expect(conflictOverrideBody({ ...row, version: 7 }, ` ${REASON} `)).toEqual(
+      {
+        version: 7,
+        override: { codes: ['outside_operating_hours'], reason: REASON },
+      },
+    );
+  });
+});
+
+describe('overriding a series create (#236 H1, H2)', () => {
+  it('overrides every soft pair with a reason and says on how many', async () => {
+    const api = stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_SERIES_CONFLICTS),
+        () => jsonResponse(201, withOverrides(SERIES_CREATED, 3)),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillSeriesForm();
+    await click(buttonNamed(main(), 'Schedule series'));
+    const items = [...main().querySelectorAll('[role="alert"] li li')].map(
+      (li) => li.textContent,
+    );
+    expect(items.every((text) => text?.startsWith('Can be overridden'))).toBe(
+      true,
+    );
+    const action = buttonNamed(main(), 'Override and schedule');
+    await click(action);
+
+    const dialog = topDialog();
+    expect(dialog.textContent).toContain(
+      'The series is scheduled despite these rules on 3 occurrences.',
+    );
+    expect(
+      [...dialog.querySelectorAll('h4')].map((h) => h.textContent),
+    ).toEqual(['January 12, 2031', 'January 19, 2031', 'January 26, 2031']);
+    await click(buttonNamed(dialog, 'Override and schedule'));
+    expect(dialog.textContent).toContain('Give a reason for the override.');
+    expect(api.calls(CREATE)).toHaveLength(1);
+
+    typeReason(`  ${REASON} `);
+    await click(buttonNamed(topDialog(), 'Override and schedule'));
+
+    const body = api.calls(CREATE)[1]!.body as Record<string, unknown>;
+    expect(body.override).toEqual({
+      pairs: SOFT_SERIES_CONFLICTS.map((c) => ({
+        occurrence_start: c.details.occurrence_start,
+        code: 'outside_operating_hours',
+      })),
+      reason: REASON,
+    });
+    expect({ ...body, override: undefined }).toEqual({
+      ...(api.calls(CREATE)[0]!.body as object),
+      override: undefined,
+    });
+    expect(openDialog()).toBeNull();
+    expect(main().textContent).toContain('Weekly series scheduled');
+    expect(main().textContent).toContain(
+      'Scheduled with overrides on 3 occurrences.',
+    );
+  });
+
+  it('asks to fix a hard conflict first, and shows a new list after a 409', async () => {
+    stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_SERIES_CONFLICTS),
+        () => conflictResponse(SERIES_CONFLICTS),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillSeriesForm();
+    await click(buttonNamed(main(), 'Schedule series'));
+    await click(buttonNamed(main(), 'Override and schedule'));
+    typeReason(REASON);
+    await click(buttonNamed(topDialog(), 'Override and schedule'));
+    await settle();
+
+    expect(openDialog()).toBeNull();
+    const panel = main().querySelector('[role="alert"]')!;
+    expect(panel.querySelector('h2')?.textContent).toBe(
+      'The series can’t be scheduled: 3 conflicts',
+    );
+    expect(document.activeElement).toBe(panel.querySelector('h2'));
+    expect(main().textContent).toContain(
+      'Fix the conflicts that aren’t allowed first.',
+    );
+    expect(main().textContent).not.toContain('Override and schedule');
+  });
+
+  it('keeps a 422 on the reason in the dialog and a 403 as an alert', async () => {
+    stub(OVERRIDER, {
+      [CREATE]: [
+        () => conflictResponse(SOFT_SERIES_CONFLICTS),
+        () =>
+          invalid([
+            { path: ['body', 'override', 'reason'], code: 'reason_too_long' },
+          ]),
+        () => problem(403, 'permission_denied'),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    await fillSeriesForm();
+    await click(buttonNamed(main(), 'Schedule series'));
+    await click(buttonNamed(main(), 'Override and schedule'));
+    typeReason(REASON);
+    await click(buttonNamed(topDialog(), 'Override and schedule'));
+    expect(topDialog().textContent).toContain(
+      'The reason can have at most 1000 characters.',
+    );
+
+    await click(buttonNamed(topDialog(), 'Override and schedule'));
+    expect(topDialog().querySelector('[role="alert"]')).not.toBeNull();
+    expect(openDialog()).not.toBeNull();
+  });
+});
+
+describe('the override dialogs and the focus (#236 H4)', () => {
+  it('returns the focus to the trigger on Escape', async () => {
+    stub(OVERRIDER, {
+      [CREATE]: () => conflictResponse(SOFT_SERIES_CONFLICTS),
+      [DETAIL]: () => jsonResponse(200, OVERRIDE_SERIES),
+    });
+    app = await renderApp('/schedule/new');
+    await fillSeriesForm();
+    await click(buttonNamed(main(), 'Schedule series'));
+    const action = buttonNamed(main(), 'Override and schedule');
+    action.focus();
+    await click(action);
+    expect(openDialog()).not.toBeNull();
+    await pressEscape();
+    expect(openDialog()).toBeNull();
+    expect(document.activeElement).toBe(action);
+
+    app.unmount();
+    app = await renderSeries();
+    const row = main().querySelectorAll<HTMLElement>('ol > li')[4]!;
+    const trigger = buttonNamed(row, 'Override and schedule');
+    trigger.focus();
+    await click(trigger);
+    expect(openDialog()).not.toBeNull();
+    await pressEscape();
+    expect(openDialog()).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe('overriding a series edit and a conflict row (#236 H2, H3)', () => {
+  it('resends the edit with every soft pair and says on how many', async () => {
+    const edited = {
+      ...SERIES_EDITED,
+      series: withOverrides(SPLIT_SERIES, 2),
+    };
+    const api = stub(OVERRIDER, {
+      [EDIT]: [
+        () => conflictResponse(SOFT_SERIES_CONFLICTS),
+        () => jsonResponse(200, edited),
+      ],
+      [`GET /api/v1/class-series/${LATER_SERIES_ID}`]: () =>
+        jsonResponse(200, edited.series),
+    });
+    app = await renderSeries();
+    await click(buttonNamed(main(), 'Edit series'));
+    typeInto(fieldByLabel(openDialog()!, 'From'), '2031-01-13');
+    await click(buttonNamed(openDialog()!, 'Save series'));
+    await click(buttonNamed(openDialog()!, 'Override and schedule'));
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2);
+    typeReason(REASON);
+    await click(buttonNamed(topDialog(), 'Override and schedule'));
+    await settle();
+
+    const [first, second] = api.calls(EDIT);
+    expect((second!.body as Record<string, unknown>).override).toEqual(
+      seriesOverride(SOFT_SERIES_CONFLICTS, REASON),
+    );
+    expect({
+      ...(second!.body as object),
+      override: undefined,
+    }).toEqual({ ...(first!.body as object), override: undefined });
+    expect(app.location()).toBe(`/schedule/series/${LATER_SERIES_ID}`);
+    expect(main().textContent).toContain(
+      'Series changed: 4 moved, 2 cancelled, 6 created, 1 edited occurrence reset. Scheduled with overrides on 2 occurrences.',
+    );
+  });
+
+  it('shows Overridden and the row action only to override holders', async () => {
+    stub(MANAGER, { [DETAIL]: () => jsonResponse(200, OVERRIDE_SERIES) });
+    app = await renderSeries();
+    const rows = [...main().querySelectorAll('ol > li')];
+    expect(rows[0]!.textContent).toContain('Overridden');
+    expect(rows[4]!.textContent).toContain('Conflicts: Opening hours');
+    expect(main().textContent).not.toContain('Override and schedule');
+    expect(main().textContent).not.toContain('Fix this occurrence');
+  });
+
+  it('overrides a conflict row with its version and codes, then refreshes', async () => {
+    const api = stub(OVERRIDER, {
+      [DETAIL]: [
+        () => jsonResponse(200, OVERRIDE_SERIES),
+        () =>
+          jsonResponse(200, {
+            ...OVERRIDE_SERIES,
+            occurrences: OVERRIDE_SERIES.occurrences.map((o, index) =>
+              index === 4
+                ? { ...o, state: 'unassigned', overridden: true, version: 2 }
+                : o,
+            ),
+          }),
+      ],
+      [OVERRIDE_ROUTE]: [
+        () => problem(409, 'version_conflict'),
+        () => jsonResponse(200, { ...OCCURRENCE_SESSION, version: 2 }),
+      ],
+    });
+    app = await renderSeries();
+    const rows = [...main().querySelectorAll('ol > li')];
+    expect(rows[6]!.textContent).toContain(
+      'Fix this occurrence by editing it or the series, or reject it in the inbox.',
+    );
+    expect(
+      [...main().querySelectorAll('button')].filter(
+        (b) => b.textContent === 'Override and schedule',
+      ),
+    ).toHaveLength(1);
+    await click(buttonNamed(rows[4] as HTMLElement, 'Override and schedule'));
+    const dialog = topDialog();
+    expect(dialog.textContent).toContain('Opening hours');
+    typeReason(REASON);
+    await click(buttonNamed(dialog, 'Override and schedule'));
+    expect(dialog.textContent).toContain(
+      'Someone else changed this record. Reload it and try again.',
+    );
+    expect(buttonNamed(dialog, 'Reload')).toBeTruthy();
+
+    await click(buttonNamed(dialog, 'Override and schedule'));
+    await settle();
+    expect(api.calls(OVERRIDE_ROUTE)[1]!.body).toEqual({
+      version: 1,
+      override: { codes: ['outside_operating_hours'], reason: REASON },
+    });
+    expect(openDialog()).toBeNull();
+    expect(main().textContent).toContain(
+      'The occurrence was scheduled with an override.',
+    );
+    expect(main().querySelectorAll('ol > li')[4]!.textContent).toContain(
+      'Overridden',
+    );
   });
 });

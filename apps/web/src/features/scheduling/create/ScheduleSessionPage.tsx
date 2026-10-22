@@ -86,8 +86,8 @@ export function ScheduleSessionPage() {
             {t('scheduling.success.openSession')}
           </Link>
         )}
-        onSubmitSeries={(values, recurrence) =>
-          createClassSeries(seriesCreateBody(values, recurrence))
+        onSubmitSeries={(values, recurrence, override) =>
+          createClassSeries(seriesCreateBody(values, recurrence, override))
         }
         seriesLink={(seriesId) => (
           <Link

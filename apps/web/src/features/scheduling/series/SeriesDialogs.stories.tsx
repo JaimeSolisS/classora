@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, screen, within } from 'storybook/test';
+import { expect, fn, screen, userEvent, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { CLASSROOMS } from '../create/fixtures';
 import { CancelSeriesDialog } from './CancelSeriesDialog';
+import { ConflictOccurrenceDialog } from './ConflictOccurrenceDialog';
 import { EditOccurrenceDialog } from './EditOccurrenceDialog';
 import { EditSeriesDialog } from './EditSeriesDialog';
 import {
@@ -11,12 +12,16 @@ import {
   OCCURRENCES,
   SERIES_CONFLICTS,
   SERIES_DETAIL,
+  SOFT_SERIES_CONFLICTS,
 } from './fixtures';
+import { SeriesOverrideSection } from './SeriesOverrideSection';
 
 // The series dialogs (#54b E3): "Edit this occurrence", "Edit series" and
 // "Cancel future occurrences", each empty, with an error and (the edits)
-// with a conflict list. No request: the submits are stubs. Axe runs in
-// light and dark.
+// with a conflict list; the #236 override branches under a series 409 (soft
+// only with the button, mixed, a non-holder), the series override dialog
+// (empty, a reason error, submitting) and a conflict row's dialog. No
+// request: the submits are stubs. Axe runs in light and dark.
 
 const ZONE = 'America/Mexico_City';
 
@@ -115,6 +120,7 @@ function editSeries(extra: Partial<Parameters<typeof EditSeriesDialog>[0]>) {
       onSubmit={fn(() => Promise.resolve())}
       onCancel={fn()}
       onReload={fn()}
+      canOverride
       {...extra}
     />
   );
@@ -146,9 +152,115 @@ export const SeriesEditConflicts: Story = {
     const view = await dialog();
     const alert = view.getByRole('alert');
     await expect(alert.querySelectorAll('h3')).toHaveLength(2);
-    await expect(alert).toHaveTextContent(
-      i18n.t('scheduling.series.conflicts.noOverride'),
+    await expect(alert).toHaveTextContent(i18n.t('scheduling.severity.soft'));
+    await expect(
+      view.getByText(i18n.t('scheduling.override.fixHardFirst')),
+    ).toBeVisible();
+  },
+};
+
+export const SeriesEditSoftConflicts: Story = {
+  render: () => editSeries({ initialConflicts: SOFT_SERIES_CONFLICTS }),
+  play: async () => {
+    const view = await dialog();
+    await expect(view.getByRole('alert').querySelectorAll('h3')).toHaveLength(
+      3,
     );
+    await expect(
+      view.getByRole('button', { name: i18n.t('scheduling.override.action') }),
+    ).toBeVisible();
+  },
+};
+
+export const SeriesEditNotHolder: Story = {
+  render: () =>
+    editSeries({ initialConflicts: SOFT_SERIES_CONFLICTS, canOverride: false }),
+  play: async () => {
+    const view = await dialog();
+    await expect(
+      view.getByText(i18n.t('scheduling.override.notAllowed')),
+    ).toBeVisible();
+  },
+};
+
+function overrideSection(
+  extra: Partial<Parameters<typeof SeriesOverrideSection>[0]>,
+) {
+  return (
+    <main className="p-4">
+      <SeriesOverrideSection
+        conflicts={SOFT_SERIES_CONFLICTS}
+        heading={i18n.t('scheduling.series.conflicts.createHeading', {
+          count: SOFT_SERIES_CONFLICTS.length,
+        })}
+        canOverride
+        initialReason=""
+        onOverride={fn(() => Promise.resolve())}
+        onRefused={fn()}
+        {...extra}
+      />
+    </main>
+  );
+}
+
+export const OverrideDialogEmpty: Story = {
+  render: () => overrideSection({}),
+  play: async () => {
+    const view = await dialog();
+    await expect(view.getAllByRole('heading', { level: 4 })).toHaveLength(3);
+    await expect(
+      view.getByText(
+        i18n.t('scheduling.series.override.description', { count: 3 }),
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const OverrideDialogReasonError: Story = {
+  render: () => overrideSection({}),
+  play: async () => {
+    const view = await dialog();
+    await userEvent.click(
+      view.getByRole('button', { name: i18n.t('scheduling.override.submit') }),
+    );
+    await expect(
+      view.getByText(i18n.t('scheduling.override.reasonRequired')),
+    ).toBeVisible();
+  },
+};
+
+export const OverrideDialogSubmitting: Story = {
+  render: () =>
+    overrideSection({
+      initialReason: 'Domingos acordados con la familia',
+      onOverride: () => new Promise<void>(() => undefined),
+    }),
+  play: async () => {
+    const view = await dialog();
+    await userEvent.click(
+      view.getByRole('button', { name: i18n.t('scheduling.override.submit') }),
+    );
+    await expect(
+      await view.findByText(i18n.t('scheduling.override.submitting')),
+    ).toBeVisible();
+  },
+};
+
+export const ConflictRowOverride: Story = {
+  render: () => (
+    <ConflictOccurrenceDialog
+      occurrence={OCCURRENCES[4]!}
+      timeZone={ZONE}
+      onSubmit={fn(() => Promise.resolve())}
+      onCancel={fn()}
+      onReload={fn()}
+    />
+  ),
+  play: async () => {
+    const view = await dialog();
+    await expect(
+      view.getByText(i18n.t('scheduling.rules.outside_operating_hours')),
+    ).toBeVisible();
   },
 };
 

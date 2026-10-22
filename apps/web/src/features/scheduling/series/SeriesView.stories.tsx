@@ -5,6 +5,7 @@ import { StoryRouter } from '@/test/StoryRouter';
 import {
   ENDED_SERIES,
   LINEAGE_SERIES,
+  OVERRIDE_SERIES,
   SERIES_DETAIL,
   SPLIT_SERIES,
 } from './fixtures';
@@ -12,8 +13,9 @@ import { SeriesView, type SeriesViewProps } from './SeriesView';
 
 // The series page (#54b E3): a normal series with its rows (edited,
 // skipped, cancelled and conflict ones) and the actions; read-only (no
-// schedule.manage); ended; split, with both lineage links. No request; axe
-// runs in light and dark.
+// schedule.manage); ended; split, with both lineage links; with overrides
+// (#236: "Overridden", a conflict row's "Override and schedule" and one to
+// fix instead). No request; axe runs in light and dark.
 
 // Before every fixture row, so no row has started.
 const NOW = Date.parse('2030-12-01T00:00:00Z');
@@ -104,5 +106,27 @@ export const Lineage: Story = {
   args: { series: LINEAGE_SERIES },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getAllByRole('link')).toHaveLength(2);
+  },
+};
+
+export const Overrides: Story = {
+  args: {
+    series: OVERRIDE_SERIES,
+    canOverride: true,
+    onOverrideOccurrence: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('scheduling.series.page.overridden')),
+    ).toBeVisible();
+    await expect(
+      canvas.getAllByRole('button', {
+        name: new RegExp(i18n.t('scheduling.override.action')),
+      }),
+    ).toHaveLength(1);
+    await expect(
+      canvas.getByText(i18n.t('scheduling.series.page.fixConflict')),
+    ).toBeVisible();
   },
 };

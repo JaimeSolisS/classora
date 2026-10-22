@@ -21,10 +21,12 @@ import {
 import {
   cancelClassSeries,
   editClassSeries,
+  overrideConflictOccurrence,
   updateClassSession,
   type SeriesOccurrence,
 } from './api';
 import { CancelSeriesDialog } from './CancelSeriesDialog';
+import { ConflictOccurrenceDialog } from './ConflictOccurrenceDialog';
 import { EditOccurrenceDialog } from './EditOccurrenceDialog';
 import { EditSeriesDialog } from './EditSeriesDialog';
 import {
@@ -35,6 +37,7 @@ import {
   seriesPath,
   summaryParts,
 } from './rules';
+import { conflictOverrideBody, overriddenCount } from './overrides';
 import { SeriesView } from './SeriesView';
 
 // /schedule/series/:seriesId (#54b B1), for schedule.view holders (lazy
@@ -44,6 +47,9 @@ import { SeriesView } from './SeriesView';
 // "Edit series" the page goes to the resulting series (a new id after a
 // split) with the summary sentence; after a cancellation it says how many
 // occurrences were cancelled. Every write also refreshes the calendar.
+// Overrides (#236): "Edit series" can resend with every soft pair (the
+// summary then says on how many occurrences), and a `conflict` row's
+// "Override and schedule" overrides that one occurrence.
 
 interface PageNotice {
   notice?: string;
@@ -62,12 +68,14 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
   const navigate = useNavigate();
   const timeZone = useCenterTimeZone();
   const canManage = useCan('schedule.manage');
+  const canOverride = useCan('schedule.override');
   const client = useQueryClient();
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const [localNoticeFocus, setLocalNoticeFocus] = useState(false);
   const [editing, setEditing] = useState<SeriesOccurrence | null>(null);
   const [editingSeries, setEditingSeries] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [overriding, setOverriding] = useState<SeriesOccurrence | null>(null);
 
   const series = useQuery({
     queryKey: seriesKey(seriesId),
@@ -139,11 +147,13 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
             series={detail}
             timeZone={timeZone}
             canManage={canManage}
+            canOverride={canOverride}
             notice={notice}
             focusNotice={noticeFocus}
             onEditOccurrence={(occurrence) => setEditing(occurrence)}
             onEditSeries={() => setEditingSeries(true)}
             onCancelSeries={() => setCancelling(true)}
+            onOverrideOccurrence={(occurrence) => setOverriding(occurrence)}
           />
           {canManage ? (
             <>
@@ -180,22 +190,30 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
                 timeZone={timeZone}
                 onReload={() => void series.refetch()}
                 onCancel={() => setEditingSeries(false)}
-                onSubmit={async (values) => {
+                canOverride={canOverride}
+                onSubmit={async (values, override) => {
                   const result = await editClassSeries(
                     detail.id,
-                    seriesEditBody(values, detail.version),
+                    seriesEditBody(values, detail.version, override),
                   );
                   const parts = summaryParts(result.summary).map((part) =>
                     t(`scheduling.series.summary.${part.key}`, {
                       count: part.count,
                     }),
                   );
-                  const text =
+                  const summary =
                     parts.length > 0
                       ? t('scheduling.series.summary.sentence', {
                           parts: parts.join(', '),
                         })
                       : t('scheduling.series.summary.nothing');
+                  const overridden = override
+                    ? overriddenCount(result.series.occurrences)
+                    : 0;
+                  const text =
+                    overridden > 0
+                      ? `${summary} ${t('scheduling.series.override.scheduledWith', { count: overridden })}`
+                      : summary;
                   client.setQueryData(
                     seriesKey(result.series.id),
                     result.series,
@@ -206,6 +224,32 @@ function SeriesPageContent({ seriesId }: { seriesId: string }) {
                   void navigate(seriesPath(result.series.id), {
                     state: { notice: text } satisfies PageNotice,
                   });
+                }}
+              />
+              <ConflictOccurrenceDialog
+                occurrence={overriding}
+                timeZone={timeZone}
+                onCancel={() => setOverriding(null)}
+                onReload={() => {
+                  setOverriding(null);
+                  void series.refetch();
+                }}
+                onSubmit={async (reason) => {
+                  if (!overriding) {
+                    return;
+                  }
+                  await overrideConflictOccurrence(
+                    overriding.id,
+                    conflictOverrideBody(overriding, reason),
+                  );
+                  await client.invalidateQueries({
+                    queryKey: sessionKey(overriding.id),
+                  });
+                  await refresh();
+                  setOverriding(null);
+                  // The row's button is gone once it is scheduled.
+                  setLocalNoticeFocus(true);
+                  setLocalNotice(t('scheduling.series.override.rowDone'));
                 }}
               />
               <CancelSeriesDialog

@@ -23,8 +23,16 @@ and the body's ``422``:
    ``skipped_closure``, every other occurrence passes the #48 checks
    (``center_closed`` off), and any conflict is one ``409
    scheduling_conflict`` listing every conflict of every occurrence. A
-   ``409`` or ``422`` rolls everything back, so nothing is created;
-8. ``201`` with the series and its occurrences.
+   ``409`` or ``422`` rolls everything back, so nothing is created. With an
+   ``override`` (#236 E1; the route checked ``schedule.override`` right
+   after the body) the conflicts go through
+   :func:`~app.modules.scheduling.overrides.evaluate_series_override`: a
+   hard conflict or an unlisted soft pair is the same ``409``;
+8. with something overridden, the override rows and the
+   ``scheduling.series_override`` event
+   (:func:`~app.modules.scheduling.overrides.record_series_overrides`,
+   ``write = "create"``);
+9. ``201`` with the series and its occurrences.
 
 A series that starts after the horizon is created with no occurrence row:
 the nightly job creates and checks them later (D4). Audit: the automatic
@@ -73,7 +81,9 @@ from app.modules.scheduling.models import (
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
+    ClassSessionOverride,
 )
+from app.modules.scheduling.overrides import record_series_overrides
 from app.modules.scheduling.recurrence import (
     InvalidRecurrenceError,
     RecurrenceFields,
@@ -216,13 +226,23 @@ async def create_class_series(
         ClassSeriesParticipant(class_series_id=series.id, student_id=body.student_id)
     )
     await session.flush()
-    await materialize_series(
+    counts = await materialize_series(
         session,
         series.id,
         now=offered_at,
         horizon_weeks=horizon_weeks,
         mode="create",
+        override=body.override,
     )
+    if body.override is not None and counts.override is not None:
+        await record_series_overrides(
+            session,
+            class_series_id=series.id,
+            decision=counts.override,
+            reason=body.override.reason,
+            write="create",
+            actor_id=actor_id,
+        )
     if body.tutor_user_id is not None:
         await offer_new_series(
             session,
@@ -235,7 +255,7 @@ async def create_class_series(
     return ClassSeriesCreated(**detail.model_dump(), warnings=[])
 
 
-def _occurrence(row: ClassSession) -> SeriesOccurrence:
+def _occurrence(row: ClassSession, overridden: bool) -> SeriesOccurrence:
     # Every row of a series has an original start (a CHECK).
     assert row.original_start is not None  # noqa: S101
     return SeriesOccurrence(
@@ -245,6 +265,9 @@ def _occurrence(row: ClassSession) -> SeriesOccurrence:
         ends_at=row.ends_at.astimezone(UTC),
         original_start=row.original_start.astimezone(UTC),
         is_exception=row.is_exception,
+        overridden=overridden,
+        conflict_codes=list(row.conflict_codes),
+        version=row.version,
     )
 
 
@@ -288,13 +311,22 @@ async def get_class_series(
         classroom = SessionClassroom(
             id=room.id, name=room.name, is_active=room.is_active
         )
-    rows = await session.scalars(
-        select(ClassSession)
-        .where(
-            ClassSession.series_id == series.id,
-            ClassSession.starts_at >= clock.now(),
+    # #236 G4: whether an override names each row, in the same statement.
+    overridden = (
+        select(ClassSessionOverride.id)
+        .where(ClassSessionOverride.class_session_id == ClassSession.id)
+        .exists()
+        .label("overridden")
+    )
+    rows = list(
+        await session.execute(
+            select(ClassSession, overridden)
+            .where(
+                ClassSession.series_id == series.id,
+                ClassSession.starts_at >= clock.now(),
+            )
+            .order_by(ClassSession.starts_at, ClassSession.id)
         )
-        .order_by(ClassSession.starts_at, ClassSession.id)
     )
     participants = sorted(
         (
@@ -370,7 +402,7 @@ async def get_class_series(
         version=series.version,
         created_at=series.created_at,
         updated_at=series.updated_at,
-        occurrences=[_occurrence(row) for row in rows],
+        occurrences=[_occurrence(row, flag) for row, flag in rows],
     )
 
 

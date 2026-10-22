@@ -1,8 +1,9 @@
-import { CircleStop, PencilLine } from 'lucide-react';
+import { CircleStop, PencilLine, ShieldCheck } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
+import { occurrenceCodeName } from '@/features/approvals/summary';
 import { STATE_ICONS } from '@/features/calendar/EventContent';
 import { toLanguage } from '@/i18n/language';
 import { formatInstant, formatLocalDate, toLocalDate } from '@/lib/time';
@@ -13,6 +14,7 @@ import {
 import type { ClassSeriesDetail } from '../session/api';
 import type { SeriesOccurrence } from './api';
 import { describeRecurrence } from './describeRecurrence';
+import { conflictRowAction } from './overrides';
 import { isSeriesOver, seriesActions, seriesPath } from './rules';
 
 // The series page's content (#54b B2, B3), presentational: a header with
@@ -24,11 +26,19 @@ import { isSeriesOver, seriesActions, seriesPath } from './rules';
 // Holders of schedule.manage get "Edit this occurrence" on rows that
 // haven't started and can still change, "Edit series" and "Cancel future
 // occurrences", none of them once the series has ended.
+//
+// Overrides (#236 H3): a row with an override shows "Overridden" (text and
+// an icon); a `conflict` row shows its translated codes, and for holders of
+// schedule.manage and schedule.override, when it hasn't started and every
+// code is soft, "Override and schedule"; with a hard or data-validity code
+// it says how to fix it instead.
 
 export interface SeriesViewProps {
   series: ClassSeriesDetail;
   timeZone: string;
   canManage: boolean;
+  /** Whether the user holds schedule.override (#236). */
+  canOverride?: boolean;
   /** The current time (tests and stories). */
   now?: number;
   /** A just-made change, announced at the top. */
@@ -38,6 +48,8 @@ export interface SeriesViewProps {
   onEditOccurrence: (occurrence: SeriesOccurrence) => void;
   onEditSeries: () => void;
   onCancelSeries: () => void;
+  /** "Override and schedule" on a `conflict` row (#236 G3). */
+  onOverrideOccurrence?: (occurrence: SeriesOccurrence) => void;
 }
 
 const LINK_CLASS =
@@ -47,12 +59,14 @@ export function SeriesView({
   series,
   timeZone,
   canManage,
+  canOverride = false,
   now,
   notice,
   focusNotice = false,
   onEditOccurrence,
   onEditSeries,
   onCancelSeries,
+  onOverrideOccurrence,
 }: SeriesViewProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -196,6 +210,13 @@ export function SeriesView({
                   style: 'time',
                 }),
               });
+              const rowAction = onOverrideOccurrence
+                ? conflictRowAction(
+                    occurrence,
+                    { canManage, canOverride },
+                    now ?? shownAt,
+                  )
+                : null;
               return (
                 <li
                   key={occurrence.id}
@@ -222,22 +243,64 @@ export function SeriesView({
                           {t('scheduling.series.page.edited')}
                         </span>
                       ) : null}
+                      {occurrence.overridden ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 text-xs font-medium">
+                          <ShieldCheck
+                            aria-hidden="true"
+                            className="size-3.5 shrink-0"
+                          />
+                          {t('scheduling.series.page.overridden')}
+                        </span>
+                      ) : null}
                     </p>
+                    {occurrence.state === 'conflict' &&
+                    occurrence.conflict_codes.length > 0 ? (
+                      <p className="break-words text-muted-foreground">
+                        {t('scheduling.series.page.conflictCodes', {
+                          codes: occurrence.conflict_codes
+                            .map((code) => occurrenceCodeName(code, t))
+                            .join(', '),
+                        })}
+                      </p>
+                    ) : null}
+                    {rowAction === 'fix' ? (
+                      <p className="break-words">
+                        {t('scheduling.series.page.fixConflict')}
+                      </p>
+                    ) : null}
                   </div>
-                  {actions.editOccurrence(occurrence) ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      aria-label={t('scheduling.series.page.editOccurrenceOf', {
-                        date,
-                        range,
-                      })}
-                      onClick={() => onEditOccurrence(occurrence)}
-                    >
-                      {t('scheduling.series.page.editOccurrence')}
-                    </Button>
-                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    {rowAction === 'override' && onOverrideOccurrence ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        aria-label={t('scheduling.series.page.overrideOf', {
+                          date,
+                          range,
+                        })}
+                        onClick={() => onOverrideOccurrence(occurrence)}
+                      >
+                        {t('scheduling.override.action')}
+                      </Button>
+                    ) : null}
+                    {actions.editOccurrence(occurrence) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={t(
+                          'scheduling.series.page.editOccurrenceOf',
+                          {
+                            date,
+                            range,
+                          },
+                        )}
+                        onClick={() => onEditOccurrence(occurrence)}
+                      >
+                        {t('scheduling.series.page.editOccurrence')}
+                      </Button>
+                    ) : null}
+                  </div>
                 </li>
               );
             })}

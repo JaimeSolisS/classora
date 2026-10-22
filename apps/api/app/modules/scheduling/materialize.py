@@ -38,7 +38,19 @@ scheduling_conflict`` listing every conflict of every occurrence, each with
 ``details.occurrence_start`` and ``details.date``, by occurrence then rule
 order. Nothing is stored (the Unit of Work rolls the series back). A bounds
 failure (only where a DST change falls at local midnight) is ``422
-crosses_local_date`` on ``start_time``.
+crosses_local_date`` on ``start_time``. With a series ``override`` (#236)
+the conflicts go through :func:`~app.modules.scheduling.overrides.
+evaluate_series_override` instead: allowed, the overridden occurrences are
+created in their initial state (no ``conflict_codes``) and the decision is
+returned for the caller to record; refused, the same ``409``.
+
+**Overrides are never read here (#236 G1).** The extend mode (and #232's
+closure restore) never consult ``class_session_overrides``: a new
+occurrence that fails a soft check is a ``conflict`` row with an inbox item,
+whatever earlier writes overrode. An override covers only the occurrences
+the write that carried it checked, because each override is a fresh
+authorization against conflicts recomputed then (W1.6); for example, a
+qualification revoked later must not stay overridden.
 
 **Extend mode:** a failing occurrence is stored as **``conflict``** with its
 ``conflict_codes``, the series' tutor and room and its participant; it
@@ -108,7 +120,13 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
 )
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
+from app.modules.scheduling.overrides import (
+    OccurrenceConflict,
+    SeriesOverrideDecision,
+    evaluate_series_override,
+)
 from app.modules.scheduling.recurrence import Occurrence, expand, horizon_end
+from app.modules.scheduling.schemas import SeriesOverride
 from app.modules.scheduling.sessions import flush_class_sessions
 from app.modules.scheduling.states import SessionState
 from app.modules.scheduling.times import validate_session_bounds
@@ -126,6 +144,9 @@ class MaterializeCounts:
     created: int = 0
     skipped_closure: int = 0
     conflicts: int = 0
+    override: SeriesOverrideDecision | None = None
+    """Create mode: the allowed override decision (#236), for the caller to
+    record; ``None`` otherwise."""
 
 
 @dataclass(frozen=True)
@@ -334,12 +355,16 @@ async def materialize_series(
     now: datetime,
     horizon_weeks: int,
     mode: Mode,
+    override: SeriesOverride | None = None,
 ) -> MaterializeCounts:
     """Create the series' missing occurrences in ``[now, horizon_end)``; see
     the module docstring. Returns the inserted counts. In ``create`` mode a
-    conflict raises :class:`SchedulingConflictError` (and a bounds failure
+    conflict that ``override`` doesn't cover raises
+    :class:`SchedulingConflictError` (and a bounds failure
     :class:`SessionValidationError`); the caller holds the student locks
-    and the zone ``FOR SHARE``."""
+    and the zone ``FOR SHARE``. ``override`` is for ``create`` mode only."""
+    if override is not None and mode != "create":
+        raise ValueError("only a create carries an override")
     student_ids = await series_participant_ids(session, series_id)
     if mode == "extend":
         await lock_students(session, student_ids)
@@ -375,6 +400,7 @@ async def materialize_series(
     )
     planned: list[PlannedOccurrence] = []
     refused: list[SchedulingConflict] = []
+    found: list[OccurrenceConflict] = []
     for occurrence in occurrences:
         if occurrence.local_date in closed:
             planned.append(PlannedOccurrence(occurrence, SessionState.SKIPPED_CLOSURE))
@@ -403,7 +429,12 @@ async def materialize_series(
                 check_center_closed=False,
             )
             if mode == "create":
+                # Every conflict is refused or overridden (decided below).
                 refused += [occurrence_wire(c, occurrence) for c in conflicts]
+                found += [
+                    OccurrenceConflict(occurrence.original_start, c) for c in conflicts
+                ]
+                conflicts = []
             codes += [c.code for c in conflicts if c.code not in codes]
         if codes:
             planned.append(PlannedOccurrence(occurrence, SessionState.CONFLICT, codes))
@@ -413,8 +444,11 @@ async def materialize_series(
                     occurrence, occurrence_initial_state(series, occurrence.local_date)
                 )
             )
-    if refused:
-        raise SchedulingConflictError(refused)
+    decision = None
+    if mode == "create":
+        decision = evaluate_series_override(found, override)
+        if not decision.allowed:
+            raise SchedulingConflictError(refused)
 
     rows = await insert_occurrences(session, series, planned, student_ids, mode=mode)
     if mode == "extend":
@@ -440,6 +474,7 @@ async def materialize_series(
         created=len(rows) - skipped - conflicted,
         skipped_closure=skipped,
         conflicts=conflicted,
+        override=decision,
     )
 
 

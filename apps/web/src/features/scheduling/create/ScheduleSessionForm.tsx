@@ -23,7 +23,12 @@ import {
   type RecurrenceValues,
 } from '../series/recurrence';
 import { RecurrenceFields } from '../series/RecurrenceFields';
-import { SeriesConflictPanel } from '../series/SeriesConflictPanel';
+import {
+  overriddenCount,
+  seriesOverride,
+  type SeriesOverride,
+} from '../series/overrides';
+import { SeriesOverrideSection } from '../series/SeriesOverrideSection';
 import {
   conflictsOf,
   type ClassSessionCreated,
@@ -103,8 +108,11 @@ import { useWarningMessage } from './warningMessages';
 // and "Ends" appear. A 201 shows the series success panel (the rule
 // summary, the sessions created so far, how many are skipped for a
 // closure, the series link); a 409 shows every occurrence's conflicts
-// grouped by local date, without an override (M4-09c) and without
-// suggested times; a 422 goes onto the fields, `recurrence.*` included.
+// grouped by local date, without suggested times; a 422 goes onto the
+// fields, `recurrence.*` included. Under that panel the #49 branches apply
+// to the series (#236 H1, H2): "Override and schedule" resends the series
+// with every soft (occurrence, code) pair and the reason, and the success
+// panel says on how many occurrences it was overridden.
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -133,6 +141,7 @@ export interface ScheduleSessionFormProps {
   onSubmitSeries?: (
     values: ScheduleValues,
     recurrence: RecurrenceValues,
+    override?: SeriesOverride,
   ) => Promise<ClassSeriesCreated>;
   /** A link to the created series' page (#54b D1). */
   seriesLink?: (seriesId: string) => ReactNode;
@@ -385,32 +394,52 @@ export function ScheduleSessionForm({
       setCreatedSeries(series);
       window.setTimeout(() => successHeading.current?.focus(), 0);
     } catch (caught) {
-      const list = conflictsOf(caught);
-      if (list) {
-        setSeriesConflicts(list);
-        return;
-      }
-      if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
-        const mapped = serverErrors(caught.fieldErrors);
-        const mappedRule = recurrenceServerErrors(caught.fieldErrors);
-        if (
-          Object.keys(mapped).length > 0 ||
-          Object.keys(mappedRule).length > 0
-        ) {
-          setErrors(mapped);
-          setRecurrenceErrors(mappedRule);
-          if (Object.keys(mapped).length > 0) {
-            focusFirst(mapped);
-          } else {
-            focusRecurrence(mappedRule);
-          }
-          return;
-        }
-      }
-      setFailure(caught);
+      handleSeriesFailure(caught);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSeriesFailure(caught: unknown) {
+    const list = conflictsOf(caught);
+    if (list) {
+      setSeriesConflicts(list);
+      return;
+    }
+    setSeriesConflicts(null);
+    if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
+      const mapped = serverErrors(caught.fieldErrors);
+      const mappedRule = recurrenceServerErrors(caught.fieldErrors);
+      if (
+        Object.keys(mapped).length > 0 ||
+        Object.keys(mappedRule).length > 0
+      ) {
+        setErrors(mapped);
+        setRecurrenceErrors(mappedRule);
+        if (Object.keys(mapped).length > 0) {
+          focusFirst(mapped);
+        } else {
+          focusRecurrence(mappedRule);
+        }
+        return;
+      }
+    }
+    setFailure(caught);
+  }
+
+  async function overrideSeries(reason: string) {
+    if (!onSubmitSeries || !seriesConflicts) {
+      return;
+    }
+    const series = await onSubmitSeries(
+      values,
+      recurrence,
+      seriesOverride(seriesConflicts, reason),
+    );
+    // The success panel replaces the form (and the dialog with it).
+    setSeriesConflicts(null);
+    setCreatedSeries(series);
+    window.setTimeout(() => successHeading.current?.focus(), 0);
   }
 
   async function submit() {
@@ -543,6 +572,7 @@ export function ScheduleSessionForm({
     const skipped = createdSeries.occurrences.filter(
       (o) => o.state === 'skipped_closure',
     ).length;
+    const overridden = overriddenCount(createdSeries.occurrences);
     return (
       <section
         aria-labelledby={`${id}-success`}
@@ -556,6 +586,13 @@ export function ScheduleSessionForm({
         >
           {t('scheduling.series.success.heading')}
         </h2>
+        {overridden > 0 ? (
+          <p className="font-medium">
+            {t('scheduling.series.override.scheduledWith', {
+              count: overridden,
+            })}
+          </p>
+        ) : null}
         <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
           <dt className="font-medium">{t('scheduling.fields.student')}</dt>
           <dd className="break-words">
@@ -782,11 +819,14 @@ export function ScheduleSessionForm({
         {announcement}
       </p>
       {seriesConflicts ? (
-        <SeriesConflictPanel
+        <SeriesOverrideSection
           conflicts={seriesConflicts}
           heading={t('scheduling.series.conflicts.createHeading', {
             count: seriesConflicts.length,
           })}
+          canOverride={canOverride}
+          onOverride={overrideSeries}
+          onRefused={handleSeriesFailure}
         />
       ) : null}
       {failure ? <ErrorAlert error={failure} /> : null}
