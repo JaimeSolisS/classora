@@ -115,6 +115,7 @@ COURSE_TABLES = [
 OVERRIDE_TABLES = ["class_session_overrides"]
 OFFER_TABLES = ["assignment_offer_sessions", "assignment_offers"]
 SERIES_TABLES = ["class_series", "class_series_participants"]
+SUBSTITUTION_TABLES = ["class_session_substitutions"]
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -309,6 +310,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *OVERRIDE_TABLES,
             *OFFER_TABLES,
             *SERIES_TABLES,
+            *SUBSTITUTION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
