@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { createStudentViaApi } from '../support/students';
@@ -167,9 +168,10 @@ test('an Owner schedules a session and meets a student overlap', async ({
   );
 
   // 5. Accessibility of the page with the conflict panel and the
-  // suggestions, light and dark.
+  // suggestions, light and dark. The switch waits for the colour
+  // transitions to settle before axe runs (#241, support/a11y.ts).
   for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme });
+    await switchColorScheme(page, colorScheme);
     const results = await new AxeBuilder({ page })
       .withTags(WCAG_TAGS)
       .analyze();

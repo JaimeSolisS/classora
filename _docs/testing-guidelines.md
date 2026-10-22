@@ -510,7 +510,10 @@ follows these rules.
   `e2e/playwright.config.ts`. M1-15 adds the per-language runs.
 - Viewports: desktop Chromium only. A task that names "mobile viewport" adds a
   project.
-- A new route gets an axe scan (next section).
+- A new route gets an axe scan (next section). A spec that switches the
+  colour scheme on an already-rendered page calls `switchColorScheme`
+  (`e2e/tests/support/a11y.ts`) before axe runs: it waits for the `html`
+  class and for the colour transitions to finish (#241).
 - **Signed-in state (#28):** `e2e/global-setup.ts` signs the demo Owner in
   once through the API and saves Playwright `storageState` to
   `e2e/.auth/owner.json` (gitignored); every test starts signed in from it.
