@@ -27,6 +27,7 @@ type Common = {
     schedule: string;
     courses: string;
     offers: string;
+    groups: string;
   };
   roles: Record<string, string>;
   scheduling: {
@@ -38,7 +39,7 @@ type Common = {
     submit: string;
     success: { heading: string; unassigned: string; another: string };
     severity: { hard: string; soft: string };
-    conflicts: { student_overlap: string };
+    conflicts: { student_overlap: string; group_capacity_exceeded: string };
     suggestions: { heading: string; slot: string };
     override: {
       action: string;
@@ -112,6 +113,29 @@ type Common = {
         string
       >;
     };
+  };
+  // #234: tutoring groups.
+  groups: {
+    title: string;
+    new: string;
+    fields: Record<'name' | 'max', string>;
+    capacity: { taken: string };
+    page: { enroll: string };
+    next: { heading: string };
+    roster: Record<
+      'overridden' | 'withdrawOf' | 'withdrawn_one' | 'noReason',
+      string
+    >;
+    conflicts: { wholeGroup: string };
+    enroll: Record<
+      'title' | 'student' | 'submit' | 'overrideAction' | 'doneOverride',
+      string
+    >;
+    withdraw: Record<'title' | 'reason' | 'submit' | 'done', string>;
+    create: Record<
+      'title' | 'addStudent' | 'remove' | 'submit' | 'done_other',
+      string
+    >;
   };
   offers: {
     title: string;

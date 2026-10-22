@@ -184,6 +184,10 @@ unless a bullet says otherwise.
 - Staff can hand one upcoming session to a substitute tutor (the substitute
   accepts in My offers; the original tutor and the family are notified) and
   cancel a single session with a reason.
+- On the Groups page, staff create ongoing tutoring groups with a weekly
+  schedule and a maximum size, and enroll or withdraw students at any time
+  (going over the size needs an override). Students see their own groups
+  and sessions.
 
 **Courses**
 
@@ -233,10 +237,9 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** group scheduling, rescheduling from the
-calendar, course cohorts, attendance, academic records,
-billing and payments, payroll, reporting and analytics, and
-deployment. See the
+**Not built yet:** rescheduling from the calendar, course cohorts,
+attendance, academic records, billing and payments, payroll, reporting and
+analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

@@ -124,5 +124,15 @@
   "class_session_not_cancellable": "This session can't be cancelled: it has started, or it is completed, cancelled or skipped. Reload the page.",
   "substitution_no_longer_valid": "This session changed after the substitution was offered, so it can't be taken.",
   "substitute_busy": "You already have a class at that time, so you can't take this one. You can still decline it.",
-  "substitute_is_current_tutor": "Choose a tutor other than the session's tutor."
+  "substitute_is_current_tutor": "Choose a tutor other than the session's tutor.",
+  "group_not_found": "This group doesn't exist or you can't see it.",
+  "group_name_taken": "Another group already has this name.",
+  "group_ended": "This group has ended: no student can join it.",
+  "already_enrolled": "This student is already enrolled in the group.",
+  "enrollment_not_found": "This enrollment doesn't exist. Reload the group.",
+  "enrollment_not_active": "This student was already withdrawn. The list is updated.",
+  "max_students_below_enrolled": "The maximum can't be lower than the students enrolled.",
+  "student_ids_duplicate": "Each student can be added only once.",
+  "no_changes": "Change the name or the maximum first.",
+  "reason_too_long": "The reason can have at most 1000 characters."
 }

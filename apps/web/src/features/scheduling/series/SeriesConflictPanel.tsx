@@ -15,7 +15,10 @@ import { conflictsByDate } from '../session/rules';
 // the PATCH of one occurrence takes no override until #58
 // (`overridable={false}`: "Can't be overridden here yet"). role="alert";
 // the focus moves to the heading when the list changes. One occurrence's
-// 409 (the PATCH) is one plain list.
+// 409 (the PATCH) is one plain list. A group write (#234) passes which
+// soft conflicts it accepts (`accepts`; the others say `noOverrideLabel`)
+// and a heading for the conflicts of the whole group (no date), listed
+// first.
 
 export interface SeriesConflictPanelProps {
   conflicts: readonly SchedulingConflict[];
@@ -25,6 +28,12 @@ export interface SeriesConflictPanelProps {
   grouped?: boolean;
   /** false: soft conflicts can't be overridden on this write (the PATCH). */
   overridable?: boolean;
+  /** Which soft conflicts this write can override (default: `overridable`). */
+  accepts?: (conflict: SchedulingConflict) => boolean;
+  /** The label of a soft conflict it can't (default: the series text). */
+  noOverrideLabel?: string;
+  /** The heading of the conflicts without a date (default: "Other"). */
+  noDateHeading?: string;
 }
 
 export function SeriesConflictPanel({
@@ -32,6 +41,9 @@ export function SeriesConflictPanel({
   heading,
   grouped = true,
   overridable = true,
+  accepts,
+  noOverrideLabel,
+  noDateHeading,
 }: SeriesConflictPanelProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -54,9 +66,10 @@ export function SeriesConflictPanel({
             <span className="w-fit shrink-0 rounded-sm border border-border px-1.5 text-xs font-medium">
               {conflict.severity === 'hard'
                 ? t('scheduling.severity.hard')
-                : overridable
+                : (accepts ? accepts(conflict) : overridable)
                   ? t('scheduling.severity.soft')
-                  : t('scheduling.series.conflicts.noOverride')}
+                  : (noOverrideLabel ??
+                    t('scheduling.series.conflicts.noOverride'))}
             </span>
             <span className="min-w-0 break-words">{message(conflict)}</span>
           </li>
@@ -91,7 +104,8 @@ export function SeriesConflictPanel({
                 <h3 className="text-sm font-medium">
                   {group.date
                     ? formatLocalDate(group.date, { language, style: 'long' })
-                    : t('scheduling.series.conflicts.noDate')}
+                    : (noDateHeading ??
+                      t('scheduling.series.conflicts.noDate'))}
                 </h3>
                 {list(group.conflicts)}
               </li>

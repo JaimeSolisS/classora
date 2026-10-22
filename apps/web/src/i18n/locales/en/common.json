@@ -39,6 +39,7 @@
     "guardians": "Guardians",
     "families": "Families",
     "tutors": "Tutors",
+    "groups": "Groups",
     "schedule": "Schedule",
     "courses": "Courses",
     "offers": "My offers"
@@ -2041,6 +2042,154 @@
     },
     "substitution": {
       "for": "Substitute for {{tutor}}"
+    }
+  },
+  "groups": {
+    "title": "Groups",
+    "myTitle": "My groups",
+    "new": "New group",
+    "ended": "Ended",
+    "noTutor": "No tutor yet",
+    "subjectLevel": "{{subject}} ({{level}})",
+    "timeRange": "{{start}}–{{end}}",
+    "cancel": "Cancel",
+    "counter": "{{length}} of {{max}} characters",
+    "fields": {
+      "name": "Name",
+      "max": "Maximum students"
+    },
+    "validation": {
+      "nameRequired": "Enter a name.",
+      "nameTooLong": "The name can have at most 120 characters.",
+      "maxRange": "Enter a whole number from 1 to 500.",
+      "studentsTooMany": "A group can start with at most 500 students."
+    },
+    "list": {
+      "search": "Search by name",
+      "subject": "Subject",
+      "allSubjects": "All subjects",
+      "status": "Status",
+      "statusOptions": {
+        "active": "Active",
+        "ended": "Ended",
+        "all": "All"
+      },
+      "name": "Name",
+      "tutor": "Tutor",
+      "seats": "Seats",
+      "seatsValue": "{{enrolled}} / {{max}}",
+      "next": "Next session",
+      "noNext": "—",
+      "empty": "No groups match these filters.",
+      "clearFilters": "Clear filters",
+      "studentEmpty": "You aren't enrolled in any group.",
+      "loadMore": "Load more"
+    },
+    "page": {
+      "title": "Group",
+      "schedule": "Schedule",
+      "time": "Time",
+      "timeValue": "{{start}}–{{end}} ({{zone}})",
+      "enroll": "Enroll student",
+      "edit": "Edit"
+    },
+    "capacity": {
+      "heading": "Capacity",
+      "taken": "{{enrolled}} of {{max}} seats taken",
+      "roomLimit": "The room holds {{capacity}}, so at most {{capacity}} can attend."
+    },
+    "next": {
+      "heading": "Next sessions",
+      "none": "No upcoming sessions"
+    },
+    "mySessions": {
+      "heading": "My sessions",
+      "window": "From {{from}} to {{to}} (times in {{zone}})",
+      "previous": "Previous 4 weeks",
+      "next": "Next 4 weeks",
+      "none": "No sessions in these weeks.",
+      "tutor": "Tutor: {{name}}",
+      "classroom": "Classroom: {{name}}"
+    },
+    "roster": {
+      "heading": "Students",
+      "active_one": "Enrolled ({{count}})",
+      "active_other": "Enrolled ({{count}})",
+      "withdrawn_one": "Withdrawn ({{count}})",
+      "withdrawn_other": "Withdrawn ({{count}})",
+      "none": "No students enrolled.",
+      "student": "Student",
+      "enrolledAt": "Enrolled on",
+      "enrolledBy": "Enrolled by",
+      "withdrawnAt": "Withdrawn on",
+      "withdrawnBy": "Withdrawn by",
+      "reason": "Reason",
+      "noReason": "No reason given",
+      "overridden": "Overridden",
+      "actions": "Actions",
+      "withdraw": "Withdraw",
+      "withdrawOf": "Withdraw {{name}}"
+    },
+    "conflicts": {
+      "wholeGroup": "Whole group",
+      "notYetLabel": "Can't be overridden for groups yet",
+      "notYet": "Some of these conflicts can't be overridden for groups yet. Change the schedule, the room or the students."
+    },
+    "enroll": {
+      "title": "Enroll student",
+      "description": "The student joins every future session of {{group}} that hasn't started.",
+      "student": "Student",
+      "studentHelp": "Search by name. Students already enrolled can't be chosen.",
+      "studentRequired": "Choose a student.",
+      "alreadyEnrolled": "{{name}} (already enrolled)",
+      "submit": "Enroll",
+      "submitting": "Enrolling…",
+      "conflictsHeading_one": "The student can't be enrolled: {{count}} conflict",
+      "conflictsHeading_other": "The student can't be enrolled: {{count}} conflicts",
+      "overrideAction": "Override and enroll",
+      "overrideDescription": "The student is enrolled despite these rules. The reason is saved in the audit log.",
+      "done": "{{name}} enrolled.",
+      "doneOverride": "{{name}} enrolled with an override."
+    },
+    "withdraw": {
+      "title": "Withdraw student",
+      "description": "Withdraw {{name}} from {{group}}? They are removed from future sessions; past sessions are kept.",
+      "reason": "Reason (optional)",
+      "reasonTooLong": "The reason can have at most 1000 characters.",
+      "keep": "Keep enrolled",
+      "submit": "Withdraw",
+      "submitting": "Withdrawing…",
+      "done": "{{name}} withdrawn."
+    },
+    "edit": {
+      "title": "Edit group",
+      "description": "Rename the group or change its maximum. The schedule, tutor and room change from the group's sessions.",
+      "submit": "Save",
+      "submitting": "Saving…",
+      "belowEnrolled_one": "{{count}} student is enrolled: the maximum can't be lower.",
+      "belowEnrolled_other": "{{count}} students are enrolled: the maximum can't be lower.",
+      "done": "Group saved."
+    },
+    "create": {
+      "title": "New group",
+      "schedule": "Weekly schedule",
+      "roomOption": "{{name}} (holds {{capacity}})",
+      "students": "Initial students",
+      "addStudent": "Add a student",
+      "studentsHelp": "Optional. Search by name; each student once. You can enroll more later.",
+      "alreadyAdded": "{{name}} (already added)",
+      "noStudents": "No students yet.",
+      "chosen_one": "{{count}} student chosen",
+      "chosen_other": "{{count}} students chosen",
+      "remove": "Remove {{name}}",
+      "submit": "Create group",
+      "submitting": "Creating…",
+      "conflictsHeading_one": "The group can't be created: {{count}} conflict",
+      "conflictsHeading_other": "The group can't be created: {{count}} conflicts",
+      "overrideAction": "Override and create",
+      "overrideDescription": "The group is created despite these rules. The reason is saved in the audit log.",
+      "done_one": "Group created: {{count}} upcoming session.",
+      "done_other": "Group created: {{count}} upcoming sessions."
     }
   }
 }

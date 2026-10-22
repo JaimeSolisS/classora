@@ -97,6 +97,12 @@ const API_CODES = [
   'class_session_not_substitutable',
   'class_session_not_cancellable',
   'substitution_no_longer_valid',
+  'group_not_found',
+  'enrollment_not_found',
+  'group_name_taken',
+  'group_ended',
+  'already_enrolled',
+  'enrollment_not_active',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

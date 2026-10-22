@@ -124,5 +124,15 @@
   "class_session_not_cancellable": "Esta sesión no se puede cancelar: ya empezó, o está completada, cancelada u omitida. Vuelve a cargar la página.",
   "substitution_no_longer_valid": "Esta sesión cambió después de ofrecer la suplencia, así que no se puede tomar.",
   "substitute_busy": "Ya tienes una clase a esa hora, así que no puedes tomar esta. Aún puedes rechazarla.",
-  "substitute_is_current_tutor": "Elige un tutor distinto al de la sesión."
+  "substitute_is_current_tutor": "Elige un tutor distinto al de la sesión.",
+  "group_not_found": "Este grupo no existe o no puedes verlo.",
+  "group_name_taken": "Otro grupo ya tiene este nombre.",
+  "group_ended": "Este grupo terminó: ningún estudiante puede unirse.",
+  "already_enrolled": "Este estudiante ya está inscrito en el grupo.",
+  "enrollment_not_found": "Esta inscripción no existe. Vuelve a cargar el grupo.",
+  "enrollment_not_active": "Este estudiante ya estaba dado de baja. La lista se actualizó.",
+  "max_students_below_enrolled": "El máximo no puede ser menor que los estudiantes inscritos.",
+  "student_ids_duplicate": "Cada estudiante se puede agregar una sola vez.",
+  "no_changes": "Primero cambia el nombre o el máximo.",
+  "reason_too_long": "El motivo puede tener como máximo 1000 caracteres."
 }

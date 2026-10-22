@@ -90,6 +90,9 @@ describe('route tree', () => {
       'courses/templates/:templateId',
       'settings',
       'settings/scheduling-policies',
+      'groups',
+      'groups/new',
+      'groups/:groupId',
       'account/password',
       'privacy-notice',
       '*',
@@ -152,10 +155,18 @@ describe('route tree', () => {
     expect(children[34]!.handle).toEqual({ permission: 'settings.manage' });
     // #61 F1.
     expect(children[35]!.handle).toEqual({ permission: 'settings.manage' });
-    expect(children[36]!.handle).toBeUndefined();
+    // #234 A3: staff with schedule.view or students; the create form needs
+    // schedule.manage.
+    const groups = {
+      anyOf: [{ permission: 'schedule.view' }, { anyRole: ['student'] }],
+    };
+    expect(children[36]!.handle).toEqual(groups);
+    expect(children[37]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[38]!.handle).toEqual(groups);
+    expect(children[39]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[37]!.id).toBe('privacy-notice');
-    expect(children[37]!.handle).toBeUndefined();
+    expect(children[40]!.id).toBe('privacy-notice');
+    expect(children[40]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
