@@ -145,7 +145,7 @@ describe('the reassignment item (H3)', () => {
     await click(buttonNamed(dialog, 'Mark resolved'));
 
     expect(alerts(openDialog()!)[0]).toContain(
-      'The session still has no tutor. Offer it to a tutor first.',
+      'There is still no tutor for this session or series. Offer it to a tutor first.',
     );
   });
 });
