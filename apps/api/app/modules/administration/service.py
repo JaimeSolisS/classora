@@ -10,7 +10,8 @@
   :func:`registered_approval_types`), the account-reference resolver
   (:func:`register_account_reference_resolver`), creating and requester
   actions (:func:`create_approval_request`, :func:`cancel_approval_request`,
-  :func:`resubmit_approval_request`, :func:`approval_request_id_for_subject`),
+  :func:`resubmit_approval_request`, :func:`approval_request_id_for_subject`,
+  :func:`open_approval_request`),
   reviewer decisions and reads, and :class:`ApprovalTransitionInvalidError`
   for a handler that finds its subject already decided (#44);
   implemented in :mod:`app.modules.administration.approvals`.
@@ -84,6 +85,9 @@ from app.modules.administration.approvals import (
 )
 from app.modules.administration.approvals import (
     list_approval_requests as list_approval_requests,
+)
+from app.modules.administration.approvals import (
+    open_approval_request as open_approval_request,
 )
 from app.modules.administration.approvals import (
     register_account_reference_resolver as register_account_reference_resolver,

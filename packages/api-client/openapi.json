@@ -4470,7 +4470,7 @@
           "catalog"
         ],
         "summary": "Create Closure",
-        "description": "Add an active closure (whole local days, inclusive, at most 366 days\napart). Closures may overlap each other.",
+        "description": "Add an active closure (whole local days, inclusive, at most 366 days\napart). Closures may overlap each other. After the commit, the series\noccurrences on its dates are reconciled by a queued job.",
         "operationId": "create_closure_api_v1_closures_post",
         "requestBody": {
           "required": true,
@@ -4650,7 +4650,7 @@
           "catalog"
         ],
         "summary": "Update Closure",
-        "description": "Rename, retype, change the dates, deactivate or reactivate a closure.\nFields not sent stay unchanged.",
+        "description": "Rename, retype, change the dates, deactivate or reactivate a closure.\nFields not sent stay unchanged. A change of the dates or of\n``is_active`` reconciles the series occurrences (a queued job, after the\ncommit).",
         "operationId": "update_closure_api_v1_closures__closure_id__patch",
         "parameters": [
           {

@@ -26,6 +26,7 @@ Every function runs in the caller's Unit of Work and never commits.
 
 import uuid
 from datetime import date, datetime
+from typing import Final
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
@@ -398,6 +399,10 @@ async def create_closure(session: AsyncSession, body: ClosureCreate) -> ClosureD
     return _closure_detail(closure)
 
 
+SCHEDULE_FIELDS: Final = frozenset({"starts_on", "ends_on", "is_active"})
+"""The closure fields whose change can close or reopen dates (#232 B1)."""
+
+
 async def update_closure(
     session: AsyncSession, closure_id: uuid.UUID, body: ClosureUpdate
 ) -> ClosureDetail:
@@ -406,6 +411,16 @@ async def update_closure(
     Order (after the body's ``422``): ``404`` → ``409 version_conflict`` →
     ``422`` when one sent date makes the stored range invalid → the update.
     """
+    detail, _ = await update_closure_reporting(session, closure_id, body)
+    return detail
+
+
+async def update_closure_reporting(
+    session: AsyncSession, closure_id: uuid.UUID, body: ClosureUpdate
+) -> tuple[ClosureDetail, bool]:
+    """:func:`update_closure`, plus whether the dates or ``is_active``
+    changed (the closed dates may have changed: the route then queues the
+    series reconciliation, #232 B1)."""
     closure = await session.scalar(
         select(Closure)
         .where(Closure.id == closure_id)
@@ -436,11 +451,11 @@ async def update_closure(
             else None
         ),
     }
-    changed = False
+    changed: set[str] = set()
     for field, value in values.items():
         if value is not None and value != getattr(closure, field):
             setattr(closure, field, value)
-            changed = True
+            changed.add(field)
     if changed:
         await session.flush()
-    return _closure_detail(closure)
+    return _closure_detail(closure), bool(changed & SCHEDULE_FIELDS)

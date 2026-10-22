@@ -24,8 +24,14 @@ actor.
 (``SCHEDULING_HORIZON_WEEKS``, ADR-0005 D4) with
 :func:`~app.modules.scheduling.materialize.materialize_series` in
 ``extend`` mode, one Unit of Work per series (the system acts:
-``actor_id=None``). A failing series never blocks the others: its error is
-logged with the series id and the error class, and the next run retries it.
+``actor_id=None``). In that same transaction, right before the extension,
+:func:`~app.modules.scheduling.closure_changes.reconcile_series_closures`
+(#232) skips the series' future rows on dates closed since they were
+created and re-checks the skipped ones whose date reopened. A closure write
+also queues this task after its commit
+(``app.core.jobs.defer_series_materialization``). A failing series never
+blocks the others: its error is logged with the series id and the error
+class, and the next run retries it.
 
 Both ``run_*`` functions build their own direct engine and dispose of it, so
 they can also be run by hand::
@@ -51,9 +57,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.config import Settings, get_settings
 from app.core.db import create_sessionmaker
-from app.core.jobs import create_worker_engine, ids_only
+from app.core.jobs import (
+    MATERIALIZE_SERIES_QUEUEING_LOCK,
+    MATERIALIZE_SERIES_TASK,
+    create_worker_engine,
+    ids_only,
+)
 from app.core.uow import UnitOfWork
 from app.modules.administration import service as administration
+from app.modules.scheduling.closure_changes import (
+    reconcile_series_closures,
+    register_closure_notifications,
+)
 from app.modules.scheduling.materialize import materialize_series
 from app.modules.scheduling.models import ClassSeries
 from app.modules.scheduling.occurrence_approval import OCCURRENCE_CONFLICT_HANDLER
@@ -67,10 +82,12 @@ EXPIRE_PERIODIC_ID: Final = "scheduling-expire-offers"
 EXPIRE_QUEUEING_LOCK: Final = "scheduling-expire-offers"
 BATCH_SIZE: Final = 200
 
-MATERIALIZE_TASK_NAME: Final = "scheduling:materialize_series"
+# The name and the lock live in app.core.jobs: the closure writes defer it
+# too (#232 B1), and catalog never imports scheduling (ADR-0002).
+MATERIALIZE_TASK_NAME: Final = MATERIALIZE_SERIES_TASK
 MATERIALIZE_CRON: Final = "0 8 * * *"
 MATERIALIZE_PERIODIC_ID: Final = "scheduling-materialize-series"
-MATERIALIZE_QUEUEING_LOCK: Final = "scheduling-materialize-series"
+MATERIALIZE_QUEUEING_LOCK: Final = MATERIALIZE_SERIES_QUEUEING_LOCK
 
 
 @dataclass(frozen=True)
@@ -123,6 +140,12 @@ class MaterializationResult:
     skipped_closure: int = 0
     conflicts: int = 0
     failed: int = 0
+    closure_skipped: int = 0
+    """Existing rows moved to ``skipped_closure`` (#232 A2)."""
+    closure_restored: int = 0
+    """Skipped rows restored on a reopened date (#232 A3)."""
+    closure_conflicts: int = 0
+    """Skipped rows that became ``conflict`` on a reopened date (#232 A3)."""
 
 
 async def series_to_materialize(
@@ -149,15 +172,18 @@ async def series_to_materialize(
 async def run_materialization(
     settings: Settings, *, now: datetime | None = None
 ) -> MaterializationResult:
-    """Extend every unfinished series to ``now + SCHEDULING_HORIZON_WEEKS``
-    (``now`` defaults to :func:`app.core.clock.now`), one Unit of Work per
-    series. Returns the counts."""
+    """Reconcile the closures of (#232), then extend, every unfinished series
+    to ``now + SCHEDULING_HORIZON_WEEKS`` (``now`` defaults to
+    :func:`app.core.clock.now`), one Unit of Work per series. Returns the
+    counts."""
     at = clock.now() if now is None else now
-    # The worker and the CLI register it through app.wiring; a run by hand
+    # The worker and the CLI register them through app.wiring; a run by hand
     # may not have: registering again changes nothing.
     administration.register_approval_handler(OCCURRENCE_CONFLICT_HANDLER)
+    register_closure_notifications()
     engine = create_worker_engine(settings)
     series = created = skipped = conflicts = failed = 0
+    closure_skipped = closure_restored = closure_conflicts = 0
     try:
         sessionmaker = create_sessionmaker(engine)
         async with UnitOfWork(sessionmaker) as uow:
@@ -166,6 +192,9 @@ async def run_materialization(
             series += 1
             try:
                 async with UnitOfWork(sessionmaker, actor_id=None) as uow:
+                    reconciled = await reconcile_series_closures(
+                        uow.session, series_id, now=at
+                    )
                     counts = await materialize_series(
                         uow.session,
                         series_id,
@@ -183,6 +212,9 @@ async def run_materialization(
             created += counts.created
             skipped += counts.skipped_closure
             conflicts += counts.conflicts
+            closure_skipped += reconciled.skipped
+            closure_restored += reconciled.restored
+            closure_conflicts += reconciled.conflicts
     finally:
         await engine.dispose()
     result = MaterializationResult(
@@ -191,6 +223,9 @@ async def run_materialization(
         skipped_closure=skipped,
         conflicts=conflicts,
         failed=failed,
+        closure_skipped=closure_skipped,
+        closure_restored=closure_restored,
+        closure_conflicts=closure_conflicts,
     )
     logger.info(
         "Materialized class series",
@@ -201,6 +236,9 @@ async def run_materialization(
             "skipped_closure_count": result.skipped_closure,
             "conflict_count": result.conflicts,
             "failed_count": result.failed,
+            "closure_skipped_count": result.closure_skipped,
+            "closure_restored_count": result.closure_restored,
+            "closure_conflict_count": result.closure_conflicts,
         },
     )
     return result

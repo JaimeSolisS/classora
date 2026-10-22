@@ -300,6 +300,72 @@ def test_cancel_is_final(module_seeded_url, client, clock, owner, sample_type):
     assert cancelled_twice.value.code == "approval_transition_invalid"
 
 
+def test_open_creates_keeps_a_pending_one_and_reopens_a_decided_one(
+    module_seeded_url, client, clock, owner, sample_type
+):
+    """#232 QA D1: the seam for a subject that needs a decision again."""
+    url = module_seeded_url
+    subject = uuid.uuid7()
+
+    def open_(priority: str = "normal") -> uuid.UUID:
+        async def _open(session: AsyncSession) -> uuid.UUID:
+            request = await administration.open_approval_request(
+                session,
+                request_type=SAMPLE,
+                subject_id=subject,
+                requester_user_id=None,
+                priority=priority,
+            )
+            return request.id
+
+        return in_uow(url, _open)
+
+    approval_id = open_()  # none yet: created
+    assert approval(url, approval_id).status == "pending"
+    assert open_() == approval_id  # pending: kept, nothing changed
+    assert approval(url, approval_id).version == 1
+    assert open_("high") == approval_id  # pending: fields refreshed
+    assert approval(url, approval_id).version == 2
+
+    cookie = signed_in(client, owner.username)
+    response = decide(client, cookie, approval_id, "reject", {"reason": "No."})
+    assert code_of(response) == OK
+    assert open_() == approval_id  # decided: reopened
+    row = approval(url, approval_id)
+    assert (row.status, row.reason, row.resolved_at, row.resolved_by_user_id) == (
+        "pending",
+        None,
+        None,
+        None,
+    )
+    assert row.version == 4
+    reopened = get(client, cookie, approval_id).json()
+    assert (reopened["priority"], reopened["allowed_actions"]) == (
+        "normal",
+        ["approve", "reject", "request_changes"],
+    )
+    updates = events(url, record_id=approval_id, action="update")
+    assert [e.changes["status"]["new"] for e in updates if "status" in e.changes] == [
+        "rejected",
+        "pending",
+    ]
+    # changes_requested is not pending either: back to pending.
+    decide(client, cookie, approval_id, "request-changes", {"reason": "Date?"})
+    assert open_() == approval_id
+    assert approval(url, approval_id).status == "pending"
+    assert approve(client, cookie, approval_id).json()["status"] == "approved"
+    assert (
+        len(
+            run_sql(
+                url,
+                "SELECT 1 FROM approval_requests WHERE subject_id = :s",
+                {"s": subject},
+            )
+        )
+        == 1
+    )
+
+
 @pytest.mark.parametrize(
     "body",
     [None, {}, {"reason": None}, {"reason": "   "}, {"reason": "x" * 1001}],

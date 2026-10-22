@@ -250,7 +250,11 @@ async def attach_to_pending_series_offer(
     join the series' pending offer, in the caller's transaction (the caller
     holds the series row ``FOR UPDATE``). The offer's ``respond_by`` is never
     moved: these rows start after its first covered occurrence. Rows of a
-    series without a pending assignment are a programming error."""
+    series without a pending assignment are a programming error.
+
+    A row the offer already covers is left as it is (#232: a row offered,
+    then skipped for a closure and restored to ``offered`` while the same
+    offer is still pending, keeps its one covered-session row)."""
     if not rows:
         return
     offer = (
@@ -260,8 +264,17 @@ async def attach_to_pending_series_offer(
     )
     if offer is None or offer.tutor_user_id != series.tutor_user_id:
         raise ValueError(f"series {series.id} has no pending offer to attach to")
+    covered = set(
+        await session.scalars(
+            select(AssignmentOfferSession.class_session_id).where(
+                AssignmentOfferSession.offer_id == offer.id,
+                AssignmentOfferSession.class_session_id.in_([row.id for row in rows]),
+            )
+        )
+    )
     session.add_all(
         AssignmentOfferSession(offer_id=offer.id, class_session_id=row.id)
         for row in sorted(rows, key=lambda row: row.id)
+        if row.id not in covered
     )
     await session.flush()

@@ -739,6 +739,11 @@ preferences are M8-02 (#119); retention is M8-12 (#129).
 - **Recipients** may be in any account state; the notification waits until
   they can sign in.
 
+**Types today** (besides `dev.demo`): `staff.qualification_approved`,
+`_rejected`, `_revoked` (#44, #198); `scheduling.offer_received`,
+`_declined`, `_expired` (#52, #233); `scheduling.occurrence_skipped_closure`
+(#232, see Class series).
+
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
 
@@ -1217,6 +1222,14 @@ Academic periods (school years, semesters, terms) and center-wide closures
   its local date in the center time zone
   (`administration.service.get_center_time_zone`; a naive `datetime` raises
   `ValueError`). Tutor availability (#45) and scheduling (M4) use them.
+- **Series occurrences** (M4-08b, #232): after a closure `POST`, or a
+  `PATCH` that changed `starts_on`, `ends_on` or `is_active`, has
+  committed, the route queues `scheduling:materialize_series` (a background
+  task after the response; its `queueing_lock` keeps at most one queued, so
+  a second write while one waits queues nothing). The job skips or restores
+  the affected future series occurrences (see Class series). A rename or a
+  type change queues nothing. A failed deferral is logged and never changes
+  the response; the nightly run catches up. The responses are unchanged.
 - **No reference or demo data:** holidays differ per year and per center.
 - **Audit:** automatic only (`academic_periods` and `closures` `create` and
   `update` with the changed fields, dates as `YYYY-MM-DD`); `403`, `404`,
@@ -2542,8 +2555,8 @@ series it takes the student locks, the zone `FOR SHARE` and the series row
 already exist, and inserts the rest through the ORM (audited). `INSERT … ON
 CONFLICT DO NOTHING` is not used: the audit guard refuses Core inserts into
 audited tables; `UNIQUE (series_id, original_start)` is the backstop. A
-rerun inserts nothing, and existing rows (any state) are never updated
-(closures added or removed later are M4-08b's).
+rerun inserts nothing, and the extension never updates an existing row
+(any state); closure changes are reconciled just before it (below).
 
 In the job, an occurrence on a closed date is `skipped_closure`; one that
 fails a check, or whose references became invalid since the create
@@ -2567,6 +2580,47 @@ subject_name, student_display_names, tutor_display_name, conflict_codes}`.
   `unassigned`). A start already in the past fails `notice_window`: reject
   it instead.
 - **Reject = cancel the occurrence** with the reviewer's reason.
+
+**Closure changes on existing occurrences** (M4-08b, #232; ADR-0005 D6;
+`scheduling/closure_changes.py`). For each series, in the same transaction
+and right before the extension, the job reconciles the series' **future**
+rows (`starts_at` after the run's `now`) with the active closures, by the
+local date each row is held on. Same lock order, then the rows `FOR
+UPDATE`; one `closures_between` call.
+
+- **A date that is now closed** (a closure added, extended or reactivated):
+  `unassigned`, `offered` and `confirmed` rows (exceptions included) become
+  `skipped_closure`. They keep their tutor, room and participants and hold
+  nothing. `completed`, `cancelled`, `conflict` (its inbox item still
+  decides it) and `skipped_closure` rows, past rows and one-off sessions
+  are never changed. A pending session-scope offer of a skipped `offered`
+  row is withdrawn; a pending **series** offer stays (the row keeps its
+  covered-session row; an accept or decline only moves rows still
+  `offered`).
+- **Notification `scheduling.occurrence_skipped_closure`** `{class_session_id,
+  series_id, starts_at}` (no closure name), one per recipient per skipped
+  row, decided by the state before the skip: the row's tutor when it was
+  `offered` or `confirmed`; for `confirmed` only, also the student's own
+  login and the accounts of the student's linked guardians. No link.
+- **A date that is no longer closed** (a closure deactivated or shrunk): a
+  `skipped_closure` row on it runs the job's checks again (references,
+  bounds, every Class sessions check with `now`, `center_closed` off) with
+  the tutor the series assigns on its date. Clean: the occurrence state of
+  its date (`unassigned`; `offered`, attached to the pending series offer
+  if not already covered; or `confirmed`). Failing: `conflict` with its
+  `conflict_codes` and one `scheduling.occurrence_conflict` request, as
+  above. A row that was a conflict before keeps its one request: a decided
+  (or cancelled) request goes back to `pending`, with its reason and
+  resolver cleared, and is decided again like a new one. A tutor or room overlap that appears between the checks and the
+  write makes that row `conflict` too; the rest of the series still goes
+  through. A restore notifies nobody.
+- **Idempotent:** a rerun changes nothing and writes no event, notification
+  or request. The job's log line adds `closure_skipped_count`,
+  `closure_restored_count` and `closure_conflict_count`.
+- **When:** every night with the extension, and within minutes of a closure
+  write: `POST /api/v1/closures`, and a `PATCH` that changes the dates or
+  `is_active`, queue the job after they commit (see Academic periods and
+  closures).
 
 ### Course templates
 

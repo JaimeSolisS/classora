@@ -80,6 +80,12 @@ types (:func:`register_offer_notifications`). Family visibility:
 :data:`FAMILY_VISIBLE_STATES` / :func:`is_family_visible` (#67 builds on
 them).
 
+Closure changes on existing occurrences (#232,
+:mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
+:func:`reconcile_series_closures` per series before the extension; the
+``scheduling.occurrence_skipped_closure`` notification type is registered
+by ``app.wiring`` (:func:`register_closure_notifications`).
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -115,6 +121,15 @@ from app.modules.scheduling.checks import SlotCandidate as SlotCandidate
 from app.modules.scheduling.checks import collect_conflicts as collect_conflicts
 from app.modules.scheduling.checks import (
     find_offer_conflicts as find_offer_conflicts,
+)
+from app.modules.scheduling.closure_changes import (
+    OCCURRENCE_SKIPPED_CLOSURE as OCCURRENCE_SKIPPED_CLOSURE,
+)
+from app.modules.scheduling.closure_changes import (
+    reconcile_series_closures as reconcile_series_closures,
+)
+from app.modules.scheduling.closure_changes import (
+    register_closure_notifications as register_closure_notifications,
 )
 from app.modules.scheduling.conflicts import HARD as HARD
 from app.modules.scheduling.conflicts import SOFT as SOFT

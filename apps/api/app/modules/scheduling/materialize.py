@@ -69,7 +69,10 @@ create mode the series create makes the offer over them right after
 
 **Existing rows are never updated** here, whatever their state
 (``conflict``, ``skipped_closure``, exceptions, past, ``completed``,
-``cancelled``): closures added or removed later are #232's.
+``cancelled``). Closures added, changed or removed after the rows exist are
+handled by :func:`~app.modules.scheduling.closure_changes.
+reconcile_series_closures` (#232), which the nightly job runs for each
+series right before this extension, in the same transaction.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -235,7 +238,8 @@ async def revalidate_references(
     return []
 
 
-def _closed_dates(closures: list[ClosureDetail]) -> set[date]:
+def closed_dates(closures: list[ClosureDetail]) -> set[date]:
+    """Every local date the closures contain (inclusive ranges)."""
     closed: set[date] = set()
     for closure in closures:
         day = closure.starts_on
@@ -339,7 +343,7 @@ async def materialize_series(
     if not occurrences:
         return MaterializeCounts()
 
-    closed = _closed_dates(
+    closed = closed_dates(
         await catalog.closures_between(
             session, occurrences[0].local_date, occurrences[-1].local_date
         )

@@ -1097,7 +1097,8 @@ export interface paths {
         /**
          * Create Closure
          * @description Add an active closure (whole local days, inclusive, at most 366 days
-         *     apart). Closures may overlap each other.
+         *     apart). Closures may overlap each other. After the commit, the series
+         *     occurrences on its dates are reconciled by a queued job.
          */
         post: operations["create_closure_api_v1_closures_post"];
         delete?: never;
@@ -1147,7 +1148,9 @@ export interface paths {
         /**
          * Update Closure
          * @description Rename, retype, change the dates, deactivate or reactivate a closure.
-         *     Fields not sent stay unchanged.
+         *     Fields not sent stay unchanged. A change of the dates or of
+         *     ``is_active`` reconciles the series occurrences (a queued job, after the
+         *     commit).
          */
         patch: operations["update_closure_api_v1_closures__closure_id__patch"];
         trace?: never;

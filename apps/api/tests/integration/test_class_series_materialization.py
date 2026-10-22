@@ -18,7 +18,7 @@ from app.modules.scheduling import tasks
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
 from tests.integration.conftest import run_sql, settings_for
-from tests.integration.lifecycle_support import code_of, events
+from tests.integration.lifecycle_support import code_of, events, in_uow
 from tests.integration.series_support import (
     Timeline,
     create_series,
@@ -276,11 +276,20 @@ def test_the_job_logs_counts_only(module_seeded_url, client, caplog):
 def test_existing_rows_are_never_updated(module_seeded_url, client):
     tl = timeline()
     series_id, _ = make_series(module_seeded_url, client, tl)
-    # A closure added after the rows exist changes nothing here (#232's).
+    # A closure added after the rows exist changes nothing in the extension
+    # itself (the job's reconciliation before it is #232's,
+    # test_class_series_closure_changes.py).
     close_center(module_seeded_url, tl.week(2))
     before = [(r.id, r.state) for r in series_rows(module_seeded_url, series_id)]
+    later = tl.now + timedelta(days=1)
 
-    run(module_seeded_url, tl.now + timedelta(days=1))
+    async def _extend(session) -> None:
+        with frozen_clock(later):
+            await materialize_module.materialize_series(
+                session, series_id, now=later, horizon_weeks=12, mode="extend"
+            )
+
+    in_uow(module_seeded_url, _extend)
 
     after = [(r.id, r.state) for r in series_rows(module_seeded_url, series_id)]
     assert after == before

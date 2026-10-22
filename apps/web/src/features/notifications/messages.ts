@@ -136,7 +136,9 @@ function offeredSession(params: NotificationItem['params']): string {
 
 /**
  * Where activating a notification of a type goes, from its params and its
- * recipient; a type without an entry only becomes read.
+ * recipient; a type without an entry only becomes read (for example
+ * `scheduling.occurrence_skipped_closure`, #232: its tutor, student and
+ * guardian recipients have no session page yet, #67).
  */
 export const NOTIFICATION_LINKS: Readonly<
   Record<
