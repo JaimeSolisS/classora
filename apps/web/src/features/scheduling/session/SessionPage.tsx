@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
+import { errorMessageKey } from '@/app/errors';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { useCan } from '@/features/auth/useSession';
@@ -35,7 +36,11 @@ import {
   seriesOfferBody,
   substitutionBody,
 } from './rules';
-import { SessionDetailView, type SessionState } from './SessionDetailView';
+import {
+  SessionDetailView,
+  type SessionNotice,
+  type SessionState,
+} from './SessionDetailView';
 import { SubstitutionSection } from './SubstitutionSection';
 
 // /schedule/sessions/:id (#52 H2), for schedule.view holders: the session,
@@ -57,6 +62,8 @@ import { SubstitutionSection } from './SubstitutionSection';
 
 export function SessionPage() {
   const { t } = useTranslation();
+  const { t: tErrors } = useTranslation('errors');
+  const [notice, setNotice] = useState<SessionNotice | null>(null);
   useDocumentTitle(t('scheduling.session.title'));
   const { sessionId = '' } = useParams();
   const timeZone = useCenterTimeZone();
@@ -103,21 +110,34 @@ export function SessionPage() {
     enabled: showPanel || showSubstitute,
   });
 
-  function refresh() {
-    void client.invalidateQueries({ queryKey: sessionKey(sessionId) });
-    if (seriesId) {
-      void client.invalidateQueries({ queryKey: seriesKey(seriesId) });
-    }
-    void client.invalidateQueries({ queryKey: CALENDAR_KEY });
+  function refresh(): Promise<unknown> {
+    return Promise.all([
+      client.invalidateQueries({ queryKey: sessionKey(sessionId) }),
+      seriesId
+        ? client.invalidateQueries({ queryKey: seriesKey(seriesId) })
+        : null,
+      client.invalidateQueries({ queryKey: CALENDAR_KEY }),
+    ]);
   }
 
-  /** Reloads the session after a refused write, then rethrows. */
+  function announce(text: string, tone: SessionNotice['tone']) {
+    setNotice((current) => ({ id: (current?.id ?? 0) + 1, text, tone }));
+  }
+
+  /**
+   * Reloads the session after a refused write, then rethrows. The message
+   * is also kept at page level (QA D1): the reload remounts or hides the
+   * panel that showed it.
+   */
   async function reloadingOnStale<T>(call: Promise<T>): Promise<T> {
     try {
-      return await call;
+      const result = await call;
+      setNotice(null);
+      return result;
     } catch (caught) {
       if (isStaleSessionError(caught)) {
-        refresh();
+        announce(tErrors(errorMessageKey(caught)), 'alert');
+        void refresh();
       }
       throw caught;
     }
@@ -222,7 +242,7 @@ export function SessionPage() {
             warnings: created.warnings,
             substitution: true,
           });
-          refresh();
+          void refresh();
         }}
       />
     ) : null;
@@ -234,7 +254,13 @@ export function SessionPage() {
       onWithdraw={async (item) => {
         await reloadingOnStale(withdrawSubstitution(sessionId, item.id));
         setOffered(null);
-        refresh();
+        await refresh();
+        // Once the confirmation has closed (the withdraw button it would
+        // return focus to is gone after the reload), focus the notice.
+        window.setTimeout(
+          () => announce(t('scheduling.substitution.withdrawn'), 'status'),
+          0,
+        );
       }}
     />
   ) : null;
@@ -260,7 +286,7 @@ export function SessionPage() {
             );
             setCancelling(false);
             setOffered(null);
-            refresh();
+            void refresh();
           }}
         />
       </div>
@@ -287,6 +313,7 @@ export function SessionPage() {
         series={seriesDetail ?? null}
         actions={actions}
         substitutions={substitutionSection}
+        notice={notice}
       />
     </div>
   );

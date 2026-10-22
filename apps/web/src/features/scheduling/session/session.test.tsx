@@ -14,6 +14,7 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
+  settle,
   type RenderedApp,
 } from '@/test/render-app';
 import {
@@ -685,28 +686,88 @@ describe('/schedule/sessions/:id substitutions and cancellation (#55)', () => {
     expect(api.calls(WITHDRAW)).toHaveLength(1);
   });
 
-  it('a 409 class_session_not_substitutable shows its message and reloads', async () => {
-    const api = stub(ASSIGNER, {
-      [DETAIL]: () => jsonResponse(200, CONFIRMED_SESSION),
-      [SUBSTITUTE]: () => problem(409, 'class_session_not_substitutable'),
+  // QA D1: the reload returns a *changed* session, which remounts (new
+  // version) or hides (pending substitution) the panel; the message stays.
+  it.each([
+    [
+      'version_conflict',
+      { ...CONFIRMED_SESSION, version: 6 },
+      'Someone else changed this record.',
+      true,
+    ],
+    [
+      'class_session_not_substitutable',
+      SUBSTITUTED_SESSION,
+      "This session can't be given to a substitute now.",
+      false,
+    ],
+  ] as const)(
+    'a stale %s keeps its message after the reload',
+    async (code, reloaded, message, panelStays) => {
+      const api = stub(ASSIGNER, {
+        [DETAIL]: [
+          () => jsonResponse(200, CONFIRMED_SESSION),
+          () => jsonResponse(200, reloaded),
+        ],
+        [SUBSTITUTE]: () => problem(409, code),
+      });
+      app = await renderApp(`/schedule/sessions/${ID}`);
+      const before = api.calls(DETAIL).length;
+
+      choose(
+        main().querySelector<HTMLSelectElement>('form select')!,
+        TUTORS[1]!.id,
+      );
+      typeInto(
+        main().querySelector<HTMLTextAreaElement>('form textarea')!,
+        'Viaje',
+      );
+      await click(buttonByText(main(), 'Offer to the substitute')!);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+      await settle();
+
+      expect(api.calls(DETAIL).length).toBeGreaterThan(before);
+      expect(main().textContent?.includes('Find a substitute')).toBe(
+        panelStays,
+      );
+      const notice = [...main().querySelectorAll('[role="alert"]')].find(
+        (element) => element.textContent?.includes(message),
+      );
+      expect(notice).toBeDefined();
+      expect(document.activeElement).toBe(notice);
+    },
+  );
+
+  it('after a withdraw, focus goes to the "withdrawn" notice', async () => {
+    stub(ASSIGNER, {
+      [DETAIL]: [
+        () => jsonResponse(200, SUBSTITUTED_SESSION),
+        () => jsonResponse(200, CONFIRMED_SESSION),
+      ],
+      [SUBSTITUTIONS]: [
+        () => jsonResponse(200, { items: [PENDING_SUBSTITUTION] }),
+        () =>
+          jsonResponse(200, {
+            items: [{ ...PENDING_SUBSTITUTION, status: 'withdrawn' }],
+          }),
+      ],
+      [WITHDRAW]: () =>
+        jsonResponse(200, { ...PENDING_SUBSTITUTION, status: 'withdrawn' }),
     });
     app = await renderApp(`/schedule/sessions/${ID}`);
-    const before = api.calls(DETAIL).length;
 
-    choose(
-      main().querySelector<HTMLSelectElement>('form select')!,
-      TUTORS[1]!.id,
-    );
-    typeInto(
-      main().querySelector<HTMLTextAreaElement>('form textarea')!,
-      'Viaje',
-    );
-    await click(buttonByText(main(), 'Offer to the substitute')!);
+    await click(buttonByText(main(), 'Withdraw substitution')!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await click(buttonByText(dialog, 'Withdraw substitution')!);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    await settle();
 
-    expect(main().textContent).toContain(
-      "This session can't be given to a substitute now.",
+    const notice = main().querySelector('[role="status"][tabindex="-1"]');
+    expect(notice?.textContent).toBe(
+      'Substitution withdrawn. The session is unchanged.',
     );
-    expect(api.calls(DETAIL).length).toBeGreaterThan(before);
+    expect(document.activeElement).toBe(notice);
+    expect(buttonByText(main(), 'Withdraw substitution')).toBeUndefined();
   });
 
   it('cancels with a reason; focus starts on the reason, not the destructive button', async () => {

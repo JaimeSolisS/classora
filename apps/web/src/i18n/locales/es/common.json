@@ -1840,7 +1840,8 @@
       "withdrawTitle": "¿Retirar la suplencia?",
       "withdrawBody": "{{tutor}} ya no podrá aceptarla. La sesión no cambia y no se notifica a nadie.",
       "change": "{{from}} → {{to}}",
-      "reasonText": "Motivo: {{reason}}"
+      "reasonText": "Motivo: {{reason}}",
+      "withdrawn": "Suplencia retirada. La sesión no cambia."
     },
     "cancel": {
       "action": "Cancelar sesión",

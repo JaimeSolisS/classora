@@ -1817,7 +1817,8 @@
       "withdrawTitle": "Withdraw the substitution?",
       "withdrawBody": "{{tutor}} can no longer accept it. The session is not changed and nobody is notified.",
       "change": "{{from}} → {{to}}",
-      "reasonText": "Reason: {{reason}}"
+      "reasonText": "Reason: {{reason}}",
+      "withdrawn": "Substitution withdrawn. The session is unchanged."
     },
     "cancel": {
       "action": "Cancel session",

@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
@@ -25,6 +25,12 @@ import type {
 // the "Cancel session" action, the substitute panel (in `offerPanel`), the
 // substitutions section and a notice for a refused write.
 
+export interface SessionNotice {
+  id: number;
+  text: string;
+  tone: 'alert' | 'status';
+}
+
 export type SessionState =
   | { status: 'loading' }
   | { status: 'error'; error: unknown; onRetry: () => void }
@@ -50,8 +56,13 @@ export interface SessionDetailViewProps {
   actions?: ReactNode;
   /** The substitutions section (#55), or nothing. */
   substitutions?: ReactNode;
-  /** A refused write's message (#55 H1: the page reloads the session). */
-  notice?: string | null;
+  /**
+   * A page-level notice that survives the panels' remount (#55 H1 / QA D1):
+   * a refused write's message (`alert`; the page reloads the session) or a
+   * done withdraw (`status`). It takes focus whenever `id` changes, so focus
+   * never falls to the body when the panel that had it disappears.
+   */
+  notice?: SessionNotice | null;
   /** The session's series, once read (#233 G2). */
   series?: ClassSeriesDetail | null;
 }
@@ -78,6 +89,16 @@ export function SessionDetailView({
   const language = toLanguage(i18n.resolvedLanguage);
   const warningMessage = useWarningMessage();
   const id = useId();
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  const noticeId = notice?.id;
+  useEffect(() => {
+    if (noticeId === undefined) {
+      return undefined;
+    }
+    // After a closing dialog has returned focus (its own deferred step).
+    const timer = window.setTimeout(() => noticeRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [noticeId]);
   const when = (instant: string, style: 'dateTime' | 'time' = 'dateTime') =>
     formatInstant(instant, { timeZone, language, style });
 
@@ -136,8 +157,13 @@ export function SessionDetailView({
         </section>
       ) : null}
       {notice ? (
-        <p role="alert" className="text-sm font-medium">
-          {notice}
+        <p
+          ref={noticeRef}
+          role={notice.tone}
+          tabIndex={-1}
+          className="text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {notice.text}
         </p>
       ) : null}
       {offered ? (

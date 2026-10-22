@@ -858,3 +858,59 @@ def test_my_offers_shows_the_substitution(
     # #52 G3: the session's offer history shows both kinds.
     history = get(client, owner, f"{SESSIONS}/{session['id']}/offers").json()["items"]
     assert [o["kind"] for o in history] == ["substitution", "assignment"]
+
+
+# --- A2: the history is append-only (QA O1) -------------------------------------------
+
+
+def test_substitution_rows_are_never_updated_or_deleted(
+    module_seeded_url, client, owner, setup
+):
+    url = module_seeded_url
+    session = confirmed(client, owner, setup)
+    made: list[dict[str, Any]] = []
+    for answer_with in ("withdraw", "decline", "accept"):
+        substitute = new_tutor_user(url, qualified_for=[setup.subject])
+        current = detail(client, owner, session["id"])
+        item = substituted(client, owner, current, substitute.id)
+        made.append(item)
+        if answer_with == "withdraw":
+            assert code_of(withdraw(client, owner, session["id"], item["id"])) == OK
+        else:
+            cookie = sign_in(client, substitute.username)
+            assert code_of(answer(client, cookie, item["offer_id"], answer_with)) == OK
+    # A last pending one, then the session is cancelled (it is withdrawn).
+    last = new_tutor_user(url, qualified_for=[setup.subject])
+    made.append(
+        substituted(client, owner, detail(client, owner, session["id"]), last.id)
+    )
+    final = detail(client, owner, session["id"])
+    cancelled = post(
+        client,
+        owner,
+        f"{SESSIONS}/{session['id']}/cancel",
+        {"version": final["version"], "reason": "Cierre"},
+    )
+    assert code_of(cancelled) == OK, cancelled.text
+
+    ids = [item["id"] for item in made]
+    rows = run_sql(
+        url,
+        "SELECT id, created_at, updated_at FROM class_session_substitutions"
+        " WHERE class_session_id = :s",
+        {"s": session["id"]},
+    )
+    assert sorted(str(row.id) for row in rows) == sorted(ids)
+    assert all(row.created_at == row.updated_at for row in rows)
+    for substitution_id in ids:
+        actions = [
+            event.action
+            for event in events(
+                url,
+                record_type="class_session_substitutions",
+                record_id=uuid.UUID(substitution_id),
+            )
+        ]
+        assert actions == ["create"]
+    statuses = [offer_status(url, item["offer_id"]) for item in made]
+    assert statuses == ["withdrawn", "declined", "accepted", "withdrawn"]
