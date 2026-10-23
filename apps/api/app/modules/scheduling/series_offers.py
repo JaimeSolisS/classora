@@ -78,7 +78,7 @@ from app.modules.scheduling.errors import (
     SessionOverlapError,
     SessionValidationError,
 )
-from app.modules.scheduling.locks import lock_students
+from app.modules.scheduling.locks import lock_students, lock_tutor
 from app.modules.scheduling.materialize import (
     occurrence_local_date,
     series_participant_ids,
@@ -376,8 +376,8 @@ async def offer_class_series(
         raise SessionValidationError([_from_date_error()])
     rows = await _covered_rows(session, series, from_date, now)
 
-    # #63 seam: once scheduling.locks.lock_tutor exists (M4-18), take it
-    # here for body.tutor_user_id, before the checks.
+    # #63 D5: the tutor lock, before the checks.
+    await lock_tutor(session, body.tutor_user_id)
     errors: list[FieldError] = []
     tutor = await identity.get_role_member(session, TUTOR_ROLE, body.tutor_user_id)
     if tutor is None:

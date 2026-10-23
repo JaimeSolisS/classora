@@ -1677,7 +1677,8 @@ export interface paths {
          * Replace Weekly Availability
          * @description Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0
          *     is a tutor whose availability never changed. A body that changes nothing
-         *     keeps the version.
+         *     keeps the version. Taking away time that scheduled classes use is
+         *     ``202``: a pending change request.
          */
         put: operations["replace_weekly_availability_api_v1_tutors__user_id__availability_weekly_put"];
         post?: never;
@@ -1723,6 +1724,7 @@ export interface paths {
          * Create Availability Exception
          * @description Add time off (``unavailable``, whole days or hours) or extra
          *     availability (``available``, hours) on each day of an inclusive range.
+         *     Time off over scheduled classes is ``202``: a pending change request.
          */
         post: operations["create_availability_exception_api_v1_tutors__user_id__availability_exceptions_post"];
         delete?: never;
@@ -1743,9 +1745,31 @@ export interface paths {
         post?: never;
         /**
          * Delete Availability Exception
-         * @description Delete one of the tutor's exceptions.
+         * @description Delete one of the tutor's exceptions. Removing extra hours that
+         *     scheduled classes use is ``202``: a pending change request.
          */
         delete: operations["delete_availability_exception_api_v1_tutors__user_id__availability_exceptions__exception_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Availability Change Request
+         * @description Withdraw a pending availability change request (the tutor themselves
+         *     or tutor.manage); its approval inbox item is cancelled too.
+         */
+        post: operations["cancel_availability_change_request_api_v1_tutors__user_id__availability_change_requests__change_request_id__cancel_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2896,6 +2920,33 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /**
+         * AffectedSessionItem
+         * @description A scheduled session a change affects, as it was when the change was
+         *     requested.
+         */
+        AffectedSessionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Subject Name */
+            subject_name: string;
+            state: components["schemas"]["AffectedSessionState"];
+        };
+        /** @enum {string} */
+        AffectedSessionState: "offered" | "confirmed";
         /** @enum {string} */
         ApprovalAction: "approve" | "reject" | "request_changes";
         /** @enum {string} */
@@ -3119,6 +3170,113 @@ export interface components {
             } | null;
             /** Request Id */
             request_id: string | null;
+        };
+        /**
+         * AvailabilityChange
+         * @description What a change request changes: the full wanted weekly windows
+         *     (``weekly``) or the exception added or deleted.
+         */
+        AvailabilityChange: {
+            /**
+             * Windows
+             * @description weekly: every window the tutor wants, by weekday; else null.
+             */
+            windows: components["schemas"]["AvailabilityWindow"][] | null;
+            /** @description exception_create / exception_delete: the exception; else null. */
+            exception: components["schemas"]["AvailabilityChangeException"] | null;
+        };
+        /**
+         * AvailabilityChangeException
+         * @description The exception a change adds or deletes, in local dates and times.
+         */
+        AvailabilityChangeException: {
+            /**
+             * Id
+             * @description The exception being deleted; null for a new one.
+             */
+            id: string | null;
+            kind: components["schemas"]["ExceptionKind"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /**
+             * Starts At
+             * @description HH:MM, or null for a whole day.
+             */
+            starts_at: string | null;
+            /**
+             * Ends At
+             * @description HH:MM, or null for a whole day.
+             */
+            ends_at: string | null;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * AvailabilityChangeRequestItem
+         * @description An availability change that affects scheduled sessions and waits for
+         *     (or got) an Owner's or Administrator's decision (``202`` of the three
+         *     availability writes; ``pending_changes`` / ``recent_changes``).
+         */
+        AvailabilityChangeRequestItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeKind"];
+            status: components["schemas"]["ChangeStatus"];
+            change: components["schemas"]["AvailabilityChange"];
+            /**
+             * Affected Count
+             * @description How many sessions the change affected when it was requested.
+             */
+            affected_count: number;
+            /**
+             * Affected Sessions
+             * @description The first 20 of them, by start.
+             */
+            affected_sessions: components["schemas"]["AffectedSessionItem"][];
+            requested_by: components["schemas"]["AvailabilityChangeRequester"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Rejection Reason
+             * @description The reviewer's reason; set only for rejected.
+             */
+            rejection_reason: string | null;
+            /**
+             * Approval Request Id
+             * Format: uuid
+             */
+            approval_request_id: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * AvailabilityChangeRequester
+         * @description Who asked for the change: the tutor or an Owner or Administrator.
+         */
+        AvailabilityChangeRequester: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * AvailabilityCheck
@@ -3437,6 +3595,8 @@ export interface components {
         CatalogStatus: "active" | "inactive" | "all";
         /** @enum {string} */
         ChangeClassification: "on_time" | "late" | "no_show" | "excused";
+        /** @enum {string} */
+        ChangeKind: "weekly" | "exception_create" | "exception_delete";
         /**
          * ChangeRequestApprove
          * @description ``POST /api/v1/change-requests/{change_request_id}/approve`` (C2).
@@ -3477,6 +3637,18 @@ export interface components {
             class_session: components["schemas"]["ClassSessionDetail"];
             /** Warnings */
             warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * ChangeRequestCancel
+         * @description Withdraw a pending change request
+         *     (``POST …/availability/change-requests/{id}/cancel``).
+         */
+        ChangeRequestCancel: {
+            /**
+             * Version
+             * @description The version the caller loaded.
+             */
+            version: number;
         };
         /**
          * ChangeRequestCreate
@@ -3811,6 +3983,8 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** @enum {string} */
+        ChangeStatus: "pending" | "approved" | "rejected" | "cancelled";
         /**
          * ClassSeriesCancel
          * @description Cancel a series' occurrences from a date on (``POST
@@ -4386,6 +4560,8 @@ export interface components {
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
              */
             pending_change_request_id: string | null;
+            /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
+            reassignment: components["schemas"]["SessionReassignment"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
@@ -4477,6 +4653,8 @@ export interface components {
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
              */
             pending_change_request_id: string | null;
+            /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
+            reassignment: components["schemas"]["SessionReassignment"] | null;
         };
         /**
          * ClassSessionOffers
@@ -4613,6 +4791,8 @@ export interface components {
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
              */
             pending_change_request_id: string | null;
+            /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
+            reassignment: components["schemas"]["SessionReassignment"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings at the new time (#50), the session itself counted once; empty without a tutor.
@@ -6321,7 +6501,7 @@ export interface components {
             password: string;
         };
         /** @enum {string} */
-        MarkerCode: "center_closed" | "tutor_not_qualified" | "overridden";
+        MarkerCode: "center_closed" | "tutor_not_qualified" | "overridden" | "reassignment_needed";
         /**
          * NotificationItem
          * @description One of the caller's notifications. The client renders the message from
@@ -7494,6 +7674,31 @@ export interface components {
             is_active: boolean;
         };
         /**
+         * SessionReassignment
+         * @description An open reassignment flag (M4-18 #63 E2): the tutor's availability
+         *     changed and the session needs another tutor. Staff-only.
+         */
+        SessionReassignment: {
+            /**
+             * Reason
+             * @constant
+             */
+            reason: "availability_change";
+            /** @description The tutor whose availability changed. */
+            tutor: components["schemas"]["SessionTutor"];
+            /**
+             * Flagged At
+             * Format: date-time
+             */
+            flagged_at: string;
+            /**
+             * Change Request Id
+             * Format: uuid
+             * @description The approved availability change request.
+             */
+            change_request_id: string;
+        };
+        /**
          * SessionRequestConfirm
          * @description ``POST /api/v1/session-requests/{request_id}/confirm`` (#60 C1).
          */
@@ -8423,6 +8628,16 @@ export interface components {
              * @description The version of the weekly windows, limits and preferred classrooms together; 0 while they were never changed.
              */
             version: number;
+            /**
+             * Pending Changes
+             * @description Changes waiting for approval because they affect scheduled classes, oldest first (M4-18).
+             */
+            pending_changes: components["schemas"]["AvailabilityChangeRequestItem"][];
+            /**
+             * Recent Changes
+             * @description The last 5 decided or withdrawn change requests, newest first.
+             */
+            recent_changes: components["schemas"]["AvailabilityChangeRequestItem"][];
         };
         /**
          * TutorDetail
@@ -14292,6 +14507,15 @@ export interface operations {
                     "application/json": components["schemas"]["TutorAvailabilityDetail"];
                 };
             };
+            /** @description The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityChangeRequestItem"];
+                };
+            };
             /** @description Authentication required. */
             401: {
                 headers: {
@@ -14319,7 +14543,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            /** @description The weekly availability changed since it was loaded, or another first change created it (version_conflict). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -14434,6 +14658,15 @@ export interface operations {
                     "application/json": components["schemas"]["AvailabilityExceptionItem"];
                 };
             };
+            /** @description The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityChangeRequestItem"];
+                };
+            };
             /** @description Authentication required. */
             401: {
                 headers: {
@@ -14454,15 +14687,6 @@ export interface operations {
             };
             /** @description No such user, the user doesn't hold the tutor role, or the caller may not see this tutor (not_found). */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14493,6 +14717,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityChangeRequestItem"];
+                };
+            };
             /** @description Successful Response */
             204: {
                 headers: {
@@ -14527,7 +14760,70 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval). */
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    cancel_availability_change_request_api_v1_tutors__user_id__availability_change_requests__change_request_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestCancel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityChangeRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor or change request of this tutor, or the caller may not see the tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since it was loaded (version_conflict), or it was already approved, rejected or withdrawn (availability_change_not_pending, details.status). */
             409: {
                 headers: {
                     [name: string]: unknown;

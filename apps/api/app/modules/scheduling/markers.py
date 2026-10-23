@@ -12,11 +12,14 @@ session, computed on every read and never stored.
 - :data:`OVERRIDDEN` (#58 B2, handed over by #57 E1): the session has at
   least one ``class_session_overrides`` row, in **any** state: it was booked
   or moved with an override of a soft rule, a historical fact.
+- :data:`REASSIGNMENT_NEEDED` (M4-18 #63 E3): the session has an open
+  reassignment flag (its tutor's availability changed;
+  :mod:`~app.modules.scheduling.reassignment_rules`). Staff-only.
 
 Pure rules: the caller loads the closures and the qualified pairs once for
 the whole read (``catalog.service.closures_between``,
-``staff.service.qualified_pairs``); ``overridden`` is an ``EXISTS`` in the
-sessions statement.
+``staff.service.qualified_pairs``); ``overridden`` and
+``reassignment_needed`` are ``EXISTS`` columns of the sessions statement.
 """
 
 from datetime import date, datetime
@@ -28,11 +31,13 @@ from app.modules.scheduling.states import SessionState
 CENTER_CLOSED: Final = "center_closed"
 TUTOR_NOT_QUALIFIED: Final = "tutor_not_qualified"
 OVERRIDDEN: Final = "overridden"
+REASSIGNMENT_NEEDED: Final = "reassignment_needed"
 
 MARKER_ORDER: Final[tuple[MarkerCode, ...]] = (
     CENTER_CLOSED,
     TUTOR_NOT_QUALIFIED,
     OVERRIDDEN,
+    REASSIGNMENT_NEEDED,
 )
 """The fixed order of ``markers`` on a calendar item."""
 
@@ -63,12 +68,17 @@ def needs_qualification_check(
 
 
 def markers_of(
-    *, closed: bool, not_qualified: bool, overridden: bool
+    *,
+    closed: bool,
+    not_qualified: bool,
+    overridden: bool,
+    reassignment_needed: bool,
 ) -> list[MarkerCode]:
     """The markers in :data:`MARKER_ORDER`."""
     found = {
         CENTER_CLOSED: closed,
         TUTOR_NOT_QUALIFIED: not_qualified,
         OVERRIDDEN: overridden,
+        REASSIGNMENT_NEEDED: reassignment_needed,
     }
     return [code for code in MARKER_ORDER if found[code]]

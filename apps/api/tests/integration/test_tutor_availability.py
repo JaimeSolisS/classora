@@ -1,10 +1,11 @@
 """Tutor availability (#45 C, D, E1) with real logins through the real app:
 weekly windows, exceptions, the check route, the M4 service functions, the
-edit rights, the M4-18 impact seam and the audit trail."""
+edit rights, the M4-18 impact seam (with an injected source; the real one is
+tested in ``test_availability_change_requests.py``) and the audit trail."""
 
 import threading
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -23,10 +24,14 @@ from app.modules.identity.permissions import (
     TUTOR,
 )
 from app.modules.staff import service
-from app.modules.staff.assignment_impact import get_availability_impact_source
+from app.modules.staff.assignment_impact import (
+    AffectedSession,
+    get_availability_impact_source,
+)
 from app.modules.staff.availability import (
     AvailabilityResult,
     DatedException,
+    TutorAvailabilityRules,
     WeeklyWindow,
 )
 from tests.authz.assertions import assert_same_not_found
@@ -57,7 +62,7 @@ NO_CONTENT = (204, None)
 DENIED = (403, "permission_denied")
 NOT_FOUND = (404, "not_found")
 CONFLICT = (409, "version_conflict")
-REQUIRES_APPROVAL = (409, "availability_change_requires_approval")
+ACCEPTED = (202, None)
 INVALID = (422, "validation_error")
 
 NO_LIMITS = {
@@ -201,6 +206,8 @@ def test_a_tutor_without_availability_reads_version_0(client, tutor):
         "limits": NO_LIMITS,
         "preferred_classrooms": [],
         "version": 0,
+        "pending_changes": [],
+        "recent_changes": [],
     }
 
 
@@ -217,6 +224,8 @@ def test_a_tutor_replaces_and_clears_their_weekly_windows(
         "limits": NO_LIMITS,
         "preferred_classrooms": [],
         "version": 1,
+        "pending_changes": [],
+        "recent_changes": [],
     }
     assert detail(client, cookie, person.id) == created.json()
 
@@ -243,6 +252,8 @@ def test_a_tutor_replaces_and_clears_their_weekly_windows(
         "limits": NO_LIMITS,
         "preferred_classrooms": [],
         "version": 3,
+        "pending_changes": [],
+        "recent_changes": [],
     }
     assert row_counts(module_seeded_url, person.id) == (1, 0, 0)
 
@@ -777,26 +788,44 @@ def test_is_tutor_available_reads_local_dates(module_seeded_url, client, tutor):
 
 
 class FixedImpact:
-    """An injected source that reports ``affected`` for every question."""
+    """An injected source that reports ``affected`` for every question and
+    records the rules it was asked about."""
 
-    def __init__(self, affected: list[uuid.UUID]) -> None:
+    def __init__(self, affected: list[AffectedSession]) -> None:
         self.affected = affected
-        self.calls: list[tuple[list[WeeklyWindow], list[DatedException]]] = []
+        self.calls: list[
+            tuple[TutorAvailabilityRules, TutorAvailabilityRules, Any]
+        ] = []
 
-    async def affected_session_ids(
+    async def affected_sessions(
         self,
         session: Any,
         tutor_user_id: uuid.UUID,
         *,
-        removed_windows: Sequence[WeeklyWindow],
-        added_unavailability: Sequence[DatedException],
-    ) -> list[uuid.UUID]:
-        self.calls.append((list(removed_windows), list(added_unavailability)))
+        current: TutorAvailabilityRules,
+        proposed: TutorAvailabilityRules,
+        dates: tuple[date, date] | None,
+    ) -> list[AffectedSession]:
+        self.calls.append((current, proposed, dates))
         return self.affected
 
 
+def affected_session() -> AffectedSession:
+    start = datetime(2031, 1, 6, 22, 0, tzinfo=UTC)
+    return AffectedSession(
+        id=uuid.uuid4(),
+        state="confirmed",
+        starts_at=start,
+        ends_at=start + timedelta(hours=1),
+        subject_name="Física",
+        series_id=None,
+    )
+
+
 @contextmanager
-def impact(client: TestClient, affected: list[uuid.UUID]) -> Iterator[FixedImpact]:
+def impact(
+    client: TestClient, affected: list[AffectedSession]
+) -> Iterator[FixedImpact]:
     source = FixedImpact(affected)
     app = client.app
     app.dependency_overrides[get_availability_impact_source] = lambda: source  # type: ignore[attr-defined]
@@ -806,7 +835,7 @@ def impact(client: TestClient, affected: list[uuid.UUID]) -> Iterator[FixedImpac
         app.dependency_overrides.pop(get_availability_impact_source, None)  # type: ignore[attr-defined]
 
 
-def test_a_change_that_affects_sessions_needs_approval_and_writes_nothing(
+def test_a_change_that_affects_sessions_is_a_request_and_writes_nothing(
     module_seeded_url, client, tutor
 ):
     person, cookie = tutor
@@ -816,35 +845,39 @@ def test_a_change_that_affects_sessions_needs_approval_and_writes_nothing(
     ).json()
     before = (row_counts(module_seeded_url, person.id), event_count(module_seeded_url))
 
-    with impact(client, [uuid.uuid4()]) as source:
+    with impact(client, [affected_session()]) as source:
         shrunk = put_weekly(client, cookie, person.id, 1, [window(1, "17:00", "20:00")])
         time_off = add_exception(
             client, cookie, person.id, starts_at="09:00", ends_at="10:00"
         )
         removed = delete_exception(client, cookie, person.id, extra["id"])
 
-    assert [code_of(r) for r in (shrunk, time_off, removed)] == [REQUIRES_APPROVAL] * 3
+    assert [code_of(r) for r in (shrunk, time_off, removed)] == [ACCEPTED] * 3
+    assert [r.json()["kind"] for r in (shrunk, time_off, removed)] == [
+        "weekly",
+        "exception_create",
+        "exception_delete",
+    ]
     assert (
         row_counts(module_seeded_url, person.id),
         event_count(module_seeded_url),
     ) == before
     assert detail(client, cookie, person.id)["version"] == 1
-    # What the source was asked.
+    # What the source was asked: the rules before and after each change.
     [weekly_call, off_call, delete_call] = source.calls
-    assert weekly_call == (
-        [
-            WeeklyWindow(1, time(16), time(17)),
-            WeeklyWindow(3, time(16), time(18)),
-        ],
-        [],
+    assert weekly_call[0].windows == (
+        WeeklyWindow(1, time(16), time(20)),
+        WeeklyWindow(3, time(16), time(18)),
     )
-    assert off_call[0] == []
-    assert [(e.kind, e.starts_at, e.ends_at) for e in off_call[1]] == [
-        ("unavailable", time(9), time(10))
+    assert weekly_call[1].windows == (WeeklyWindow(1, time(17), time(20)),)
+    assert weekly_call[2] is None
+    assert [(e.kind, e.starts_at) for e in off_call[1].exceptions] == [
+        ("available", time(10)),
+        ("unavailable", time(9)),
     ]
-    assert [(e.kind, e.starts_at, e.ends_at) for e in delete_call[1]] == [
-        ("available", time(10), time(12))
-    ]
+    assert off_call[2] == (date(2026, 12, 21), date(2026, 12, 31))
+    assert [e.kind for e in delete_call[0].exceptions] == ["available"]
+    assert delete_call[1].exceptions == ()
 
 
 def test_changes_that_take_nothing_away_never_ask_the_source(
@@ -854,7 +887,7 @@ def test_changes_that_take_nothing_away_never_ask_the_source(
     put_weekly(client, cookie, person.id, 0, AFTERNOONS)
     off = add_exception(client, cookie, person.id).json()
 
-    with impact(client, [uuid.uuid4()]) as source:
+    with impact(client, [affected_session()]) as source:
         grown = put_weekly(
             client, cookie, person.id, 1, [*AFTERNOONS, window(5, "09:00", "12:00")]
         )
@@ -874,7 +907,7 @@ def test_changes_that_take_nothing_away_never_ask_the_source(
     assert source.calls == []
 
 
-def test_with_the_default_source_changes_apply(module_seeded_url, client, tutor):
+def test_with_no_session_changes_apply(module_seeded_url, client, tutor):
     person, cookie = tutor
     put_weekly(client, cookie, person.id, 0, AFTERNOONS)
     extra = add_exception(

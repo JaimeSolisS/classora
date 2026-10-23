@@ -7661,7 +7661,7 @@
           "tutors"
         ],
         "summary": "Replace Weekly Availability",
-        "description": "Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0\nis a tutor whose availability never changed. A body that changes nothing\nkeeps the version.",
+        "description": "Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0\nis a tutor whose availability never changed. A body that changes nothing\nkeeps the version. Taking away time that scheduled classes use is\n``202``: a pending change request.",
         "operationId": "replace_weekly_availability_api_v1_tutors__user_id__availability_weekly_put",
         "parameters": [
           {
@@ -7726,8 +7726,18 @@
               }
             }
           },
+          "202": {
+            "description": "The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "The weekly availability changed since it was loaded, or another first change created it (version_conflict). Or: The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "description": "The weekly availability changed since it was loaded, or another first change created it (version_conflict).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -7849,7 +7859,7 @@
           "tutors"
         ],
         "summary": "Create Availability Exception",
-        "description": "Add time off (``unavailable``, whole days or hours) or extra\navailability (``available``, hours) on each day of an inclusive range.",
+        "description": "Add time off (``unavailable``, whole days or hours) or extra\navailability (``available``, hours) on each day of an inclusive range.\nTime off over scheduled classes is ``202``: a pending change request.",
         "operationId": "create_availability_exception_api_v1_tutors__user_id__availability_exceptions_post",
         "parameters": [
           {
@@ -7914,12 +7924,12 @@
               }
             }
           },
-          "409": {
-            "description": "The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+          "202": {
+            "description": "The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request.",
             "content": {
-              "application/problem+json": {
+              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
+                  "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
                 }
               }
             }
@@ -7943,7 +7953,7 @@
           "tutors"
         ],
         "summary": "Delete Availability Exception",
-        "description": "Delete one of the tutor's exceptions.",
+        "description": "Delete one of the tutor's exceptions. Removing extra hours that\nscheduled classes use is ``202``: a pending change request.",
         "operationId": "delete_availability_exception_api_v1_tutors__user_id__availability_exceptions__exception_id__delete",
         "parameters": [
           {
@@ -8001,8 +8011,112 @@
               }
             }
           },
+          "202": {
+            "description": "The change affects scheduled classes: nothing changed yet; it waits for an Owner or Administrator in the approval inbox. The body is the pending change request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel": {
+      "post": {
+        "tags": [
+          "tutors"
+        ],
+        "summary": "Cancel Availability Change Request",
+        "description": "Withdraw a pending availability change request (the tutor themselves\nor tutor.manage); its approval inbox item is cancelled too.",
+        "operationId": "cancel_availability_change_request_api_v1_tutors__user_id__availability_change_requests__change_request_id__cancel_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "change_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRequestCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the caller may see the tutor but is neither the tutor themselves nor a holder of tutor.manage (permission_denied).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor or change request of this tutor, or the caller may not see the tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "The change affects scheduled classes and needs approval; nothing changed (availability_change_requires_approval).",
+            "description": "The request changed since it was loaded (version_conflict), or it was already approved, rejected or withdrawn (availability_change_not_pending, details.status).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -12922,6 +13036,49 @@
         "title": "AccountName",
         "description": "A user named in an approval request: the id and the display name only."
       },
+      "AffectedSessionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AffectedSessionState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "starts_at",
+          "ends_at",
+          "subject_name",
+          "state"
+        ],
+        "title": "AffectedSessionItem",
+        "description": "A scheduled session a change affects, as it was when the change was\nrequested."
+      },
+      "AffectedSessionState": {
+        "type": "string",
+        "enum": [
+          "offered",
+          "confirmed"
+        ]
+      },
       "ApprovalAction": {
         "type": "string",
         "enum": [
@@ -13475,6 +13632,229 @@
         ],
         "title": "AuditEventListItem",
         "description": "One audit event; the actor and the record are given by id."
+      },
+      "AvailabilityChange": {
+        "properties": {
+          "windows": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AvailabilityWindow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windows",
+            "description": "weekly: every window the tutor wants, by weekday; else null."
+          },
+          "exception": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityChangeException"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "exception_create / exception_delete: the exception; else null."
+          }
+        },
+        "type": "object",
+        "required": [
+          "windows",
+          "exception"
+        ],
+        "title": "AvailabilityChange",
+        "description": "What a change request changes: the full wanted weekly windows\n(``weekly``) or the exception added or deleted."
+      },
+      "AvailabilityChangeException": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "The exception being deleted; null for a new one."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExceptionKind"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At",
+            "description": "HH:MM, or null for a whole day."
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At",
+            "description": "HH:MM, or null for a whole day."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "starts_on",
+          "ends_on",
+          "starts_at",
+          "ends_at",
+          "note"
+        ],
+        "title": "AvailabilityChangeException",
+        "description": "The exception a change adds or deletes, in local dates and times."
+      },
+      "AvailabilityChangeRequestItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChangeKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChangeStatus"
+          },
+          "change": {
+            "$ref": "#/components/schemas/AvailabilityChange"
+          },
+          "affected_count": {
+            "type": "integer",
+            "title": "Affected Count",
+            "description": "How many sessions the change affected when it was requested."
+          },
+          "affected_sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedSessionItem"
+            },
+            "type": "array",
+            "title": "Affected Sessions",
+            "description": "The first 20 of them, by start."
+          },
+          "requested_by": {
+            "$ref": "#/components/schemas/AvailabilityChangeRequester"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason",
+            "description": "The reviewer's reason; set only for rejected."
+          },
+          "approval_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Approval Request Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "change",
+          "affected_count",
+          "affected_sessions",
+          "requested_by",
+          "created_at",
+          "resolved_at",
+          "rejection_reason",
+          "approval_request_id",
+          "version"
+        ],
+        "title": "AvailabilityChangeRequestItem",
+        "description": "An availability change that affects scheduled sessions and waits for\n(or got) an Owner's or Administrator's decision (``202`` of the three\navailability writes; ``pending_changes`` / ``recent_changes``)."
+      },
+      "AvailabilityChangeRequester": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "AvailabilityChangeRequester",
+        "description": "Who asked for the change: the tutor or an Owner or Administrator."
       },
       "AvailabilityCheck": {
         "properties": {
@@ -14116,6 +14496,14 @@
           "excused"
         ]
       },
+      "ChangeKind": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "exception_create",
+          "exception_delete"
+        ]
+      },
       "ChangeRequestApprove": {
         "properties": {
           "version": {
@@ -14199,6 +14587,23 @@
         ],
         "title": "ChangeRequestApproved",
         "description": "The approve's ``200`` (C2 step 16): the request, the session after the\nchange and the tutor's workload warnings at a new time (empty for a\ncancellation)."
+      },
+      "ChangeRequestCancel": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "The version the caller loaded."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ChangeRequestCancel",
+        "description": "Withdraw a pending change request\n(``POST …/availability/change-requests/{id}/cancel``)."
       },
       "ChangeRequestCreate": {
         "properties": {
@@ -15033,6 +15438,15 @@
         ],
         "title": "ChangeRequestWithdraw",
         "description": "``POST /api/v1/change-requests/{change_request_id}/withdraw`` (D3)."
+      },
+      "ChangeStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "cancelled"
+        ]
       },
       "ClassSeriesCancel": {
         "properties": {
@@ -16153,6 +16567,17 @@
             "title": "Pending Change Request Id",
             "description": "The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none."
           },
+          "reassignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReassignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -16187,6 +16612,7 @@
           "cancellation",
           "group_id",
           "pending_change_request_id",
+          "reassignment",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -16369,6 +16795,17 @@
             ],
             "title": "Pending Change Request Id",
             "description": "The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none."
+          },
+          "reassignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReassignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
           }
         },
         "type": "object",
@@ -16395,7 +16832,8 @@
           "pending_substitution",
           "cancellation",
           "group_id",
-          "pending_change_request_id"
+          "pending_change_request_id",
+          "reassignment"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -16666,6 +17104,17 @@
             "title": "Pending Change Request Id",
             "description": "The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none."
           },
+          "reassignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReassignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -16700,6 +17149,7 @@
           "cancellation",
           "group_id",
           "pending_change_request_id",
+          "reassignment",
           "warnings"
         ],
         "title": "ClassSessionUpdated",
@@ -20366,7 +20816,8 @@
         "enum": [
           "center_closed",
           "tutor_not_qualified",
-          "overridden"
+          "overridden",
+          "reassignment_needed"
         ]
       },
       "NotificationItem": {
@@ -22632,6 +23083,39 @@
         "title": "SessionParticipant",
         "description": "A student of the session."
       },
+      "SessionReassignment": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "const": "availability_change",
+            "title": "Reason"
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/SessionTutor",
+            "description": "The tutor whose availability changed."
+          },
+          "flagged_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Flagged At"
+          },
+          "change_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Change Request Id",
+            "description": "The approved availability change request."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason",
+          "tutor",
+          "flagged_at",
+          "change_request_id"
+        ],
+        "title": "SessionReassignment",
+        "description": "An open reassignment flag (M4-18 #63 E2): the tutor's availability\nchanged and the session needs another tutor. Staff-only."
+      },
       "SessionRequestConfirm": {
         "properties": {
           "version": {
@@ -24595,6 +25079,22 @@
             "type": "integer",
             "title": "Version",
             "description": "The version of the weekly windows, limits and preferred classrooms together; 0 while they were never changed."
+          },
+          "pending_changes": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
+            },
+            "type": "array",
+            "title": "Pending Changes",
+            "description": "Changes waiting for approval because they affect scheduled classes, oldest first (M4-18)."
+          },
+          "recent_changes": {
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityChangeRequestItem"
+            },
+            "type": "array",
+            "title": "Recent Changes",
+            "description": "The last 5 decided or withdrawn change requests, newest first."
           }
         },
         "type": "object",
@@ -24603,7 +25103,9 @@
           "exceptions",
           "limits",
           "preferred_classrooms",
-          "version"
+          "version",
+          "pending_changes",
+          "recent_changes"
         ],
         "title": "TutorAvailabilityDetail",
         "description": "A tutor's availability in the center's local wall-clock time, with\nthe teaching limits and preferred classrooms (#197)."

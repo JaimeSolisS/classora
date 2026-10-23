@@ -157,6 +157,16 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   unique, ``WHERE status = 'pending'``) allows one pending request per
   session. ``Audited``, versioned.
 
+- ``class_session_reassignment_flags`` (M4-18 #63 A2, E3): a session that
+  needs another tutor because its tutor's availability changed
+  (:class:`ClassSessionReassignmentFlag`): the session, the tutor whose
+  availability changed, ``reason`` (``availability_change``), ``source_id``
+  (the change request in ``staff``; no foreign key) and the approver.
+  **Append-only**; a flag is *open* by a read-time rule
+  (:mod:`~app.modules.scheduling.reassignment`), never closed by a write.
+  ``uq_class_session_reassignment_flags_source`` flags a session once per
+  tutor and change. ``Audited`` (``create`` only).
+
 Cohorts add their own columns and tables (#65).
 """
 
@@ -755,6 +765,44 @@ class ClassSessionSubstitution(Audited, Model):
     )
     slot_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     slot_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Reassignment flags (M4-18 #63 A2) ---------------------------------------------
+
+REASSIGNMENT_AVAILABILITY_CHANGE: Final = "availability_change"
+REASSIGNMENT_REASONS: Final = (REASSIGNMENT_AVAILABILITY_CHANGE,)
+REASSIGNMENT_FLAG_SOURCE_UNIQUE: Final = "uq_class_session_reassignment_flags_source"
+
+
+class ClassSessionReassignmentFlag(Audited, Model):
+    """A session flagged for reassignment (#63 A2). Not versioned and
+    **append-only**: no code path updates or deletes a row."""
+
+    __tablename__ = "class_session_reassignment_flags"
+    __table_args__ = (
+        CheckConstraint(
+            f"reason IN ({_quoted(REASSIGNMENT_REASONS)})", name="reason_valid"
+        ),
+        # Its leading column also serves the per-session lookups.
+        UniqueConstraint(
+            "class_session_id",
+            "tutor_user_id",
+            "source_id",
+            name=REASSIGNMENT_FLAG_SOURCE_UNIQUE,
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("class_sessions.id", ondelete="RESTRICT")
+    )
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    reason: Mapped[str] = mapped_column(String(40))
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
 
 
 # --- Ongoing tutoring groups (#56 A) -----------------------------------------------

@@ -1,69 +1,95 @@
-"""Which scheduled classes an availability change affects (#45 D; the seam
-for M4-18 #63).
+"""Which scheduled classes an availability change affects: the seam between
+``staff`` and ``scheduling`` (#45 D; M4-18 #63 B3).
 
-Assignments arrive with scheduling (M4). Until then the app wires
-:class:`NoAssignmentImpact`, which always answers "none", so every
-availability change applies directly. The weekly ``PUT``, an
-``unavailable`` exception ``POST`` and an ``available`` exception
-``DELETE`` ask the source; a non-empty answer is ``409
-availability_change_requires_approval`` and nothing changes. Tests inject a
-source by overriding the one dependency :func:`get_availability_impact_source`
-through ``app.dependency_overrides`` (like
-``families.assignments.get_tutor_assignment_source``, #33).
+``staff`` never imports ``scheduling`` (ADR-0002), so the availability
+routes ask an injected :class:`AvailabilityImpactSource`. The composition
+roots register the scheduling implementation
+(``scheduling.service.AVAILABILITY_IMPACT_SOURCE``, wired in
+``app/wiring.py``) with :func:`register_availability_impact_source`; the
+routes read it through the FastAPI dependency
+:func:`get_availability_impact_source` (tests may override it through
+``app.dependency_overrides``). Without a registered source the dependency
+fails closed (:class:`ImpactSourceMissingError`): a change is never applied
+unchecked.
+
+The source takes the scheduling tutor lock (``scheduling.locks.lock_tutor``)
+before it reads, so a direct change and its check serialize with a booking
+of the same tutor (#63 D5). It answers the tutor's **affected** sessions
+(the pure rule :func:`~app.modules.staff.availability_impact.is_affected`)
+ordered by ``starts_at``, then ``id``.
+
+The weekly ``PUT`` asks only when it takes weekly time away
+(:func:`~app.modules.staff.availability.uncovered_ranges`); a new
+``unavailable`` exception and a deleted ``available`` one always ask. A
+non-empty answer stores the change as a pending request and answers ``202``
+(``staff/availability_change_requests.py``); nothing else changes.
 """
 
 import uuid
-from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.staff.availability import DatedException, WeeklyWindow
+from app.modules.staff.availability import TutorAvailabilityRules
+
+
+@dataclass(frozen=True, slots=True)
+class AffectedSession:
+    """One affected session, with what a change request shows of it."""
+
+    id: uuid.UUID
+    state: str
+    starts_at: datetime
+    ends_at: datetime
+    subject_name: str
+    series_id: uuid.UUID | None
 
 
 class AvailabilityImpactSource(Protocol):
     """The tutor's scheduled sessions that a change would leave outside
     their availability."""
 
-    async def affected_session_ids(
+    async def affected_sessions(
         self,
         session: AsyncSession,
         tutor_user_id: uuid.UUID,
         *,
-        removed_windows: Sequence[WeeklyWindow],
-        added_unavailability: Sequence[DatedException],
-    ) -> list[uuid.UUID]:
-        """``removed_windows``: the weekly local time the change takes away
-        (``availability.uncovered_ranges``: what the old windows covered and
-        the new ones don't). ``added_unavailability``: the dated time that
-        stops being available: a new ``unavailable`` exception, or a deleted
-        ``available`` one (passed as is, with its ``kind``)."""
+        current: TutorAvailabilityRules,
+        proposed: TutorAvailabilityRules,
+        dates: tuple[date, date] | None,
+    ) -> list[AffectedSession]:
+        """``current``: the tutor's rules now; ``proposed``: the same rules
+        after the change. ``dates``: the inclusive local dates an exception
+        change touches (the read is bounded to them), ``None`` for a weekly
+        change (every future session)."""
         ...
 
 
-class NoAssignmentImpact:
-    """The stub source: no change affects any session yet. It sends no SQL.
-
-    M4-18 (#63) replaces it with a call to ``scheduling.service`` returning
-    the tutor's affected future sessions, and turns the ``409`` into an
-    approval request (``staff.availability_change``).
-    """
-
-    async def affected_session_ids(
-        self,
-        session: AsyncSession,
-        tutor_user_id: uuid.UUID,
-        *,
-        removed_windows: Sequence[WeeklyWindow],
-        added_unavailability: Sequence[DatedException],
-    ) -> list[uuid.UUID]:
-        return []
+class ImpactSourceMissingError(RuntimeError):
+    """No impact source is registered (a composition root forgot
+    ``app.wiring``)."""
 
 
-_NO_IMPACT = NoAssignmentImpact()
+_registered: list[AvailabilityImpactSource] = []
+
+
+def register_availability_impact_source(source: AvailabilityImpactSource) -> None:
+    """Register the app's source (again: replaces it; the composition roots
+    register the same object)."""
+    _registered[:] = [source]
+
+
+def registered_availability_impact_source() -> AvailabilityImpactSource:
+    """The registered source; :class:`ImpactSourceMissingError` without
+    one."""
+    if not _registered:
+        raise ImpactSourceMissingError("no availability impact source registered")
+    return _registered[0]
 
 
 def get_availability_impact_source() -> AvailabilityImpactSource:
     """The FastAPI dependency the availability routes use (override it in
     tests)."""
-    return _NO_IMPACT
+    return registered_availability_impact_source()

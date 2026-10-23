@@ -272,10 +272,12 @@ describes the route declarations and the 401/403/404 rule.
   for callers holding the matching role). Which scheduled sessions a tutor
   availability change affects (M4-18) comes from
   `get_availability_impact_source` (`app/modules/staff/assignment_impact.py`;
-  the app wires `NoAssignmentImpact`, always empty): tests override it with a
-  fixed source that records its questions (`test_tutor_availability.impact(
-  client, [session_id])`) to prove a non-empty answer is `409
-  availability_change_requires_approval` with nothing written. Guardian links (#34) are real
+  `app.wiring` registers the scheduling source, so `staff` never imports
+  `scheduling`): `test_tutor_availability.impact(client, [AffectedSession])`
+  overrides it with a fixed source that records the current and proposed
+  rules it was asked about, to prove a non-empty answer is a `202` change
+  request with nothing written; `test_availability_change_requests.py`
+  uses the real source with real sessions. Guardian links (#34) are real
   rows: build them with `guardian_support` (API) or the
   `tests/factories/families.py` helpers `GuardianFactory` and
   `link_guardian(session, student, guardian, relationship="mother")` (for

@@ -145,6 +145,7 @@ REGISTERED_TYPES = {
     "scheduling.offer_reassignment",
     "scheduling.session_request",
     "scheduling.change_request",
+    "staff.availability_change",
 }
 
 

@@ -1,4 +1,5 @@
-"""The per-student scheduling lock (ADR-0005 D1; #48 C4).
+"""The per-student and per-tutor scheduling locks (ADR-0005 D1; #48 C4;
+M4-18 #63 D5).
 
 Student overlap has no database constraint (a session has many students),
 so it is checked by the application under a transaction advisory lock per
@@ -12,6 +13,20 @@ before it reads anything** (#48 create; #56 groups, #58 reschedule, #62
 cancel-and-restore, #65 courses). Locks are taken in ascending
 ``student_id`` order, so two writers never deadlock. Two students whose ids
 hash alike only serialize more; an overlap never gets through.
+
+**Tutor lock** (:func:`lock_tutor`, M4-18 #63 D5): ``pg_advisory_xact_lock(
+TUTOR_LOCK_NAMESPACE, hashtext(tutor_user_id::text))``, the same pattern. It
+serializes a change of a tutor's availability with the bookings that check
+that availability, so a session cannot be booked into time that is being
+removed and escape both the booking's ``tutor_unavailable`` check and the
+change's impact check. It is taken, **before the availability is read**, by:
+the impact source of a direct change (``scheduling.reassignment``, after
+the weekly ``PUT``'s settings row), the approval of a change request
+(``app.workflows.availability_change``, after the request and the settings
+row), the #48 create with a tutor (after the students and the zone), the
+#52 re-offer, the #55 substitution (for the substitute) and the #233
+series offer (after their session or series locks and before the zone).
+Nothing that holds it waits for a student lock, so the two never deadlock.
 """
 
 import uuid
@@ -25,6 +40,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 STUDENT_LOCK_NAMESPACE: Final = 480_301
 """The first key of the two-key advisory lock: a fixed int4 that names
 "scheduling student" (M4-03), so it never collides with another lock kind."""
+
+TUTOR_LOCK_NAMESPACE: Final = 480_302
+"""The first key of the tutor lock ("scheduling tutor", M4-18)."""
 
 
 async def lock_students(
@@ -42,3 +60,16 @@ async def lock_students(
                 )
             )
         )
+
+
+async def lock_tutor(session: AsyncSession, tutor_user_id: uuid.UUID) -> None:
+    """Take the transaction advisory lock of the tutor (one statement; waits
+    while another transaction holds it; taking it again in the same
+    transaction returns at once)."""
+    await session.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                TUTOR_LOCK_NAMESPACE, func.hashtext(cast(str(tutor_user_id), TEXT))
+            )
+        )
+    )

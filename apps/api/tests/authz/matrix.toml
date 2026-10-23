@@ -1193,6 +1193,17 @@ allow = ["owner", "administrator", "academic_coordinator", "tutor"]
 # allowed role.
 
 [[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #63 D6: the tutor themselves or tutor.manage withdraw. A valid body for the
+# placeholder ids, which are no tutor and no request: 404 for every allowed
+# role.
+json = { version = 1 }
+
+[[route]]
 method = "GET"
 path = "/api/v1/tutors/{user_id}/availability/check"
 access = "permission"

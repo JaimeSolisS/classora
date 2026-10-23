@@ -17,7 +17,7 @@ decline and the expiry are the #52 paths of
 3. ``409 class_session_not_substitutable`` (``details.reason`` ``state``
    with ``details.state``, ``started``, or ``substitution_pending`` with
    ``details.substitution_id``);
-4. (#63 seam: ``lock_tutor`` for the substitute, at the #52 C2 position)
+4. ``lock_tutor`` for the substitute (#63 D5, the #52 C2 position), then
    the zone ``FOR SHARE``;
 5. ``422`` in one response: the substitute (``tutor_unknown``,
    ``tutor_inactive``, ``substitute_is_current_tutor``) and ``respond_by``
@@ -70,6 +70,7 @@ from app.modules.scheduling.errors import (
     SchedulingConflictError,
     SessionValidationError,
 )
+from app.modules.scheduling.locks import lock_tutor
 from app.modules.scheduling.models import (
     OFFER_DECLINED,
     OFFER_EXPIRED,
@@ -178,9 +179,9 @@ async def substitute_class_session(
         raise ClassSessionNotSubstitutableError(refusal)
     original_tutor_id = row.tutor_user_id
     assert original_tutor_id is not None  # noqa: S101 - confirmed has a tutor
-    # #63 seam: once scheduling.locks.lock_tutor exists (M4-18), take it
-    # here for body.substitute_tutor_user_id, before the zone and the checks
+    # #63 D5: the substitute's tutor lock, before the zone and the checks
     # (the #52 C2 position).
+    await lock_tutor(session, body.substitute_tutor_user_id)
     zone = await administration.get_center_time_zone(session, for_share=True)
 
     errors: list[FieldError] = []

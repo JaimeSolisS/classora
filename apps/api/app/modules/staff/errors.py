@@ -10,9 +10,12 @@ data, so no submitted value reaches a response. Cancelling a qualification
 that is no longer pending reuses the approval inbox's ``409
 approval_transition_invalid`` (``administration.service``).
 
-Tutor availability (#45) adds :class:`AvailabilityChangeRequiresApprovalError`;
-the teaching limits and preferred classrooms (#197) add two ``422`` field
-errors with the generic ``validation_error`` code.
+Tutor availability change requests (M4-18 #63) add ``409
+availability_change_stale`` and ``409 availability_change_not_pending``
+(#45's ``availability_change_requires_approval`` is retired: such a change
+is now a ``202`` request); the teaching limits and preferred classrooms
+(#197) add two ``422`` field errors with the generic ``validation_error``
+code.
 
 Revoking (#198) adds ``409 qualification_not_approved``; a stale ``version``
 is the shared ``409 version_conflict``.
@@ -77,17 +80,32 @@ class QualificationNotApprovedError(AppError):
         super().__init__()
 
 
-class AvailabilityChangeRequiresApprovalError(AppError):
-    """The availability change affects scheduled sessions (#45 D2; the
-    ``assignment_impact`` seam): nothing changes. M4-18 (#63) turns this
-    into an approval request; clients treat it as "needs approval"."""
+class AvailabilityChangeStaleError(AppError):
+    """``409 availability_change_stale`` (M4-18 #63 D3): the availability
+    changed since a weekly request was made (its ``base_version`` is not
+    the current one), or the exception a delete request names no longer
+    exists. The inbox item stays pending: reject it, or the requester
+    withdraws it and asks again."""
 
     status = 409
-    code = "availability_change_requires_approval"
-    detail = "This change affects scheduled classes and needs approval."
+    code = "availability_change_stale"
+    detail = "The availability changed since this request was made."
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class AvailabilityChangeNotPendingError(AppError):
+    """``409 availability_change_not_pending`` (M4-18 #63 D6): the change
+    request was already approved, rejected or cancelled; ``details`` is
+    ``{"status": <status>}``."""
+
+    status = 409
+    code = "availability_change_not_pending"
+    detail = "This change request is no longer pending."
+
+    def __init__(self, request_status: str) -> None:
+        super().__init__(details={"status": request_status})
 
 
 class WeeklyLimitBelowDailyError(AppError):

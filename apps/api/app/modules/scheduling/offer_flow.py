@@ -113,6 +113,7 @@ from app.modules.scheduling.errors import (
     SessionValidationError,
     SubstitutionNoLongerValidError,
 )
+from app.modules.scheduling.locks import lock_tutor
 from app.modules.scheduling.models import (
     OFFER_ACCEPTED,
     OFFER_DECLINED,
@@ -383,8 +384,8 @@ async def offer_class_session(
     now = clock.now()
     if row.starts_at <= now:
         raise ClassSessionNotOfferableError(started=True)
-    # #63 seam: once scheduling.locks.lock_tutor exists (M4-18), take it
-    # here for body.tutor_user_id, before the zone and the checks.
+    # #63 D5: the tutor lock, before the zone and the checks.
+    await lock_tutor(session, body.tutor_user_id)
     zone = await administration.get_center_time_zone(session, for_share=True)
     tutor, respond_by = await _validate_offer_body(session, row, body, now)
 

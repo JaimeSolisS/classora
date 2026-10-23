@@ -39,8 +39,13 @@ local wall-clock times of the center:
 - ``PUT …/availability/weekly``, ``POST …/availability/exceptions``,
   ``DELETE …/availability/exceptions/{exception_id}``: the tutor themselves
   or ``tutor.manage`` (an Academic Coordinator gets ``403``). A change that
-  affects scheduled sessions is ``409 availability_change_requires_approval``
-  (the M4-18 seam, ``staff/assignment_impact.py``).
+  affects scheduled sessions changes nothing yet: it is stored as a pending
+  change request with an approval inbox item and answers ``202`` with the
+  request (M4-18 #63; ``staff/availability_change_requests.py``).
+- ``POST …/availability/change-requests/{change_request_id}/cancel``
+  (M4-18): the tutor themselves or ``tutor.manage`` withdraw a pending
+  request; order ``404`` → ``403`` → ``409 version_conflict`` → ``409
+  availability_change_not_pending``.
 - ``PATCH …/availability/settings`` (#197): the teaching limits and
   preferred classrooms, same edit rights; no impact check (limits are
   warnings only).
@@ -55,6 +60,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
@@ -70,10 +76,12 @@ from app.modules.staff.assignment_impact import (
 from app.modules.staff.permissions import TUTOR_VIEW
 from app.modules.staff.qualification_approval import QUALIFICATION_REVIEW
 from app.modules.staff.schemas import (
+    AvailabilityChangeRequestItem,
     AvailabilityCheck,
     AvailabilityExceptionCreate,
     AvailabilityExceptionItem,
     AvailabilitySettingsUpdate,
+    ChangeRequestCancel,
     QualificationCreate,
     QualificationItem,
     QualificationRevoke,
@@ -316,10 +324,20 @@ AVAILABILITY_EDITORS_ONLY = problem_response_doc(
     " tutor but is neither the tutor themselves nor a holder of tutor.manage"
     " (permission_denied)."
 )
-REQUIRES_APPROVAL = (
-    "The change affects scheduled classes and needs approval; nothing changed"
-    " (availability_change_requires_approval)."
-)
+SENT_FOR_APPROVAL: dict[int | str, dict[str, Any]] = {
+    202: {
+        "model": AvailabilityChangeRequestItem,
+        "description": (
+            "The change affects scheduled classes: nothing changed yet; it waits"
+            " for an Owner or Administrator in the approval inbox. The body is"
+            " the pending change request."
+        ),
+    }
+}
+
+
+def _sent_for_approval(item: AvailabilityChangeRequestItem) -> JSONResponse:
+    return JSONResponse(status_code=202, content=item.model_dump(mode="json"))
 
 
 @router.get(
@@ -340,13 +358,15 @@ async def get_availability(
 
 @router.put(
     "/{user_id}/availability/weekly",
+    response_model=TutorAvailabilityDetail,
     responses={
         **PERMISSION_RESPONSES,
         403: AVAILABILITY_EDITORS_ONLY,
         404: NOT_FOUND,
+        **SENT_FOR_APPROVAL,
         409: problem_response_doc(
             "The weekly availability changed since it was loaded, or another"
-            f" first change created it (version_conflict). Or: {REQUIRES_APPROVAL}"
+            " first change created it (version_conflict)."
         ),
         422: problem_response_doc(
             "The body is not valid: a missing or negative version, more than 42"
@@ -363,13 +383,17 @@ async def replace_weekly_availability(
     body: WeeklyAvailabilityUpdate,
     uow: UnitOfWorkDep,
     impact: ImpactSource,
-) -> TutorAvailabilityDetail:
+) -> Any:
     """Replace the tutor's weekly windows (``[]`` clears them). ``version`` 0
     is a tutor whose availability never changed. A body that changes nothing
-    keeps the version."""
-    return await service.replace_weekly_availability(
+    keeps the version. Taking away time that scheduled classes use is
+    ``202``: a pending change request."""
+    result = await service.replace_weekly_availability(
         uow.session, principal=principal, user_id=user_id, body=body, impact=impact
     )
+    if isinstance(result, AvailabilityChangeRequestItem):
+        return _sent_for_approval(result)
+    return result
 
 
 @router.patch(
@@ -411,11 +435,12 @@ async def update_availability_settings(
 @router.post(
     "/{user_id}/availability/exceptions",
     status_code=201,
+    response_model=AvailabilityExceptionItem,
     responses={
         **PERMISSION_RESPONSES,
         403: AVAILABILITY_EDITORS_ONLY,
         404: NOT_FOUND,
-        409: problem_response_doc(REQUIRES_APPROVAL),
+        **SENT_FOR_APPROVAL,
         422: problem_response_doc(
             "The body is not valid: an unknown kind, a date not in the"
             " YYYY-MM-DD form, an end date before the start or more than 366"
@@ -431,12 +456,16 @@ async def create_availability_exception(
     body: AvailabilityExceptionCreate,
     uow: UnitOfWorkDep,
     impact: ImpactSource,
-) -> AvailabilityExceptionItem:
+) -> Any:
     """Add time off (``unavailable``, whole days or hours) or extra
-    availability (``available``, hours) on each day of an inclusive range."""
-    return await service.create_exception(
+    availability (``available``, hours) on each day of an inclusive range.
+    Time off over scheduled classes is ``202``: a pending change request."""
+    result = await service.create_exception(
         uow.session, principal=principal, user_id=user_id, body=body, impact=impact
     )
+    if isinstance(result, AvailabilityChangeRequestItem):
+        return _sent_for_approval(result)
+    return result
 
 
 @router.delete(
@@ -450,7 +479,7 @@ async def create_availability_exception(
             "No such tutor or exception of this tutor, or the caller may not"
             " see the tutor (not_found)."
         ),
-        409: problem_response_doc(REQUIRES_APPROVAL),
+        **SENT_FOR_APPROVAL,
     },
 )
 async def delete_availability_exception(
@@ -459,14 +488,55 @@ async def delete_availability_exception(
     exception_id: uuid.UUID,
     uow: UnitOfWorkDep,
     impact: ImpactSource,
-) -> None:
-    """Delete one of the tutor's exceptions."""
-    await service.delete_exception(
+) -> Response:
+    """Delete one of the tutor's exceptions. Removing extra hours that
+    scheduled classes use is ``202``: a pending change request."""
+    result = await service.delete_exception(
         uow.session,
         principal=principal,
         user_id=user_id,
         exception_id=exception_id,
         impact=impact,
+    )
+    if result is not None:
+        return _sent_for_approval(result)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{user_id}/availability/change-requests/{change_request_id}/cancel",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: AVAILABILITY_EDITORS_ONLY,
+        404: problem_response_doc(
+            "No such tutor or change request of this tutor, or the caller may"
+            " not see the tutor (not_found)."
+        ),
+        409: problem_response_doc(
+            "The request changed since it was loaded (version_conflict), or it"
+            " was already approved, rejected or withdrawn"
+            " (availability_change_not_pending, details.status)."
+        ),
+        422: problem_response_doc(
+            "A missing or invalid version, an unknown field (validation_error)."
+        ),
+    },
+)
+async def cancel_availability_change_request(
+    principal: Annotated[Principal, require(TUTOR_VIEW)],
+    user_id: uuid.UUID,
+    change_request_id: uuid.UUID,
+    body: ChangeRequestCancel,
+    uow: UnitOfWorkDep,
+) -> AvailabilityChangeRequestItem:
+    """Withdraw a pending availability change request (the tutor themselves
+    or tutor.manage); its approval inbox item is cancelled too."""
+    return await service.cancel_change_request(
+        uow.session,
+        principal=principal,
+        user_id=user_id,
+        change_request_id=change_request_id,
+        version=body.version,
     )
 
 
