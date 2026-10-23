@@ -51,6 +51,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
+import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 
 // React Router in data mode. Server data is fetched with TanStack Query
@@ -299,6 +300,33 @@ export const routes: RouteObject[] = [
             path: 'settings/scheduling-policies',
             element: <SchedulingPoliciesPage />,
             handle: { permission: 'settings.manage' },
+          },
+          // Tutoring groups (#234 A3, code-split): staff with schedule.view,
+          // or students (their own groups; the API decides). The create form
+          // needs schedule.manage.
+          {
+            path: 'groups',
+            lazy: async () => ({
+              Component: (await import('@/features/groups/GroupsPage'))
+                .GroupsPage,
+            }),
+            handle: GROUPS_ACCESS,
+          },
+          {
+            path: 'groups/new',
+            lazy: async () => ({
+              Component: (await import('@/features/groups/create/NewGroupPage'))
+                .NewGroupPage,
+            }),
+            handle: { permission: 'schedule.manage' },
+          },
+          {
+            path: 'groups/:groupId',
+            lazy: async () => ({
+              Component: (await import('@/features/groups/GroupPage'))
+                .GroupPage,
+            }),
+            handle: GROUPS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

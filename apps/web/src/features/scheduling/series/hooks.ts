@@ -24,6 +24,12 @@ export function useFieldMessage(): (
  * The DialogContent handlers that put the focus back on the element that
  * had it when the dialog opened (the trigger), when it is still there.
  * Radix only does that for its own DialogTrigger.
+ *
+ * The opener is read when the dialog opens, so nothing inside the dialog
+ * may take the focus before that (no `autoFocus` on a field; focus it from
+ * `onOpenAutoFocus` instead, #234 QA D1). When the page already moved the
+ * focus somewhere else on close (a status notice whose trigger is gone),
+ * it stays there.
  */
 export function useReturnFocus() {
   const opener = useRef<HTMLElement | null>(null);
@@ -36,7 +42,13 @@ export function useReturnFocus() {
     },
     onCloseAutoFocus: (event: Event) => {
       event.preventDefault();
-      if (opener.current?.isConnected) {
+      const active = document.activeElement;
+      const movedElsewhere =
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active.isConnected &&
+        active !== opener.current;
+      if (!movedElsewhere && opener.current?.isConnected) {
         opener.current.focus();
       }
       opener.current = null;

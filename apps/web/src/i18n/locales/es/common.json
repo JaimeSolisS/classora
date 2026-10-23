@@ -39,6 +39,7 @@
     "guardians": "Padres y tutores",
     "families": "Familias",
     "tutors": "Tutores",
+    "groups": "Grupos",
     "schedule": "Agenda",
     "courses": "Cursos",
     "offers": "Mis ofertas"
@@ -2070,6 +2071,161 @@
     },
     "substitution": {
       "for": "Suplencia de {{tutor}}"
+    }
+  },
+  "groups": {
+    "title": "Grupos",
+    "myTitle": "Mis grupos",
+    "new": "Nuevo grupo",
+    "ended": "Terminado",
+    "noTutor": "Sin tutor por ahora",
+    "subjectLevel": "{{subject}} ({{level}})",
+    "timeRange": "{{start}}–{{end}}",
+    "cancel": "Cancelar",
+    "counter": "{{length}} de {{max}} caracteres",
+    "fields": {
+      "name": "Nombre",
+      "max": "Máximo de estudiantes"
+    },
+    "validation": {
+      "nameRequired": "Escribe un nombre.",
+      "nameTooLong": "El nombre puede tener como máximo 120 caracteres.",
+      "maxRange": "Escribe un número entero de 1 a 500.",
+      "studentsTooMany": "Un grupo puede empezar con 500 estudiantes como máximo."
+    },
+    "list": {
+      "search": "Buscar por nombre",
+      "subject": "Materia",
+      "allSubjects": "Todas las materias",
+      "status": "Estado",
+      "statusOptions": {
+        "active": "Activos",
+        "ended": "Terminados",
+        "all": "Todos"
+      },
+      "name": "Nombre",
+      "tutor": "Tutor",
+      "seats": "Lugares",
+      "seatsValue": "{{enrolled}} / {{max}}",
+      "next": "Próxima sesión",
+      "noNext": "—",
+      "empty": "Ningún grupo coincide con estos filtros.",
+      "clearFilters": "Quitar filtros",
+      "studentEmpty": "No estás inscrito en ningún grupo.",
+      "loadMore": "Cargar más"
+    },
+    "page": {
+      "title": "Grupo",
+      "schedule": "Horario",
+      "time": "Hora",
+      "timeValue": "{{start}}–{{end}} ({{zone}})",
+      "enroll": "Inscribir estudiante",
+      "edit": "Editar"
+    },
+    "capacity": {
+      "heading": "Capacidad",
+      "taken": "{{enrolled}} de {{max}} lugares ocupados",
+      "roomLimit": "El aula tiene capacidad para {{capacity}}, así que asisten como máximo {{capacity}}."
+    },
+    "next": {
+      "heading": "Próximas sesiones",
+      "none": "No hay sesiones próximas"
+    },
+    "mySessions": {
+      "heading": "Mis sesiones",
+      "window": "Del {{from}} al {{to}} (horas en {{zone}})",
+      "previous": "4 semanas anteriores",
+      "next": "4 semanas siguientes",
+      "none": "No hay sesiones en estas semanas.",
+      "tutor": "Tutor: {{name}}",
+      "classroom": "Aula: {{name}}"
+    },
+    "roster": {
+      "heading": "Estudiantes",
+      "active_one": "Inscritos ({{count}})",
+      "active_many": "Inscritos ({{count}})",
+      "active_other": "Inscritos ({{count}})",
+      "withdrawn_one": "Dados de baja ({{count}})",
+      "withdrawn_many": "Dados de baja ({{count}})",
+      "withdrawn_other": "Dados de baja ({{count}})",
+      "none": "No hay estudiantes inscritos.",
+      "student": "Estudiante",
+      "enrolledAt": "Inscrito el",
+      "enrolledBy": "Inscrito por",
+      "withdrawnAt": "Baja el",
+      "withdrawnBy": "Baja por",
+      "reason": "Motivo",
+      "noReason": "Sin motivo",
+      "overridden": "Con excepción",
+      "actions": "Acciones",
+      "withdraw": "Dar de baja",
+      "withdrawOf": "Dar de baja a {{name}}"
+    },
+    "conflicts": {
+      "wholeGroup": "Todo el grupo",
+      "notYetLabel": "Aún no admite excepciones en grupos",
+      "notYet": "Algunos de estos conflictos aún no admiten excepciones en grupos. Cambia el horario, el aula o los estudiantes."
+    },
+    "enroll": {
+      "title": "Inscribir estudiante",
+      "description": "El estudiante se une a todas las sesiones futuras de {{group}} que no hayan empezado.",
+      "student": "Estudiante",
+      "studentHelp": "Busca por nombre. Los estudiantes ya inscritos no se pueden elegir.",
+      "studentRequired": "Elige un estudiante.",
+      "alreadyEnrolled": "{{name}} (ya inscrito)",
+      "submit": "Inscribir",
+      "submitting": "Inscribiendo…",
+      "conflictsHeading_one": "No se puede inscribir al estudiante: {{count}} conflicto",
+      "conflictsHeading_many": "No se puede inscribir al estudiante: {{count}} conflictos",
+      "conflictsHeading_other": "No se puede inscribir al estudiante: {{count}} conflictos",
+      "overrideAction": "Hacer excepción e inscribir",
+      "overrideDescription": "El estudiante se inscribe a pesar de estas reglas. El motivo queda en el registro de auditoría.",
+      "done": "{{name}} quedó inscrito.",
+      "doneOverride": "{{name}} quedó inscrito con una excepción."
+    },
+    "withdraw": {
+      "title": "Dar de baja al estudiante",
+      "description": "¿Dar de baja a {{name}} de {{group}}? Sale de las sesiones futuras; las sesiones pasadas se conservan.",
+      "reason": "Motivo (opcional)",
+      "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres.",
+      "keep": "Mantener inscrito",
+      "submit": "Dar de baja",
+      "submitting": "Dando de baja…",
+      "done": "{{name}} quedó dado de baja."
+    },
+    "edit": {
+      "title": "Editar grupo",
+      "description": "Cambia el nombre del grupo o su máximo. El horario, el tutor y el aula se cambian desde las sesiones del grupo.",
+      "submit": "Guardar",
+      "submitting": "Guardando…",
+      "belowEnrolled_one": "Hay {{count}} estudiante inscrito: el máximo no puede ser menor.",
+      "belowEnrolled_many": "Hay {{count}} estudiantes inscritos: el máximo no puede ser menor.",
+      "belowEnrolled_other": "Hay {{count}} estudiantes inscritos: el máximo no puede ser menor.",
+      "done": "Grupo guardado."
+    },
+    "create": {
+      "title": "Nuevo grupo",
+      "schedule": "Horario semanal",
+      "roomOption": "{{name}} (capacidad {{capacity}})",
+      "students": "Estudiantes iniciales",
+      "addStudent": "Agregar un estudiante",
+      "studentsHelp": "Opcional. Busca por nombre; cada estudiante una vez. Puedes inscribir más después.",
+      "alreadyAdded": "{{name}} (ya agregado)",
+      "noStudents": "Aún no hay estudiantes.",
+      "chosen_one": "{{count}} estudiante elegido",
+      "chosen_many": "{{count}} estudiantes elegidos",
+      "chosen_other": "{{count}} estudiantes elegidos",
+      "remove": "Quitar a {{name}}",
+      "submit": "Crear grupo",
+      "submitting": "Creando…",
+      "conflictsHeading_one": "No se puede crear el grupo: {{count}} conflicto",
+      "conflictsHeading_many": "No se puede crear el grupo: {{count}} conflictos",
+      "conflictsHeading_other": "No se puede crear el grupo: {{count}} conflictos",
+      "overrideAction": "Hacer excepción y crear",
+      "overrideDescription": "El grupo se crea a pesar de estas reglas. El motivo queda en el registro de auditoría.",
+      "done_one": "Grupo creado: {{count}} sesión próxima.",
+      "done_many": "Grupo creado: {{count}} sesiones próximas.",
+      "done_other": "Grupo creado: {{count}} sesiones próximas."
     }
   }
 }

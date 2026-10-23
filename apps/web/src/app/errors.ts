@@ -109,6 +109,13 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   // Overriding a conflict occurrence (#236).
   ['session_not_in_conflict', 'session_not_in_conflict'],
   ['occurrence_started', 'occurrence_started'],
+  // Tutoring groups (#56, #234).
+  ['group_not_found', 'group_not_found'],
+  ['enrollment_not_found', 'enrollment_not_found'],
+  ['group_name_taken', 'group_name_taken'],
+  ['group_ended', 'group_ended'],
+  ['already_enrolled', 'already_enrolled'],
+  ['enrollment_not_active', 'enrollment_not_active'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

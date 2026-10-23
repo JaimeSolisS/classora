@@ -159,3 +159,76 @@ describe('routeRequirement', () => {
     expect(canAccess(user, requirement)).toBe(false);
   });
 });
+
+describe('canAccess with anyRole and anyOf (#234 A1)', () => {
+  const student: SessionUser = { ...user, roles: ['student'], permissions: [] };
+  const tutor: SessionUser = { ...user, roles: ['tutor'], permissions: [] };
+  const finance: SessionUser = {
+    ...user,
+    roles: ['finance_staff'],
+    permissions: ['schedule.view'],
+  };
+  const groups = {
+    anyOf: [{ permission: 'schedule.view' }, { anyRole: ['student'] }],
+  } as const;
+
+  it('anyRole passes with one of the roles and fails without', () => {
+    expect(canAccess(student, { anyRole: ['tutor', 'student'] })).toBe(true);
+    expect(canAccess(user, { anyRole: ['tutor', 'student'] })).toBe(false);
+  });
+
+  it('anyRole fails closed when empty or not an array', () => {
+    expect(canAccess(student, { anyRole: [] })).toBe(false);
+    expect(
+      canAccess(student, { anyRole: 'student' as unknown as RoleCode[] }),
+    ).toBe(false);
+    expect(
+      canAccess(student, { anyRole: [null] as unknown as RoleCode[] }),
+    ).toBe(false);
+  });
+
+  it('anyOf passes when any entry passes', () => {
+    expect(canAccess(finance, groups)).toBe(true);
+    expect(canAccess(student, groups)).toBe(true);
+    expect(canAccess(tutor, groups)).toBe(false);
+    expect(canAccess(user, { ...groups, permission: 'user.view' })).toBe(false);
+  });
+
+  it('anyOf with other fields: all of them apply', () => {
+    expect(canAccess(finance, { ...groups, anyRole: ['finance_staff'] })).toBe(
+      true,
+    );
+    expect(canAccess(student, { ...groups, anyRole: ['finance_staff'] })).toBe(
+      false,
+    );
+  });
+
+  it('anyOf fails closed when empty, not an array or with bad entries', () => {
+    expect(canAccess(finance, { anyOf: [] })).toBe(false);
+    expect(
+      canAccess(finance, {
+        anyOf: { permission: 'schedule.view' } as unknown as [],
+      }),
+    ).toBe(false);
+    expect(
+      canAccess(finance, { anyOf: [null, 'schedule.view'] as unknown as [] }),
+    ).toBe(false);
+  });
+
+  it('anyOf nests', () => {
+    expect(
+      canAccess(student, {
+        anyOf: [{ anyOf: [{ role: 'tutor' }, { anyRole: ['student'] }] }],
+      }),
+    ).toBe(true);
+    expect(canAccess(student, { anyOf: [{ anyOf: [] }] })).toBe(false);
+  });
+
+  it('routeRequirement reads anyRole and anyOf', () => {
+    expect(routeRequirement(groups)).toEqual(groups);
+    expect(routeRequirement({ anyRole: ['student'] })).toEqual({
+      anyRole: ['student'],
+    });
+    expect(canAccess(student, routeRequirement({ anyOf: 'x' }))).toBe(false);
+  });
+});

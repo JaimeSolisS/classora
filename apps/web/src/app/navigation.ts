@@ -1,12 +1,13 @@
 import type { ParseKeys } from 'i18next';
 import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
+import { GROUPS_ACCESS } from '@/features/groups/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
 // UX only: the API checks every request. Feature issues add their own items
-// here, with the `permission` (or `anyPermission`, or `role`) their route
-// requires.
+// here, with the `permission` (or `anyPermission`, `role`, `anyRole` or
+// `anyOf`) their route requires.
 
 export interface NavItem extends AccessRequirement {
   to: string;
@@ -49,6 +50,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/families', labelKey: 'nav.families', permission: 'guardian.view' },
   // Tutors see only their own profile (#43 E1).
   { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
+  // Tutoring groups (#234 A2): staff with schedule.view, and students (their
+  // own groups). Tutors and guardians: #67.
+  { to: '/groups', labelKey: 'nav.groups', ...GROUPS_ACCESS },
   // Course templates (#64 G1): Finance Staff read them.
   { to: '/courses', labelKey: 'nav.courses', permission: 'course.view' },
   // The calendar (#57 D1): every schedule.view holder (Coordinators and

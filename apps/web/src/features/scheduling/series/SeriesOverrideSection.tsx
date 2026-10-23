@@ -24,6 +24,10 @@ import { SeriesConflictPanel } from './SeriesConflictPanel';
 // closes the dialog and goes to `onRefused` (the panel shows the new list,
 // focus on its heading); a 422 on the reason stays in the dialog, and
 // anything else (a 403) is the dialog's ErrorAlert.
+//
+// A group write (#234 D2, E3) reuses it with its own texts (`labels`) and
+// the soft conflicts it accepts (`accepts`): with another soft one the
+// holder reads "can't be overridden for groups yet" instead of the button.
 
 export interface SeriesOverrideSectionProps {
   conflicts: readonly SchedulingConflict[];
@@ -35,6 +39,25 @@ export interface SeriesOverrideSectionProps {
   onRefused: (error: unknown) => void;
   /** The reason to start from, with the dialog open (stories). */
   initialReason?: string;
+  /** Which soft conflicts this write can override (default: every one). */
+  accepts?: (conflict: SchedulingConflict) => boolean;
+  /** Texts for another write than a series (#234); default: the series'. */
+  labels?: SeriesOverrideLabels;
+}
+
+export interface SeriesOverrideLabels {
+  /** The button under the panel, the dialog's title and its submit. */
+  action?: string;
+  /** The dialog's submit while it sends. */
+  submitting?: string;
+  /** The dialog's description. */
+  description?: string;
+  /** The heading of the conflicts without a date. */
+  noDateHeading?: string;
+  /** The label of a soft conflict this write can't override. */
+  noOverrideLabel?: string;
+  /** The text under the panel when such a conflict is listed. */
+  notYet?: string;
 }
 
 export function SeriesOverrideSection({
@@ -44,6 +67,8 @@ export function SeriesOverrideSection({
   onOverride,
   onRefused,
   initialReason,
+  accepts,
+  labels,
 }: SeriesOverrideSectionProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -54,8 +79,10 @@ export function SeriesOverrideSection({
   // Where the focus goes once the dialog closes: its button (cancel), or
   // the panel's heading (a new list).
   const focusAfter = useRef<'button' | 'panel'>('button');
-  const action = overrideAction(conflicts, canOverride);
   const soft = conflicts.filter((c) => c.severity === 'soft');
+  const base = overrideAction(conflicts, canOverride);
+  const action =
+    base === 'override' && accepts && !soft.every(accepts) ? 'notYet' : base;
 
   async function confirm(reason: string) {
     try {
@@ -94,18 +121,26 @@ export function SeriesOverrideSection({
 
   return (
     <div ref={section} className="flex min-w-0 flex-col gap-3">
-      <SeriesConflictPanel conflicts={conflicts} heading={heading} />
+      <SeriesConflictPanel
+        conflicts={conflicts}
+        heading={heading}
+        accepts={accepts}
+        noOverrideLabel={labels?.noOverrideLabel}
+        noDateHeading={labels?.noDateHeading}
+      />
       {action === 'override' ? (
         <div>
           <Button ref={button} type="button" onClick={() => setOpen(true)}>
-            {t('scheduling.override.action')}
+            {labels?.action ?? t('scheduling.override.action')}
           </Button>
         </div>
       ) : (
         <p className="text-sm">
           {action === 'fixHardFirst'
             ? t('scheduling.override.fixHardFirst')
-            : t('scheduling.override.notAllowed')}
+            : action === 'notYet'
+              ? labels?.notYet
+              : t('scheduling.override.notAllowed')}
         </p>
       )}
       <OverrideDialog
@@ -116,12 +151,14 @@ export function SeriesOverrideSection({
         onCancel={() => setOpen(false)}
         onCloseAutoFocus={afterDialog}
         labels={{
-          title: t('scheduling.override.title'),
-          description: t('scheduling.series.override.description', {
-            count: affectedOccurrences(soft),
-          }),
-          submit: t('scheduling.override.submit'),
-          submitting: t('scheduling.override.submitting'),
+          title: labels?.action ?? t('scheduling.override.title'),
+          description:
+            labels?.description ??
+            t('scheduling.series.override.description', {
+              count: affectedOccurrences(soft),
+            }),
+          submit: labels?.action ?? t('scheduling.override.submit'),
+          submitting: labels?.submitting ?? t('scheduling.override.submitting'),
         }}
         rules={
           <ul className="flex flex-col gap-2">
@@ -130,7 +167,8 @@ export function SeriesOverrideSection({
                 <h4 className="text-sm font-medium">
                   {group.date
                     ? formatLocalDate(group.date, { language, style: 'long' })
-                    : t('scheduling.series.conflicts.noDate')}
+                    : (labels?.noDateHeading ??
+                      t('scheduling.series.conflicts.noDate'))}
                 </h4>
                 <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
                   {group.conflicts.map((conflict, index) => (
