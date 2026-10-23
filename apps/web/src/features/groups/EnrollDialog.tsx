@@ -78,6 +78,17 @@ export function EnrollDialog(props: EnrollDialogProps) {
       {props.open ? (
         <DialogContent
           {...returnFocus}
+          onOpenAutoFocus={(event) => {
+            // Record the opener first, then start in the student search.
+            // Never `autoFocus` the search: it would take the focus before
+            // this runs and the opener would be lost (#234 QA D1).
+            returnFocus.onOpenAutoFocus();
+            event.preventDefault();
+            const content = event.currentTarget;
+            if (content instanceof HTMLElement) {
+              content.querySelector('input')?.focus();
+            }
+          }}
           onInteractOutside={(event) => event.preventDefault()}
           className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
         >
@@ -241,7 +252,6 @@ function EnrollContent({
               setConflicts(null);
             }}
             errorMessage={message(studentError)}
-            autoFocus
           />
         </div>
         <DialogFooter>

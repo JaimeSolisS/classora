@@ -202,6 +202,10 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
   await expect(main.getByRole('status')).toContainText(
     fill(groups.enroll.doneOverride, { name: third }),
   );
+  // QA D1: the focus is back on the trigger.
+  await expect(
+    main.getByRole('button', { name: groups.page.enroll, exact: true }),
+  ).toBeFocused();
   await expect(main.getByRole('row').filter({ hasText: third })).toContainText(
     groups.roster.overridden,
   );
@@ -232,6 +236,8 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
   await expect(
     withdrawn.getByRole('row').filter({ hasText: first }),
   ).toContainText('Cambió de horario escolar.');
+  // QA D1: the row's button is gone; the notice keeps the focus.
+  await expect(main.getByRole('status')).toBeFocused();
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);

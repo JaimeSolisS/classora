@@ -16,7 +16,13 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, openDialog, typeInto } from '@/test/dom';
+import {
+  click,
+  fieldByLabel,
+  openDialog,
+  pressEscape,
+  typeInto,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -822,7 +828,9 @@ describe('the dialogs (D)', () => {
       ],
     });
     app = await open(`/groups/${GROUP_ID}`);
-    await click(buttonNamed(main(), 'Enroll student'));
+    const trigger = buttonNamed(main(), 'Enroll student');
+    act(() => trigger.focus());
+    await click(trigger);
     const dialog = openDialog()!;
     await search(dialog, 'Student', 'a');
     const ana = dialog.querySelector<HTMLInputElement>(
@@ -856,6 +864,8 @@ describe('the dialogs (D)', () => {
     expect(main().textContent).toContain(
       'Carla Méndez enrolled with an override.',
     );
+    // QA D1: both dialogs closed; the focus is back on the trigger.
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('asks to fix a hard enroll conflict first, labelled "Not allowed"', async () => {
@@ -936,6 +946,92 @@ describe('the dialogs (D)', () => {
     await click(buttonNamed(main(), 'Withdraw Ana López'));
     await click(buttonNamed(openDialog()!, 'Withdraw'));
     expect(openDialog()!.textContent).toContain('Reload');
+  });
+
+  // QA D1: the opener is read when the dialog opens, so the search must
+  // not take the focus first (`autoFocus`); keyboard users start on it.
+  async function openEnrollFromKeyboard(): Promise<HTMLElement> {
+    const trigger = buttonNamed(main(), 'Enroll student');
+    act(() => trigger.focus());
+    await click(trigger);
+    const dialog = openDialog()!;
+    expect(document.activeElement).toBe(fieldByLabel(dialog, 'Student'));
+    return dialog;
+  }
+
+  it('puts the focus back on "Enroll student" after Escape and Cancel', async () => {
+    stub(OWNER);
+    app = await open(`/groups/${GROUP_ID}`);
+    await openEnrollFromKeyboard();
+    await pressEscape();
+    expect(openDialog()).toBeNull();
+    expect(document.activeElement).toBe(buttonNamed(main(), 'Enroll student'));
+
+    const dialog = await openEnrollFromKeyboard();
+    await search(dialog, 'Student', 'c');
+    await click(buttonNamed(dialog, 'Cancel'));
+    expect(openDialog()).toBeNull();
+    expect(document.activeElement).toBe(buttonNamed(main(), 'Enroll student'));
+  });
+
+  it('puts the focus back on "Enroll student" after an enroll', async () => {
+    stub(OWNER, { [ENROLL]: () => jsonResponse(201, ENROLLED) });
+    app = await open(`/groups/${GROUP_ID}`);
+    const dialog = await openEnrollFromKeyboard();
+    await search(dialog, 'Student', 'c');
+    await click(
+      dialog.querySelector<HTMLInputElement>(
+        `input[value="${STUDENT_CARLA.id}"]`,
+      )!,
+    );
+    await click(buttonNamed(dialog, 'Enroll'));
+    expect(openDialog()).toBeNull();
+    expect(document.activeElement).toBe(buttonNamed(main(), 'Enroll student'));
+  });
+
+  it('moves the focus to the notice after a withdrawal, as the row moves', async () => {
+    const withdrawn = {
+      ...ACTIVE_ANA,
+      withdrawn_at: '2031-01-01T00:00:00Z',
+      withdrawn_by: ACTIVE_ANA.enrolled_by,
+      version: 2,
+    };
+    // The refetch is held, so the row's button is still there when the
+    // dialog closes (as in a browser), then the row moves.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stub(OWNER, {
+      [DETAIL]: [
+        () => jsonResponse(200, GROUP),
+        async () => {
+          await held;
+          return jsonResponse(200, {
+            ...GROUP,
+            roster: GROUP.roster!.map((item) =>
+              item.id === ACTIVE_ANA.id ? withdrawn : item,
+            ),
+          });
+        },
+      ],
+      [WITHDRAW]: () => jsonResponse(200, withdrawn),
+    });
+    app = await open(`/groups/${GROUP_ID}`);
+    const trigger = buttonNamed(main(), 'Withdraw Ana López');
+    act(() => trigger.focus());
+    await click(trigger);
+    await click(buttonNamed(openDialog()!, 'Withdraw'));
+    expect(openDialog()).toBeNull();
+    const notice = main().querySelector('[role="status"][tabindex="-1"]');
+    expect(notice?.textContent).toBe('Ana López withdrawn.');
+    expect(trigger.isConnected).toBe(true);
+    expect(document.activeElement).toBe(notice);
+
+    release();
+    await settle();
+    expect(() => buttonNamed(main(), 'Withdraw Ana López')).toThrow();
+    expect(document.activeElement).toBe(notice);
   });
 
   it('edits only the changed maximum, and shows the below-enrolled error', async () => {

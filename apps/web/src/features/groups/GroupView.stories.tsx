@@ -52,6 +52,17 @@ const meta = {
     onWithdraw: fn(),
     onEdit: fn(),
   },
+  parameters: {
+    viewport: {
+      options: {
+        narrow320: {
+          name: 'Narrow (320 px)',
+          styles: { width: '320px', height: '640px' },
+          type: 'mobile',
+        },
+      },
+    },
+  },
 } satisfies Meta<typeof GroupStory>;
 
 export default meta;
@@ -97,6 +108,22 @@ export const ReadOnly: Story = {
     await expect(within(canvasElement).queryAllByRole('button')).toHaveLength(
       0,
     );
+  },
+};
+
+// #234 QA D2: at 320 px the roster tables scroll sideways and, read-only,
+// hold nothing focusable; each scroll container takes the focus as a region
+// named by its heading, so axe (scrollable-region-focusable) passes.
+export const ReadOnlyNarrow: Story = {
+  args: { canManage: false },
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const withdrawn = canvas.getByRole('region', {
+      name: i18n.t('groups.roster.withdrawn', { count: 2 }),
+    });
+    await expect(withdrawn).toHaveAttribute('tabindex', '0');
+    await expect(withdrawn.scrollWidth).toBeGreaterThan(withdrawn.clientWidth);
   },
 };
 
