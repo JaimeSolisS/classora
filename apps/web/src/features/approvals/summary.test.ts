@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { i18n } from '@/i18n';
 import { formatInstant } from '@/lib/time';
 import type { ApprovalRequestItem } from './api';
+import { AVAILABILITY_CHANGE } from './fixtures';
 import {
   approvalSummary,
+  availabilityChangeLink,
+  availabilityChangeSubject,
   itemName,
   occurrenceCodeName,
   occurrenceConflictSubject,
@@ -142,5 +145,34 @@ describe('the session request summary', () => {
     ).toBe(
       'Ana López · Física (Secundaria) · Jan 6, 2031, 10:00 AM · 60 min · requested by Laura López',
     );
+  });
+});
+
+// #63 H2: an availability change names the tutor, the change and how many
+// classes it affects, and links to the tutor's availability.
+describe('staff.availability_change', () => {
+  it('summarizes the change', () => {
+    expect(
+      approvalSummary(AVAILABILITY_CHANGE, en, undefined, (date) => date),
+    ).toBe(
+      'Carmen Ruiz · Time off: 2031-11-12 – 2031-11-16 · 3 classes affected',
+    );
+    expect(
+      approvalSummary(AVAILABILITY_CHANGE, es, undefined, (date) => date),
+    ).toBe(
+      'Carmen Ruiz · Tiempo libre: 2031-11-12 – 2031-11-16 · 3 clases afectadas',
+    );
+    expect(typeLabel('staff.availability_change', en)).toBe(
+      'Availability change',
+    );
+  });
+
+  it('links to the tutor availability', () => {
+    expect(availabilityChangeLink(AVAILABILITY_CHANGE)).toBe(
+      '/tutors/00000000-0000-4000-8000-0000000000b1#availability',
+    );
+    expect(
+      availabilityChangeSubject({ ...AVAILABILITY_CHANGE, subject: {} }),
+    ).toBeNull();
   });
 });

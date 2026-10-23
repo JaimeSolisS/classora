@@ -25,6 +25,19 @@ many tutors at once, #59: :func:`tutor_availability_rules_many`, also two
 statements) and the pure rules :func:`evaluate`, :func:`evaluate_interval`,
 :class:`WeeklyWindow` and :class:`DatedException`.
 
+Availability change requests (M4-18 #63): a change that affects scheduled
+sessions (the injected :class:`AvailabilityImpactSource`, registered by
+``app.wiring`` with :func:`register_availability_impact_source`; the pure
+rule :func:`is_affected`) is stored as a pending request
+(:mod:`app.modules.staff.availability_change_requests`, type
+:data:`AVAILABILITY_CHANGE_TYPE`) and withdrawn with
+:func:`cancel_change_request`. The ``app.workflows.availability_change``
+handler decides it with :func:`lock_change_request`,
+:func:`lock_availability`, :func:`plan_change`, :func:`apply_change`
+(:mod:`app.modules.staff.availability_change_decision`),
+:func:`finish_change_request` and :func:`notify_change_decided`, and shows
+it with :func:`change_request_summaries`.
+
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
 through ``identity.service`` (:func:`identity.list_role_members`,
 :func:`identity.get_role_member`) and never queries ``users`` itself.
@@ -55,16 +68,69 @@ from app.core.models import StaleVersionError
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.identity import service as identity
 from app.modules.identity.schemas import RoleMember
+from app.modules.staff.assignment_impact import (
+    AffectedSession as AffectedSession,
+)
+from app.modules.staff.assignment_impact import (
+    AvailabilityImpactSource as AvailabilityImpactSource,
+)
+from app.modules.staff.assignment_impact import (
+    register_availability_impact_source as register_availability_impact_source,
+)
 from app.modules.staff.availability import (
     AvailabilityResult as AvailabilityResult,
 )
 from app.modules.staff.availability import DatedException as DatedException
+from app.modules.staff.availability import (
+    TutorAvailabilityRules as TutorAvailabilityRules,
+)
 from app.modules.staff.availability import WeeklyWindow as WeeklyWindow
 from app.modules.staff.availability import evaluate as evaluate
 from app.modules.staff.availability import (
     evaluate_interval as evaluate_interval,
 )
+from app.modules.staff.availability_change_decision import ChangePlan as ChangePlan
+from app.modules.staff.availability_change_decision import (
+    apply_change as apply_change,
+)
+from app.modules.staff.availability_change_decision import (
+    lock_availability as lock_availability,
+)
+from app.modules.staff.availability_change_decision import (
+    plan_change as plan_change,
+)
+from app.modules.staff.availability_change_requests import (
+    AVAILABILITY_CHANGE_TYPE as AVAILABILITY_CHANGE_TYPE,
+)
+from app.modules.staff.availability_change_requests import (
+    cancel_change_request as cancel_change_request,
+)
+from app.modules.staff.availability_change_requests import (
+    change_request_summaries as change_request_summaries,
+)
+from app.modules.staff.availability_change_requests import (
+    finish_change_request as finish_change_request,
+)
+from app.modules.staff.availability_change_requests import (
+    lock_change_request as lock_change_request,
+)
+from app.modules.staff.availability_change_requests import (
+    notify_change_decided as notify_change_decided,
+)
+from app.modules.staff.availability_change_requests import (
+    register_availability_notifications as register_availability_notifications,
+)
+from app.modules.staff.availability_impact import (
+    change_priority as change_priority,
+)
+from app.modules.staff.availability_impact import is_affected as is_affected
+from app.modules.staff.models import CHANGE_APPROVED as CHANGE_APPROVED
+from app.modules.staff.models import CHANGE_PENDING as CHANGE_PENDING
+from app.modules.staff.models import CHANGE_REJECTED as CHANGE_REJECTED
 from app.modules.staff.models import USER_ID_UNIQUE, TutorProfile
+from app.modules.staff.models import (
+    TutorAvailabilityChangeRequest as TutorAvailabilityChangeRequest,
+)
 from app.modules.staff.permissions import (
     ACCOUNT_FIELDS,
     TUTOR,
@@ -102,9 +168,6 @@ from app.modules.staff.qualifications import teaching_subjects, visible_tutor
 from app.modules.staff.schemas import TutorDetail, TutorListItem, TutorUpdate
 from app.modules.staff.tutor_availability import (
     TeachingLimits as TeachingLimits,
-)
-from app.modules.staff.tutor_availability import (
-    TutorAvailabilityRules as TutorAvailabilityRules,
 )
 from app.modules.staff.tutor_availability import (
     check_availability as check_availability,

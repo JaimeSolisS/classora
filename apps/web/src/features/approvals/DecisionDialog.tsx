@@ -21,8 +21,14 @@ import {
 } from './api';
 import { useFormatters } from '@/lib/formatters';
 import {
+  affectedSessionText,
+  moreCount,
+} from '@/features/tutors/changeRequests';
+import {
   actionLabelKey,
   approvalSummary,
+  availabilityChangeLink,
+  availabilityChangeSubject,
   reassignmentSubject,
   registrationSubject,
   reviewLinkOf,
@@ -38,6 +44,9 @@ import {
 // A `409 session_request_review_route_required` (#60 H2: a page loaded
 // before the inbox showed "Review"), or #62's
 // `change_request_review_route_required`, adds the link to the review page.
+// An availability change (#63 H2) lists its affected classes (the first 20
+// of the snapshot, "and N more") with a link to the tutor's availability;
+// `409 availability_change_stale` shows in the alert region.
 
 export const REASON_MAX_LENGTH = 1000;
 
@@ -133,6 +142,8 @@ function DecisionDialogContent({
   );
   const registration = registrationSubject(item);
   const reassignment = reassignmentSubject(item);
+  const availability = availabilityChangeSubject(item);
+  const availabilityLink = availabilityChangeLink(item);
   const withReason = action !== 'approve';
   const required = reasonRequired(item.request_type, action);
 
@@ -141,6 +152,8 @@ function DecisionDialogContent({
     description = t('approvals.reassignment.resolveConfirm');
   } else if (reassignment && action === 'reject') {
     description = t('approvals.reassignment.dismissConfirm');
+  } else if (availability && action === 'approve') {
+    description = t('approvals.availabilityChange.approveHelp');
   } else if (action === 'approve') {
     description = registration
       ? t('approvals.dialog.registrationApprove', {
@@ -183,6 +196,7 @@ function DecisionDialogContent({
 
   return (
     <DialogContent
+      className="max-h-[90vh] overflow-y-auto"
       onOpenAutoFocus={() => {
         returnFocus.current = document.activeElement;
       }}
@@ -210,6 +224,41 @@ function DecisionDialogContent({
         </DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
+      {availability ? (
+        <div className="flex flex-col gap-1 text-sm">
+          <h3 id={`${id}-affected`} className="font-medium">
+            {t('approvals.availabilityChange.affectedTitle')}
+          </h3>
+          <ul aria-labelledby={`${id}-affected`} className="list-disc ps-5">
+            {availability.affected_sessions.map((session) => (
+              <li key={session.id} className="break-words">
+                {affectedSessionText(session, t, formatInstant)}
+              </li>
+            ))}
+          </ul>
+          {moreCount(
+            availability.affected_count,
+            availability.affected_sessions.length,
+          ) > 0 ? (
+            <p>
+              {t('approvals.availabilityChange.more', {
+                count: moreCount(
+                  availability.affected_count,
+                  availability.affected_sessions.length,
+                ),
+              })}
+            </p>
+          ) : null}
+          {availabilityLink ? (
+            <Link
+              to={availabilityLink}
+              className="underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+            >
+              {t('approvals.availabilityChange.openAvailability')}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {withReason ? (
         <div className="flex flex-col gap-2">
           <label htmlFor={reasonId} className="text-sm font-medium">

@@ -161,6 +161,18 @@ called by ``app.workflows.change_request_decision``; the
 ``app.wiring``. M6-14 (billing) and M7-04 (tutor pay) read an approved
 request's effective outcome with :func:`get_change_request_outcome`.
 
+Availability changes that affect sessions (M4-18 #63,
+:mod:`~app.modules.scheduling.reassignment`): the tutor lock
+:func:`lock_tutor` (taken before reading a tutor's availability by every
+writer that books a tutor, and by a change of that availability),
+:func:`affected_tutor_sessions` and :data:`AVAILABILITY_IMPACT_SOURCE` (the
+``staff`` impact seam, registered by ``app.wiring``),
+:func:`flag_sessions_for_reassignment` and :func:`notify_reassignment_needed`
+(the ``app.workflows.availability_change`` approval), the read-time open
+rule :func:`is_flag_open` / :func:`open_reassignment_flags` (the session
+detail's ``reassignment``, the calendar's ``reassignment_needed`` marker)
+and :func:`register_reassignment_notifications`.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -325,6 +337,7 @@ from app.modules.scheduling.groups import (
     withdraw_from_group as withdraw_from_group,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
+from app.modules.scheduling.locks import lock_tutor as lock_tutor
 from app.modules.scheduling.materialize import (
     OCCURRENCE_CONFLICT_TYPE as OCCURRENCE_CONFLICT_TYPE,
 )
@@ -402,6 +415,25 @@ from app.modules.scheduling.overrides import (
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,
 )
+from app.modules.scheduling.reassignment import (
+    AVAILABILITY_IMPACT_SOURCE as AVAILABILITY_IMPACT_SOURCE,
+)
+from app.modules.scheduling.reassignment import (
+    affected_tutor_sessions as affected_tutor_sessions,
+)
+from app.modules.scheduling.reassignment import (
+    flag_sessions_for_reassignment as flag_sessions_for_reassignment,
+)
+from app.modules.scheduling.reassignment import (
+    notify_reassignment_needed as notify_reassignment_needed,
+)
+from app.modules.scheduling.reassignment import (
+    open_reassignment_flags as open_reassignment_flags,
+)
+from app.modules.scheduling.reassignment import (
+    register_reassignment_notifications as register_reassignment_notifications,
+)
+from app.modules.scheduling.reassignment_rules import is_flag_open as is_flag_open
 from app.modules.scheduling.request_approval import (
     SESSION_REQUEST_APPROVAL_HANDLER as SESSION_REQUEST_APPROVAL_HANDLER,
 )

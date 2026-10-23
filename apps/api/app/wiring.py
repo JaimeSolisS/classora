@@ -14,7 +14,11 @@ approval type; #59: ``scheduling.session_requests`` and the
 ``scheduling.session_request`` approval type; #60: the two session request
 decision notification types; #62: the ``scheduling.change_request``
 approval type, its two decision notification types and the
-``scheduling.change_requests`` time-zone check) are wired here, by the API app factory
+``scheduling.change_requests`` time-zone check; M4-18 #63: the
+``staff.availability_change`` approval type
+(``app.workflows.availability_change``), its two decision notification
+types, ``scheduling.reassignment_needed`` and the scheduling implementation
+of the ``staff`` availability impact seam) are wired here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
@@ -26,14 +30,18 @@ from app.modules.identity.service import (
 from app.modules.scheduling import service as scheduling_service
 from app.modules.staff.service import (
     QUALIFICATION_APPROVAL_HANDLER,
+    register_availability_impact_source,
+    register_availability_notifications,
     register_qualification_notifications,
 )
+from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.session_cancellation import on_session_cancelled
 
 
 def register_approval_wiring() -> None:
     """Every approval type's handler, the modules' notification types, the
-    account-reference resolver and the time-zone dependency checks.
+    account-reference resolver, the time-zone dependency checks and the
+    availability impact source.
     Registering again changes nothing."""
     administration_service.register_approval_handler(REGISTRATION_APPROVAL_HANDLER)
     administration_service.register_approval_handler(QUALIFICATION_APPROVAL_HANDLER)
@@ -50,6 +58,10 @@ def register_approval_wiring() -> None:
     administration_service.register_approval_handler(
         scheduling_service.CHANGE_REQUEST_APPROVAL_HANDLER
     )
+    administration_service.register_approval_handler(AVAILABILITY_CHANGE_HANDLER)
+    register_availability_notifications()
+    scheduling_service.register_reassignment_notifications()
+    register_availability_impact_source(scheduling_service.AVAILABILITY_IMPACT_SOURCE)
     scheduling_service.register_offer_notifications()
     scheduling_service.register_closure_notifications()
     scheduling_service.register_edit_notifications()

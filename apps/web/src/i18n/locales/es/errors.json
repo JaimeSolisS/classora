@@ -75,7 +75,6 @@
   "module_index_invalid": "Elige un módulo de esta plantilla.",
   "item_unknown": "Este elemento ya no forma parte de la plantilla. Recarga e inténtalo de nuevo.",
   "qualification_not_approved": "Solo se puede revocar una calificación aprobada.",
-  "availability_change_requires_approval": "Este cambio afecta clases programadas y necesita aprobación.",
   "scheduling_conflict": "La sesión entra en conflicto con las reglas de programación.",
   "class_session_not_assignable": "Esta sesión ya no puede recibir un tutor.",
   "student_unknown": "Elige un estudiante existente.",
@@ -158,5 +157,7 @@
   "exception_not_applicable": "Esta solicitud ya está justificada; apruébala sin excepción.",
   "classroom_not_applicable": "El aula solo aplica a un cambio de horario.",
   "proposal_required": "Propón el nuevo horario.",
-  "proposal_not_allowed": "Una cancelación no lleva horario propuesto."
+  "proposal_not_allowed": "Una cancelación no lleva horario propuesto.",
+  "availability_change_stale": "La disponibilidad cambió desde que se hizo esta solicitud; recházala y pide una nueva.",
+  "availability_change_not_pending": "Esta solicitud de cambio ya no está pendiente."
 }

@@ -239,40 +239,88 @@ export function fetchAvailability(
   );
 }
 
-/** PUT the full list of weekly windows with the loaded `version`. */
-export function replaceWeeklyAvailability(
+// --- Availability change requests (M4-18 #63) ---------------------------------
+// A change that takes away time scheduled classes use is not applied: the
+// API answers 202 with a pending change request, which an Owner or
+// Administrator approves or rejects in the approval inbox.
+
+export type AvailabilityChangeRequest =
+  components['schemas']['AvailabilityChangeRequestItem'];
+export type AvailabilityChange = components['schemas']['AvailabilityChange'];
+export type AffectedSession = components['schemas']['AffectedSessionItem'];
+
+/** Whether an availability write's answer is a pending change request
+ * (`202`) rather than the applied change. */
+export function isChangeRequest(
+  value: unknown,
+): value is AvailabilityChangeRequest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'approval_request_id' in value &&
+    'affected_sessions' in value
+  );
+}
+
+/** PUT the full list of weekly windows with the loaded `version`: the new
+ * availability, or a pending change request. */
+export async function replaceWeeklyAvailability(
   userId: string,
   body: WeeklyAvailabilityUpdate,
-): Promise<TutorAvailability> {
-  return apiCall(() =>
+): Promise<TutorAvailability | AvailabilityChangeRequest> {
+  const answer: unknown = await apiCall(() =>
     api.PUT('/api/v1/tutors/{user_id}/availability/weekly', {
       params: { path: { user_id: userId } },
       body,
     }),
   );
+  return answer as TutorAvailability | AvailabilityChangeRequest;
 }
 
-export function createAvailabilityException(
+/** POST an exception: the new exception, or a pending change request. */
+export async function createAvailabilityException(
   userId: string,
   body: AvailabilityExceptionCreate,
-): Promise<AvailabilityException> {
-  return apiCall(() =>
+): Promise<AvailabilityException | AvailabilityChangeRequest> {
+  const answer: unknown = await apiCall(() =>
     api.POST('/api/v1/tutors/{user_id}/availability/exceptions', {
       params: { path: { user_id: userId } },
       body,
     }),
   );
+  return answer as AvailabilityException | AvailabilityChangeRequest;
 }
 
+/** DELETE an exception: null when deleted (`204`), or a pending change
+ * request. */
 export async function deleteAvailabilityException(
   userId: string,
   exceptionId: string,
-): Promise<void> {
-  await apiCall(() =>
+): Promise<AvailabilityChangeRequest | null> {
+  const answer: unknown = await apiCall(() =>
     api.DELETE(
       '/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}',
       {
         params: { path: { user_id: userId, exception_id: exceptionId } },
+      },
+    ),
+  );
+  return isChangeRequest(answer) ? answer : null;
+}
+
+/** Withdraw a pending change request with the loaded `version`. */
+export function cancelAvailabilityChangeRequest(
+  userId: string,
+  request: AvailabilityChangeRequest,
+): Promise<AvailabilityChangeRequest> {
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel',
+      {
+        params: {
+          path: { user_id: userId, change_request_id: request.id },
+        },
+        body: { version: request.version },
       },
     ),
   );

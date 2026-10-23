@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   ShieldAlert,
   TriangleAlert,
+  UserMinus,
   UserX,
   type LucideIcon,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ export const MARKER_ICONS: Record<MarkerCode, LucideIcon> = {
   center_closed: CalendarOff,
   tutor_not_qualified: UserX,
   overridden: ShieldAlert,
+  reassignment_needed: UserMinus,
 };
 
 export function StateLabel({ state }: { state: SessionState }) {

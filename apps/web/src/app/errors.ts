@@ -86,10 +86,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['module_index_invalid', 'module_index_invalid'],
   ['item_unknown', 'item_unknown'],
   ['qualification_not_approved', 'qualification_not_approved'],
-  [
-    'availability_change_requires_approval',
-    'availability_change_requires_approval',
-  ],
+  ['availability_change_stale', 'availability_change_stale'],
+  ['availability_change_not_pending', 'availability_change_not_pending'],
   ['scheduling_conflict', 'scheduling_conflict'],
   ['class_session_not_assignable', 'class_session_not_assignable'],
   ['class_session_not_offerable', 'class_session_not_offerable'],

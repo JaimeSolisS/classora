@@ -69,7 +69,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -92,23 +92,26 @@ from app.modules.scheduling.errors import (
     SessionOverlapError,
     SessionValidationError,
 )
-from app.modules.scheduling.locks import lock_students
+from app.modules.scheduling.locks import lock_students, lock_tutor
 from app.modules.scheduling.models import (
     CHANGE_REQUEST_PENDING,
     OFFER_KIND_ASSIGNMENT,
     OFFER_KIND_SUBSTITUTION,
     OFFER_PENDING,
+    REASSIGNMENT_AVAILABILITY_CHANGE,
     AssignmentOffer,
     AssignmentOfferSession,
     ClassSession,
     ClassSessionOverride,
     ClassSessionParticipant,
+    ClassSessionReassignmentFlag,
     ClassSessionSubstitution,
     SessionChangeRequest,
 )
 from app.modules.scheduling.offer_records import insert_offer, notify_offer_received
 from app.modules.scheduling.offers import RespondByInvalidError, resolve_respond_by
 from app.modules.scheduling.overrides import evaluate_override, record_session_override
+from app.modules.scheduling.reassignment_rules import flag_tutor_matches, is_flag_open
 from app.modules.scheduling.schemas import (
     ClassSessionCreate,
     ClassSessionCreated,
@@ -121,6 +124,7 @@ from app.modules.scheduling.schemas import (
     SessionClassroom,
     SessionOverrideItem,
     SessionParticipant,
+    SessionReassignment,
     SessionSubject,
     SessionTutor,
 )
@@ -353,6 +357,7 @@ def _detail(
     pending_offer: PendingOffer | None,
     pending_substitution: PendingSubstitution | None = None,
     pending_change_request_id: uuid.UUID | None = None,
+    reassignment: SessionReassignment | None = None,
 ) -> ClassSessionDetail:
     cancellation = None
     if row.cancelled_at is not None and row.cancellation_reason is not None:
@@ -389,6 +394,7 @@ def _detail(
         cancellation=cancellation,
         group_id=row.group_id,
         pending_change_request_id=pending_change_request_id,
+        reassignment=reassignment,
     )
 
 
@@ -462,6 +468,9 @@ async def create_class_session(
     ``created_at``; every other check stays live."""
     await lock_students(session, [body.student_id])
     zone = await administration.get_center_time_zone(session, for_share=True)
+    if body.tutor_user_id is not None:
+        # #63 D5: serialized with a change of this tutor's availability.
+        await lock_tutor(session, body.tutor_user_id)
     validate_bounds(body, zone)
     refs = await references(session, body)
     offered_at = clock.now()
@@ -589,6 +598,23 @@ async def get_class_session(
         .where(SessionChangeRequest.status == CHANGE_REQUEST_PENDING)
         .subquery()
     )
+    # #63 E2: the newest flag whose tutor is still the session's (or none);
+    # is_flag_open then checks the state and the start.
+    flag = (
+        select(
+            ClassSessionReassignmentFlag.tutor_user_id,
+            ClassSessionReassignmentFlag.created_at,
+            ClassSessionReassignmentFlag.source_id,
+        )
+        .where(ClassSessionReassignmentFlag.class_session_id == ClassSession.id)
+        .where(flag_tutor_matches())
+        .order_by(
+            ClassSessionReassignmentFlag.created_at.desc(),
+            ClassSessionReassignmentFlag.id.desc(),
+        )
+        .limit(1)
+        .lateral()
+    )
     found = (
         await session.execute(
             select(
@@ -600,12 +626,16 @@ async def get_class_session(
                 substitution.c.substitute_tutor_user_id,
                 substitution.c.respond_by,
                 change_request.c.id,
+                flag.c.tutor_user_id,
+                flag.c.created_at,
+                flag.c.source_id,
             )
             .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
             .outerjoin(substitution, substitution.c.class_session_id == ClassSession.id)
             .outerjoin(
                 change_request, change_request.c.class_session_id == ClassSession.id
             )
+            .outerjoin(flag, true())
             .where(ClassSession.id == class_session_id)
         )
     ).first()
@@ -620,7 +650,18 @@ async def get_class_session(
         substitute_id,
         substitution_respond_by,
         change_request_id,
+        flag_tutor_id,
+        flagged_at,
+        flag_source_id,
     ) = found
+    if flag_tutor_id is not None and not is_flag_open(
+        flag_tutor_user_id=flag_tutor_id,
+        state=row.state,
+        session_tutor_user_id=row.tutor_user_id,
+        starts_at=row.starts_at,
+        now=clock.now(),
+    ):
+        flag_tutor_id = None
     student_ids = list(
         await session.scalars(
             select(ClassSessionParticipant.student_id).where(
@@ -644,6 +685,8 @@ async def get_class_session(
         account_ids.add(row.tutor_user_id)
     if substitute_id is not None:
         account_ids.add(substitute_id)
+    if flag_tutor_id is not None:
+        account_ids.add(flag_tutor_id)
     accounts = await identity.get_account_references(session, account_ids)
     tutor = None
     if row.tutor_user_id is not None:
@@ -699,4 +742,17 @@ async def get_class_session(
             )
         ),
         pending_change_request_id=change_request_id,
+        reassignment=(
+            None
+            if flag_tutor_id is None
+            else SessionReassignment(
+                reason=REASSIGNMENT_AVAILABILITY_CHANGE,
+                tutor=SessionTutor(
+                    id=flag_tutor_id,
+                    display_name=accounts[flag_tutor_id].display_name,
+                ),
+                flagged_at=flagged_at.astimezone(UTC),
+                change_request_id=flag_source_id,
+            )
+        ),
     )

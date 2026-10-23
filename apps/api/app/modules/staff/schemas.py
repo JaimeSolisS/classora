@@ -348,6 +348,94 @@ class TeachingLimitsDetail(BaseModel):
     required_break_minutes: int | None
 
 
+# --- Availability change requests (M4-18 #63) ----------------------------------------
+
+type ChangeKind = Literal["weekly", "exception_create", "exception_delete"]
+type ChangeStatus = Literal["pending", "approved", "rejected", "cancelled"]
+type AffectedSessionState = Literal["offered", "confirmed"]
+
+AFFECTED_SESSIONS_SHOWN = 20
+"""How many affected sessions a change request shows (G1, D2)."""
+
+
+class AvailabilityChangeException(BaseModel):
+    """The exception a change adds or deletes, in local dates and times."""
+
+    id: uuid.UUID | None = Field(
+        description="The exception being deleted; null for a new one."
+    )
+    kind: ExceptionKind
+    starts_on: date
+    ends_on: date
+    starts_at: str | None = Field(description="HH:MM, or null for a whole day.")
+    ends_at: str | None = Field(description="HH:MM, or null for a whole day.")
+    note: str | None
+
+
+class AvailabilityChange(BaseModel):
+    """What a change request changes: the full wanted weekly windows
+    (``weekly``) or the exception added or deleted."""
+
+    windows: list[AvailabilityWindow] | None = Field(
+        description="weekly: every window the tutor wants, by weekday; else null."
+    )
+    exception: AvailabilityChangeException | None = Field(
+        description="exception_create / exception_delete: the exception; else null."
+    )
+
+
+class AffectedSessionItem(BaseModel):
+    """A scheduled session a change affects, as it was when the change was
+    requested."""
+
+    id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    subject_name: str
+    state: AffectedSessionState
+
+
+class AvailabilityChangeRequester(BaseModel):
+    """Who asked for the change: the tutor or an Owner or Administrator."""
+
+    id: uuid.UUID
+    display_name: str
+
+
+class AvailabilityChangeRequestItem(BaseModel):
+    """An availability change that affects scheduled sessions and waits for
+    (or got) an Owner's or Administrator's decision (``202`` of the three
+    availability writes; ``pending_changes`` / ``recent_changes``)."""
+
+    id: uuid.UUID
+    kind: ChangeKind
+    status: ChangeStatus
+    change: AvailabilityChange
+    affected_count: int = Field(
+        description="How many sessions the change affected when it was requested."
+    )
+    affected_sessions: list[AffectedSessionItem] = Field(
+        description="The first 20 of them, by start."
+    )
+    requested_by: AvailabilityChangeRequester
+    created_at: datetime
+    resolved_at: datetime | None
+    rejection_reason: str | None = Field(
+        description="The reviewer's reason; set only for rejected."
+    )
+    approval_request_id: uuid.UUID
+    version: int
+
+
+class ChangeRequestCancel(BaseModel):
+    """Withdraw a pending change request
+    (``POST …/availability/change-requests/{id}/cancel``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1, description="The version the caller loaded.")
+
+
 class TutorAvailabilityDetail(BaseModel):
     """A tutor's availability in the center's local wall-clock time, with
     the teaching limits and preferred classrooms (#197)."""
@@ -370,6 +458,15 @@ class TutorAvailabilityDetail(BaseModel):
             "The version of the weekly windows, limits and preferred"
             " classrooms together; 0 while they were never changed."
         )
+    )
+    pending_changes: list[AvailabilityChangeRequestItem] = Field(
+        description=(
+            "Changes waiting for approval because they affect scheduled"
+            " classes, oldest first (M4-18)."
+        )
+    )
+    recent_changes: list[AvailabilityChangeRequestItem] = Field(
+        description="The last 5 decided or withdrawn change requests, newest first."
     )
 
 

@@ -40,11 +40,24 @@
   service). They guide scheduling (M4-05, M4-06) and never restrict it.
   Created and deleted, never edited; the settings row's ``version`` covers
   them. ``Audited``.
+- ``tutor_availability_change_requests`` (M4-18 #63 A1): a change of a
+  tutor's availability that affects scheduled sessions, waiting for an
+  Owner or Administrator (the ``staff.availability_change`` approval type).
+  ``kind`` ``weekly`` | ``exception_create`` | ``exception_delete``;
+  ``payload`` the change (the weekly ``{base_version, windows}``, the new
+  exception's fields, or ``{exception_id}`` plus a copy of the exception);
+  ``affected_session_ids`` the submission snapshot (at least one) and
+  ``affected_sessions`` its first 20 in display form (so ``staff`` never
+  reads ``scheduling`` to show them); ``status`` ``pending`` →
+  ``approved`` | ``rejected`` | ``cancelled`` with ``resolved_at`` set
+  exactly when not pending; ``approval_request_id`` the inbox item (no
+  foreign key: ``administration``'s table) and ``rejection_reason`` its
+  reason, copied exactly when ``rejected``. ``Audited``, versioned.
 """
 
 import uuid
 from datetime import date, datetime, time
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import (
     CheckConstraint,
@@ -59,7 +72,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -348,4 +361,74 @@ class TutorPreferredClassroom(Audited, Model):
         UUID(as_uuid=True),
         ForeignKey("classrooms.id", ondelete="RESTRICT"),
         index=True,
+    )
+
+
+# --- Availability change requests (M4-18 #63) ----------------------------------------
+
+CHANGE_WEEKLY: Final = "weekly"
+CHANGE_EXCEPTION_CREATE: Final = "exception_create"
+CHANGE_EXCEPTION_DELETE: Final = "exception_delete"
+CHANGE_KINDS: Final = (CHANGE_WEEKLY, CHANGE_EXCEPTION_CREATE, CHANGE_EXCEPTION_DELETE)
+
+CHANGE_PENDING: Final = "pending"
+CHANGE_APPROVED: Final = "approved"
+CHANGE_REJECTED: Final = "rejected"
+CHANGE_CANCELLED: Final = "cancelled"
+CHANGE_STATUSES: Final = (
+    CHANGE_PENDING,
+    CHANGE_APPROVED,
+    CHANGE_REJECTED,
+    CHANGE_CANCELLED,
+)
+
+CHANGE_REQUEST_CHECKS: Final = {
+    "kind_valid": f"kind IN ({_quoted(CHANGE_KINDS)})",
+    "status_valid": f"status IN ({_quoted(CHANGE_STATUSES)})",
+    "resolved_iff_not_pending": "(status = 'pending') = (resolved_at IS NULL)",
+    "affected_not_empty": "cardinality(affected_session_ids) >= 1",
+    "reason_iff_rejected": ("(status = 'rejected') = (rejection_reason IS NOT NULL)"),
+}
+"""The table's CHECKs by name (revision 0045 keeps its own copy; a unit test
+pins that they are equal)."""
+
+
+class TutorAvailabilityChangeRequest(Audited, VersionedMixin, Model):
+    """A pending (or decided) availability change of a tutor that affects
+    scheduled sessions (M4-18 #63 A1). See the module docstring."""
+
+    __tablename__ = "tutor_availability_change_requests"
+    __table_args__ = (
+        *(
+            CheckConstraint(condition, name=name)
+            for name, condition in CHANGE_REQUEST_CHECKS.items()
+        ),
+        Index(
+            "ix_tutor_availability_change_requests_tutor_user_id_status",
+            "tutor_user_id",
+            "status",
+        ),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(
+        String(20), server_default=text("'pending'"), default=CHANGE_PENDING
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    affected_session_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True))
+    )
+    affected_sessions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    approval_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(REJECTION_REASON_MAX_LENGTH), nullable=True
     )

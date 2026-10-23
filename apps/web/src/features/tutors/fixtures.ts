@@ -1,4 +1,5 @@
 import type {
+  AvailabilityChangeRequest,
   AvailabilityException,
   CatalogOption,
   QualificationItem,
@@ -260,6 +261,8 @@ export const AVAILABILITY: TutorAvailability = {
     },
   ],
   version: 2,
+  pending_changes: [],
+  recent_changes: [],
 };
 
 /** The active classrooms offered as preferred rooms (#197). */
@@ -278,4 +281,100 @@ export const NO_AVAILABILITY: TutorAvailability = {
   },
   preferred_classrooms: [],
   version: 0,
+  pending_changes: [],
+  recent_changes: [],
+};
+
+// --- Availability change requests (M4-18 #63) ---------------------------------
+
+const AFFECTED: AvailabilityChangeRequest['affected_sessions'] = Array.from(
+  { length: 5 },
+  (_, week) => ({
+    id: `00000000-0000-4000-8000-0000000009${String(week).padStart(2, '0')}`,
+    starts_at: `2027-01-${String(4 + week * 7).padStart(2, '0')}T22:00:00Z`,
+    ends_at: `2027-01-${String(4 + week * 7).padStart(2, '0')}T23:00:00Z`,
+    subject_name: 'Física',
+    state: week === 0 ? ('offered' as const) : ('confirmed' as const),
+  }),
+);
+
+/** A weekly change waiting for approval (the tutor's own). */
+export const WEEKLY_CHANGE: AvailabilityChangeRequest = {
+  id: '00000000-0000-4000-8000-0000000009c1',
+  kind: 'weekly',
+  status: 'pending',
+  change: {
+    windows: [
+      { weekday: 1, starts_at: '16:00', ends_at: '18:00' },
+      { weekday: 3, starts_at: '16:00', ends_at: '19:00' },
+    ],
+    exception: null,
+  },
+  affected_count: 5,
+  affected_sessions: AFFECTED,
+  requested_by: { id: TUTOR_ID, display_name: 'Carmen Ruiz' },
+  created_at: '2026-10-21T15:00:00Z',
+  resolved_at: null,
+  rejection_reason: null,
+  approval_request_id: '00000000-0000-4000-8000-0000000009a1',
+  version: 1,
+};
+
+/** Time off waiting for approval, sent by an Administrator. */
+export const TIME_OFF_CHANGE: AvailabilityChangeRequest = {
+  ...WEEKLY_CHANGE,
+  id: '00000000-0000-4000-8000-0000000009c2',
+  kind: 'exception_create',
+  change: {
+    windows: null,
+    exception: {
+      id: null,
+      kind: 'unavailable',
+      starts_on: '2027-01-11',
+      ends_on: '2027-01-15',
+      starts_at: null,
+      ends_at: null,
+      note: 'Congreso',
+    },
+  },
+  affected_count: 1,
+  affected_sessions: AFFECTED.slice(1, 2),
+  requested_by: {
+    id: '00000000-0000-4000-8000-0000000000a1',
+    display_name: 'Laura Admin',
+  },
+  approval_request_id: '00000000-0000-4000-8000-0000000009a2',
+};
+
+/** A rejected change, with its reason. */
+export const REJECTED_CHANGE: AvailabilityChangeRequest = {
+  ...WEEKLY_CHANGE,
+  id: '00000000-0000-4000-8000-0000000009c3',
+  kind: 'exception_delete',
+  status: 'rejected',
+  change: {
+    windows: null,
+    exception: {
+      id: EXCEPTIONS[1]!.id,
+      kind: 'available',
+      starts_on: '2027-01-09',
+      ends_on: '2027-01-09',
+      starts_at: '10:00',
+      ends_at: '12:00',
+      note: null,
+    },
+  },
+  affected_count: 2,
+  affected_sessions: AFFECTED.slice(0, 2),
+  resolved_at: '2026-10-22T10:00:00Z',
+  rejection_reason: 'No hay sustituto para esas clases.',
+  approval_request_id: '00000000-0000-4000-8000-0000000009a3',
+  version: 2,
+};
+
+/** The availability with two pending changes and a rejected one. */
+export const AVAILABILITY_WITH_CHANGES: TutorAvailability = {
+  ...AVAILABILITY,
+  pending_changes: [WEEKLY_CHANGE, TIME_OFF_CHANGE],
+  recent_changes: [REJECTED_CHANGE],
 };

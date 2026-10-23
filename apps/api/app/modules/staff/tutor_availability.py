@@ -25,12 +25,18 @@ that changes nothing changes no version and writes no event.
 id is not one of this tutor's → impact check for ``available`` → delete),
 never edited; they don't touch the weekly ``version``.
 
-**Impact check** (``staff/assignment_impact.py``, the M4-18 seam): the weekly
+**Impact check** (``staff/assignment_impact.py``; M4-18 #63): the weekly
 ``PUT`` asks only when it takes weekly time away
 (:func:`~app.modules.staff.availability.uncovered_ranges`); a new
-``unavailable`` exception and a deleted ``available`` one always ask. A
-non-empty answer is ``409 availability_change_requires_approval`` and
-nothing changes.
+``unavailable`` exception and a deleted ``available`` one always ask. The
+injected source (the scheduling one in the app) gets the tutor's current
+and proposed rules (for an exception, of its dates only), takes the tutor
+lock and answers the affected sessions. A non-empty answer changes nothing:
+the change is stored as a pending request with its inbox item
+(:func:`~app.modules.staff.availability_change_requests.submit_change_request`)
+and the route answers ``202`` with it. An approval later applies the change
+through the same writes (``_apply_weekly``, ``_insert_exception``; see
+``staff/availability_change_decision.py``).
 
 **Settings ``PATCH``** (#197; after the body's ``422``): ``404`` → ``403``
 → ``409 version_conflict`` (the same locked settings row and ``version`` as
@@ -58,6 +64,7 @@ import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -69,24 +76,34 @@ from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import AvailabilityWindow, ClassroomReference
 from app.modules.identity.schemas import RoleMember
-from app.modules.staff.assignment_impact import AvailabilityImpactSource
+from app.modules.staff.assignment_impact import (
+    AffectedSession,
+    AvailabilityImpactSource,
+)
 from app.modules.staff.availability import (
     AvailabilityResult,
     DatedException,
     ExceptionKind,
+    TutorAvailabilityRules,
     WeeklyWindow,
     evaluate,
     evaluate_interval,
     to_local_intervals,
     uncovered_ranges,
 )
+from app.modules.staff.availability_change_requests import (
+    change_requests_of,
+    submit_change_request,
+)
 from app.modules.staff.errors import (
-    AvailabilityChangeRequiresApprovalError,
     PreferredClassroomUnavailableError,
     WeeklyLimitBelowDailyError,
 )
 from app.modules.staff.models import (
     AVAILABLE,
+    CHANGE_EXCEPTION_CREATE,
+    CHANGE_EXCEPTION_DELETE,
+    CHANGE_WEEKLY,
     SETTINGS_USER_ID_UNIQUE,
     UNAVAILABLE,
     TutorAvailabilityException,
@@ -97,6 +114,7 @@ from app.modules.staff.models import (
 from app.modules.staff.permissions import can_edit_availability
 from app.modules.staff.qualifications import visible_tutor
 from app.modules.staff.schemas import (
+    AvailabilityChangeRequestItem,
     AvailabilityCheck,
     AvailabilityExceptionCreate,
     AvailabilityExceptionItem,
@@ -267,6 +285,7 @@ async def _detail(
         exceptions = await _exceptions(session, user_id)
     rooms = [row.classroom_id for row in await _preferred_rows(session, user_id)]
     limits = _limits_of(settings)
+    pending_changes, recent_changes = await change_requests_of(session, user_id)
     return TutorAvailabilityDetail(
         limits=TeachingLimitsDetail(
             daily_limit_minutes=limits.daily_limit_minutes,
@@ -286,6 +305,8 @@ async def _detail(
             _exception_item(row) for row in sorted(exceptions, key=_exception_order)
         ],
         version=settings.version if settings is not None else 0,
+        pending_changes=pending_changes,
+        recent_changes=recent_changes,
     )
 
 
@@ -300,22 +321,78 @@ async def _editable_tutor(
     return member
 
 
-async def _ensure_no_impact(
+def _rules(
+    windows: Iterable[WindowKey], exceptions: Iterable[DatedException]
+) -> TutorAvailabilityRules:
+    return TutorAvailabilityRules(
+        windows=tuple(_rule_window(key) for key in sorted(windows)),
+        exceptions=tuple(exceptions),
+    )
+
+
+def _window_payload(keys: Iterable[WindowKey]) -> list[dict[str, Any]]:
+    return [
+        {
+            "weekday": weekday,
+            "starts_at": start.strftime("%H:%M"),
+            "ends_at": end.strftime("%H:%M"),
+        }
+        for weekday, start, end in sorted(keys)
+    ]
+
+
+def _exception_payload(row: TutorAvailabilityException) -> dict[str, Any]:
+    return {
+        "kind": _kind(row),
+        "starts_on": row.starts_on.isoformat(),
+        "ends_on": row.ends_on.isoformat(),
+        "starts_at": _hhmm(row.starts_at),
+        "ends_at": _hhmm(row.ends_at),
+        "note": row.note,
+    }
+
+
+def _exception_row(
+    user_id: uuid.UUID, fields: AvailabilityExceptionCreate
+) -> TutorAvailabilityException:
+    return TutorAvailabilityException(
+        tutor_user_id=user_id,
+        kind=fields.kind,
+        starts_on=fields.starts_on,
+        ends_on=fields.ends_on,
+        starts_at=time.fromisoformat(fields.starts_at) if fields.starts_at else None,
+        ends_at=time.fromisoformat(fields.ends_at) if fields.ends_at else None,
+        note=fields.note,
+    )
+
+
+async def _affected_by_exception(
     session: AsyncSession,
     impact: AvailabilityImpactSource,
-    tutor_user_id: uuid.UUID,
+    user_id: uuid.UUID,
     *,
-    removed_windows: Sequence[WeeklyWindow] = (),
-    added_unavailability: Sequence[DatedException] = (),
-) -> None:
-    affected = await impact.affected_session_ids(
+    added: TutorAvailabilityException | None = None,
+    removed: TutorAvailabilityException | None = None,
+) -> list[AffectedSession]:
+    """The sessions an exception insert (``added``) or delete (``removed``)
+    affects: the rules of the exception's dates before and after."""
+    changed = added if added is not None else removed
+    assert changed is not None  # noqa: S101 - one of the two is given
+    dates = (changed.starts_on, changed.ends_on)
+    windows = [_key(window) for window in await _windows(session, user_id)]
+    existing = await _exceptions(session, user_id, dates)
+    current = [_rule_exception(row) for row in existing]
+    if added is not None:
+        proposed = [*current, _rule_exception(added)]
+    else:
+        proposed = [_rule_exception(row) for row in existing if row is not removed]
+    return await impact.affected_sessions(
         session,
-        tutor_user_id,
-        removed_windows=removed_windows,
-        added_unavailability=added_unavailability,
+        user_id,
+        current=_rules(windows, current),
+        proposed=_rules(windows, proposed),
+        dates=dates,
     )
-    if affected:
-        raise AvailabilityChangeRequiresApprovalError()
 
 
 async def _flush(session: AsyncSession) -> None:
@@ -411,18 +488,6 @@ async def is_tutor_available_at(
         for closure in await catalog.closures_between(session, first, last)
     )
     return evaluate_interval(windows, exceptions, closed, starts_at, ends_at, zone)
-
-
-@dataclass(frozen=True, slots=True)
-class TutorAvailabilityRules:
-    """A tutor's weekly windows (every weekday) and the exceptions that share
-    a day with a date range: the input of
-    :func:`~app.modules.staff.availability.evaluate` /
-    :func:`~app.modules.staff.availability.evaluate_interval` (M4-05 slot
-    search)."""
-
-    windows: tuple[WeeklyWindow, ...]
-    exceptions: tuple[DatedException, ...]
 
 
 async def tutor_availability_rules(
@@ -540,8 +605,9 @@ async def replace_weekly_availability(
     user_id: uuid.UUID,
     body: WeeklyAvailabilityUpdate,
     impact: AvailabilityImpactSource,
-) -> TutorAvailabilityDetail:
-    """Replace the weekly windows (see the module docstring for the order)."""
+) -> TutorAvailabilityDetail | AvailabilityChangeRequestItem:
+    """Replace the weekly windows (see the module docstring for the order);
+    a change that affects sessions is a pending request instead."""
     await _editable_tutor(session, principal, user_id)
     settings = await _settings(session, user_id, for_update=True)
     if settings is None:
@@ -553,9 +619,7 @@ async def replace_weekly_availability(
     current = await _windows(session, user_id)
     wanted = {_wanted_key(window) for window in body.windows}
     current_keys = {_key(window) for window in current}
-    deletes = [window for window in current if _key(window) not in wanted]
-    insert_keys = sorted(wanted - current_keys)
-    if not deletes and not insert_keys:
+    if wanted == current_keys:
         return await _detail(session, user_id, settings, current_keys)
 
     removed = uncovered_ranges(
@@ -563,7 +627,45 @@ async def replace_weekly_availability(
         [_rule_window(key) for key in wanted],
     )
     if removed:
-        await _ensure_no_impact(session, impact, user_id, removed_windows=removed)
+        exceptions = [
+            _rule_exception(row) for row in await _exceptions(session, user_id)
+        ]
+        affected = await impact.affected_sessions(
+            session,
+            user_id,
+            current=_rules(current_keys, exceptions),
+            proposed=_rules(wanted, exceptions),
+            dates=None,
+        )
+        if affected:
+            return await submit_change_request(
+                session,
+                tutor_user_id=user_id,
+                requested_by_user_id=principal.user_id,
+                kind=CHANGE_WEEKLY,
+                payload={
+                    "base_version": body.version,
+                    "windows": _window_payload(wanted),
+                },
+                affected=affected,
+            )
+    return await _apply_weekly(session, user_id, settings, current, wanted)
+
+
+async def _apply_weekly(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    settings: TutorAvailabilitySettings | None,
+    current: Sequence[TutorAvailabilityWindow],
+    wanted: set[WindowKey],
+) -> TutorAvailabilityDetail:
+    """Write the weekly windows ``wanted`` over ``current`` (the settings
+    row is locked; the impact check is done)."""
+    current_keys = {_key(window) for window in current}
+    deletes = [window for window in current if _key(window) not in wanted]
+    insert_keys = sorted(wanted - current_keys)
+    if not deletes and not insert_keys:
+        return await _detail(session, user_id, settings, current_keys)
 
     # The settings row first: its versioned UPDATE (or the unique user_id of
     # a first INSERT) locks out a concurrent change before the windows.
@@ -600,22 +702,28 @@ async def create_exception(
     user_id: uuid.UUID,
     body: AvailabilityExceptionCreate,
     impact: AvailabilityImpactSource,
-) -> AvailabilityExceptionItem:
-    """Add an exception (see the module docstring for the order)."""
+) -> AvailabilityExceptionItem | AvailabilityChangeRequestItem:
+    """Add an exception (see the module docstring for the order); time off
+    that affects sessions is a pending request instead."""
     await _editable_tutor(session, principal, user_id)
-    row = TutorAvailabilityException(
-        tutor_user_id=user_id,
-        kind=body.kind,
-        starts_on=body.starts_on,
-        ends_on=body.ends_on,
-        starts_at=time.fromisoformat(body.starts_at) if body.starts_at else None,
-        ends_at=time.fromisoformat(body.ends_at) if body.ends_at else None,
-        note=body.note,
-    )
+    row = _exception_row(user_id, body)
     if body.kind == UNAVAILABLE:
-        await _ensure_no_impact(
-            session, impact, user_id, added_unavailability=[_rule_exception(row)]
-        )
+        affected = await _affected_by_exception(session, impact, user_id, added=row)
+        if affected:
+            return await submit_change_request(
+                session,
+                tutor_user_id=user_id,
+                requested_by_user_id=principal.user_id,
+                kind=CHANGE_EXCEPTION_CREATE,
+                payload=body.model_dump(mode="json"),
+                affected=affected,
+            )
+    return await _insert_exception(session, row)
+
+
+async def _insert_exception(
+    session: AsyncSession, row: TutorAvailabilityException
+) -> AvailabilityExceptionItem:
     session.add(row)
     await _flush(session)
     await session.refresh(row, ["created_at"])
@@ -629,8 +737,10 @@ async def delete_exception(
     user_id: uuid.UUID,
     exception_id: uuid.UUID,
     impact: AvailabilityImpactSource,
-) -> None:
-    """Delete one of the tutor's exceptions (see the module docstring)."""
+) -> AvailabilityChangeRequestItem | None:
+    """Delete one of the tutor's exceptions (see the module docstring);
+    removing extra hours that affects sessions is a pending request
+    instead (``None``: deleted)."""
     await _editable_tutor(session, principal, user_id)
     row = await session.scalar(
         select(TutorAvailabilityException)
@@ -641,11 +751,22 @@ async def delete_exception(
     if row is None:
         raise RecordNotFoundError()
     if row.kind == AVAILABLE:
-        await _ensure_no_impact(
-            session, impact, user_id, added_unavailability=[_rule_exception(row)]
-        )
+        affected = await _affected_by_exception(session, impact, user_id, removed=row)
+        if affected:
+            return await submit_change_request(
+                session,
+                tutor_user_id=user_id,
+                requested_by_user_id=principal.user_id,
+                kind=CHANGE_EXCEPTION_DELETE,
+                payload={
+                    "exception_id": str(row.id),
+                    "exception": _exception_payload(row),
+                },
+                affected=affected,
+            )
     await session.delete(row)
     await _flush(session)
+    return None
 
 
 async def update_availability_settings(

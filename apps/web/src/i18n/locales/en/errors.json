@@ -75,7 +75,6 @@
   "module_index_invalid": "Choose a module of this template.",
   "item_unknown": "This item is no longer part of the template. Reload and try again.",
   "qualification_not_approved": "Only an approved qualification can be revoked.",
-  "availability_change_requires_approval": "This change affects scheduled classes and needs approval.",
   "scheduling_conflict": "The session conflicts with scheduling rules.",
   "class_session_not_assignable": "This session can no longer take a tutor.",
   "student_unknown": "Choose an existing student.",
@@ -158,5 +157,7 @@
   "exception_not_applicable": "This request is already excused; approve it without an exception.",
   "classroom_not_applicable": "A classroom only applies to a reschedule.",
   "proposal_required": "Propose the new time.",
-  "proposal_not_allowed": "A cancellation takes no proposed time."
+  "proposal_not_allowed": "A cancellation takes no proposed time.",
+  "availability_change_stale": "The availability changed since this request was made; reject it and ask for a new one.",
+  "availability_change_not_pending": "This change request is no longer pending."
 }

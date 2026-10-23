@@ -337,9 +337,14 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   note) with "Delete" behind a confirmation, and "Add exception" opens a
   dialog: type, start and end date, an "All day" checkbox (disabled and off
   for extra availability, with a help text), start and end time, note.
-  `version_conflict` offers "Reload"; `availability_change_requires_approval`
-  and other errors show in the alert region; results are polite status
-  messages. Between the weekly windows and the exceptions,
+  `version_conflict` offers "Reload"; other errors show in the alert region;
+  results are polite status messages. A change that affects scheduled
+  classes (M4-18, a `202`) announces "Sent for approval" with the first
+  affected classes and keeps the current availability in the forms; after
+  the exceptions, **`PendingChanges`** lists the changes waiting for
+  approval (what, how many classes, who and when, with "Withdraw" behind a
+  confirmation for editors) and the recent decisions (a rejection's
+  reason). Between the weekly windows and the exceptions,
   **`AvailabilitySettingsForm`** (#197): "Teaching limits" (a help text
   says they only produce warnings when scheduling) with one fieldset per
   limit (daily and weekly maximum: a "No limit" checkbox, then "Hours" and

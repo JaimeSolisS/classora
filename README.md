@@ -139,7 +139,9 @@ unless a bullet says otherwise.
   off and extra availability on given dates) in the center's local time;
   staff can edit it too, and academic coordinators view it. The API answers
   whether a tutor is available at a given time, taking center closures into
-  account.
+  account. A change that affects scheduled classes waits for an Owner or
+  Administrator to approve it on the Approvals page; approving it flags those
+  classes for reassignment.
 - Limits and preferences: each tutor's daily and weekly teaching limits, the
   required break between classes (limits will only produce warnings when
   scheduling) and preferred classrooms, edited by the tutor or staff.
@@ -215,8 +217,9 @@ unless a bullet says otherwise.
 - The Approvals page is the shared list of requests waiting for a decision,
   filtered by status, type and assignee. It holds account requests, tutor
   qualification requests, sessions to reassign after a tutor declined or
-  didn't answer an offer, and families' session requests (reviewed on their
-  own page); staff approve or reject them. Approving an account request
+  didn't answer an offer, families' session requests (reviewed on their
+  own page) and tutor availability changes that affect scheduled classes;
+  staff approve or reject them. Approving an account request
   never enrolls anyone.
 
 **Notifications**

@@ -274,6 +274,18 @@ class SessionTutor(BaseModel):
     display_name: str
 
 
+class SessionReassignment(BaseModel):
+    """An open reassignment flag (M4-18 #63 E2): the tutor's availability
+    changed and the session needs another tutor. Staff-only."""
+
+    reason: Literal["availability_change"]
+    tutor: SessionTutor = Field(description="The tutor whose availability changed.")
+    flagged_at: datetime
+    change_request_id: uuid.UUID = Field(
+        description="The approved availability change request."
+    )
+
+
 class SessionClassroom(BaseModel):
     """The session's classroom (an inactive room stays shown as such)."""
 
@@ -404,6 +416,12 @@ class ClassSessionDetail(BaseModel):
             " tutor (#62); null when there is none."
         )
     )
+    reassignment: SessionReassignment | None = Field(
+        description=(
+            "The newest open reassignment flag (the tutor's availability"
+            " changed, M4-18); null when there is none."
+        ),
+    )
 
 
 type SchedulingWarningCode = Literal[
@@ -472,7 +490,9 @@ class ClassSessionRangeQuery(BaseModel):
     )
 
 
-type MarkerCode = Literal["center_closed", "tutor_not_qualified", "overridden"]
+type MarkerCode = Literal[
+    "center_closed", "tutor_not_qualified", "overridden", "reassignment_needed"
+]
 
 
 class CalendarSubject(BaseModel):

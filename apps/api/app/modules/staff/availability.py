@@ -81,6 +81,17 @@ class DatedException:
 
 
 @dataclass(frozen=True, slots=True)
+class TutorAvailabilityRules:
+    """A tutor's weekly windows (every weekday) and the exceptions that share
+    a day with a date range: the input of :func:`evaluate` /
+    :func:`evaluate_interval` (M4-05 slot search; M4-18 the current and the
+    proposed rules of a change)."""
+
+    windows: tuple[WeeklyWindow, ...]
+    exceptions: tuple[DatedException, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class AvailabilityResult:
     """Whether the tutor is available, and every reason they are not."""
 

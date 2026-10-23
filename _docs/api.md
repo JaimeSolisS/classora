@@ -108,7 +108,8 @@ Codes in use today:
 | `qualification_exists` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` when the tutor already has a `pending` or `approved` qualification for the subject; also the loser of two concurrent requests (see Tutor qualifications). |
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
 | `qualification_not_approved` | 409 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` for a qualification that isn't `approved` (pending, rejected, cancelled or already revoked; see Tutor qualifications). |
-| `availability_change_requires_approval` | 409 | A tutor availability change (weekly `PUT`, a time-off `POST`, deleting extra availability) that affects scheduled classes; nothing changes. Clients treat it as "needs approval"; M4-18 turns it into an approval request (see Tutor availability). |
+| `availability_change_stale` | 409 | Approving a `staff.availability_change` inbox item whose weekly change was made from an older availability `version`, or whose exception to delete is already gone; the item stays pending (see Tutor availability, "Changes that affect scheduled classes"). |
+| `availability_change_not_pending` | 409 | `POST /api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel` for a request that was already approved, rejected or withdrawn; `details.status` is its status (see Tutor availability). |
 | `scheduling_conflict` | 409 | A class session that breaks hard or soft scheduling rules (ADR-0005); `conflicts` lists every one and nothing is created. A holder of `schedule.override` can resend with an `override` of the soft ones (M4-04). For a series (M4-08) the list covers every occurrence, each with `details.occurrence_start` and `details.date`; a series `override` lists (occurrence, code) pairs (M4-09c). See Class sessions and Class series. |
 | `class_session_not_assignable` | 409 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` for a session that is `completed`, `cancelled` or `skipped_closure`: it can no longer take a tutor (see Class sessions, "Tutor suggestions"). |
 | `class_session_not_offerable` | 409 | Offering a session that is not `unassigned` (`details.state`), or one that has begun (`details.reason = "started"`; also a create with a tutor whose start is not after now). See Assignment offers. |
@@ -805,6 +806,12 @@ new_starts_at, makeup_until, exception}` and
 `scheduling.change_request_rejected` `{change_request_id, kind, starts_at}`
 (#62, see Change requests; to the requester only; never the reason, a
 tutor, a room or the classification; no link until #62b).
+`staff.availability_change_approved` and `_rejected` `{change_request_id,
+kind, affected_count}` (M4-18, to the tutor; never the reason; link: the
+tutor's page) and `scheduling.reassignment_needed` `{tutor_user_id,
+tutor_name, session_count, first_starts_at}` (M4-18, to the
+`schedule.assign` holders; link: the calendar filtered by the tutor on the
+first local date). See Tutor availability.
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -1822,8 +1829,11 @@ from it.
 Implemented by M3-09 (#45; spec §3, §16; ADR-0004) in
 `apps/api/app/modules/staff/` (`availability.py`: the pure rules;
 `tutor_availability.py`: the routes' service; `assignment_impact.py`: the
-M4-18 seam). Teaching limits, the required break and preferred classrooms
-were added by M3-09b (#197, same files).
+impact seam). Teaching limits, the required break and preferred classrooms
+were added by M3-09b (#197, same files). Changes that affect scheduled
+classes go through approval since M4-18 (#63; `availability_impact.py`,
+`availability_change_requests.py`, `availability_change_decision.py`, the
+handler in `app/workflows/availability_change.py`).
 
 **Local wall-clock rule:** every availability value is a local `DATE` or
 `TIME` of the center (`business_settings.time_zone`), never an instant. A
@@ -1833,11 +1843,12 @@ the time-zone change guard (#37).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/tutors/{user_id}/availability` | `require("tutor.view")` + the tutor profile record policy | `TutorAvailabilityDetail`: `weekly` (windows by weekday, then start; `HH:MM`), `exceptions` (by `starts_on`, whole days first, then `starts_at`), `limits` (`{daily_limit_minutes, weekly_limit_minutes, required_break_minutes}`, `null` = none), `preferred_classrooms` (`[{id, name, is_active}]` by name), `version` (`0` while nothing was ever changed). |
-| `PUT /api/v1/tutors/{user_id}/availability/weekly` | `require("tutor.view")`; the tutor themselves or `tutor.manage` | Body `{version, windows: [{weekday, starts_at, ends_at}]}`, at most 42 windows, the classroom window checks (`window_overlap` on the later item's `starts_at`). Replaces the windows; `200` with the detail. |
+| `GET /api/v1/tutors/{user_id}/availability` | `require("tutor.view")` + the tutor profile record policy | `TutorAvailabilityDetail`: `weekly` (windows by weekday, then start; `HH:MM`), `exceptions` (by `starts_on`, whole days first, then `starts_at`), `limits` (`{daily_limit_minutes, weekly_limit_minutes, required_break_minutes}`, `null` = none), `preferred_classrooms` (`[{id, name, is_active}]` by name), `version` (`0` while nothing was ever changed), `pending_changes` (the pending change requests, oldest first) and `recent_changes` (the last 5 resolved ones, newest first; M4-18). |
+| `PUT /api/v1/tutors/{user_id}/availability/weekly` | `require("tutor.view")`; the tutor themselves or `tutor.manage` | Body `{version, windows: [{weekday, starts_at, ends_at}]}`, at most 42 windows, the classroom window checks (`window_overlap` on the later item's `starts_at`). Replaces the windows; `200` with the detail, or `202` with an `AvailabilityChangeRequestItem` when it takes away time that scheduled classes use (nothing changes yet). |
 | `PATCH /api/v1/tutors/{user_id}/availability/settings` | as above | Body `{version, daily_limit_minutes?, weekly_limit_minutes?, required_break_minutes?, preferred_classroom_ids?}`; fields not sent stay, a limit sent as `null` is cleared, `preferred_classroom_ids` replaces the list. `200` with the detail. No impact check. |
-| `POST /api/v1/tutors/{user_id}/availability/exceptions` | as above | Body `{kind, starts_on, ends_on, starts_at?, ends_at?, note?}`. `201` with the `AvailabilityExceptionItem`. |
-| `DELETE /api/v1/tutors/{user_id}/availability/exceptions/{exception_id}` | as above | `204`. An id of another tutor's exception is `404`. |
+| `POST /api/v1/tutors/{user_id}/availability/exceptions` | as above | Body `{kind, starts_on, ends_on, starts_at?, ends_at?, note?}`. `201` with the `AvailabilityExceptionItem`, or `202` with an `AvailabilityChangeRequestItem` for time off over scheduled classes. |
+| `DELETE /api/v1/tutors/{user_id}/availability/exceptions/{exception_id}` | as above | `204`, or `202` with an `AvailabilityChangeRequestItem` when the deleted extra hours are used by scheduled classes. An id of another tutor's exception is `404`. |
+| `POST /api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel` | as above | Body `{version}`. Withdraws a pending change request (M4-18); `200` with the item. Order `422` → `404` (tutor not visible, or not this tutor's request) → `403` → `409 version_conflict` → `409 availability_change_not_pending` (`details.status`). |
 | `GET /api/v1/tutors/{user_id}/availability/check` | `require("tutor.view")` + the record policy | Query `date` (`YYYY-MM-DD`), `start`, `end` (`HH:MM`, `start < end`; else `422`). `{available, reasons}`. |
 
 - **Edit rights:** the tutor themselves and holders of `tutor.manage`
@@ -1878,13 +1889,75 @@ the time-zone change guard (#37).
   stays one piece (01:30–03:30 wall time for one real hour); the repeated
   hour of a DST overlap gives two pieces, both checked. It is available only
   if every piece is; reasons are merged. Neither checks the tutor role.
-- **Impact seam (M4-18 #63):** the weekly `PUT` (only when it takes weekly
-  time away: `removed_windows` is what the old windows covered and the new
-  ones don't), an `unavailable` exception `POST` and an `available`
-  exception `DELETE` (both as `added_unavailability`) ask
-  `AvailabilityImpactSource.affected_session_ids`. A non-empty answer is
-  `409 availability_change_requires_approval` and nothing changes. Until M4
-  the app wires `NoAssignmentImpact` (always empty, no SQL).
+- **Changes that affect scheduled classes (M4-18 #63; spec §3).** The
+  weekly `PUT` (only when it takes weekly time away:
+  `availability.uncovered_ranges` is not empty), an `unavailable` exception
+  `POST` and an `available` exception `DELETE` ask the injected
+  `AvailabilityImpactSource` (`staff/assignment_impact.py`; `app.wiring`
+  registers `scheduling.service.AVAILABILITY_IMPACT_SOURCE`, so `staff`
+  never imports `scheduling`). Adding windows, adding extra hours or
+  deleting time off never asks and always applies.
+  - **Affected** (pure rule `staff/availability_impact.is_affected`): a
+    session of the tutor that is `offered` or `confirmed`, starts after
+    now, is covered by the tutor's **current** rules (windows and
+    exceptions; center closures ignored) and not by the **proposed** ones,
+    each judged on its local pieces in the center zone (the DST gap and
+    repeated hour included). A session booked outside the tutor's
+    availability with a `tutor_unavailable` override is never affected;
+    a change that removes and re-adds the same time affects nothing.
+    Occurrences beyond the series horizon don't exist yet: the nightly
+    materialization checks the tutor's availability when it creates them.
+    The source takes the tutor lock and reads the tutor's future sessions
+    (bounded to the exception's dates) in at most 6 statements, whatever
+    their number.
+  - **No affected session:** the change applies as before (`200`/`201`/
+    `204`), even while other requests are pending.
+  - **One or more:** nothing changes; a `tutor_availability_change_requests`
+    row stores the change (`payload`: the weekly `{base_version, windows}`,
+    the new exception's fields, or `{exception_id, exception}`) and the
+    snapshot of the affected sessions, with a `staff.availability_change`
+    inbox item (requester = the caller; priority `high` when the earliest
+    affected session starts within 24 hours, else `normal`). `202` with the
+    `AvailabilityChangeRequestItem`: `{id, kind (weekly | exception_create |
+    exception_delete), status (pending | approved | rejected | cancelled),
+    change {windows | null, exception {id | null, kind, starts_on, ends_on,
+    starts_at, ends_at, note} | null}, affected_count, affected_sessions
+    [{id, starts_at, ends_at, subject_name, state}] (the first 20 of the
+    snapshot), requested_by {id, display_name}, created_at, resolved_at,
+    rejection_reason, approval_request_id, version}`. An Owner or
+    Administrator submitting for a tutor gets `202` too and may approve
+    their own request.
+  - **Deciding** (`/api/v1/approval-requests/{id}/approve` and `/reject`,
+    review permission `tutor.manage`; no request-changes; a rejection needs
+    a reason). Approve, in the inbox's Unit of Work: the request `FOR
+    UPDATE` (`409 approval_transition_invalid` unless pending) → the
+    settings row `FOR UPDATE` (weekly) and the scheduling tutor lock →
+    `409 availability_change_stale` when a weekly request's `base_version`
+    is not the current `version` or the exception to delete is gone (the
+    item stays pending) → the affected sessions are **recomputed** with the
+    rules as they are now → the change is applied by the direct code (same
+    audit events, the approver as actor; the weekly `version` bumps) → each
+    recomputed session is flagged for reassignment (see Class sessions): an
+    `offered` one has its pending offer withdrawn and becomes `unassigned`,
+    a `confirmed` one keeps its state and tutor → `approved` → the
+    notifications. A recompute with no session still applies the change.
+    Reject: `rejected` with the reason (shown in `recent_changes`); nothing
+    else changes.
+  - **Withdraw:** the cancel route above; the inbox item is cancelled in
+    the same transaction (lock order: the inbox item, then the request, as
+    a decision).
+  - **Notifications:** `staff.availability_change_approved` / `_rejected`
+    `{change_request_id, kind, affected_count}` to the tutor (never the
+    reason); `scheduling.reassignment_needed` `{tutor_user_id, tutor_name,
+    session_count, first_starts_at}` once per approval that flagged
+    sessions, to every active holder of `schedule.assign`. Families are not
+    notified.
+  - **Tutor lock** (`scheduling.locks.lock_tutor`, a transaction advisory
+    lock): taken before the tutor's availability is read by the impact
+    source, the approval, the class session create with a tutor, the
+    re-offer, the substitution (for the substitute) and the series offer,
+    so a session can't be booked into time that is being removed and
+    escape both checks.
 - **Teaching limits** (#197; spec §3) on `tutor_availability_settings`,
   minutes, each optional (`null`: no limit, no break):
   `daily_limit_minutes` 15–1440, `weekly_limit_minutes` 15–10080 and not
@@ -1998,7 +2071,9 @@ otherwise.
    delegations), so a just granted or revoked delegation applies to the next
    request;
 3. the per-student advisory lock (below);
-4. the center time zone, read `FOR SHARE` (a zone change waits);
+4. the center time zone, read `FOR SHARE` (a zone change waits); with a
+   tutor, then the tutor lock (M4-18: serialized with a change of that
+   tutor's availability);
 5. `422` for the bounds (#47), as a field error on `ends_at`, except
    `naive_datetime` and `not_whole_minutes`, which go on the field at fault:
    `naive_datetime`, `not_whole_minutes`, `ends_before_start`,
@@ -2196,6 +2271,7 @@ writes nothing (no lock, no audit event). Tutors, students and guardians get
 | `center_closed` | The session is `unassigned`, `offered` or `confirmed` and its local date (center zone) is in an active closure. A one-off session is only marked, never changed (ADR-0005 D6). |
 | `tutor_not_qualified` | The session is `offered` or `confirmed`, has a tutor, starts now or later, and the tutor holds no approved qualification for its subject (#198). Past and `completed` sessions never get it. |
 | `overridden` | The session has at least one override row (booked or moved with an override of a soft rule, #58), in any state: a historical fact, so `completed` and `cancelled` sessions keep it. Computed in the sessions statement (no extra statement). |
+| `reassignment_needed` | The session has an open reassignment flag (its tutor's availability changed, M4-18; see below). Computed in the sessions statement (no extra statement). Staff-only. |
 
 **Tutor options** (`GET /api/v1/schedule/tutor-options`, #57): `q`
 (optional, 1–100 characters, trimmed) and `limit` (1–50, default 20). Returns
@@ -2430,6 +2506,21 @@ receives the `change_request_id`, and the requester is left out of
 pending change request, or `null` (read with the session row: no extra
 statement).
 
+**Reassignment flags** (M4-18 #63 E). Approving an availability change that
+affects sessions (see Tutor availability) adds one
+`class_session_reassignment_flags` row per affected session (append-only:
+the session, the tutor whose availability changed, `reason`
+`availability_change`, the change request id, the approver). A flag is
+**open** while the session starts in the future, is `unassigned`, `offered`
+or `confirmed`, and its tutor is still the flagged tutor or none; so
+re-offering the session to another tutor, substituting the tutor,
+cancelling the session or the session starting closes it, with nothing to
+resolve by hand. `ClassSessionDetail.reassignment` is the newest open flag
+`{reason, tutor {id, display_name}, flagged_at, change_request_id} | null`
+(read with the session row: the detail stays at seven statements), and the
+calendar marks the session `reassignment_needed`. Staff-only: family views
+never show it.
+
 `ClassSessionDetail` also carries `pending_substitution {id, substitute {id,
 display_name}, respond_by} | null` and `cancellation {cancelled_at, reason}
 | null` (#55 E3; read with the session row, the detail stays at seven
@@ -2494,8 +2585,8 @@ respond_by?, override?}`, unknown fields `422`). Order: `401`/`403`
 `override` without `schedule.override` → the session `FOR UPDATE` (`404
 not_found`) → `409 version_conflict` → `409 class_session_not_offerable`
 (`details.state` unless `unassigned`; `details.reason = "started"` when
-`starts_at <= now`) → the zone `FOR SHARE` → `422` for the tutor
-(`tutor_unknown`, `tutor_inactive`) and `respond_by` (`respond_by_invalid`)
+`starts_at <= now`) → the tutor lock (M4-18) → the zone `FOR SHARE` → `422`
+for the tutor (`tutor_unknown`, `tutor_inactive`) and `respond_by` (`respond_by_invalid`)
 in one response → the checks → the override decision (`409
 scheduling_conflict` with every conflict unless none, or all soft and
 listed) → the workload warnings → `unassigned → offered` (an `EXCLUDE` race
@@ -2690,8 +2781,8 @@ reason, respond_by?, override?}` (`version` is the session's; `override` is
 the #49 member). Order: `401`/`403` → `422` (`reason_required`,
 `reason_too_long`, the override's codes) → `403 permission_denied` for an
 `override` without `schedule.override` → the session `FOR UPDATE` (`404`)
-→ `409 version_conflict` → `409 class_session_not_substitutable` → (the
-`lock_tutor` seam of #63) the zone `FOR SHARE` → `422` in one response:
+→ `409 version_conflict` → `409 class_session_not_substitutable` → the substitute's
+`lock_tutor` (M4-18) → the zone `FOR SHARE` → `422` in one response:
 `tutor_unknown`, `tutor_inactive`, `substitute_is_current_tutor` (on
 `substitute_tutor_user_id`), `respond_by_invalid` (the offer deadline rule
 with the session's start) → the offer checks for the substitute on the

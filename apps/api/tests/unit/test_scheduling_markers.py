@@ -21,11 +21,13 @@ def test_the_codes_match_the_wire_literal_in_order():
         "center_closed",
         "tutor_not_qualified",
         "overridden",
+        "reassignment_needed",
     )
     assert (
         markers.CENTER_CLOSED,
         markers.TUTOR_NOT_QUALIFIED,
         markers.OVERRIDDEN,
+        markers.REASSIGNMENT_NEEDED,
     ) == markers.MARKER_ORDER
 
 
@@ -67,21 +69,38 @@ def test_the_qualification_check_needs_a_tutor_and_a_future_start():
 
 
 @pytest.mark.parametrize(
-    ("closed", "not_qualified", "overridden", "expected"),
+    ("closed", "not_qualified", "overridden", "reassignment", "expected"),
     [
-        (False, False, False, []),
-        (True, False, False, ["center_closed"]),
-        (False, True, False, ["tutor_not_qualified"]),
-        (False, False, True, ["overridden"]),
-        (True, True, False, ["center_closed", "tutor_not_qualified"]),
-        (True, False, True, ["center_closed", "overridden"]),
-        (True, True, True, ["center_closed", "tutor_not_qualified", "overridden"]),
+        (False, False, False, False, []),
+        (True, False, False, False, ["center_closed"]),
+        (False, True, False, False, ["tutor_not_qualified"]),
+        (False, False, True, False, ["overridden"]),
+        (False, False, False, True, ["reassignment_needed"]),
+        (True, True, False, False, ["center_closed", "tutor_not_qualified"]),
+        (True, False, True, False, ["center_closed", "overridden"]),
+        (
+            True,
+            True,
+            True,
+            True,
+            [
+                "center_closed",
+                "tutor_not_qualified",
+                "overridden",
+                "reassignment_needed",
+            ],
+        ),
     ],
 )
-def test_markers_come_in_the_fixed_order(closed, not_qualified, overridden, expected):
+def test_markers_come_in_the_fixed_order(
+    closed, not_qualified, overridden, reassignment, expected
+):
     assert (
         markers.markers_of(
-            closed=closed, not_qualified=not_qualified, overridden=overridden
+            closed=closed,
+            not_qualified=not_qualified,
+            overridden=overridden,
+            reassignment_needed=reassignment,
         )
         == expected
     )

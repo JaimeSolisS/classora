@@ -91,3 +91,53 @@ export const MIXED_ITEMS: ApprovalRequestItem[] = [
     version: 2,
   },
 ];
+
+/** A pending availability change of a tutor (#63 H2): time off over three
+ * classes; the summary carries the first 20 of the snapshot. */
+export const AVAILABILITY_CHANGE: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-0000000000e1',
+  request_type: 'staff.availability_change',
+  priority: 'high',
+  requester: {
+    id: '00000000-0000-4000-8000-0000000000b1',
+    display_name: 'Carmen Ruiz',
+  },
+  subject: {
+    tutor: {
+      id: '00000000-0000-4000-8000-0000000000b1',
+      display_name: 'Carmen Ruiz',
+    },
+    kind: 'exception_create',
+    change: {
+      windows: null,
+      exception: {
+        id: null,
+        kind: 'unavailable',
+        starts_on: '2031-11-12',
+        ends_on: '2031-11-16',
+        starts_at: null,
+        ends_at: null,
+        note: null,
+      },
+    },
+    affected_count: 3,
+    affected_sessions: [
+      {
+        id: '00000000-0000-4000-8000-0000000000e2',
+        starts_at: '2031-11-12T22:00:00Z',
+        ends_at: '2031-11-12T23:00:00Z',
+        subject_name: 'Física',
+        state: 'confirmed',
+      },
+      {
+        id: '00000000-0000-4000-8000-0000000000e3',
+        starts_at: '2031-11-13T22:00:00Z',
+        ends_at: '2031-11-13T23:00:00Z',
+        subject_name: 'Química',
+        state: 'offered',
+      },
+    ],
+    change_request_status: 'pending',
+  },
+};
