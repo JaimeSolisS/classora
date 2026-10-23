@@ -117,6 +117,11 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   ``Audited``, versioned.
 - ``class_series.group_id`` / ``class_sessions.group_id`` (#56 A3, A4): set
   exactly for ``kind = 'group'``; an occurrence copies it from its series.
+- ``class_series.cohort_id`` / ``class_sessions.cohort_id`` (#65 A3, A4):
+  the ``course_cohorts`` row (``courses`` module) of a ``course`` series or
+  occurrence, set exactly for ``kind = 'course'``; an occurrence copies it
+  from its series. A cohort may own several series over time (a #54
+  split), so it is not unique.
 - ``class_session_overrides.group_enrollment_id`` (#56 A6): an override of
   an enrollment's ``group_capacity_exceeded``. Exactly one of
   ``class_session_id`` and ``group_enrollment_id`` is set
@@ -359,6 +364,10 @@ class ClassSession(Audited, VersionedMixin, Model):
             "(kind = 'group') = (group_id IS NOT NULL)", name="group_iff_kind"
         ),
         Index("ix_class_sessions_group_id_starts_at", "group_id", "starts_at"),
+        CheckConstraint(
+            "(kind = 'course') = (cohort_id IS NOT NULL)", name="cohort_iff_kind"
+        ),
+        Index("ix_class_sessions_cohort_id_starts_at", "cohort_id", "starts_at"),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -407,6 +416,11 @@ class ClassSession(Audited, VersionedMixin, Model):
     group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_groups.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_cohorts.id", ondelete="RESTRICT"),
         nullable=True,
     )
 
@@ -530,6 +544,9 @@ class ClassSeries(Audited, VersionedMixin, Model):
         CheckConstraint(
             "(kind = 'group') = (group_id IS NOT NULL)", name="group_iff_kind"
         ),
+        CheckConstraint(
+            "(kind = 'course') = (cohort_id IS NOT NULL)", name="cohort_iff_kind"
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -569,6 +586,12 @@ class ClassSeries(Audited, VersionedMixin, Model):
     group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("class_groups.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_cohorts.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )

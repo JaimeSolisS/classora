@@ -27,6 +27,7 @@ from app.modules.scheduling.models import (
 )
 from app.modules.scheduling.service import SessionKind, SessionState
 from tests.factories.base import ClassoraFactory, persist
+from tests.factories.courses import persist_course_cohort
 from tests.factories.families import persist_student
 from tests.factories.identity import UserFactory
 
@@ -133,6 +134,11 @@ async def persist_class_session(
         # #56 A4: a group session belongs to a group.
         overrides["group_id"] = (
             await persist_class_group(session, subject_id=overrides["subject_id"])
+        ).id
+    if overrides.get("kind") == SessionKind.COURSE and "cohort_id" not in overrides:
+        # #65 A4: a course session belongs to a cohort.
+        overrides["cohort_id"] = (
+            await persist_course_cohort(session, subject_id=overrides["subject_id"])
         ).id
     state = overrides.get("state", ClassSessionFactory.state)
     wants_tutor = (

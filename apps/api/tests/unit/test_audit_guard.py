@@ -30,6 +30,7 @@ from app.modules.catalog.models import (
     Subject,
 )
 from app.modules.courses.models import (
+    CourseCohort,
     CourseTemplate,
     CourseTemplateAssessment,
     CourseTemplateModule,
@@ -121,6 +122,7 @@ def test_the_guard_scans_the_real_audited_models():
         ClassroomAvailabilityWindow,
         Closure,
         ConsentRecord,
+        CourseCohort,
         CourseTemplate,
         CourseTemplateAssessment,
         CourseTemplateModule,

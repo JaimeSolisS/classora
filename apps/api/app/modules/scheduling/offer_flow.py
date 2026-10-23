@@ -85,7 +85,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Final
 
@@ -99,6 +99,7 @@ from app.core.errors import FieldError
 from app.core.models import ensure_version
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
+from app.modules.courses import service as courses
 from app.modules.families import service as families
 from app.modules.identity import service as identity
 from app.modules.scheduling.booking import respond_by_error
@@ -159,6 +160,7 @@ from app.modules.scheduling.schemas import (
     AssignmentOfferItem,
     AssignmentOfferPage,
     ClassSessionOffers,
+    OfferCohort,
     OfferPerson,
     OfferSeries,
     OfferSession,
@@ -902,13 +904,20 @@ def _utc(value: datetime) -> datetime:
 
 
 async def offer_items(
-    session: AsyncSession, offers: Sequence[AssignmentOffer]
+    session: AsyncSession,
+    offers: Sequence[AssignmentOffer],
+    *,
+    loaded_series: Mapping[uuid.UUID, ClassSeries] | None = None,
 ) -> list[AssignmentOfferItem]:
     """The items of ``offers``, in their order: at most six statements (the
     first covered sessions of each offer with their students and the
     per-offer count, the series of the series offers, then the students,
-    subjects, classrooms and accounts by reference). A series offer lists
-    its first :data:`OFFER_ITEM_SESSIONS_MAX` sessions by start (#233 F1)."""
+    subjects, classrooms and accounts by reference), plus the names of the
+    cohorts of course series (#65 C6, ``courses.service.cohort_names``) when
+    there are any. ``loaded_series`` (the series of the series offers,
+    read by the caller with the page) saves the series statement. A series
+    offer lists its first :data:`OFFER_ITEM_SESSIONS_MAX` sessions by start
+    (#233 F1)."""
     if not offers:
         return []
     students = (
@@ -954,15 +963,22 @@ async def offer_items(
     ).all()
     originals = {row[0]: row[4] for row in rows if row[4] is not None}
     series_ids = {o.class_series_id for o in offers if o.class_series_id is not None}
-    series_by_id = (
-        {
-            series.id: series
-            for series in await session.scalars(
-                select(ClassSeries).where(ClassSeries.id.in_(series_ids))
-            )
-        }
-        if series_ids
-        else {}
+    if loaded_series is not None:
+        series_by_id = dict(loaded_series)
+    else:
+        series_by_id = (
+            {
+                series.id: series
+                for series in await session.scalars(
+                    select(ClassSeries).where(ClassSeries.id.in_(series_ids))
+                )
+            }
+            if series_ids
+            else {}
+        )
+    cohorts = await courses.cohort_names(
+        session,
+        {s.cohort_id for s in series_by_id.values() if s.cohort_id is not None},
     )
     student_ids = {sid for row in rows for sid in (row[2] or ())}
     student_refs = await families.student_references(session, student_ids)
@@ -1023,6 +1039,13 @@ async def offer_items(
         return OfferSeries(
             id=series.id,
             kind=series.kind,  # type: ignore[arg-type]
+            cohort=(
+                None
+                if series.cohort_id is None
+                else OfferCohort(
+                    id=series.cohort_id, name=cohorts.get(series.cohort_id, "")
+                )
+            ),
             subject=OfferSessionSubject(
                 name=subject.name, education_level_name=subject.education_level_name
             ),
@@ -1082,7 +1105,8 @@ async def list_my_offers(
 ) -> AssignmentOfferPage:
     """``GET /api/v1/assignment-offers`` (G2): only the caller's offers;
     ``pending`` by deadline, otherwise newest first. At most seven
-    statements (the total rides on the page query)."""
+    statements (the total and the series of the series offers ride on the
+    page query, so a cohort's name, #65 C6, fits in the budget)."""
     conditions = [
         AssignmentOffer.tutor_user_id == caller_id,
         *_status_conditions(status),
@@ -1094,7 +1118,8 @@ async def list_my_offers(
     )
     rows = (
         await session.execute(
-            select(AssignmentOffer, func.count().over())
+            select(AssignmentOffer, func.count().over(), ClassSeries)
+            .outerjoin(ClassSeries, ClassSeries.id == AssignmentOffer.class_series_id)
             .where(*conditions)
             .order_by(*order)
             .limit(limit)
@@ -1114,8 +1139,9 @@ async def list_my_offers(
             or 0
         )
     offers = [row[0] for row in rows]
+    loaded = {row[2].id: row[2] for row in rows if row[2] is not None}
     return AssignmentOfferPage(
-        items=await offer_items(session, offers),
+        items=await offer_items(session, offers, loaded_series=loaded),
         total=total,
         limit=limit,
         offset=offset,

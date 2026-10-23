@@ -113,6 +113,7 @@ from app.wiring import register_approval_wiring
 from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
+from app.workflows.cohorts_router import router as cohorts_router
 from app.workflows.groups_router import router as groups_router
 from app.workflows.session_requests_router import (
     router as session_request_review_router,
@@ -218,6 +219,7 @@ def build_app(
     app.include_router(class_series_router)
     app.include_router(assignment_offers_router)
     app.include_router(groups_router)
+    app.include_router(cohorts_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

@@ -71,7 +71,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0045"
+HEAD = "0046"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -318,6 +318,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *SESSION_TABLES,
             *POLICY_TABLES,
             *COURSE_TABLES,
+            *COHORT_TABLES,
             *OVERRIDE_TABLES,
             *OFFER_TABLES,
             *SERIES_TABLES,
@@ -4262,6 +4263,34 @@ def _of_0045(diff: Any) -> bool:
     return False
 
 
+COHORT_TABLES = ["course_cohorts"]
+COHORT_COLUMNS = {("class_series", "cohort_id"), ("class_sessions", "cohort_id")}
+COHORT_INDEXES = {
+    "ix_class_series_cohort_id",
+    "ix_class_sessions_cohort_id_starts_at",
+}
+COHORT_FKS = {
+    "fk_class_series_cohort_id_course_cohorts",
+    "fk_class_sessions_cohort_id_course_cohorts",
+}
+"""The objects revision 0046 adds (#65 A2-A4)."""
+
+
+def _of_0046(diff: Any) -> bool:
+    """A metadata difference that revision 0046 adds: the ``course_cohorts``
+    table (and its indexes) and the ``cohort_id`` columns of the series and
+    sessions, their indexes and keys."""
+    if diff[0] == "add_table":
+        return diff[1].name in COHORT_TABLES
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) in COHORT_COLUMNS
+    if diff[0] == "add_index":
+        return diff[1].name in COHORT_INDEXES or diff[1].table.name in COHORT_TABLES
+    if diff[0] == "add_fk":
+        return diff[1].name in COHORT_FKS
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
@@ -4277,6 +4306,7 @@ def _of_later_revision(diff: Any, tables: list[str]) -> bool:
         or _of_0043(diff)
         or _of_0044(diff)
         or _of_0045(diff)
+        or _of_0046(diff)
     ):
         return True
     if diff[0] == "add_table":
@@ -4318,12 +4348,15 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         "conflict_codes": ("ARRAY", "NO", None, "'{}'::character varying[]"),
         # 0041 (#56 A4)
         "group_id": ("uuid", "YES", None, None),
+        # 0046 (#65 A4)
+        "cohort_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     checks = {
         f"ck_{table}_{name}"
         for name in (
             "group_iff_kind",
+            "cohort_iff_kind",
             "series_original_start_together",
             "exception_needs_series",
             "kind_valid",
@@ -4345,6 +4378,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_classroom_id_classrooms",
         f"fk_{table}_series_id_class_series",
         f"fk_{table}_group_id_class_groups",
+        f"fk_{table}_cohort_id_course_cohorts",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -4363,6 +4397,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_classroom_id",
         f"ix_{table}_starts_at",
         f"ix_{table}_group_id_starts_at",
+        f"ix_{table}_cohort_id_starts_at",
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",
@@ -5234,6 +5269,7 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     [row] = run_sql(
@@ -5284,6 +5320,8 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         "split_from_series_id": ("uuid", "YES", None, None),
         # 0041 (#56 A3)
         "group_id": ("uuid", "YES", None, None),
+        # 0046 (#65 A3)
+        "cohort_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     foreign_keys = {
@@ -5291,6 +5329,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_classroom_id_classrooms",
         f"fk_{table}_group_id_class_groups",
+        f"fk_{table}_cohort_id_course_cohorts",
         LINEAGE_FK,
     }
     assert set(constraints) == {
@@ -5311,6 +5350,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
                 "assignment_from_iff_status",
                 "split_from_not_self",
                 "group_iff_kind",
+                "cohort_iff_kind",
             )
         ),
     }
@@ -5322,6 +5362,7 @@ def test_class_series_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_tutor_user_id",
         f"ix_{table}_classroom_id",
         f"ix_{table}_group_id",
+        f"ix_{table}_cohort_id",
         LINEAGE_INDEX,
     }
 
@@ -5465,6 +5506,7 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
@@ -5752,6 +5794,7 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     sessions = _session_rows(dsn)
@@ -5809,6 +5852,7 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
 
@@ -5826,6 +5870,7 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     [row] = run_sql(
@@ -5863,6 +5908,7 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
@@ -5910,6 +5956,7 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     [row] = run_sql(
@@ -5959,6 +6006,7 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     assert len(run_sql(dsn, "SELECT id FROM class_session_overrides")) == 2
@@ -6016,7 +6064,14 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d))
+        if not (
+            _of_0041(d)
+            or _of_0042(d)
+            or _of_0043(d)
+            or _of_0044(d)
+            or _of_0045(d)
+            or _of_0046(d)
+        )
     ] == []
     assert public_tables(dsn) - before == {SUBSTITUTIONS_TABLE}
     [row] = run_sql(
@@ -6080,6 +6135,7 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
             or _of_0043(d)
             or _of_0044(d)
             or _of_0045(d)
+            or _of_0046(d)
         )
     ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM assignment_offers")} == {old}
@@ -6194,7 +6250,7 @@ def test_0041_adds_the_group_tables_and_downgrade_drops_them(fresh_database_url)
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d))
+        if not (_of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d) or _of_0046(d))
     ] == []
     assert public_tables(dsn) - before == set(GROUP_TABLES)
     [group] = run_sql(
@@ -6281,7 +6337,14 @@ def test_0041_adds_the_group_tables_and_downgrade_drops_them(fresh_database_url)
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d))
+        if not (
+            _of_0041(d)
+            or _of_0042(d)
+            or _of_0043(d)
+            or _of_0044(d)
+            or _of_0045(d)
+            or _of_0046(d)
+        )
     ] == []
     remaining = {r.id for r in run_sql(dsn, "SELECT id FROM class_session_overrides")}
     assert remaining == {kept.id}
@@ -6391,7 +6454,9 @@ def test_0042_adds_the_session_requests_table_and_downgrade_drops_it(
 
     assert version_nums(dsn) == ["0042"]
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0043(d) or _of_0044(d) or _of_0045(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0043(d) or _of_0044(d) or _of_0045(d) or _of_0046(d))
     ] == []
     assert public_tables(dsn) - before == set(SESSION_REQUEST_TABLES)
 
@@ -6402,7 +6467,7 @@ def test_0042_adds_the_session_requests_table_and_downgrade_drops_it(
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d))
+        if not (_of_0042(d) or _of_0043(d) or _of_0044(d) or _of_0045(d) or _of_0046(d))
     ] == []
 
     command.upgrade(config, "head")
@@ -6607,7 +6672,9 @@ def test_0043_adds_the_decision_columns_and_downgrade_drops_them(fresh_database_
     command.upgrade(config, "0043")
 
     assert version_nums(dsn) == ["0043"]
-    assert [d for d in metadata_diff(dsn) if not (_of_0044(d) or _of_0045(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0044(d) or _of_0045(d) or _of_0046(d))
+    ] == []
     # Existing rows satisfy both CHECKs without a backfill.
     [row] = run_sql(
         dsn,
@@ -6628,7 +6695,9 @@ def test_0043_adds_the_decision_columns_and_downgrade_drops_them(fresh_database_
 
     assert version_nums(dsn) == ["0042"]
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0043(d) or _of_0044(d) or _of_0045(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0043(d) or _of_0044(d) or _of_0045(d) or _of_0046(d))
     ] == []
     assert "class_session_id" not in _columns(dsn, "session_requests")
 
@@ -6791,14 +6860,16 @@ def test_0044_adds_the_change_requests_table_and_downgrade_drops_it(
     command.upgrade(config, "0044")
 
     assert version_nums(dsn) == ["0044"]
-    assert [d for d in metadata_diff(dsn) if not _of_0045(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0045(d) or _of_0046(d))] == []
     assert public_tables(dsn) - before == set(CHANGE_REQUEST_TABLES)
 
     command.downgrade(config, "0043")
 
     assert version_nums(dsn) == ["0043"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not (_of_0044(d) or _of_0045(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0044(d) or _of_0045(d) or _of_0046(d))
+    ] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -7078,14 +7149,14 @@ def test_0045_adds_the_two_tables_and_downgrade_drops_them(fresh_database_url):
     command.upgrade(config, "0045")
 
     assert version_nums(dsn) == ["0045"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0046(d)] == []
     assert public_tables(dsn) - before == set(AVAILABILITY_CHANGE_TABLES)
 
     command.downgrade(config, "0044")
 
     assert version_nums(dsn) == ["0044"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0045(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0045(d) or _of_0046(d))] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -7235,3 +7306,193 @@ def test_reassignment_flags_take_one_reason_and_flag_once(fresh_database_url):
         run_sql(dsn, FLAG_INSERT, values)
     # Another change flags the same session again.
     run_sql(dsn, FLAG_INSERT, values | {"source": uuid.uuid4()})
+
+
+# --- 0046: course cohorts (#65 A) -----------------------------------------------------
+
+
+COHORT_INSERT = (
+    "INSERT INTO course_cohorts (name, template_id, template_snapshot_id,"
+    " subject_id, max_students) VALUES (:name, :template, :snapshot, :subject,"
+    " :max_students) RETURNING id"
+)
+
+
+def _snapshot_row(dsn: str, template_id: uuid.UUID) -> uuid.UUID:
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO course_template_snapshots (template_id, template_version,"
+        " content) VALUES (:t, 1, '{}'::jsonb) RETURNING id",
+        {"t": template_id},
+    )
+    return uuid.UUID(str(row.id))
+
+
+def _cohort_world(dsn: str) -> dict[str, Any]:
+    subject = _subject_row(dsn)
+    template = _course_template(dsn, name=f"Curso {uuid.uuid4().hex[:8]}")
+    return {
+        "name": f"Cohorte {uuid.uuid4().hex[:8]}",
+        "template": template,
+        "snapshot": _snapshot_row(dsn, template),
+        "subject": subject,
+        "max_students": 12,
+    }
+
+
+def _series_with(dsn: str, subject: uuid.UUID, **values: Any) -> uuid.UUID:
+    columns: dict[str, Any] = {
+        "kind": "individual",
+        "subject_id": subject,
+        "starts_on": date(2031, 1, 6),
+        "start_time": time(16),
+        "duration_minutes": 60,
+        "time_zone": "America/Mexico_City",
+        "weekdays": [1, 3],
+        "interval": 1,
+        "rrule": "FREQ=WEEKLY;INTERVAL=1;WKST=MO;BYDAY=MO,WE",
+        **values,
+    }
+    names = ", ".join(columns)
+    params = ", ".join(f":{name}" for name in columns)
+    [row] = run_sql(
+        dsn,
+        f"INSERT INTO class_series ({names}) VALUES ({params}) RETURNING id",  # noqa: S608 (fixed names)
+        columns,
+    )
+    return uuid.UUID(str(row.id))
+
+
+def test_0046_adds_the_cohorts_and_downgrade_drops_them(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0045")
+    subject = _subject_row(dsn)
+    _series_with(dsn, subject)
+    _session_row(dsn, subject)
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0046")
+
+    assert version_nums(dsn) == ["0046"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(COHORT_TABLES)
+    world = _cohort_world(dsn)
+    [cohort] = run_sql(dsn, COHORT_INSERT, world)
+    _series_with(dsn, subject, kind="course", cohort_id=cohort.id)
+    _session_row(dsn, subject, kind="course", cohort_id=cohort.id)
+
+    command.downgrade(config, "0045")
+
+    assert version_nums(dsn) == ["0045"]
+    assert public_tables(dsn) == before
+    for table in ("class_series", "class_sessions"):
+        assert "cohort_id" not in _columns(dsn, table)
+    assert [d for d in metadata_diff(dsn) if not _of_0046(d)] == []
+    # Upgrading again needs the course rows without a cohort removed first.
+    run_sql(dsn, "DELETE FROM class_sessions WHERE kind = 'course'")
+    run_sql(dsn, "DELETE FROM class_series WHERE kind = 'course'")
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+
+
+def test_course_cohorts_columns_constraints_and_indexes(fresh_database_url):
+    command.upgrade(alembic_config(fresh_database_url), "head")
+    table = "course_cohorts"
+    assert _columns(fresh_database_url, table) == {
+        **STANDARD_COLUMNS,
+        "version": ("integer", "NO", None, "1"),
+        "name": ("character varying", "NO", 120, None),
+        "template_id": ("uuid", "NO", None, None),
+        "template_snapshot_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "max_students": ("smallint", "NO", None, None),
+    }
+    constraints = _constraints(fresh_database_url, table)
+    foreign_keys = {
+        "fk_course_cohorts_template_id_course_templates",
+        "fk_course_cohorts_template_snapshot_id_snapshots",
+        "fk_course_cohorts_subject_id_subjects",
+    }
+    assert set(constraints) == {
+        "pk_course_cohorts",
+        "ck_course_cohorts_name_trimmed",
+        "ck_course_cohorts_name_not_blank",
+        "ck_course_cohorts_max_students_range",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(fresh_database_url, table)) == {
+        "pk_course_cohorts",
+        "uq_course_cohorts_name_ci",
+        "ix_course_cohorts_template_id",
+        "ix_course_cohorts_template_snapshot_id",
+        "ix_course_cohorts_subject_id",
+    }
+
+
+@pytest.mark.parametrize(
+    ("changes", "constraint"),
+    [
+        ({"max_students": 0}, "ck_course_cohorts_max_students_range"),
+        ({"max_students": 501}, "ck_course_cohorts_max_students_range"),
+        ({"name": " Cohorte"}, "ck_course_cohorts_name_trimmed"),
+        ({"name": ""}, "ck_course_cohorts_name_not_blank"),
+    ],
+)
+def test_invalid_cohorts_are_rejected(fresh_database_url, changes, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    with pytest.raises(IntegrityError, match=constraint):
+        run_sql(dsn, COHORT_INSERT, _cohort_world(dsn) | changes)
+
+
+def test_cohort_bounds_names_and_references_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    world = _cohort_world(dsn)
+    run_sql(dsn, COHORT_INSERT, world | {"max_students": 1})
+    run_sql(
+        dsn, COHORT_INSERT, world | {"name": world["name"] + " B", "max_students": 500}
+    )
+
+    # A duplicate name in another letter case.
+    with pytest.raises(IntegrityError, match="uq_course_cohorts_name_ci"):
+        run_sql(dsn, COHORT_INSERT, world | {"name": world["name"].upper()})
+    # The snapshot can't be deleted (its trigger), nor the template (the key).
+    with pytest.raises(DBAPIError, match="course_template_snapshots"):
+        run_sql(
+            dsn,
+            "DELETE FROM course_template_snapshots WHERE id = :id",
+            {"id": world["snapshot"]},
+        )
+    # A cohort whose template has no snapshot left to block the delete.
+    other = _course_template(dsn, name=f"Curso {uuid.uuid4().hex[:8]}")
+    run_sql(dsn, COHORT_INSERT, world | {"name": "Otra", "template": other})
+    with pytest.raises(IntegrityError, match="fk_course_cohorts_template_id"):
+        run_sql(dsn, "DELETE FROM course_templates WHERE id = :id", {"id": other})
+
+
+def test_course_rows_need_a_cohort_and_only_they_have_one(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    world = _cohort_world(dsn)
+    [cohort] = run_sql(dsn, COHORT_INSERT, world)
+    subject = world["subject"]
+
+    with pytest.raises(IntegrityError, match="ck_class_series_cohort_iff_kind"):
+        _series_with(dsn, subject, kind="course")
+    with pytest.raises(IntegrityError, match="ck_class_sessions_cohort_iff_kind"):
+        _session_row(dsn, subject, kind="course")
+    for kind in ("individual", "group"):
+        with pytest.raises(IntegrityError, match="cohort_iff_kind"):
+            _series_with(dsn, subject, kind=kind, cohort_id=cohort.id)
+        with pytest.raises(IntegrityError, match="cohort_iff_kind"):
+            _session_row(dsn, subject, kind=kind, cohort_id=cohort.id)
+    _series_with(dsn, subject, kind="course", cohort_id=cohort.id)
+    _session_row(dsn, subject, kind="course", cohort_id=cohort.id)
+    # A cohort with sessions can't be deleted.
+    with pytest.raises(IntegrityError, match="cohort_id_course_cohorts"):
+        run_sql(dsn, "DELETE FROM course_cohorts WHERE id = :id", {"id": cohort.id})

@@ -125,6 +125,16 @@ The group row lock (:func:`lock_group`, :mod:`~app.modules.scheduling.
 group_lock`) comes after the students and the zone for every writer that
 changes a group occurrence's participants or room.
 
+Course cohorts (#65, :mod:`~app.modules.scheduling.course_series`; the
+cohort itself lives in ``courses``): ``app.workflows.cohorts`` derives the
+series ``COUNT`` from :func:`course_rule_dates` and :func:`closed_dates`,
+checks the fields with :func:`check_course_series` and creates the cohort's
+``course`` series with :func:`create_course_series`; the reads are
+:func:`cohort_schedules`, :func:`cohort_series_read` and
+:func:`list_cohort_sessions`. A course series takes the cohort row lock
+(``courses.service.lock_cohort``) where a group series takes the group
+lock: in the materialization and the series offer.
+
 Session requests by families (#59): the read-only slot search
 :func:`available_slots` (the pure rules in
 :mod:`~app.modules.scheduling.family_slots`, loaded once by
@@ -283,6 +293,28 @@ from app.modules.scheduling.conflicts import SOFT as SOFT
 from app.modules.scheduling.conflicts import WARNING as WARNING
 from app.modules.scheduling.conflicts import Conflict as Conflict
 from app.modules.scheduling.conflicts import sort_conflicts as sort_conflicts
+from app.modules.scheduling.course_series import CohortSchedule as CohortSchedule
+from app.modules.scheduling.course_series import (
+    CohortSeriesRead as CohortSeriesRead,
+)
+from app.modules.scheduling.course_series import (
+    check_course_series as check_course_series,
+)
+from app.modules.scheduling.course_series import (
+    cohort_schedules as cohort_schedules,
+)
+from app.modules.scheduling.course_series import (
+    cohort_series_read as cohort_series_read,
+)
+from app.modules.scheduling.course_series import (
+    course_rule_dates as course_rule_dates,
+)
+from app.modules.scheduling.course_series import (
+    create_course_series as create_course_series,
+)
+from app.modules.scheduling.course_series import (
+    list_cohort_sessions as list_cohort_sessions,
+)
 from app.modules.scheduling.errors import (
     ClassSessionNotAssignableError as ClassSessionNotAssignableError,
 )
@@ -344,6 +376,7 @@ from app.modules.scheduling.materialize import (
 from app.modules.scheduling.materialize import (
     MaterializeCounts as MaterializeCounts,
 )
+from app.modules.scheduling.materialize import closed_dates as closed_dates
 from app.modules.scheduling.materialize import (
     materialize_series as materialize_series,
 )

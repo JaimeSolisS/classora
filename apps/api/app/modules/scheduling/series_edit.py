@@ -597,6 +597,7 @@ def _new_series(old: ClassSeries, body: ClassSeriesEdit, start: date) -> ClassSe
         last_occurrence_on=last_occurrence_on(fields, start),
         split_from_series_id=old.id,
         group_id=old.group_id,
+        cohort_id=old.cohort_id,
     )
 
 

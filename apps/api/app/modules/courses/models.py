@@ -18,6 +18,11 @@
   ``course_template_snapshots_immutable`` rejects ``UPDATE`` and ``DELETE``.
   Cohorts (#65) point at a snapshot, so later template edits never change
   them.
+- ``course_cohorts`` (#65 A2): one cohort of a template: a name (unique
+  ignoring case), its snapshot (and the snapshot's template), one subject
+  and a maximum size. Its sessions are the occurrences of a ``course``
+  series in the scheduling module (``class_series.cohort_id``), which keeps
+  the tutor, the room and the timing.
 
 Every table is :class:`~app.core.audit.Audited`; the snapshot's ``content``
 is left out of its audit event (the row itself is the immutable record).
@@ -69,6 +74,11 @@ SUBJECT_LINK_UNIQUE = "uq_course_template_subjects_template_subject"
 SNAPSHOT_VERSION_UNIQUE = "uq_course_template_snapshots_template_version"
 SNAPSHOT_IMMUTABLE_TRIGGER = "course_template_snapshots_immutable"
 ASSESSMENT_MODULE_FK = "fk_course_template_assessments_module_id_modules"
+COHORT_NAME_MAX_LENGTH = 120
+COHORT_MAX_STUDENTS_MAX = 500
+"""The #39 / #56 range: a cohort has 1 to 500 students at most."""
+COHORT_NAME_INDEX = "uq_course_cohorts_name_ci"
+COHORT_SNAPSHOT_FK = "fk_course_cohorts_template_snapshot_id_snapshots"
 
 
 def _text_checks(column: str) -> tuple[CheckConstraint, CheckConstraint]:
@@ -231,3 +241,43 @@ class CourseTemplateSnapshot(Audited, Model):
         server_default=text(str(SNAPSHOT_SCHEMA_VERSION)),
     )
     content: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class CourseCohort(Audited, VersionedMixin, Model):
+    """One cohort of a course template (#65 A2; spec §3 "each cohort has its
+    own dates, tutors, enrolled students, pricing and attendance").
+
+    ``template_snapshot_id`` is set once and never updated: the cohort's
+    syllabus is that immutable snapshot. ``template_id`` is copied from the
+    snapshot (the list filters by template). ``subject_id`` is the one
+    subject of every session (one of the snapshot's subjects, #65 E4).
+    The tutor, the room and the timing live on the cohort's ``course``
+    series (``class_series.cohort_id``). No price column (#65 E6: M6-04 /
+    M6-07 add the price link) and no enrollments (#66)."""
+
+    __tablename__ = "course_cohorts"
+    __table_args__ = (
+        *_text_checks("name"),
+        _range("max_students", 1, COHORT_MAX_STUDENTS_MAX),
+        Index(COHORT_NAME_INDEX, func.lower(text("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(COHORT_NAME_MAX_LENGTH))
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), _template_fk(), index=True
+    )
+    template_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        # An explicit name: the convention's would pass PostgreSQL's
+        # 63-character limit.
+        ForeignKey(
+            "course_template_snapshots.id",
+            ondelete="RESTRICT",
+            name=COHORT_SNAPSHOT_FK,
+        ),
+        index=True,
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), index=True
+    )
+    max_students: Mapped[int] = mapped_column(SmallInteger)

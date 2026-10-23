@@ -115,6 +115,7 @@ export const SERIES_OFFER: AssignmentOfferItem = {
   series: {
     id: SERIES_ID,
     kind: 'individual',
+    cohort: null,
     subject: { name: 'Álgebra', education_level_name: 'Secundaria' },
     weekdays: [1, 3],
     interval: 1,

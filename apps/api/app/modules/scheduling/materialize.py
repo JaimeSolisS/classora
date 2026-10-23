@@ -17,7 +17,9 @@ reaches the past.
 1. ``lock_students`` for the series' participants (ascending ids);
 2. the center zone ``FOR SHARE``;
 3. for a ``group`` series, the **group row ``FOR UPDATE``** (#56 C2, F1:
-   :mod:`~app.modules.scheduling.group_lock`);
+   :mod:`~app.modules.scheduling.group_lock`); for a ``course`` series, the
+   **cohort row ``FOR UPDATE``** (``courses.service.lock_cohort``, #65 C3,
+   G1: "group" reads "group or cohort");
 4. the **series row ``FOR UPDATE``**.
 
 The create takes steps 1 and 2 itself before inserting the series (so in
@@ -27,9 +29,11 @@ lock the participants are read again; when they differ from the locked set
 (an enrollment or withdrawal committed in between),
 :class:`~app.modules.scheduling.group_lock.SeriesParticipantsChangedError`
 is raised: the nightly job rolls that series' unit back and retries it (at
-most 3 times, then counts it as failed and the next night retries). A
-group occurrence copies ``group_id`` from its series and takes one
-participant per series participant. The job never re-checks the group
+most 3 times, then counts it as failed and the next night retries); the
+same holds for a ``course`` series under its cohort lock (#65 C3;
+participants change only from #66 on). A group occurrence copies
+``group_id`` (a course occurrence ``cohort_id``) from its series and takes
+one participant per series participant. The job never re-checks the group
 maximum (the enrollment enforced or overrode it), only each occurrence's
 room capacity (``room_capacity_exceeded`` → a ``conflict`` row).
 
@@ -115,6 +119,7 @@ from app.core.errors import FieldError, SchedulingConflict
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import ClosureDetail
+from app.modules.courses import service as courses
 from app.modules.scheduling.booking import references
 from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
 from app.modules.scheduling.conflicts import ROOM_OVERLAP, TUTOR_OVERLAP, Conflict
@@ -372,19 +377,23 @@ async def lock_series_for_write(
 ) -> LockedSeries:
     """Steps 1-4 of the lock order for a series write that reads the
     participants first (the nightly extension, #232's reconcile). For a
-    group series the participants are re-read under the series lock;
-    a change raises :class:`SeriesParticipantsChangedError` (#56 C2)."""
+    group (or course) series the participants are re-read under the series
+    lock; a change raises :class:`SeriesParticipantsChangedError` (#56 C2,
+    #65 C3)."""
     found = await session.get(ClassSeries, series_id)
     if found is None:
         raise LookupError(f"no class series {series_id}")
-    group_id = found.group_id  # never changes for a series
+    # Neither changes for a series.
+    group_id, cohort_id = found.group_id, found.cohort_id
     student_ids = await series_participant_ids(session, series_id)
     await lock_students(session, student_ids)
     zone = await administration.get_center_time_zone(session, for_share=True)
     if group_id is not None:
         await lock_group(session, group_id)
+    elif cohort_id is not None:
+        await courses.lock_cohort(session, cohort_id)
     series = await _locked_series(session, series_id)
-    if group_id is not None and (
+    if (group_id is not None or cohort_id is not None) and (
         await series_participant_ids(session, series_id) != student_ids
     ):
         raise SeriesParticipantsChangedError(str(series_id))
@@ -413,6 +422,7 @@ async def materialize_series(
     override: SeriesOverride | GroupOverride | None = None,
     group_conflicts: Sequence[Conflict] = (),
     group_codes: Collection[str] | None = None,
+    group_max: int | None = None,
 ) -> MaterializeCounts:
     """Create the series' missing occurrences in ``[now, horizon_end)``; see
     the module docstring. Returns the inserted counts. In ``create`` mode a
@@ -425,8 +435,15 @@ async def materialize_series(
     (``group_capacity_exceeded``) and the codes its override lists for them
     (``group_codes``; ``None``: no override): they are decided with the
     #49 rule and refused together with the occurrences' conflicts, group
-    level first, in one ``409``."""
-    if (override is not None or group_conflicts) and mode != "create":
+    level first, in one ``409``.
+
+    A course create (#65 C1, C2) passes the cohort maximum as ``group_max``:
+    each occurrence's participants are checked against it
+    (``group_capacity_exceeded``, soft) besides the room capacity; with no
+    participants (every cohort until #66) no capacity code can occur."""
+    if (
+        override is not None or group_conflicts or group_max is not None
+    ) and mode != "create":
         raise ValueError("only a create carries an override")
     if mode == "extend":
         locked = await lock_series_for_write(session, series_id)
@@ -492,6 +509,7 @@ async def materialize_series(
                     classroom_id=series.classroom_id,
                     starts_at=occurrence.starts_at,
                     ends_at=occurrence.ends_at,
+                    group_max=group_max,
                 ),
                 zone=zone,
                 now=now,
@@ -578,6 +596,7 @@ async def insert_occurrences(
             is_exception=False,
             conflict_codes=item.codes,
             group_id=series.group_id,
+            cohort_id=series.cohort_id,
         )
         session.add(row)
         try:

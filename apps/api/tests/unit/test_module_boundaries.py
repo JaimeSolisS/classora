@@ -216,7 +216,8 @@ def test_staff_imports_only_core_and_public_apis():
 def test_courses_imports_only_core_and_public_apis():
     # #64 A1: courses (templates and snapshots) uses app.core, its own files,
     # catalog.service / catalog.schemas and the identity public modules
-    # only; no module imports courses yet (#65 will, through its service).
+    # only; of the modules only scheduling imports courses (#65, through
+    # its service).
     allowed = (
         "app.core.",
         "app.modules.courses.",
@@ -230,6 +231,15 @@ def test_courses_imports_only_core_and_public_apis():
     assert not {t for t in courses if not t.startswith(allowed)}
     for module in ("identity", "catalog", "administration", "families", "staff"):
         assert not {t for t in targets(module) if "courses" in t}, module
+
+
+def test_courses_never_imports_scheduling():
+    # #65 E2, I5: scheduling calls courses.service (the cohort lock and the
+    # cohort names); courses never imports scheduling, so there is no
+    # import cycle.
+    assert not {t for t in targets("courses") if t.startswith("app.modules.scheduling")}
+    scheduling = {t for t in targets("scheduling") if "courses" in t}
+    assert scheduling == {"app.modules.courses.service"}
 
 
 # --- The checker on a synthetic tree (B5) ----------------------------------------

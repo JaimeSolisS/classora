@@ -2499,6 +2499,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cohorts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cohorts
+         * @description The cohorts by name, with their template, subject, tutor and dates.
+         */
+        get: operations["list_cohorts_api_v1_cohorts_get"];
+        put?: never;
+        /**
+         * Create Cohort
+         * @description Create a cohort of a course template. The template is frozen as its
+         *     current version's snapshot. The sessions are the occurrences of a
+         *     weekly `course` series with the template's session length, as many as
+         *     the template's sessions outside the closures known now; they are
+         *     created up to the rolling horizon and checked like a series. With a
+         *     tutor the occurrences are `offered` to them, without one
+         *     `unassigned`.
+         */
+        post: operations["create_cohort_api_v1_cohorts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cohorts/{cohort_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cohort
+         * @description One cohort: its template (as frozen), subject, maximum and effective
+         *     capacity, status and dates, current series and next sessions, and its
+         *     syllabus from the snapshot.
+         */
+        get: operations["get_cohort_api_v1_cohorts__cohort_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Cohort
+         * @description Rename a cohort or change its maximum; above the room's capacity the
+         *     room still limits the sessions. The template, the subject and the
+         *     snapshot never change; the dates, room and tutor change through the
+         *     series.
+         */
+        patch: operations["update_cohort_api_v1_cohorts__cohort_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cohorts/{cohort_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cohort Sessions
+         * @description The cohort's sessions overlapping `[from, to)`, by start, in every
+         *     state.
+         */
+        get: operations["list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -4148,6 +4228,11 @@ export interface components {
              * @description The tutoring group of a `group` series (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Cohort Id
+             * @description The cohort of a `course` series (#65); null otherwise.
+             */
+            cohort_id: string | null;
             /** Version */
             version: number;
             /**
@@ -4173,8 +4258,9 @@ export interface components {
         };
         /**
          * ClassSeriesDetail
-         * @description One class series (``GET /api/v1/class-series/{id}``). The web app
-         *     never parses ``rrule``: it reads ``recurrence``.
+         * @description One class series (``GET /api/v1/class-series/{id}``) with its
+         *     occurrence rows. The web app never parses ``rrule``: it reads
+         *     ``recurrence``.
          */
         ClassSeriesDetail: {
             /**
@@ -4241,6 +4327,11 @@ export interface components {
              * @description The tutoring group of a `group` series (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Cohort Id
+             * @description The cohort of a `course` series (#65); null otherwise.
+             */
+            cohort_id: string | null;
             /** Version */
             version: number;
             /**
@@ -4350,6 +4441,95 @@ export interface components {
              * @description An earlier deadline for the tutor's answer, after now and no later than the default; truncated to whole minutes.
              */
             respond_by?: string | null;
+        };
+        /**
+         * ClassSeriesSummary
+         * @description One class series without its occurrence rows (a cohort's current
+         *     series, #65 F1). The web app never parses ``rrule``: it reads
+         *     ``recurrence``.
+         */
+        ClassSeriesSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            subject: components["schemas"]["SessionSubject"];
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["SessionClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["SessionParticipant"][];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * @description The local start time, HH:MM.
+             */
+            start_time: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Time Zone
+             * @description The center zone the series was created in.
+             */
+            time_zone: string;
+            recurrence: components["schemas"]["SeriesRecurrenceDetail"];
+            /**
+             * Rrule
+             * @description The normalized RFC 5545 rule (derived).
+             */
+            rrule: string;
+            /**
+             * Last Occurrence On
+             * @description No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`.
+             */
+            last_occurrence_on: string | null;
+            /**
+             * Ended
+             * @description Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54).
+             */
+            ended: boolean;
+            /**
+             * Split From Series Id
+             * @description The series a 'this and following' edit split this one from (#54); null: none.
+             */
+            split_from_series_id: string | null;
+            /**
+             * Split Into Series Ids
+             * @description The series split from this one by later edits, oldest first (#54).
+             */
+            split_into_series_ids: string[];
+            /** @description The tutor assignment; null when the series has no tutor. */
+            assignment: components["schemas"]["SeriesAssignment"] | null;
+            /**
+             * Group Id
+             * @description The tutoring group of a `group` series (#56); null otherwise.
+             */
+            group_id: string | null;
+            /**
+             * Cohort Id
+             * @description The cohort of a `course` series (#65); null otherwise.
+             */
+            cohort_id: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * ClassSessionCalendar
@@ -4556,6 +4736,11 @@ export interface components {
              */
             group_id: string | null;
             /**
+             * Cohort Id
+             * @description The cohort of a `course` session (#65); null otherwise.
+             */
+            cohort_id: string | null;
+            /**
              * Pending Change Request Id
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
              */
@@ -4648,6 +4833,11 @@ export interface components {
              * @description The tutoring group of a `group` session (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Cohort Id
+             * @description The cohort of a `course` session (#65); null otherwise.
+             */
+            cohort_id: string | null;
             /**
              * Pending Change Request Id
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
@@ -4786,6 +4976,11 @@ export interface components {
              * @description The tutoring group of a `group` session (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Cohort Id
+             * @description The cohort of a `course` session (#65); null otherwise.
+             */
+            cohort_id: string | null;
             /**
              * Pending Change Request Id
              * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
@@ -4977,6 +5172,435 @@ export interface components {
             ends_on?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * CohortCreate
+         * @description A cohort of a course template (``POST /api/v1/cohorts``, #65 D1).
+         *
+         *     The template is frozen as its current version's snapshot; the session
+         *     length is the snapshot's (no ``duration_minutes``); the number of
+         *     sessions is the snapshot's, with ``COUNT`` derived around the known
+         *     closures (no ``until`` / ``count``); no ``rrule`` text and no students
+         *     (enrollment is #66). ``override`` (the #236 pairs) needs
+         *     ``schedule.override``.
+         */
+        CohortCreate: {
+            /**
+             * Name
+             * @description 1-120 characters, trimmed; unique (any case).
+             */
+            name: string;
+            /**
+             * Template Id
+             * Format: uuid
+             * @description An active course template.
+             */
+            template_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             * @description One of the template's subjects: every session has it.
+             */
+            subject_id: string;
+            /**
+             * Max Students
+             * @description The cohort maximum, 1-500.
+             */
+            max_students: number;
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the series to; null: unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Respond By
+             * @description With a tutor: an earlier deadline for the series offer, after now and no later than the default; truncated to whole minutes.
+             */
+            respond_by?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The local date the rule starts on (not before today).
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * Format: time
+             * @description The local start time, HH:MM (whole minutes, no seconds).
+             */
+            start_time: string;
+            recurrence: components["schemas"]["CohortRecurrence"];
+            /** @description Override the listed soft conflicts, occurrence by occurrence, with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SeriesOverride"] | null;
+        };
+        /**
+         * CohortCreated
+         * @description The created cohort.
+         */
+        CohortCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** @description The template, with its name and version at snapshot time. */
+            template: components["schemas"]["CohortTemplate"];
+            /**
+             * Template Snapshot Id
+             * Format: uuid
+             */
+            template_snapshot_id: string;
+            subject: components["schemas"]["CohortSubject"];
+            /** Max Students */
+            max_students: number;
+            /**
+             * Effective Capacity
+             * @description min(max_students, the current series' room capacity); max_students without a room.
+             */
+            effective_capacity: number;
+            /** @description upcoming before the first session starts, ended once the last one has ended, in_progress in between (from the series rule). */
+            status: components["schemas"]["CohortStatus"];
+            /**
+             * Planned Session Count
+             * @description The snapshot's session count.
+             */
+            planned_session_count: number;
+            /**
+             * Session Minutes
+             * @description The snapshot's session length.
+             */
+            session_minutes: number;
+            /**
+             * First Session On
+             * @description The local date of the first session (from the rule).
+             */
+            first_session_on: string | null;
+            /**
+             * Last Session On
+             * @description The local date of the last session (from the rule).
+             */
+            last_session_on: string | null;
+            /** @description The current series (the latest start), without occurrences. */
+            series: components["schemas"]["ClassSeriesSummary"] | null;
+            /**
+             * Next Occurrences
+             * @description Up to 10 upcoming occurrences, by start.
+             */
+            next_occurrences: components["schemas"]["CohortOccurrenceItem"][];
+            syllabus: components["schemas"]["CohortSyllabus"];
+            /**
+             * Warnings
+             * @description Always empty for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * CohortDetail
+         * @description One cohort (``GET /api/v1/cohorts/{id}``, #65 F1). The syllabus comes
+         *     from the snapshot, never from the live template. No enrollment data
+         *     yet (#66 adds it).
+         */
+        CohortDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** @description The template, with its name and version at snapshot time. */
+            template: components["schemas"]["CohortTemplate"];
+            /**
+             * Template Snapshot Id
+             * Format: uuid
+             */
+            template_snapshot_id: string;
+            subject: components["schemas"]["CohortSubject"];
+            /** Max Students */
+            max_students: number;
+            /**
+             * Effective Capacity
+             * @description min(max_students, the current series' room capacity); max_students without a room.
+             */
+            effective_capacity: number;
+            /** @description upcoming before the first session starts, ended once the last one has ended, in_progress in between (from the series rule). */
+            status: components["schemas"]["CohortStatus"];
+            /**
+             * Planned Session Count
+             * @description The snapshot's session count.
+             */
+            planned_session_count: number;
+            /**
+             * Session Minutes
+             * @description The snapshot's session length.
+             */
+            session_minutes: number;
+            /**
+             * First Session On
+             * @description The local date of the first session (from the rule).
+             */
+            first_session_on: string | null;
+            /**
+             * Last Session On
+             * @description The local date of the last session (from the rule).
+             */
+            last_session_on: string | null;
+            /** @description The current series (the latest start), without occurrences. */
+            series: components["schemas"]["ClassSeriesSummary"] | null;
+            /**
+             * Next Occurrences
+             * @description Up to 10 upcoming occurrences, by start.
+             */
+            next_occurrences: components["schemas"]["CohortOccurrenceItem"][];
+            syllabus: components["schemas"]["CohortSyllabus"];
+        };
+        /**
+         * CohortLevel
+         * @description The subject's education level.
+         */
+        CohortLevel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CohortListItem
+         * @description A cohort in the list (#65 F2).
+         */
+        CohortListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** @description The snapshot's template name. */
+            template: components["schemas"]["CohortTemplateName"];
+            subject: components["schemas"]["CohortSubject"];
+            /** Max Students */
+            max_students: number;
+            /** @description The current series' tutor. */
+            tutor: components["schemas"]["SessionTutor"] | null;
+            /**
+             * Assignment Status
+             * @description The current series' tutor assignment; null without a tutor.
+             */
+            assignment_status: ("pending" | "accepted") | null;
+            /** First Session On */
+            first_session_on: string | null;
+            /** Last Session On */
+            last_session_on: string | null;
+            /** Next Starts At */
+            next_starts_at: string | null;
+            status: components["schemas"]["CohortStatus"];
+        };
+        /**
+         * CohortOccurrenceItem
+         * @description An upcoming occurrence of the cohort.
+         */
+        CohortOccurrenceItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+        };
+        /**
+         * CohortRecurrence
+         * @description The cohort's weekly rule (#65 D1, E3): the weekdays and the interval
+         *     only. There is no ``until`` or ``count``: the server derives ``COUNT``
+         *     so that the template's sessions fall outside the closures known now.
+         *     The ranges are checked after the locks, as ``422`` on
+         *     ``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,
+         *     ``weekdays_duplicate``, ``interval_out_of_range``).
+         */
+        CohortRecurrence: {
+            /**
+             * Weekdays
+             * @description ISO weekdays (1 = Monday … 7 = Sunday), at least one, no duplicates.
+             */
+            weekdays: number[];
+            /**
+             * Interval
+             * @description Every 1-4 weeks (default 1).
+             * @default 1
+             */
+            interval: number;
+        };
+        /**
+         * CohortSessionItem
+         * @description One session of a cohort (#65 F4), in any state (staff only).
+         */
+        CohortSessionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Original Start
+             * Format: date-time
+             * @description The rule's instant.
+             */
+            original_start: string;
+            /**
+             * Is Exception
+             * @description Moved or edited on its own (#54).
+             */
+            is_exception: boolean;
+            tutor: components["schemas"]["SessionTutor"] | null;
+            classroom: components["schemas"]["GroupSessionClassroom"] | null;
+        };
+        /**
+         * CohortSessions
+         * @description The cohort's sessions overlapping the range, by start (#65 F4).
+         */
+        CohortSessions: {
+            /** Items */
+            items: components["schemas"]["CohortSessionItem"][];
+        };
+        /** @enum {string} */
+        CohortStatus: "upcoming" | "in_progress" | "ended";
+        /** @enum {string} */
+        CohortStatusFilter: "upcoming" | "in_progress" | "ended" | "current" | "all";
+        /**
+         * CohortSubject
+         * @description The cohort's one subject (#65 E4) and its level.
+         */
+        CohortSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            level: components["schemas"]["CohortLevel"];
+        };
+        /**
+         * CohortSyllabus
+         * @description A cohort's syllabus, read from its template snapshot (never from the
+         *     live template): the modules and assessments in position order and the
+         *     completion criteria.
+         */
+        CohortSyllabus: {
+            /** Modules */
+            modules: components["schemas"]["CourseTemplateModule"][];
+            /** Assessments */
+            assessments: components["schemas"]["CourseTemplateAssessment"][];
+            completion: components["schemas"]["CourseCompletion"];
+        };
+        /**
+         * CohortTemplate
+         * @description The template a cohort was created from, as its snapshot froze it: the
+         *     template's id, and its name and version at snapshot time.
+         */
+        CohortTemplate: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * CohortTemplateName
+         * @description The template of a cohort in the list (the snapshot's name).
+         */
+        CohortTemplateName: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CohortUpdate
+         * @description Rename a cohort or change its maximum (``PATCH
+         *     /api/v1/cohorts/{cohort_id}``, #65 E1). At least one of ``name`` and
+         *     ``max_students`` (``no_changes`` on the body). The template, the subject
+         *     and the snapshot never change; the dates, the room and the tutor change
+         *     through the cohort's series.
+         */
+        CohortUpdate: {
+            /**
+             * Version
+             * @description The cohort's version, as read.
+             */
+            version: number;
+            /**
+             * Name
+             * @description 1-120 characters, trimmed; unique (any case).
+             */
+            name?: string | null;
+            /**
+             * Max Students
+             * @description The cohort maximum, 1-500.
+             */
+            max_students?: number | null;
         };
         /**
          * ConflictOverrideCreate
@@ -6546,6 +7170,20 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * OfferCohort
+         * @description The cohort of a course series offer (#65 C6): the tutor sees the
+         *     offer is for a course.
+         */
+        OfferCohort: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** @enum {string} */
         OfferKindCode: "assignment" | "substitution";
         /**
@@ -6575,6 +7213,8 @@ export interface components {
              */
             id: string;
             kind: components["schemas"]["SessionKindCode"];
+            /** @description The cohort of a `course` series (#65); null otherwise. */
+            cohort: components["schemas"]["OfferCohort"] | null;
             subject: components["schemas"]["OfferSessionSubject"];
             /**
              * Weekdays
@@ -6718,6 +7358,17 @@ export interface components {
         OffsetPage_ClosureDetail_: {
             /** Items */
             items: components["schemas"]["ClosureDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[CohortListItem] */
+        OffsetPage_CohortListItem_: {
+            /** Items */
+            items: components["schemas"]["CohortListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -17125,6 +17776,314 @@ export interface operations {
             };
             /** @description The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_cohorts_api_v1_cohorts_get: {
+        parameters: {
+            query?: {
+                /** @description The name contains it. */
+                q?: string | null;
+                template_id?: string | null;
+                subject_id?: string | null;
+                /** @description upcoming, in_progress, ended, current (upcoming and in progress; the default) or all. */
+                status?: components["schemas"]["CohortStatusFilter"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_CohortListItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_cohort_api_v1_cohorts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another cohort has the name, in any case (cohort_name_taken); or an occurrence in the horizon breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence (with `details.occurrence_start` and `details.date`), e.g. `room_overlap`, `tutor_not_qualified`; a hard conflict, or a soft one the `override` doesn't list, refuses. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable). Nothing is created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_cohort_api_v1_cohorts__cohort_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such cohort (cohort_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_cohort_api_v1_cohorts__cohort_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such cohort (cohort_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The cohort changed since it was read (version_conflict), or another cohort has the name (cohort_name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get: {
+        parameters: {
+            query: {
+                /** @description An instant with an offset (RFC 3339). */
+                from: string;
+                /** @description An instant with an offset (RFC 3339), after `from` and at most 45 days later. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortSessions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such cohort (cohort_not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

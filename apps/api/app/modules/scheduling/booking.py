@@ -393,6 +393,7 @@ def _detail(
         pending_substitution=pending_substitution,
         cancellation=cancellation,
         group_id=row.group_id,
+        cohort_id=row.cohort_id,
         pending_change_request_id=pending_change_request_id,
         reassignment=reassignment,
     )
