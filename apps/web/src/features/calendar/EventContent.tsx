@@ -5,6 +5,8 @@ import {
   CircleDashed,
   CircleDot,
   CircleHelp,
+  LoaderCircle,
+  ShieldAlert,
   TriangleAlert,
   UserX,
   type LucideIcon,
@@ -21,7 +23,8 @@ import {
 // One event on the calendar (#57 D7). The state shows as a border style
 // (calendar.css) and as an icon with its text; markers as an icon with
 // text. Screen readers get one name with every detail (sessionName); the
-// visible parts are hidden from them so nothing is read twice.
+// visible parts are hidden from them so nothing is read twice. A move being
+// saved (#58 D6) shows "Saving…" (icon and text) and is part of the name.
 
 export const STATE_ICONS: Record<SessionState, LucideIcon> = {
   unassigned: CircleDashed,
@@ -36,6 +39,7 @@ export const STATE_ICONS: Record<SessionState, LucideIcon> = {
 export const MARKER_ICONS: Record<MarkerCode, LucideIcon> = {
   center_closed: CalendarOff,
   tutor_not_qualified: UserX,
+  overridden: ShieldAlert,
 };
 
 export function StateLabel({ state }: { state: SessionState }) {
@@ -76,21 +80,39 @@ export function MarkerLabel({ code }: { code: MarkerCode }) {
   );
 }
 
+/** "Saving…" on an event whose move is pending (#58 D6). */
+export function SavingLabel() {
+  const { t } = useTranslation();
+  return (
+    <span className="cl-badge cl-badge--pending" data-pending="true">
+      <LoaderCircle aria-hidden="true" className="size-3.5 shrink-0" />
+      {t('scheduling.calendar.move.saving')}
+    </span>
+  );
+}
+
 export function EventContent({
   item,
   context,
   compact = false,
+  pending = false,
 }: {
   item: CalendarItem;
   context: LabelContext;
   compact?: boolean;
+  /** A move of this session is being saved. */
+  pending?: boolean;
 }) {
+  const name = pending
+    ? `${sessionName(item, context)}, ${context.t('scheduling.calendar.move.saving')}`
+    : sessionName(item, context);
   if (compact) {
     return (
       <span className="cl-event-content">
-        <span className="sr-only">{sessionName(item, context)}</span>
+        <span className="sr-only">{name}</span>
         <span aria-hidden="true" className="cl-event-body">
           <span className="cl-event-status">
+            {pending ? <SavingLabel /> : null}
             <StateLabel state={item.state} />
             {item.markers.map((code) => (
               <MarkerIcon key={code} code={code} />
@@ -107,13 +129,19 @@ export function EventContent({
   }
   return (
     <span className="cl-event-content">
-      <span className="sr-only">{sessionName(item, context)}</span>
+      <span className="sr-only">{name}</span>
       <span aria-hidden="true" className="cl-event-body">
         <span className="cl-event-line">
           <span className="cl-event-time">
             {sessionTimeText(item, context)}
           </span>{' '}
           <StateLabel state={item.state} />
+          {pending ? (
+            <>
+              {' '}
+              <SavingLabel />
+            </>
+          ) : null}
         </span>
         {item.markers.length > 0 ? (
           <span className="cl-event-badges">

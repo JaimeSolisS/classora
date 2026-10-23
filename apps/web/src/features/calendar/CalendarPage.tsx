@@ -32,6 +32,7 @@ export function CalendarPage() {
   useDocumentTitle(t('scheduling.calendar.title'));
   const timeZone = useCenterTimeZone();
   const canSchedule = useCan('schedule.manage');
+  const canOverride = useCan('schedule.override');
   const [params, setParams] = useSearchParams();
   const today = todayInZone(timeZone);
   const state = useMemo(
@@ -54,6 +55,7 @@ export function CalendarPage() {
         today={today}
         loaders={API_LOADERS}
         canSchedule={canSchedule}
+        canOverride={canOverride}
       />
     </div>
   );

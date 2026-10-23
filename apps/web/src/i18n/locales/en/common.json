@@ -1509,7 +1509,7 @@
         "roomsFailed": "The rooms could not be loaded."
       },
       "dialog": {
-        "description": "Session details. Nothing can be changed here yet.",
+        "description": "Session details.",
         "subject": "Subject",
         "subjectValue": "{{subject}} ({{level}})",
         "kind": "Class type",
@@ -1523,6 +1523,35 @@
         "state": "Status",
         "markers": "Warnings",
         "openSeries": "Open series"
+      },
+      "move": {
+        "saving": "Saving…",
+        "moved": "Moved to {{date}}, {{time}}.",
+        "movedWithOverride": "Moved with an override.",
+        "occurrence": "Only this occurrence was moved. It is now an exception to its series.",
+        "notSaved": "Move not saved",
+        "attempted": "{{subject}} was not moved to {{date}}, {{time}} ({{zone}}).",
+        "conflicts_one": "The session can’t move there: 1 conflict",
+        "conflicts_other": "The session can’t move there: {{count}} conflicts",
+        "backInPlace": "Nothing was saved; the session is back at its time.",
+        "overrideAction": "Override and move",
+        "overrideDescription": "The session is moved despite these rules. The reason is saved in the audit log.",
+        "overrideSubmitting": "Moving…",
+        "close": "Close",
+        "stale": "Someone else changed this session. Reload the calendar to see the latest version.",
+        "reload": "Reload",
+        "reloaded": "Calendar reloaded with the latest version of each session."
+      },
+      "reschedule": {
+        "action": "Reschedule",
+        "title": "Reschedule session",
+        "description": "{{subject}}: choose a new date and times. Every scheduling rule is checked again.",
+        "roomUnchanged": "{{room}}, unchanged",
+        "noRoomUnchanged": "No room, unchanged",
+        "occurrenceNote": "This session belongs to a weekly series: only it moves, and it becomes an exception to the series.",
+        "cancel": "Cancel",
+        "submit": "Save",
+        "submitting": "Saving…"
       }
     },
     "states": {
@@ -1542,6 +1571,10 @@
       "tutor_not_qualified": {
         "label": "Tutor no longer qualified",
         "explanation": "The tutor no longer holds an approved qualification for this subject. The session was not changed: assign another tutor or cancel it."
+      },
+      "overridden": {
+        "label": "Overridden",
+        "explanation": "Booked or moved with an override of a soft rule."
       }
     },
     "rules": {

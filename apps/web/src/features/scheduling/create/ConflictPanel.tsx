@@ -9,20 +9,32 @@ import { orderedConflicts } from './rules';
 // focus moves to its heading whenever the list changes, and each conflict
 // shows a translated message and a label: "Not allowed" (hard) or "Can be
 // overridden" (soft). The override action is rendered under it by the form.
+// Another write (#58: a calendar move) passes its own heading and hint, and
+// can leave the focus to its dialog (`focusOnChange={false}`).
 
 export function ConflictPanel({
   conflicts,
+  heading,
+  hint,
+  focusOnChange = true,
 }: {
   conflicts: readonly SchedulingConflict[];
+  /** Default: "The session can't be scheduled: N conflicts". */
+  heading?: string;
+  /** Default: "Change the form and try again; nothing was saved." */
+  hint?: string;
+  focusOnChange?: boolean;
 }) {
   const { t } = useTranslation();
   const message = useConflictMessage();
   const headingId = useId();
-  const heading = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    heading.current?.focus();
-  }, [conflicts]);
+    if (focusOnChange) {
+      headingRef.current?.focus();
+    }
+  }, [conflicts, focusOnChange]);
 
   return (
     <section
@@ -37,11 +49,12 @@ export function ConflictPanel({
       <div className="flex min-w-0 flex-col gap-3">
         <h2
           id={headingId}
-          ref={heading}
+          ref={headingRef}
           tabIndex={-1}
           className="font-medium text-destructive outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
-          {t('scheduling.conflicts.heading', { count: conflicts.length })}
+          {heading ??
+            t('scheduling.conflicts.heading', { count: conflicts.length })}
         </h2>
         <ul className="flex flex-col gap-2">
           {orderedConflicts(conflicts).map((conflict, index) => (
@@ -59,7 +72,7 @@ export function ConflictPanel({
           ))}
         </ul>
         <p className="text-sm text-muted-foreground">
-          {t('scheduling.conflicts.keepForm')}
+          {hint ?? t('scheduling.conflicts.keepForm')}
         </p>
       </div>
     </section>

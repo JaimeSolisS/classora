@@ -5,9 +5,11 @@ import type { FilterQuery } from './urlState';
 
 // The calls of the calendar (#57): the range read, the tutor filter options
 // (schedule.view, so Finance can use it, #57 E2), the student search and
-// the classrooms.
+// the classrooms; and the move of one session (#58, PATCH).
 
 export type CalendarItem = components['schemas']['ClassSessionCalendarItem'];
+export type ClassSessionUpdate = components['schemas']['ClassSessionUpdate'];
+export type ClassSessionUpdated = components['schemas']['ClassSessionUpdated'];
 export type CalendarPage = components['schemas']['ClassSessionCalendar'];
 export type SessionState = CalendarItem['state'];
 export type MarkerCode = CalendarItem['markers'][number];
@@ -25,6 +27,7 @@ export const SESSION_STATES: readonly SessionState[] = [
 export const MARKER_CODES: readonly MarkerCode[] = [
   'center_closed',
   'tutor_not_qualified',
+  'overridden',
 ];
 
 /** A filter option: a tutor, a student or a room. */
@@ -118,6 +121,19 @@ export async function fetchRoomOptions(
   }));
 }
 
+/** Move one session (#58): the drop, the resize and the Reschedule dialog. */
+export function updateSession(
+  sessionId: string,
+  body: ClassSessionUpdate,
+): Promise<ClassSessionUpdated> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/class-sessions/{class_session_id}', {
+      params: { path: { class_session_id: sessionId } },
+      body,
+    }),
+  );
+}
+
 /**
  * The series of one session (#54b D2): the event dialog's "Open series"
  * link. The range item has no `series_id`, so the dialog reads the
@@ -146,6 +162,8 @@ export interface CalendarLoaders {
   fetchRooms: typeof fetchRoomOptions;
   /** none: the event dialog has no "Open series" link. */
   fetchSeriesId?: typeof fetchSessionSeriesId;
+  /** Moves a session (#58); none: the calendar is read-only. */
+  updateSession?: typeof updateSession;
 }
 
 export const API_LOADERS: CalendarLoaders = {
@@ -154,4 +172,5 @@ export const API_LOADERS: CalendarLoaders = {
   searchStudents: searchStudentOptions,
   fetchRooms: fetchRoomOptions,
   fetchSeriesId: fetchSessionSeriesId,
+  updateSession,
 };

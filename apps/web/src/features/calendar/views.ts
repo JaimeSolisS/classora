@@ -1,12 +1,13 @@
 import classicThemePlugin from '@fullcalendar/react/themes/classic';
 import dayGridPlugin from '@fullcalendar/react/daygrid';
+import interactionPlugin from '@fullcalendar/react/interaction';
 import listPlugin from '@fullcalendar/react/list';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
 
 // The calendar's views (#57 C2, ADR-0005 D8): only FullCalendar's standard
 // time-grid day and week, day-grid month and list views, plus the classic
-// theme. The interaction plugin is not loaded: no dragging, selecting or
-// date-click (#58).
+// theme and the interaction code shipped in the pinned @fullcalendar/react
+// (#58 D1: dragging and resizing events; no selecting, no date-click).
 
 export const CALENDAR_VIEWS = {
   day: 'timeGridDay',
@@ -30,6 +31,7 @@ export const CALENDAR_PLUGINS = [
   timeGridPlugin,
   listPlugin,
   classicThemePlugin,
+  interactionPlugin,
 ];
 
 /** The viewport width from which the week view is the default (#57 D2). */
