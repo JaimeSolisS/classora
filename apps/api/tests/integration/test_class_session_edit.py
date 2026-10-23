@@ -322,10 +322,12 @@ def test_body_errors(ctx):
     assert field_errors(backwards) == [("ends_at", "ends_before_start")]
     same = move(ctx, row, day, "16:00", "17:00")
     assert field_errors(same) == [("body", "session_unchanged")]
+    # #58 A1: `override` is the #49 type (its 422s are in
+    # test_class_session_patch_override.py).
     override = move(
         ctx, row, day, "18:00", "19:00", override={"codes": [], "reason": "x"}
     )
-    assert code_of(override) == INVALID
+    assert field_errors(override) == [("codes", "codes_required")]
     tutor = move(ctx, row, day, "18:00", "19:00", tutor_user_id=str(ctx.tutor.id))
     assert code_of(tutor) == INVALID
     missing = patch_session(ctx, uuid.uuid4(), ctx.tl.now, **_valid(ctx, day))

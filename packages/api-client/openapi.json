@@ -8626,7 +8626,7 @@
           "class-sessions"
         ],
         "summary": "List Class Sessions",
-        "description": "The sessions overlapping `[from, to)` (`starts_at < to` and `ends_at >\nfrom`), by start then id, at most 1000 (`truncated` when more match).\nFilters combine with AND; an unknown id matches nothing. `cancelled`\nsessions only with `include_cancelled`. `markers` are computed on read:\n`center_closed` (an unassigned, offered or confirmed session on a\nclosure's local date) and `tutor_not_qualified` (a future offered or\nconfirmed session whose tutor holds no approved qualification).",
+        "description": "The sessions overlapping `[from, to)` (`starts_at < to` and `ends_at >\nfrom`), by start then id, at most 1000 (`truncated` when more match).\nFilters combine with AND; an unknown id matches nothing. `cancelled`\nsessions only with `include_cancelled`. `markers` are computed on read:\n`center_closed` (an unassigned, offered or confirmed session on a\nclosure's local date), `tutor_not_qualified` (a future offered or\nconfirmed session whose tutor holds no approved qualification) and\n`overridden` (booked or moved with an override, any state). Each item\nhas its `version` (a move sends it) and `series_id`.",
         "operationId": "list_class_sessions_api_v1_class_sessions_get",
         "parameters": [
           {
@@ -8925,7 +8925,7 @@
           "class-sessions"
         ],
         "summary": "Update Class Session",
-        "description": "Move one session (a one-off session or one occurrence of a series) to\nnew times and, optionally, another room (`classroom_id` absent keeps the\nroom, `null` removes it). The tutor, subject and students never change.\nEvery rule is checked again at the new time, the session itself\nexcluded. A series occurrence becomes an exception: later changes of\nthe series' rule never recreate its original date. Offered and confirmed\nsessions keep their state and tutor; a session in `conflict` that now\npasses is scheduled. The tutor (offered or confirmed) and the family\n(confirmed) are notified. `warnings` is always empty for now.",
+        "description": "Move one session (a one-off session or one occurrence of a series) to\nnew times and, optionally, another room (`classroom_id` absent keeps the\nroom, `null` removes it). The tutor, subject and students never change.\nEvery rule is checked again at the new time, the session itself\nexcluded. A series occurrence becomes an exception: later changes of\nthe series' rule never recreate its original date. Offered and confirmed\nsessions keep their state and tutor; a session in `conflict` that now\npasses is scheduled. The tutor (offered or confirmed) and the family\n(confirmed) are notified. With an `override` the listed soft conflicts\nof the new time are allowed, stored with the reason and audited; an\nearlier override never covers a later move. `warnings` lists the\ntutor's workload warnings at the new time.",
         "operationId": "update_class_session_api_v1_class_sessions__class_session_id__patch",
         "parameters": [
           {
@@ -8971,7 +8971,7 @@
             }
           },
           "403": {
-            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override (before anything is read, even for a move without a conflict). The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8991,7 +8991,7 @@
             }
           },
           "409": {
-            "description": "The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). Nothing is changed.",
+            "description": "The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is changed.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13311,6 +13311,23 @@
           "state": {
             "$ref": "#/components/schemas/SessionStateCode"
           },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id",
+            "description": "The weekly series of an occurrence; null for a one-off session."
+          },
           "starts_at": {
             "type": "string",
             "format": "date-time",
@@ -13365,6 +13382,8 @@
           "id",
           "kind",
           "state",
+          "version",
+          "series_id",
           "starts_at",
           "ends_at",
           "subject",
@@ -13374,7 +13393,7 @@
           "markers"
         ],
         "title": "ClassSessionCalendarItem",
-        "description": "One session on the calendar (#57 A4). ``markers`` are computed on\nread, in a fixed order (``center_closed``, ``tutor_not_qualified``)."
+        "description": "One session on the calendar (#57 A4). ``markers`` are computed on\nread, in a fixed order (``center_closed``, ``tutor_not_qualified``,\n``overridden``). ``version`` is what a move sends (#58)."
       },
       "ClassSessionCancel": {
         "properties": {
@@ -13952,6 +13971,17 @@
             ],
             "title": "Classroom Id",
             "description": "The new classroom; null is no room; absent keeps the room."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts of the new time with a reason (needs schedule.override). Null or absent: every conflict blocks."
           }
         },
         "additionalProperties": false,
@@ -13962,7 +13992,7 @@
           "ends_at"
         ],
         "title": "ClassSessionUpdate",
-        "description": "Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new\ninstants and optionally a new room. The tutor, the subject and the\nstudents never change here. ``classroom_id`` absent keeps the room;\n``null`` removes it. No ``override`` yet (#58 adds it)."
+        "description": "Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new\ninstants and optionally a new room. The tutor, the subject and the\nstudents never change here. ``classroom_id`` absent keeps the room;\n``null`` removes it. ``override`` (#58, the #49 type) needs\n``schedule.override``."
       },
       "ClassSessionUpdated": {
         "properties": {
@@ -14135,7 +14165,7 @@
             },
             "type": "array",
             "title": "Warnings",
-            "description": "Always empty for an edit for now."
+            "description": "The tutor's workload warnings at the new time (#50), the session itself counted once; empty without a tutor."
           }
         },
         "type": "object",
@@ -17827,7 +17857,8 @@
         "type": "string",
         "enum": [
           "center_closed",
-          "tutor_not_qualified"
+          "tutor_not_qualified",
+          "overridden"
         ]
       },
       "NotificationItem": {

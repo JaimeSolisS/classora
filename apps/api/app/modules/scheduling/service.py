@@ -91,7 +91,8 @@ Closure changes on existing occurrences (#232,
 by ``app.wiring`` (:func:`register_closure_notifications`).
 
 Editing (#54): :func:`update_class_session` (``PATCH`` one session or
-occurrence, :mod:`~app.modules.scheduling.session_edit`),
+occurrence, :mod:`~app.modules.scheduling.session_edit`; #58 adds its
+``override`` and workload ``warnings`` for the calendar's drag and drop),
 :func:`edit_class_series` and :func:`cancel_class_series` (a series from a
 date on, :mod:`~app.modules.scheduling.series_edit`, which documents the
 lock order, the "started" rule and the split algorithm),

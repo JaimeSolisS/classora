@@ -466,7 +466,7 @@ class ClassSessionRangeQuery(BaseModel):
     )
 
 
-type MarkerCode = Literal["center_closed", "tutor_not_qualified"]
+type MarkerCode = Literal["center_closed", "tutor_not_qualified", "overridden"]
 
 
 class CalendarSubject(BaseModel):
@@ -493,11 +493,16 @@ class CalendarParticipant(BaseModel):
 
 class ClassSessionCalendarItem(BaseModel):
     """One session on the calendar (#57 A4). ``markers`` are computed on
-    read, in a fixed order (``center_closed``, ``tutor_not_qualified``)."""
+    read, in a fixed order (``center_closed``, ``tutor_not_qualified``,
+    ``overridden``). ``version`` is what a move sends (#58)."""
 
     id: uuid.UUID
     kind: SessionKindCode
     state: SessionStateCode
+    version: int
+    series_id: uuid.UUID | None = Field(
+        description="The weekly series of an occurrence; null for a one-off session."
+    )
     starts_at: datetime
     ends_at: datetime
     subject: CalendarSubject
@@ -1107,7 +1112,8 @@ class ClassSessionUpdate(BaseModel):
     """Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new
     instants and optionally a new room. The tutor, the subject and the
     students never change here. ``classroom_id`` absent keeps the room;
-    ``null`` removes it. No ``override`` yet (#58 adds it)."""
+    ``null`` removes it. ``override`` (#58, the #49 type) needs
+    ``schedule.override``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1118,13 +1124,23 @@ class ClassSessionUpdate(BaseModel):
         default=None,
         description="The new classroom; null is no room; absent keeps the room.",
     )
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts of the new time with a reason"
+            " (needs schedule.override). Null or absent: every conflict blocks."
+        ),
+    )
 
 
 class ClassSessionUpdated(ClassSessionDetail):
     """The moved session and its warnings."""
 
     warnings: list[SchedulingWarning] = Field(
-        description="Always empty for an edit for now."
+        description=(
+            "The tutor's workload warnings at the new time (#50), the session"
+            " itself counted once; empty without a tutor."
+        )
     )
 
 

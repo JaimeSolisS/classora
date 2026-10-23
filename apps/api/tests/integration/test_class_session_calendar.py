@@ -23,6 +23,7 @@ from app.modules.identity.permissions import OWNER
 from app.modules.scheduling import service as scheduling
 from app.modules.scheduling.models import ClassSession
 from app.modules.scheduling.schemas import ClassSessionRangeQuery
+from tests.conftest import frozen_clock
 from tests.factories.families import persist_student
 from tests.factories.scheduling import (
     add_participant,
@@ -34,6 +35,7 @@ from tests.integration.auth_support import CreatedUser, auth_client, create_user
 from tests.integration.catalog_support import count_statements, get, post, unique_year
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
+from tests.integration.series_support import create_series, series_body, timeline
 from tests.integration.test_class_session_create import (
     new_student,
     new_subject,
@@ -365,6 +367,8 @@ def test_the_item_shape(module_seeded_url, client, cookie):
         "id",
         "kind",
         "state",
+        "version",
+        "series_id",
         "starts_at",
         "ends_at",
         "subject",
@@ -375,6 +379,7 @@ def test_the_item_shape(module_seeded_url, client, cookie):
     }
     assert item["id"] == str(session_id)
     assert (item["kind"], item["state"]) == ("individual", "offered")
+    assert (item["version"], item["series_id"]) == (detail["version"], None)
     assert item["starts_at"] == z(at(monday, "10:00"))
     assert item["ends_at"] == z(at(monday, "11:00"))
     assert item["subject"] == {
@@ -551,10 +556,88 @@ def test_both_markers_come_in_the_fixed_order(module_seeded_url, client, cookie)
     ]
 
 
+# --- #58 B2: the overridden marker ---------------------------------------------------
+
+
+def add_override(url: str, session_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    """One #49 override row (and its event) on the session."""
+    conflict = scheduling.Conflict(
+        "outside_operating_hours", {"date": "2031-01-12", "opens_at": None}
+    )
+
+    async def _add(session: AsyncSession) -> None:
+        await scheduling.record_session_override(
+            session, session_id, [conflict], "Lo pidió la familia", actor_id=actor_id
+        )
+
+    in_uow(url, _add, actor_id=actor_id)
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["unassigned", "offered", "confirmed", "completed", "cancelled", "conflict"],
+)
+def test_overridden_in_any_state(module_seeded_url, client, cookie, owner, state):
+    url = module_seeded_url
+    monday = first_monday()
+    marked = stored(url, at(monday, "10:00"), state=state)
+    plain = stored(url, at(monday, "12:00"), state=state)
+    add_override(url, marked, owner.id)
+
+    found = markers(client, cookie, monday)
+
+    # Offered and confirmed ones also get tutor_not_qualified (the factory's
+    # tutor holds no qualification); overridden always comes last.
+    assert found[str(marked)][-1] == "overridden"
+    assert found[str(marked)][:-1] == found[str(plain)]
+    assert "overridden" not in found[str(plain)]
+
+
+def test_overridden_comes_after_the_other_markers(
+    module_seeded_url, client, cookie, owner
+):
+    url = module_seeded_url
+    monday = first_monday()
+    close(url, monday)
+    every = stored(url, at(monday, "09:00"), tutor_user_id=new_tutor(url))
+    add_override(url, every, owner.id)
+    add_override(url, every, owner.id)
+
+    assert markers(client, cookie, monday)[str(every)] == [
+        "center_closed",
+        "tutor_not_qualified",
+        "overridden",
+    ]
+
+
+def test_an_occurrence_has_its_series_id(module_seeded_url, client):
+    # "Now" is the Sunday before the series' first Monday, so the horizon
+    # holds the occurrence (series_support's timeline).
+    url = module_seeded_url
+    tl = timeline()
+    payload = series_body(
+        student=new_student(url),
+        subject=new_subject(url),
+        starts_on=tl.monday,
+        start_time="16:00",
+        weekdays=[1],
+        count=1,
+    )
+    with frozen_clock(tl.now):
+        owner_cookie = sign_in(client, create_user(url, roles=(OWNER,)).username)
+        created = create_series(client, owner_cookie, payload)
+        assert code_of(created) == (201, None), created.text
+        [item] = read(client, owner_cookie, *week_of(tl.monday)).json()["items"]
+
+    assert item["series_id"] == created.json()["id"]
+    assert item["version"] == 1
+
+
 # --- A6: the statement budget --------------------------------------------------------
 
 
 def populate(url: str, monday: date, count: int) -> None:
+    actor_id = create_user(url, roles=(OWNER,)).id
     subject = new_subject(url)
     tutors = [
         new_tutor(url, qualified_for=[subject] if i % 2 else []) for i in range(3)
@@ -577,8 +660,17 @@ def populate(url: str, monday: date, count: int) -> None:
             for _ in range(2):
                 student = await persist_student(session, contacts=0)
                 await add_participant(session, made, student.id)
+            if i % 2 == 0:
+                # #58 B2: the overridden marker costs no statement.
+                await scheduling.record_session_override(
+                    session,
+                    made.id,
+                    [scheduling.Conflict("center_closed", {"date": "2031-01-07"})],
+                    "Presupuesto",
+                    actor_id=actor_id,
+                )
 
-    in_uow(url, _make)
+    in_uow(url, _make, actor_id=actor_id)
 
 
 @pytest.mark.parametrize("count", [1, 30])
@@ -595,6 +687,8 @@ def test_the_read_takes_at_most_ten_statements(module_seeded_url, count):
 
     assert len(calendar.items) == count
     assert statements <= 10
+    marked = [item for item in calendar.items if "overridden" in item.markers]
+    assert len(marked) == (count + 1) // 2
 
 
 def test_an_empty_range_takes_one_statement(module_seeded_url):

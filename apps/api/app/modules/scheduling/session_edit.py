@@ -1,11 +1,15 @@
 """Moving one session: ``PATCH /api/v1/class-sessions/{id}`` (#54 C1, E3;
 ADR-0005 D1, D2, D3, D4).
 
-One generic route for one-off sessions and series occurrences (#58 reuses
-it and adds ``override``). It changes the instants and, optionally, the
-room; the tutor, the subject and the students never change here (#52, #55).
-After the route's ``401``/``403`` and the body's ``422`` (``override`` and
-``tutor_user_id`` are unknown members):
+One generic route for one-off sessions and series occurrences; the
+calendar's drag and drop and its Reschedule dialog (#58) use it too. It
+changes the instants and, optionally, the room; the tutor, the subject and
+the students never change here (#52, #55). After the route's ``401``/``403``
+(``schedule.manage``), the body's ``422`` (``tutor_user_id`` is an unknown
+member; ``override`` is the #49 type with its codes) and the route's ``403
+permission_denied`` for an ``override`` without ``schedule.override`` (#58
+A2 step 3: before anything is read or locked, even for a move without a
+conflict):
 
 1. ``404`` for an unknown id;
 2. the locks (:mod:`~app.modules.scheduling.series_edit` order):
@@ -24,17 +28,32 @@ After the route's ``401``/``403`` and the body's ``422`` (``override`` and
 8. the #48 checks with the row's own tutor (a ``conflict`` row: the series'
    assigned tutor for its date), ``center_closed`` **on** (moving a session
    onto a closure date is a deliberate placement), the row itself excluded
-   from the overlaps: any conflict is ``409 scheduling_conflict``;
-9. the update: an occurrence becomes an exception (``is_exception``), its
-   ``original_start`` unchanged, so the nightly job never recreates its
-   date; a ``conflict`` row moves to ``occurrence_initial_state`` and its
-   inbox request is cancelled; ``offered`` / ``confirmed`` keep their state
-   and tutor; an ``EXCLUDE`` race is the #48 single-conflict ``409``;
-10. a pending offer of the row gets its ``respond_by`` capped at its first
+   from the overlaps;
+9. the override decision (#58 A2 step 10,
+   :func:`~app.modules.scheduling.overrides.evaluate_override` over the
+   conflicts recomputed here, under the locks): any hard conflict, or a soft
+   one the ``override`` doesn't list, is ``409 scheduling_conflict`` with the
+   complete list (the #48 body, never the override); listed codes that don't
+   occur are ignored; no override carries forward from an earlier write
+   (#58 A3): a later move needs its own;
+10. the tutor's workload warnings at the new time (#58 C1, #50
+    :func:`~app.modules.scheduling.workload_sessions.session_warnings`, the
+    session's own row excluded; at most two statements; none without a
+    tutor);
+11. the update: an occurrence becomes an exception (``is_exception``), its
+    ``original_start`` unchanged, so the nightly job never recreates its
+    date; a ``conflict`` row moves to ``occurrence_initial_state`` and its
+    inbox request is cancelled; ``offered`` / ``confirmed`` keep their state
+    and tutor; an ``EXCLUDE`` race is the #48 single-conflict ``409``;
+12. a pending offer of the row gets its ``respond_by`` capped at its first
     covered start (D3); a pending substitution of a ``confirmed`` row is
     withdrawn (#55 G3); ``scheduling.session_rescheduled`` to the tutor
     (``offered`` / ``confirmed``) and the family (``confirmed``);
-11. ``200`` with the session and ``warnings: []``.
+13. with something overridden, the #49 override row (an occurrence's
+    ``class_series_id`` is its own series, #236 D1) and its
+    ``scheduling.session_override`` event, in the same transaction;
+14. ``200`` with the session (its ``overrides`` included) and the
+    ``warnings``.
 """
 
 import uuid
@@ -78,6 +97,7 @@ from app.modules.scheduling.offer_flow import (
     withdraw_pending_substitutions,
 )
 from app.modules.scheduling.offer_records import attach_to_pending_series_offer
+from app.modules.scheduling.overrides import evaluate_override, record_session_override
 from app.modules.scheduling.schemas import ClassSessionUpdate, ClassSessionUpdated
 from app.modules.scheduling.series_edit import cancel_conflict_request
 from app.modules.scheduling.sessions import (
@@ -86,6 +106,7 @@ from app.modules.scheduling.sessions import (
 )
 from app.modules.scheduling.states import SessionState
 from app.modules.scheduling.times import scheduled_minutes
+from app.modules.scheduling.workload_sessions import session_warnings
 
 NOT_EDITABLE_STATES = frozenset(
     {SessionState.COMPLETED, SessionState.CANCELLED, SessionState.SKIPPED_CLOSURE}
@@ -107,7 +128,9 @@ async def update_class_session(
     *,
     actor_id: uuid.UUID,
 ) -> ClassSessionUpdated:
-    """``PATCH /api/v1/class-sessions/{id}``: see the module docstring."""
+    """``PATCH /api/v1/class-sessions/{id}``: see the module docstring.
+    ``actor_id`` is the signed-in user (the override's actor); the route has
+    already checked ``schedule.override`` for an ``override``."""
     found = await session.get(ClassSession, class_session_id)
     if found is None:
         raise RecordNotFoundError()
@@ -192,8 +215,21 @@ async def update_class_session(
         check_center_closed=True,
         exclude_session_ids=frozenset({row.id}),
     )
-    if conflicts:
+    decision = evaluate_override(conflicts, body.override)
+    if not decision.allowed:
         raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])
+    warnings = (
+        []
+        if tutor is None
+        else await session_warnings(
+            session,
+            tutor,
+            body.starts_at,
+            body.ends_at,
+            zone,
+            exclude_session_id=row.id,
+        )
+    )
 
     affected = Affected(row.id, previous_state, row.tutor_user_id, "changed")
     row.starts_at = body.starts_at
@@ -232,6 +268,17 @@ async def update_class_session(
     await notify_session_rescheduled(
         session, affected, starts_at=row.starts_at, actor_id=actor_id
     )
+    if decision.overridden:
+        # Only an allowed override reaches here, so body.override is set.
+        assert body.override is not None  # noqa: S101
+        await record_session_override(
+            session,
+            row.id,
+            decision.overridden,
+            body.override.reason,
+            actor_id=actor_id,
+            class_series_id=row.series_id,
+        )
     await session.flush()
     detail = await get_class_session(session, row.id)
-    return ClassSessionUpdated(**detail.model_dump(), warnings=[])
+    return ClassSessionUpdated(**detail.model_dump(), warnings=warnings)

@@ -7,7 +7,9 @@ are the pure :mod:`~app.modules.scheduling.workload`. The create path (#48
 C2) computes the warnings (:func:`session_warnings`) after the conflict
 checks and before the insert: at most two statements with a tutor (the
 limits, then the sessions, only when a limit is set), none without one. Not
-locked (#50 A8). #51 and #58 reuse both.
+locked (#50 A8). #51 and #58 reuse both; a move (#58 C1) passes
+``exclude_session_id`` so the moved session is counted once, at its new
+time, never also at its old one.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -38,15 +40,17 @@ async def tutor_workload_sessions(
     tutor_user_id: uuid.UUID,
     first_local_date: date,
     last_local_date: date,
+    *,
+    exclude_session_id: uuid.UUID | None = None,
 ) -> tuple[WorkloadSession, ...]:
     """The tutor's sessions in ``TUTOR_OCCUPYING_STATES`` overlapping
     :func:`~app.modules.scheduling.workload.workload_range` of the local
-    dates (the ISO weeks holding them, widened by ``BREAK_MAX``), by start.
-    One statement (the center zone comes from the Unit of Work's cache when
-    it was read before)."""
+    dates (the ISO weeks holding them, widened by ``BREAK_MAX``), by start,
+    without ``exclude_session_id``. One statement (the center zone comes
+    from the Unit of Work's cache when it was read before)."""
     zone = await administration.get_center_time_zone(session)
     low, high = workload_range(first_local_date, last_local_date, zone)
-    rows = await session.execute(
+    statement = (
         select(
             ClassSession.id,
             ClassSession.starts_at,
@@ -61,6 +65,9 @@ async def tutor_workload_sessions(
         )
         .order_by(ClassSession.starts_at, ClassSession.id)
     )
+    if exclude_session_id is not None:
+        statement = statement.where(ClassSession.id != exclude_session_id)
+    rows = await session.execute(statement)
     return tuple(WorkloadSession(*row) for row in rows)
 
 
@@ -86,16 +93,23 @@ async def session_warnings(
     starts_at: datetime,
     ends_at: datetime,
     zone: str,
+    *,
+    exclude_session_id: uuid.UUID | None = None,
 ) -> list[SchedulingWarning]:
-    """The workload warnings of a new session of the tutor (#50 A7): the
-    limits, then (only when one is set) the counted sessions of the
-    session's ISO week. At most two statements."""
+    """The workload warnings of a new session of the tutor (#50 A7), or of a
+    session moved to new times (#58 C1: ``exclude_session_id`` is the moved
+    session): the limits, then (only when one is set) the counted sessions
+    of the session's ISO week. At most two statements."""
     limits = await staff.teaching_limits(session, tutor_user_id)
     if not _has_limits(limits):
         return []
     local_date = starts_at.astimezone(ZoneInfo(zone)).date()
     sessions = await tutor_workload_sessions(
-        session, tutor_user_id, local_date, local_date
+        session,
+        tutor_user_id,
+        local_date,
+        local_date,
+        exclude_session_id=exclude_session_id,
     )
     return wire_warnings(
         workload_warnings(limits, sessions, (starts_at, ends_at), zone)

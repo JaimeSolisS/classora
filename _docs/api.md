@@ -1920,7 +1920,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
 | `POST`/`GET /api/v1/class-sessions/{class_session_id}/offers` | `schedule.assign` / `schedule.view` | Offer an `unassigned` session to a tutor; the session's offer history (M4-07, see Assignment offers). |
 | `POST /api/v1/class-sessions/{class_session_id}/conflict-overrides` | `require("schedule.manage")` plus `schedule.override` (checked after the `404`) | Override the soft conflicts of one `conflict` series occurrence and schedule it (M4-09c); `200` with `ClassSessionDetail`. See Class series, "Series overrides". |
-| `PATCH /api/v1/class-sessions/{class_session_id}` | `require("schedule.manage")` (Owner, Administrator) | Move one session or series occurrence (M4-09, #54), see "Moving a session" below. `200` with `ClassSessionDetail` plus `warnings` (always `[]` for now). |
+| `PATCH /api/v1/class-sessions/{class_session_id}` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` (checked before anything is read) | Move one session or series occurrence (M4-09, #54; the calendar's drag and drop, #58), see "Moving a session" below. `200` with `ClassSessionDetail` plus the tutor's workload `warnings`. |
 
 **Body** (unknown fields are `422`):
 
@@ -2143,10 +2143,12 @@ at `to` is left out). Filters combine with AND. The response is
 `{"items": [ClassSessionCalendarItem, …], "truncated": false}`, by
 `starts_at` then `id`, at most 1000 items; `truncated` is `true` when more
 matched (narrow the range or the filters; there is no cursor).
-`ClassSessionCalendarItem` is `{id, kind, state, starts_at, ends_at,
-subject {id, name, education_level_name}, tutor {id, display_name} | null,
-classroom {id, name} | null, participants [{student_id, display_name}],
-markers}`. The read takes at most 10 statements whatever the item count, and
+`ClassSessionCalendarItem` is `{id, kind, state, version, series_id,
+starts_at, ends_at, subject {id, name, education_level_name}, tutor {id,
+display_name} | null, classroom {id, name} | null, participants
+[{student_id, display_name}], markers}`. `version` is what a move sends
+(#58); `series_id` is the weekly series of an occurrence, `null` for a
+one-off session. The read takes at most 10 statements whatever the item count, and
 writes nothing (no lock, no audit event). Tutors, students and guardians get
 `403` (their own calendars come with M4-22).
 
@@ -2156,6 +2158,7 @@ writes nothing (no lock, no audit event). Tutors, students and guardians get
 | ------ | ---- |
 | `center_closed` | The session is `unassigned`, `offered` or `confirmed` and its local date (center zone) is in an active closure. A one-off session is only marked, never changed (ADR-0005 D6). |
 | `tutor_not_qualified` | The session is `offered` or `confirmed`, has a tutor, starts now or later, and the tutor holds no approved qualification for its subject (#198). Past and `completed` sessions never get it. |
+| `overridden` | The session has at least one override row (booked or moved with an override of a soft rule, #58), in any state: a historical fact, so `completed` and `cancelled` sessions keep it. Computed in the sessions statement (no extra statement). |
 
 **Tutor options** (`GET /api/v1/schedule/tutor-options`, #57): `q`
 (optional, 1–100 characters, trimmed) and `limit` (1–50, default 20). Returns
@@ -2250,38 +2253,66 @@ for a one-off session's override); see Class series, "Series overrides".
 
 `PATCH /api/v1/class-sessions/{class_session_id}` (M4-09, #54 C1;
 `scheduling/session_edit.py`) moves a one-off session or one occurrence of
-a series. Body (unknown fields are `422`, `override` and `tutor_user_id`
-included; #58 adds `override`):
+a series; the calendar's drag and drop and its Reschedule dialog send it
+too (M4-13, #58). Body (unknown fields are `422`, `tutor_user_id`
+included):
 
 ```json
 {"version": 3, "starts_at": "2026-12-07T18:00:00-06:00",
- "ends_at": "2026-12-07T19:00:00-06:00", "classroom_id": "…" | null}
+ "ends_at": "2026-12-07T19:00:00-06:00", "classroom_id": "…" | null,
+ "override": {"codes": ["outside_operating_hours"], "reason": "…"} | null}
 ```
 
 `classroom_id` absent keeps the room; `null` removes it. The tutor, the
 subject and the students never change here (offers and substitutions do
-that). **Order:**
+that). `override` is the create's (#49): 1–7 unique soft codes and a reason
+(1–1000 characters once trimmed), with the same `422` codes
+(`reason_required`, `reason_too_long`, `codes_required`, `duplicate_code`,
+`code_not_overridable`, `code_unknown`). **Order:**
 
-1. `401`/`403`, then `422` for the schema;
-2. `404 not_found` for an unknown id;
-3. the student locks, the zone `FOR SHARE`, for an occurrence its series
-   row `FOR SHARE` (its version is not bumped), then the session `FOR
-   UPDATE`;
-4. `409 version_conflict` on the session `version`;
-5. `409 session_not_editable`: the session has begun (`starts_at <= now`,
+1. `401`/`403` (`schedule.manage`), then `422` for the schema (the
+   `override` included);
+2. `403 permission_denied` when `override` is sent and the caller lacks
+   `schedule.override` (roles plus delegations), even for a move without a
+   conflict; nothing is read or locked;
+3. `404 not_found` for an unknown id;
+4. the student locks, the zone `FOR SHARE`, for a group occurrence the
+   group row `FOR UPDATE`, for an occurrence its series row `FOR SHARE`
+   (its version is not bumped), then the session `FOR UPDATE`;
+5. `409 version_conflict` on the session `version`;
+6. `409 session_not_editable`: the session has begun (`starts_at <= now`,
    `details.reason = "started"`), or it is `completed`, `cancelled` or
    `skipped_closure` (`details.state`; a makeup is an ordinary one-off
    session);
-6. `422` for the bounds (the create's codes and fields);
-7. `422` for the references (the create's codes: the students, the subject,
+7. `422` for the bounds (the create's codes and fields);
+8. `422` for the references (the create's codes: the students, the subject,
    the tutor the session keeps and the room), in one response;
-8. `422 session_unchanged` when the times and the room are the same;
-9. every Class sessions check at the new time with the session's own tutor
-   (for a `conflict` occurrence, the tutor its series assigns on its date),
-   `center_closed` included (moving onto a closure date is deliberate), the
-   session itself left out of the overlaps: any conflict is `409
-   scheduling_conflict`;
-10. the update, `200`.
+9. `422 session_unchanged` when the times and the room are the same (an
+   `override` doesn't make an unchanged body valid);
+10. every Class sessions check at the new time with the session's own tutor
+    (for a `conflict` occurrence, the tutor its series assigns on its date),
+    `center_closed` included (moving onto a closure date is deliberate), the
+    session itself left out of the overlaps, recomputed under the locks;
+11. the override decision (as the create's): any hard conflict, or a soft
+    one the `override` doesn't list, is `409 scheduling_conflict` with the
+    complete list (the #48 body; the override is not echoed); listed codes
+    that don't occur are ignored; with no conflict nothing is overridden;
+12. the tutor's workload warnings at the new time (as the create's, #50),
+    the session itself counted once (its old row is left out); `[]` without
+    a tutor; never in a `409`; at most 2 statements;
+13. the update and its side effects (below);
+14. with something overridden, one `class_session_overrides` row (an
+    occurrence's carries its own series in `class_series_id`) and the
+    named audit event `scheduling.session_override`, in the same
+    transaction;
+15. `200` with `ClassSessionDetail` (its `overrides` included) and
+    `warnings`.
+
+**No carry-forward:** an override covers the move it was sent with. A
+session booked or moved with an override and moved again to a time where
+the same soft conflict occurs needs a new override, or the answer is `409`;
+earlier override rows stay as history. No notification is sent for an
+override.
 
 An **occurrence** becomes an exception (`is_exception = true`) and keeps
 its `original_start`, so the nightly job never recreates its date and never

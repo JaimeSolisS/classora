@@ -16,7 +16,10 @@
   ``truncated`` tells that more matched.
 - Markers (:mod:`app.modules.scheduling.markers`) are computed here, with one
   ``closures_between`` over the items' local dates and one
-  ``staff.service.qualified_pairs``.
+  ``staff.service.qualified_pairs``; ``overridden`` (#58 B2) is an
+  ``EXISTS`` column of the sessions statement (no extra statement).
+- Each item carries its ``version`` and ``series_id`` (#58 B1): a calendar
+  move sends the version it read.
 - At most 10 statements whatever the item count: sessions, participants,
   students, subjects, tutors, classrooms, the zone, the closures and the
   qualifications.
@@ -52,7 +55,11 @@ from app.modules.scheduling.markers import (
     markers_of,
     needs_qualification_check,
 )
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    ClassSession,
+    ClassSessionOverride,
+    ClassSessionParticipant,
+)
 from app.modules.scheduling.schemas import (
     CalendarClassroom,
     CalendarParticipant,
@@ -105,9 +112,15 @@ def validate_range(start: datetime, end: datetime) -> None:
         raise SessionValidationError([_query_error("to", "range_too_long")])
 
 
-def _sessions_query(query: ClassSessionRangeQuery) -> Select[ClassSession]:
+def _sessions_query(query: ClassSessionRangeQuery) -> Select[ClassSession, bool]:
     start, end = query.from_, query.to
-    statement = select(ClassSession).where(
+    overridden = (
+        select(ClassSessionOverride.id)
+        .where(ClassSessionOverride.class_session_id == ClassSession.id)
+        .exists()
+        .label("overridden")
+    )
+    statement = select(ClassSession, overridden).where(
         ClassSession.starts_at < end,
         ClassSession.ends_at > start,
         ClassSession.starts_at > start - MAX_SESSION,
@@ -154,9 +167,11 @@ async def list_calendar_sessions(
 ) -> ClassSessionCalendar:
     """``GET /api/v1/class-sessions``: see the module docstring."""
     validate_range(query.from_, query.to)
-    rows = list(await session.scalars(_sessions_query(query)))
-    truncated = len(rows) > ITEM_LIMIT
-    rows = rows[:ITEM_LIMIT]
+    found = list(await session.execute(_sessions_query(query)))
+    truncated = len(found) > ITEM_LIMIT
+    found = found[:ITEM_LIMIT]
+    rows = [row for row, _ in found]
+    overridden = {row.id for row, flag in found if flag}
     if not rows:
         return ClassSessionCalendar(items=[], truncated=False)
 
@@ -229,6 +244,8 @@ async def list_calendar_sessions(
                 id=row.id,
                 kind=SessionKind(row.kind).value,
                 state=SessionState(row.state).value,
+                version=row.version,
+                series_id=row.series_id,
                 starts_at=row.starts_at.astimezone(UTC),
                 ends_at=row.ends_at.astimezone(UTC),
                 subject=CalendarSubject(
@@ -250,6 +267,7 @@ async def list_calendar_sessions(
                 markers=markers_of(
                     closed=gets_closure_marker(row.state, local_dates[row.id], closed),
                     not_qualified=row.id in unqualified,
+                    overridden=row.id in overridden,
                 ),
             )
         )

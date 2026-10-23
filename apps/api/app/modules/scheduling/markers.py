@@ -9,10 +9,14 @@ session, computed on every read and never stored.
   has a tutor, starts at or after now, and the tutor holds no approved
   qualification for its subject (#198: a revocation leaves future sessions
   in place). Past and ``completed`` sessions are history and never get it.
+- :data:`OVERRIDDEN` (#58 B2, handed over by #57 E1): the session has at
+  least one ``class_session_overrides`` row, in **any** state: it was booked
+  or moved with an override of a soft rule, a historical fact.
 
 Pure rules: the caller loads the closures and the qualified pairs once for
 the whole read (``catalog.service.closures_between``,
-``staff.service.qualified_pairs``).
+``staff.service.qualified_pairs``); ``overridden`` is an ``EXISTS`` in the
+sessions statement.
 """
 
 from datetime import date, datetime
@@ -23,8 +27,13 @@ from app.modules.scheduling.states import SessionState
 
 CENTER_CLOSED: Final = "center_closed"
 TUTOR_NOT_QUALIFIED: Final = "tutor_not_qualified"
+OVERRIDDEN: Final = "overridden"
 
-MARKER_ORDER: Final[tuple[MarkerCode, ...]] = (CENTER_CLOSED, TUTOR_NOT_QUALIFIED)
+MARKER_ORDER: Final[tuple[MarkerCode, ...]] = (
+    CENTER_CLOSED,
+    TUTOR_NOT_QUALIFIED,
+    OVERRIDDEN,
+)
 """The fixed order of ``markers`` on a calendar item."""
 
 CLOSURE_MARKED_STATES: Final = frozenset(
@@ -53,7 +62,13 @@ def needs_qualification_check(
     return state in QUALIFICATION_MARKED_STATES and has_tutor and starts_at >= now
 
 
-def markers_of(*, closed: bool, not_qualified: bool) -> list[MarkerCode]:
+def markers_of(
+    *, closed: bool, not_qualified: bool, overridden: bool
+) -> list[MarkerCode]:
     """The markers in :data:`MARKER_ORDER`."""
-    found = {CENTER_CLOSED: closed, TUTOR_NOT_QUALIFIED: not_qualified}
+    found = {
+        CENTER_CLOSED: closed,
+        TUTOR_NOT_QUALIFIED: not_qualified,
+        OVERRIDDEN: overridden,
+    }
     return [code for code in MARKER_ORDER if found[code]]
