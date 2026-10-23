@@ -9,7 +9,7 @@ requester (:func:`notify_change_request_decision`), all in the request's
 one Unit of Work. Nothing here commits.
 
 - :func:`get_change_request_review`: ``GET …/{id}/review``; ``404`` for an
-  unknown id; at most seven statements.
+  unknown id; at most six statements.
 - :func:`approve_change_request` (C2 steps 3-11, 13): the request without a
   lock (``404``) → ``422`` for a member a cancellation can't take
   (``classroom_id``, ``override``) → the locks: a **cancellation** takes the
@@ -190,9 +190,9 @@ async def get_change_request_review(
     session: AsyncSession, change_request_id: uuid.UUID
 ) -> ChangeRequestReview:
     """``GET /api/v1/change-requests/{change_request_id}/review``: at most
-    seven statements (the request with its session and participant, its
-    inbox item, the policy version, the student, the subject, the accounts
-    and the room)."""
+    six statements (the request with its session and participant; the
+    policy version with the inbox item's id; the student; the subject; the
+    accounts; the room)."""
     participant = (
         select(ClassSessionParticipant.student_id)
         .where(ClassSessionParticipant.class_session_id == ClassSession.id)
@@ -214,11 +214,11 @@ async def get_change_request_review(
     if found is None:
         raise RecordNotFoundError()
     request, row, participant_id = found
-    approval_id = await administration.approval_request_id_for_subject(
-        session, request_type=CHANGE_REQUEST_TYPE, subject_id=request.id
-    )
-    policy = await administration.get_scheduling_policy_version(
-        session, request.policy_id
+    policy, approval_id = await administration.get_policy_version_and_approval_id(
+        session,
+        request.policy_id,
+        request_type=CHANGE_REQUEST_TYPE,
+        subject_id=request.id,
     )
     student_id = student_of(request, participant_id)
     student = (

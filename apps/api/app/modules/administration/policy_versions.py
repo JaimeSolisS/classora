@@ -41,6 +41,7 @@ from app.modules.administration.errors import (
     InvalidEffectiveFromError,
     PolicyVersionInEffectError,
 )
+from app.modules.administration.models import ApprovalRequest
 from app.modules.administration.scheduling_policy import SchedulingPolicyValues
 from app.modules.administration.schemas import (
     SchedulingPolicyCreate,
@@ -113,6 +114,34 @@ async def get_scheduling_policy_version(
     a version in force can't be deleted, so the stored id stays valid."""
     row = await session.get(SchedulingPolicy, policy_id)
     return None if row is None else _values(row)
+
+
+async def get_policy_version_and_approval_id(
+    session: AsyncSession,
+    policy_id: uuid.UUID,
+    *,
+    request_type: str,
+    subject_id: uuid.UUID,
+) -> tuple[SchedulingPolicyValues | None, uuid.UUID | None]:
+    """One policy version by id and the id of the approval request of
+    ``request_type`` about ``subject_id``, in **one** statement (#62 C1: a
+    change request's review reads both; unknown → ``None``)."""
+    approval_id = (
+        select(ApprovalRequest.id)
+        .where(ApprovalRequest.request_type == request_type)
+        .where(ApprovalRequest.subject_id == subject_id)
+        .scalar_subquery()
+    )
+    found = (
+        await session.execute(
+            select(SchedulingPolicy, approval_id.label("approval_id")).where(
+                SchedulingPolicy.id == policy_id
+            )
+        )
+    ).first()
+    if found is None:
+        return None, None
+    return _values(found[0]), found[1]
 
 
 async def get_scheduling_policy_overview(

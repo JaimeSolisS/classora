@@ -695,14 +695,18 @@ def test_the_review_shows_the_session_live(scene):
     assert found["approval_request_id"] == str(approval_of(scene.url, request["id"]).id)
     assert code_of(review(scene, uuid.uuid4())) == NOT_FOUND
 
+    # C1: at most six statements, with a room and a tutor (the most reads).
     with frozen_clock(scene.ctx.tl.now):
-        statements, _ = count_statements(
+        statements, found_review = count_statements(
             scene.url,
             lambda session: scheduling.get_change_request_review(
                 session, uuid.UUID(request["id"])
             ),
         )
-    assert statements <= 7
+    assert found_review.session.classroom is not None
+    assert found_review.session.tutor is not None
+    assert found_review.approval_request_id is not None
+    assert statements <= 6
 
 
 def test_only_owners_and_administrators_decide(scene):

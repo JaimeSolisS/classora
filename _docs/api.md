@@ -3502,7 +3502,7 @@ it.
 | `GET /api/v1/change-requests` | `authenticated()` + record policy | `?student_id&class_session_id&status=pending\|approved\|rejected\|withdrawn\|all` (default `all`); the #21 offset page (`limit` 1-100, default 25); newest first; at most 5 statements. |
 | `GET /api/v1/change-requests/{change_request_id}` | `authenticated()` + record policy | `ChangeRequestDetail`. |
 | `POST /api/v1/change-requests/{change_request_id}/withdraw` | `authenticated()` + record policy + the requester | `{version}`; `200` with `ChangeRequestDetail`. |
-| `GET /api/v1/change-requests/{change_request_id}/review` | `require("schedule.manage")` | `200` with `ChangeRequestReview`; at most 7 statements. |
+| `GET /api/v1/change-requests/{change_request_id}/review` | `require("schedule.manage")` | `200` with `ChangeRequestReview`; at most 6 statements. |
 | `POST /api/v1/change-requests/{change_request_id}/approve` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{version, exception?, reason?, classroom_id?, override?}`; `200` with `{change_request: ChangeRequestReview, class_session: ClassSessionDetail, warnings}`. |
 | `POST /api/v1/change-requests/{change_request_id}/reject` | `require("schedule.manage")` | `{version, reason}`; `200` with `ChangeRequestReview`. |
 
