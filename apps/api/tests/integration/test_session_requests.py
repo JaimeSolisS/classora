@@ -607,7 +607,7 @@ def test_the_inbox_cannot_decide_a_pending_request(
     assert approval_of(module_seeded_url, detail["id"]).status == "pending"
     assert request_rows(module_seeded_url, family.student_id)[0].status == "pending"
     assert item["request_type"] == "scheduling.session_request"
-    assert item["allowed_actions"] == ["approve", "reject"]
+    assert item["allowed_actions"] == []  # #60: decided on the review page
     assert item["subject"] == {
         "student_name": detail["student"]["display_name"],
         "subject_name": detail["subject"]["name"],

@@ -342,6 +342,9 @@ describe('/schedule/requests/:id', () => {
 
     choose(tutorSelect(), TUTORS[0]!.id);
     await click(buttonByText(main(), 'Confirm request')!);
+    expect(main().textContent).toContain(
+      `The request can’t be confirmed: ${SOFT_CONFLICTS.length} conflicts`,
+    );
     await click(buttonByText(main(), 'Override and confirm')!);
     const dialog = openDialog()!;
     typeInto(dialog.querySelector('textarea')!, 'Acordado con la familia');
@@ -485,7 +488,8 @@ describe('the inbox and the family (H2, G2, F3)', () => {
       class_session_id: null,
       session_request_id: REQUEST_ID,
     },
-    allowed_actions: ['approve', 'reject'],
+    // #60: decided on the review page, so the API lists no actions.
+    allowed_actions: [],
     version: 1,
   };
 
@@ -494,7 +498,7 @@ describe('the inbox and the family (H2, G2, F3)', () => {
       `/schedule/requests/${REQUEST_ID}`,
     );
     expect(
-      sessionRequestReviewLink({ ...ITEM, allowed_actions: [] }),
+      sessionRequestReviewLink({ ...ITEM, status: 'approved' }),
     ).toBeNull();
     stubApi({
       'GET /api/v1/auth/me': meAs(ADMIN),

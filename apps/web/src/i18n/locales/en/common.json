@@ -1903,7 +1903,10 @@
         "submit": "Confirm request",
         "submitting": "Confirming…",
         "overrideAction": "Override and confirm",
-        "overrideDescription": "The session is created despite these rules. The reason is saved in the audit log."
+        "overrideDescription": "The session is created despite these rules. The reason is saved in the audit log.",
+        "conflictsHeading_one": "The request can’t be confirmed: 1 conflict",
+        "conflictsHeading_other": "The request can’t be confirmed: {{count}} conflicts",
+        "conflictsHint": "Choose another tutor or classroom, override the rules that can be overridden, or reject the request; nothing was saved."
       },
       "reject": {
         "heading": "Reject",

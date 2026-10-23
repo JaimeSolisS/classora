@@ -3432,7 +3432,9 @@ note, status, class_session_id, session_request_id}`. The generic approve and re
 decide it (they carry no tutor): they succeed only for a request the review
 routes already confirmed or rejected, otherwise `409
 session_request_review_route_required` with `details.review_path` and the
-item stays pending.
+item stays pending. Its items list no `allowed_actions` (the inbox
+shows a "Review" link instead): a handler may set `inbox_decisions = False`
+for a type decided on its own page.
 
 **Limits and data.** `available_slots.user` 60 per 15 min and
 `session_request.user` 10 per hour, per signed-in user (see Rate limits).

@@ -216,15 +216,15 @@ export function sessionRequestSubject(
 /**
  * The staff review page of a pending session request (#60 H2): the inbox
  * shows a "Review" link instead of Approve / Reject, which can't carry the
- * tutor. Null for another type, a decided item or an older summary without
- * the request id.
+ * tutor (the API lists no allowed actions for these items). Null for another
+ * type, a decided item or an older summary without the request id.
  */
 export function sessionRequestReviewLink(
   item: ApprovalRequestItem,
 ): string | null {
   if (
     !sessionRequestSubject(item) ||
-    item.allowed_actions.length === 0 ||
+    item.status !== 'pending' ||
     typeof item.subject.session_request_id !== 'string'
   ) {
     return null;

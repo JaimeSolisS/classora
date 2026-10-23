@@ -1927,7 +1927,11 @@
         "submit": "Confirmar solicitud",
         "submitting": "Confirmando…",
         "overrideAction": "Omitir reglas y confirmar",
-        "overrideDescription": "La sesión se crea a pesar de estas reglas. El motivo se guarda en el registro de auditoría."
+        "overrideDescription": "La sesión se crea a pesar de estas reglas. El motivo se guarda en el registro de auditoría.",
+        "conflictsHeading_one": "La solicitud no se puede confirmar: 1 conflicto",
+        "conflictsHeading_many": "La solicitud no se puede confirmar: {{count}} conflictos",
+        "conflictsHeading_other": "La solicitud no se puede confirmar: {{count}} conflictos",
+        "conflictsHint": "Elige otro tutor o salón, omite las reglas que se pueden omitir o rechaza la solicitud; no se guardó nada."
       },
       "reject": {
         "heading": "Rechazar",

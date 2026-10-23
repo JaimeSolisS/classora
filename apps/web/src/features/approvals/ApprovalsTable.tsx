@@ -65,7 +65,11 @@ export function ApprovalsTable({
     content = <p>{t('approvals.list.empty')}</p>;
   } else {
     const { items, total, limit, offset } = state.page;
-    const actionable = items.some((item) => item.allowed_actions.length > 0);
+    const actionable = items.some(
+      (item) =>
+        item.allowed_actions.length > 0 ||
+        sessionRequestReviewLink(item) !== null,
+    );
     content = (
       <>
         <Table aria-labelledby={titleId}>

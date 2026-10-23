@@ -519,6 +519,14 @@ async def decide_approval_request(
 # --- Reading (C1-C3) -------------------------------------------------------------
 
 
+def _inbox_decisions(handler: ApprovalHandler) -> bool:
+    """Whether the inbox offers the type's decisions (#60 E1). A handler may
+    set ``inbox_decisions = False`` when its items are decided on their own
+    page (the generic routes then answer the handler's ``409``); the items
+    then list no ``allowed_actions``. Optional: absent means ``True``."""
+    return bool(getattr(handler, "inbox_decisions", True))
+
+
 def allowed_actions(
     status: str, *, supports_request_changes: bool
 ) -> list[ApprovalAction]:
@@ -573,11 +581,15 @@ async def _items(
             resolved_by=name(request.resolved_by_user_id),
             reason=request.reason,
             subject=dict(summaries.get((request.request_type, request.subject_id), {})),
-            allowed_actions=allowed_actions(
-                request.status,
-                supports_request_changes=_handlers[
-                    request.request_type
-                ].supports_request_changes,
+            allowed_actions=(
+                allowed_actions(
+                    request.status,
+                    supports_request_changes=_handlers[
+                        request.request_type
+                    ].supports_request_changes,
+                )
+                if _inbox_decisions(_handlers[request.request_type])
+                else []
             ),
             version=request.version,
         )

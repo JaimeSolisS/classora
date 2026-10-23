@@ -362,7 +362,17 @@ export function OfferPanel<T = AssignmentOfferCreated>({
       ) : null}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
-          <ConflictPanel conflicts={conflicts} />
+          {variant === 'confirm' ? (
+            <ConflictPanel
+              conflicts={conflicts}
+              heading={t('scheduling.requestReview.confirm.conflictsHeading', {
+                count: conflicts.length,
+              })}
+              hint={t('scheduling.requestReview.confirm.conflictsHint')}
+            />
+          ) : (
+            <ConflictPanel conflicts={conflicts} />
+          )}
           {action === 'override' ? (
             <div>
               <Button

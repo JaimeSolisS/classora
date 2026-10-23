@@ -500,8 +500,14 @@ def test_logs_never_carry_the_note_the_student_or_the_times(
     assert code_of(conflict) == (409, "session_request_overlap")
 
     secrets = [note, str(family.student_id), "2031-01-06"]
-    assert caplog.records
-    for record in caplog.records:
+    # Only the app's own loggers: the test client's request lines (httpx,
+    # emitted once another test in the process configured logging) carry
+    # the query string by design and are not application logs.
+    records = [
+        r for r in caplog.records if r.name == "app" or r.name.startswith("app.")
+    ]
+    assert records
+    for record in records:
         text = " ".join(
             [record.getMessage(), *(str(v) for v in record.__dict__.values())]
         )

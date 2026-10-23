@@ -78,6 +78,10 @@ class SessionRequestApprovalHandler:
     review_permission: Final = SCHEDULE_MANAGE
     supports_request_changes: Final = False
     reason_required_on_reject: Final = True
+    inbox_decisions: Final = False
+    """#60 E1: the inbox lists no approve/reject for these items; staff
+    decide on the review page (the generic routes answer ``409
+    session_request_review_route_required``)."""
 
     async def approve(
         self,
