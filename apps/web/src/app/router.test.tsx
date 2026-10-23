@@ -85,6 +85,7 @@ describe('route tree', () => {
       'schedule/sessions/:sessionId',
       'schedule/series/:seriesId',
       'schedule/requests/:requestId',
+      'schedule/change-requests/:requestId',
       'offers',
       'courses',
       'courses/templates/new',
@@ -152,31 +153,33 @@ describe('route tree', () => {
     expect(children[29]!.handle).toEqual({ permission: 'schedule.view' });
     // #60 H1.
     expect(children[30]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[31]!.handle).toEqual({ role: 'tutor' });
+    // #62 G1.
+    expect(children[31]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[32]!.handle).toEqual({ role: 'tutor' });
     // #64 G1.
-    expect(children[32]!.handle).toEqual({ permission: 'course.view' });
-    expect(children[33]!.handle).toEqual({ permission: 'course.manage' });
-    expect(children[34]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[33]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[34]!.handle).toEqual({ permission: 'course.manage' });
+    expect(children[35]!.handle).toEqual({ permission: 'course.view' });
     // #37 H3.
-    expect(children[35]!.handle).toEqual({ permission: 'settings.manage' });
-    // #61 F1.
     expect(children[36]!.handle).toEqual({ permission: 'settings.manage' });
+    // #61 F1.
+    expect(children[37]!.handle).toEqual({ permission: 'settings.manage' });
     // #234 A3: staff with schedule.view or students; the create form needs
     // schedule.manage.
     const groups = {
       anyOf: [{ permission: 'schedule.view' }, { anyRole: ['student'] }],
     };
-    expect(children[37]!.handle).toEqual(groups);
-    expect(children[38]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[39]!.handle).toEqual(groups);
+    expect(children[38]!.handle).toEqual(groups);
+    expect(children[39]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[40]!.handle).toEqual(groups);
     // #59 F1: guardians and students (the API's record policy decides).
     const requests = { anyRole: ['guardian', 'student'] };
-    expect(children[40]!.handle).toEqual(requests);
     expect(children[41]!.handle).toEqual(requests);
-    expect(children[42]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[43]!.id).toBe('privacy-notice');
+    expect(children[42]!.handle).toEqual(requests);
     expect(children[43]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[44]!.id).toBe('privacy-notice');
+    expect(children[44]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

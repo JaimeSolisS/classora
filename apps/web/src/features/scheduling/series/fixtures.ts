@@ -201,6 +201,7 @@ export const OCCURRENCE_SESSION: ClassSessionDetail = {
   pending_substitution: null,
   cancellation: null,
   group_id: null,
+  pending_change_request_id: null,
 };
 
 export const SERIES_EDITED: ClassSeriesEdited = {

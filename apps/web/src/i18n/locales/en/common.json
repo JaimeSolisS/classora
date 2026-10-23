@@ -295,7 +295,8 @@
       "staff_qualification": "Tutor qualification",
       "scheduling_offer_reassignment": "Session to reassign",
       "scheduling_occurrence_conflict": "Series session conflict",
-      "scheduling_session_request": "Session request"
+      "scheduling_session_request": "Session request",
+      "scheduling_change_request": "Change request"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -309,7 +310,9 @@
       "seriesReassignmentExpired_other": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)",
       "substitutionDeclined": "Substitute {{tutor}} declined · {{subject}} · {{when}} · still taught by {{original}}",
       "substitutionExpired": "Substitute {{tutor}} didn't answer · {{subject}} · {{when}} · still taught by {{original}}",
-      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · requested by {{requester}}"
+      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · requested by {{requester}}",
+      "changeRequest": "{{kind}} · {{student}} · {{subject}} · {{when}} · {{classification}}",
+      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}"
     },
     "list": {
       "title": "Requests",
@@ -1392,7 +1395,14 @@
       "scheduling_session_tutor_changed": "A class on {{starts_at}} has a new tutor.",
       "scheduling_session_cancelled": "A class on {{starts_at}} is cancelled.",
       "scheduling_session_request_confirmed": "Your session request for {{student_name}} ({{subject_name}}, {{starts_at}}) was confirmed.",
-      "scheduling_session_request_rejected": "Your session request for {{student_name}} ({{subject_name}}, {{starts_at}}) was rejected. See the reason in your session requests."
+      "scheduling_session_request_rejected": "Your session request for {{student_name}} ({{subject_name}}, {{starts_at}}) was rejected. See the reason in your session requests.",
+      "scheduling_change_request_approved": "Your change request for the class on {{starts_at}} was approved.",
+      "scheduling_change_request_approved_cancellation": "Your request to cancel the class on {{starts_at}} was approved.",
+      "scheduling_change_request_approved_cancellation_makeup": "Your request to cancel the class on {{starts_at}} was approved. A makeup class can be scheduled until {{makeup_until}}.",
+      "scheduling_change_request_approved_reschedule": "Your request to move the class on {{starts_at}} was approved: it is now on {{new_starts_at}}.",
+      "scheduling_change_request_rejected": "Your change request for the class on {{starts_at}} was rejected.",
+      "scheduling_change_request_rejected_cancellation": "Your request to cancel the class on {{starts_at}} was rejected; the class stays as scheduled.",
+      "scheduling_change_request_rejected_reschedule": "Your request to move the class on {{starts_at}} was rejected; the class stays as scheduled."
     }
   },
   "scheduling": {
@@ -1925,6 +1935,103 @@
         "notPending": "This request was already decided or withdrawn. The page is updated.",
         "started": "The requested time has started, so the request can’t be confirmed. The page is updated.",
         "changed": "This request changed since you loaded it. The page is updated."
+      }
+    },
+    "changeRequest": {
+      "title": "Review change request",
+      "summary": "Request",
+      "status": "Status",
+      "statuses": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "withdrawn": "Withdrawn"
+      },
+      "kind": "Change",
+      "kinds": {
+        "cancellation": "Cancellation",
+        "reschedule": "Reschedule"
+      },
+      "initiators": {
+        "family": "family",
+        "tutor": "tutor"
+      },
+      "requestedBy": "Requested by",
+      "requestedByText": "{{name}} ({{role}}), {{when}}",
+      "session": "Session now",
+      "sessionState": "State: {{state}}",
+      "proposed": "Proposed time",
+      "note": "Note",
+      "policyOutcome": "Policy outcome",
+      "policyVersion": "Scheduling policy in force since {{date}}",
+      "outcomeText": "{{classification}} — {{makeup}}",
+      "makeupUntil": "makeup until {{date}}",
+      "noMakeup": "no makeup",
+      "classification": {
+        "on_time": "On time",
+        "late": "Late",
+        "no_show": "No-show",
+        "excused": "Excused"
+      },
+      "outcome": "Decision",
+      "approvedText": "Approved: the change was applied to the session.",
+      "approvedExceptionText": "Approved as an exception: treated as excused.",
+      "finalOutcome": "Outcome: {{outcome}}",
+      "rejectedText": "Rejected: the session was not changed.",
+      "withdrawnText": "The requester withdrew this request.",
+      "reasonText": "Reason the requester sees: {{reason}}",
+      "decidedBy": "Decided by {{name}}, {{when}}",
+      "openSession": "Open the session",
+      "approvedCancelled": "Request approved. The session was cancelled and everyone affected was notified.",
+      "approvedMoved": "Request approved. The session was moved and everyone affected was notified.",
+      "reason": "Reason",
+      "reasonRequired": "Give a reason.",
+      "reasonTooLong": "Use at most 1000 characters.",
+      "decide": {
+        "heading": "Decide",
+        "introCancellation": "Approving cancels the session through the usual cancellation: the tutor and the family are notified. Approve it as an exception to treat it as excused, or reject it with a reason.",
+        "introReschedule": "Approving moves the session to the proposed time, with every scheduling rule checked again (the booking notice counts from when the request was made). Approve it as an exception to treat it as excused, or reject it with a reason.",
+        "room": "Classroom at the new time",
+        "keepRoom": "Keep {{room}}",
+        "keepNoRoom": "Keep without a classroom",
+        "approveCancellation": "Approve: cancel the session",
+        "approveReschedule": "Approve: move the session",
+        "approving": "Approving…",
+        "exception": "Approve as exception",
+        "reject": "Reject",
+        "cannotApprove": "The session has started or is no longer confirmed, so the request can no longer be approved. You can still reject it.",
+        "conflictsHeading_one": "The session can’t be moved: 1 conflict",
+        "conflictsHeading_other": "The session can’t be moved: {{count}} conflicts",
+        "conflictsHint": "Choose another classroom, override the rules that can be overridden, or reject the request; nothing was saved.",
+        "overrideAction": "Override and approve",
+        "overrideDescription": "The session is moved despite these rules. The reason is saved in the audit log.",
+        "fixHardFirst": "Some conflicts can’t be overridden: choose another classroom or reject the request."
+      },
+      "exception": {
+        "title": "Approve as an exception",
+        "description": "Treated as excused; the family will see this reason.",
+        "keep": "Cancel",
+        "submit": "Approve as exception",
+        "submitting": "Approving…"
+      },
+      "reject": {
+        "title": "Reject the change request",
+        "description": "The requester will see this reason.",
+        "keep": "Keep the request",
+        "submit": "Reject request",
+        "submitting": "Rejecting…"
+      },
+      "stale": {
+        "notPending": "This request was already decided or withdrawn. The page is updated.",
+        "started": "The session has started, so the request can’t be approved. The page is updated.",
+        "sessionChanged": "The session changed since the request was made (for example, it was cancelled), so the request can’t be approved. The page is updated.",
+        "changed": "This request changed since you loaded it. The page is updated."
+      },
+      "pendingNotice": "A change request is pending for this session.",
+      "pendingLink": "Review the change request",
+      "cancellationReasons": {
+        "family_request": "Cancelled at the family’s request",
+        "tutor_request": "Cancelled at the tutor’s request"
       }
     }
   },

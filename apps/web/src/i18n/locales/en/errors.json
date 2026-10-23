@@ -145,5 +145,18 @@
   "range_in_past": "Choose a first date from today on.",
   "range_too_far": "Choose dates at most 60 days ahead.",
   "session_request_started": "The requested time has already started, so it can't be confirmed. Reject the request instead.",
-  "session_request_review_route_required": "Session requests are confirmed or rejected on their review page."
+  "session_request_review_route_required": "Session requests are confirmed or rejected on their review page.",
+  "change_request_kind_unsupported": "Only individual sessions can be changed by request.",
+  "class_session_not_changeable": "Only a confirmed session can be changed by request.",
+  "change_request_session_started": "The session has already started, so the request can’t be approved. Reject it instead.",
+  "change_request_pending": "This session already has a pending change request.",
+  "change_request_not_pending": "This request is no longer pending. The page is updated.",
+  "change_request_session_changed": "The session changed since the request was made. Reject the request instead.",
+  "change_request_review_route_required": "Change requests are approved or rejected on their review page.",
+  "proposal_in_past": "Propose a time in the future.",
+  "proposal_unchanged": "Propose a time different from the session’s.",
+  "exception_not_applicable": "This request is already excused; approve it without an exception.",
+  "classroom_not_applicable": "A classroom only applies to a reschedule.",
+  "proposal_required": "Propose the new time.",
+  "proposal_not_allowed": "A cancellation takes no proposed time."
 }

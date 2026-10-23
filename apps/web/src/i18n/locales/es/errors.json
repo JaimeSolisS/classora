@@ -145,5 +145,18 @@
   "range_in_past": "Elige una primera fecha a partir de hoy.",
   "range_too_far": "Elige fechas de hasta 60 días adelante.",
   "session_request_started": "La hora solicitada ya comenzó, así que no se puede confirmar. Rechaza la solicitud.",
-  "session_request_review_route_required": "Las solicitudes de sesión se confirman o rechazan en su página de revisión."
+  "session_request_review_route_required": "Las solicitudes de sesión se confirman o rechazan en su página de revisión.",
+  "change_request_kind_unsupported": "Solo las sesiones individuales se pueden cambiar por solicitud.",
+  "class_session_not_changeable": "Solo una sesión confirmada se puede cambiar por solicitud.",
+  "change_request_session_started": "La sesión ya empezó, así que la solicitud no se puede aprobar. Recházala.",
+  "change_request_pending": "Esta sesión ya tiene una solicitud de cambio pendiente.",
+  "change_request_not_pending": "Esta solicitud ya no está pendiente. La página se actualizó.",
+  "change_request_session_changed": "La sesión cambió desde que se hizo la solicitud. Recházala.",
+  "change_request_review_route_required": "Las solicitudes de cambio se aprueban o rechazan en su página de revisión.",
+  "proposal_in_past": "Propón un horario en el futuro.",
+  "proposal_unchanged": "Propón un horario distinto al de la sesión.",
+  "exception_not_applicable": "Esta solicitud ya está justificada; apruébala sin excepción.",
+  "classroom_not_applicable": "El aula solo aplica a un cambio de horario.",
+  "proposal_required": "Propón el nuevo horario.",
+  "proposal_not_allowed": "Una cancelación no lleva horario propuesto."
 }

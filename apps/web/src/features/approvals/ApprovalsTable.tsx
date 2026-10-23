@@ -25,7 +25,7 @@ import {
   namedActionLabelKey,
   reassignmentLink,
   reassignmentSubject,
-  sessionRequestReviewLink,
+  itemReviewLink,
   typeLabel,
 } from './summary';
 
@@ -67,8 +67,7 @@ export function ApprovalsTable({
     const { items, total, limit, offset } = state.page;
     const actionable = items.some(
       (item) =>
-        item.allowed_actions.length > 0 ||
-        sessionRequestReviewLink(item) !== null,
+        item.allowed_actions.length > 0 || itemReviewLink(item) !== null,
     );
     content = (
       <>
@@ -217,9 +216,10 @@ function ActionButtons({
     (instant) => formatInstant(instant, 'dateTime'),
     (localDate) => formatLocalDate(localDate),
   );
-  const review = sessionRequestReviewLink(item);
+  const review = itemReviewLink(item);
   if (review) {
-    // #60 H2: a session request is decided on its review page.
+    // #60 H2, #62 G2: session and change requests are decided on their
+    // review pages.
     return (
       <Link
         to={review}

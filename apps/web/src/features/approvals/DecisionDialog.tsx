@@ -36,7 +36,8 @@ import {
 // any API call: the page passes `onConfirm`, stories pass a stub. While the
 // decision is sent the confirm button is disabled and shows the Spinner.
 // A `409 session_request_review_route_required` (#60 H2: a page loaded
-// before the inbox showed "Review") adds the link to the review page.
+// before the inbox showed "Review"), or #62's
+// `change_request_review_route_required`, adds the link to the review page.
 
 export const REASON_MAX_LENGTH = 1000;
 

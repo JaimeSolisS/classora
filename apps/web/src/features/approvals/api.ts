@@ -42,6 +42,7 @@ export const APPROVAL_TYPE_LABELS: Readonly<
   'scheduling.occurrence_conflict':
     'approvals.types.scheduling_occurrence_conflict',
   'scheduling.session_request': 'approvals.types.scheduling_session_request',
+  'scheduling.change_request': 'approvals.types.scheduling_change_request',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
@@ -148,6 +149,7 @@ export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
   'scheduling.offer_reassignment',
   'scheduling.occurrence_conflict',
   'scheduling.session_request',
+  'scheduling.change_request',
 ]);
 
 /** Whether `action` on an item of `type` needs a reason (UX only; the API
