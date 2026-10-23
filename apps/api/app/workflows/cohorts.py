@@ -56,7 +56,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.errors import FieldError
-from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.catalog.schemas import SubjectReference
@@ -77,6 +76,7 @@ from app.workflows.cohort_schemas import (
     CohortLevel,
     CohortListItem,
     CohortOccurrenceItem,
+    CohortPage,
     CohortSessions,
     CohortSubject,
 )
@@ -305,13 +305,14 @@ async def list_cohorts(
     template_id: uuid.UUID | None,
     subject_id: uuid.UUID | None,
     status: CohortStatusFilter,
-    page: OffsetParams,
-) -> OffsetPage[CohortListItem]:
-    """``GET /api/v1/cohorts`` (F2): the #21 offset page by name. ``status``
-    ``current`` (the default) is upcoming plus in progress. At most five
+    limit: int,
+    cursor: str | None,
+) -> CohortPage:
+    """``GET /api/v1/cohorts`` (F2): a cursor page by name, then id (the
+    #56 groups keyset; ``400 invalid_cursor`` for a bad cursor). ``status``
+    ``current`` (the default) is upcoming plus in progress. At most four
     statements whatever the page size (every cohort's series facts; the
-    page with its total; the subjects; the tutors; a separate total only
-    when ``offset`` is past the end)."""
+    page; the subjects; the tutors)."""
     schedules = await scheduling.cohort_schedules(session, None, now=clock.now())
     ids = None
     if status != "all":
@@ -321,13 +322,14 @@ async def list_cohorts(
             for cohort_id, schedule in schedules.items()
             if _status(schedule) in wanted
         }
-    records, total = await courses.list_cohorts(
+    records, next_cursor = await courses.list_cohorts(
         session,
         q=q,
         template_id=template_id,
         subject_id=subject_id,
         ids=ids,
-        page=page,
+        limit=limit,
+        cursor=cursor,
     )
     subjects = await catalog.subject_references(
         session, {record.subject_id for record in records}
@@ -339,14 +341,12 @@ async def list_cohorts(
         and schedule.tutor_user_id is not None
     }
     accounts = await identity.get_account_references(session, tutors)
-    return OffsetPage[CohortListItem](
+    return CohortPage(
         items=[
             _list_item(record, schedules.get(record.id), subjects, accounts)
             for record in records
         ],
-        total=total,
-        limit=page.limit,
-        offset=page.offset,
+        next_cursor=next_cursor,
     )
 
 

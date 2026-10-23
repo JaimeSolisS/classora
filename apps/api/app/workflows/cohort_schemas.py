@@ -229,6 +229,13 @@ class CohortListItem(BaseModel):
     status: CohortStatus
 
 
+class CohortPage(BaseModel):
+    """A page of cohorts (cursor pagination)."""
+
+    items: list[CohortListItem]
+    next_cursor: str | None
+
+
 class CohortSessions(BaseModel):
     """The cohort's sessions overlapping the range, by start (#65 F4)."""
 

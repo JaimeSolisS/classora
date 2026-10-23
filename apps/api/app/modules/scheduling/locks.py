@@ -27,6 +27,19 @@ row), the #48 create with a tutor (after the students and the zone), the
 #52 re-offer, the #55 substitution (for the substitute) and the #233
 series offer (after their session or series locks and before the zone).
 Nothing that holds it waits for a student lock, so the two never deadlock.
+
+**Lock order** for every writer that changes a group's or a cohort's
+sessions or participants (#56; #65 G1, also in ``_docs/api.md``):
+
+    students (this module) → zone ``FOR SHARE`` → course template
+    ``FOR SHARE`` (only in the cohort create) → group **or cohort**
+    ``FOR UPDATE`` → series ``FOR UPDATE`` → sessions by id → offer
+
+A group series takes its group row (:mod:`.group_lock`); a course series
+takes its cohort row instead (``courses.service.lock_cohort``: the nightly
+extension, the #233 series offer, and #66 enrollment after the students
+and the zone). The ``courses`` module never takes a scheduling lock. Any
+step a writer does not need is skipped, never reordered.
 """
 
 import uuid

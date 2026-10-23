@@ -24,6 +24,7 @@ from tests.integration.cohort_support import (
     cohort_rows,
     cohort_series,
     create_cohort,
+    list_cohorts,
     new_template,
     participant_count,
     put_template,
@@ -661,11 +662,21 @@ def test_template_edits_never_change_an_existing_cohort(
             cookie,
             body | {"name": body["name"] + " C", "start_time": "13:00"},
         ).json()
+        # Re-read once the template has a newer snapshot: the reads must
+        # join the cohort's own snapshot, not the template's latest one.
+        again = read_cohort(client, cookie, first["id"]).json()
+        listed = list_cohorts(
+            client, cookie, template_id=template["id"], status="all"
+        ).json()
 
     assert twin["template_snapshot_id"] == first["template_snapshot_id"]
-    assert after["template_snapshot_id"] == first["template_snapshot_id"]
-    assert after["syllabus"] == first["syllabus"]
-    assert after["template"] == first["template"]
+    for read in (after, again):
+        assert read["template_snapshot_id"] == first["template_snapshot_id"]
+        assert read["syllabus"] == first["syllabus"]
+        assert read["template"] == first["template"]
+    names = {item["id"]: item["template"]["name"] for item in listed["items"]}
+    assert names[first["id"]] == template["name"]
+    assert names[third["id"]] == template["name"] + " (nuevo)"
     assert third["template_snapshot_id"] != first["template_snapshot_id"]
     assert third["template"]["version"] == first["template"]["version"] + 1
     assert third["template"]["name"] == template["name"] + " (nuevo)"

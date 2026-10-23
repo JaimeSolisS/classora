@@ -2508,7 +2508,8 @@ export interface paths {
         };
         /**
          * List Cohorts
-         * @description The cohorts by name, with their template, subject, tutor and dates.
+         * @description The cohorts by name, with their template, subject, tutor and dates
+         *     (cursor pagination).
          */
         get: operations["list_cohorts_api_v1_cohorts_get"];
         put?: never;
@@ -5453,6 +5454,16 @@ export interface components {
             ends_at: string;
         };
         /**
+         * CohortPage
+         * @description A page of cohorts (cursor pagination).
+         */
+        CohortPage: {
+            /** Items */
+            items: components["schemas"]["CohortListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
          * CohortRecurrence
          * @description The cohort's weekly rule (#65 D1, E3): the weekdays and the interval
          *     only. There is no ``until`` or ``count``: the server derives ``COUNT``
@@ -7358,17 +7369,6 @@ export interface components {
         OffsetPage_ClosureDetail_: {
             /** Items */
             items: components["schemas"]["ClosureDetail"][];
-            /** Total */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-        };
-        /** OffsetPage[CohortListItem] */
-        OffsetPage_CohortListItem_: {
-            /** Items */
-            items: components["schemas"]["CohortListItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -17804,7 +17804,7 @@ export interface operations {
                 /** @description upcoming, in_progress, ended, current (upcoming and in progress; the default) or all. */
                 status?: components["schemas"]["CohortStatusFilter"];
                 limit?: number;
-                offset?: number;
+                cursor?: string | null;
             };
             header?: never;
             path?: never;
@@ -17818,7 +17818,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OffsetPage_CohortListItem_"];
+                    "application/json": components["schemas"]["CohortPage"];
+                };
+            };
+            /** @description The cursor is not valid (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
             /** @description Authentication required. */

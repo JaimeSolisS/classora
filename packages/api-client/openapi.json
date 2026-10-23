@@ -11496,7 +11496,7 @@
           "cohorts"
         ],
         "summary": "List Cohorts",
-        "description": "The cohorts by name, with their template, subject, tutor and dates.",
+        "description": "The cohorts by name, with their template, subject, tutor and dates\n(cursor pagination).",
         "operationId": "list_cohorts_api_v1_cohorts_get",
         "parameters": [
           {
@@ -11576,14 +11576,19 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           }
         ],
@@ -11593,7 +11598,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OffsetPage_CohortListItem_"
+                  "$ref": "#/components/schemas/CohortPage"
                 }
               }
             }
@@ -11610,6 +11615,16 @@
           },
           "403": {
             "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor is not valid (invalid_cursor).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -18813,6 +18828,35 @@
         "title": "CohortOccurrenceItem",
         "description": "An upcoming occurrence of the cohort."
       },
+      "CohortPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CohortListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CohortPage",
+        "description": "A page of cohorts (cursor pagination)."
+      },
       "CohortRecurrence": {
         "properties": {
           "weekdays": {
@@ -22906,37 +22950,6 @@
           "offset"
         ],
         "title": "OffsetPage[ClosureDetail]"
-      },
-      "OffsetPage_CohortListItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CohortListItem"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "limit": {
-            "type": "integer",
-            "title": "Limit"
-          },
-          "offset": {
-            "type": "integer",
-            "title": "Offset"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "OffsetPage[CohortListItem]"
       },
       "OffsetPage_CourseTemplateSummary_": {
         "properties": {

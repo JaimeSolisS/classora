@@ -34,7 +34,7 @@ from app.core.authz import (
 )
 from app.core.config import Settings, get_settings
 from app.core.errors import problem_response_doc
-from app.core.pagination import OffsetPage, OffsetPagination
+from app.core.pagination import CursorPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.courses.schemas import CohortStatusFilter, CohortUpdate
 from app.modules.scheduling.schemas import CohortSessionsQuery
@@ -43,7 +43,7 @@ from app.workflows.cohort_schemas import (
     CohortCreate,
     CohortCreated,
     CohortDetail,
-    CohortListItem,
+    CohortPage,
     CohortSessions,
 )
 
@@ -123,16 +123,16 @@ async def create_cohort(
     "",
     responses={
         **PERMISSION_RESPONSES,
+        400: problem_response_doc("The cursor is not valid (invalid_cursor)."),
         422: problem_response_doc(
             "The query is not valid (validation_error): an unknown status, a"
-            " malformed id, `q` over 120 characters, `limit` outside 1-100 or a"
-            " negative `offset`."
+            " malformed id, `q` over 120 characters or `limit` outside 1-100."
         ),
     },
 )
 async def list_cohorts(
     principal: Annotated[Principal, require(COURSE_VIEW)],
-    page: OffsetPagination,
+    page: CursorPagination,
     uow: UnitOfWorkDep,
     q: Annotated[
         str | None, Query(max_length=120, description="The name contains it.")
@@ -148,15 +148,17 @@ async def list_cohorts(
             )
         ),
     ] = "current",
-) -> OffsetPage[CohortListItem]:
-    """The cohorts by name, with their template, subject, tutor and dates."""
+) -> CohortPage:
+    """The cohorts by name, with their template, subject, tutor and dates
+    (cursor pagination)."""
     return await cohorts.list_cohorts(
         uow.session,
         q=q,
         template_id=template_id,
         subject_id=subject_id,
         status=status,
-        page=page,
+        limit=page.limit,
+        cursor=page.cursor,
     )
 
 

@@ -53,14 +53,20 @@ from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.errors import FieldError
 from app.core.models import ensure_version
-from app.core.pagination import OffsetPage, OffsetParams
+from app.core.pagination import (
+    InvalidCursorError,
+    OffsetPage,
+    OffsetParams,
+    decode_cursor,
+    encode_cursor,
+)
 from app.modules.catalog import service as catalog_service
 from app.modules.catalog.schemas import SubjectReference
 from app.modules.courses.cohorts import (
@@ -998,6 +1004,14 @@ async def get_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortRecor
     return _cohort_record(cohort, snapshot, with_syllabus=True)
 
 
+def _cohort_cursor_position(cursor: str) -> tuple[str, uuid.UUID]:
+    name, cohort_id = decode_cursor(cursor, types=(str, str))
+    try:
+        return str(name), uuid.UUID(str(cohort_id))
+    except ValueError:
+        raise InvalidCursorError() from None
+
+
 async def list_cohorts(
     session: AsyncSession,
     *,
@@ -1005,52 +1019,48 @@ async def list_cohorts(
     template_id: uuid.UUID | None,
     subject_id: uuid.UUID | None,
     ids: Collection[uuid.UUID] | None,
-    page: OffsetParams,
-) -> tuple[list[CohortRecord], int]:
-    """A page of cohorts by ``lower(name)`` then id, without their
-    syllabus, and the total: ``q`` (the name contains it, ignoring case),
+    limit: int,
+    cursor: str | None,
+) -> tuple[list[CohortRecord], str | None]:
+    """A cursor page of cohorts by ``lower(name)`` then id (the #56 groups
+    keyset), without their syllabus, and the next cursor (``None`` on the
+    last page): ``q`` (the name contains it, ignoring case),
     ``template_id``, ``subject_id`` and ``ids`` (only these; ``None``: any).
-    One statement (the total rides on the page), two when ``offset`` is past
-    the end."""
+    One statement. A malformed cursor is ``400 invalid_cursor``."""
+    position = _cohort_cursor_position(cursor) if cursor is not None else None
     conditions: list[ColumnElement[bool]] = []
+    sort_name = func.lower(CourseCohort.name)
     if q:
-        conditions.append(
-            func.lower(CourseCohort.name).contains(q.casefold(), autoescape=True)
-        )
+        conditions.append(sort_name.contains(q.casefold(), autoescape=True))
     if template_id is not None:
         conditions.append(CourseCohort.template_id == template_id)
     if subject_id is not None:
         conditions.append(CourseCohort.subject_id == subject_id)
     if ids is not None:
         if not ids:
-            return [], 0
+            return [], None
         conditions.append(CourseCohort.id.in_(set(ids)))
+    if position is not None:
+        conditions.append(tuple_(sort_name, CourseCohort.id) > tuple_(*position))
     rows = (
         await session.execute(
-            select(CourseCohort, SnapshotRow, func.count().over())
+            select(CourseCohort, SnapshotRow)
             .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
             .where(*conditions)
-            .order_by(func.lower(CourseCohort.name), CourseCohort.id)
-            .limit(page.limit)
-            .offset(page.offset)
+            .order_by(sort_name, CourseCohort.id)
+            .limit(limit + 1)
         )
     ).all()
-    if rows:
-        total = int(rows[0][2])
-    elif page.offset == 0:
-        total = 0
-    else:
-        # Past the end: no row carries the window count.
-        total = int(
-            await session.scalar(
-                select(func.count()).select_from(CourseCohort).where(*conditions)
-            )
-            or 0
-        )
+    page, more = rows[:limit], len(rows) > limit
+    next_cursor = (
+        encode_cursor([page[-1][0].name.lower(), str(page[-1][0].id)])
+        if more and page
+        else None
+    )
     return [
         _cohort_record(cohort, snapshot, with_syllabus=False)
-        for cohort, snapshot, _ in rows
-    ], total
+        for cohort, snapshot in page
+    ], next_cursor
 
 
 async def cohort_exists(session: AsyncSession, cohort_id: uuid.UUID) -> bool:

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from app.core.pagination import OffsetParams
+from app.core.pagination import encode_cursor
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     ADMINISTRATOR,
@@ -202,12 +202,31 @@ def test_the_list_filters_and_pages(module_seeded_url, client):
             client, cookie, template_id=template["id"], q="TARDE"
         ).json()
         by_subject = list_cohorts(client, cookie, subject_id=str(subject)).json()
-        paged = list_cohorts(
-            client, cookie, template_id=template["id"], limit=1, offset=1
+        paged = list_cohorts(client, cookie, template_id=template["id"], limit=1)
+        # A cohort that sorts before the cursor, made after the first page,
+        # neither repeats nor shifts the next one (keyset, not offset).
+        earlier, *_ = make(
+            url,
+            client,
+            tl,
+            template=template,
+            subject=subject,
+            name="Aaa Antes",
+            start_time="12:00",
+        )
+        cookie = owner_cookie(url, client)
+        follow = list_cohorts(
+            client,
+            cookie,
+            template_id=template["id"],
+            limit=1,
+            cursor=paged.json()["next_cursor"],
         ).json()
-        past_end = list_cohorts(
-            client, cookie, template_id=template["id"], offset=5
-        ).json()
+        broken = list_cohorts(client, cookie, cursor="nope")
+        not_an_id = list_cohorts(
+            client, cookie, cursor=encode_cursor(["algebra", "not-a-uuid"])
+        )
+        wrong_shape = list_cohorts(client, cookie, cursor=encode_cursor([1, 2]))
         ended = list_cohorts(
             client, cookie, template_id=template["id"], status="ended"
         ).json()
@@ -220,7 +239,8 @@ def test_the_list_filters_and_pages(module_seeded_url, client):
 
     assert code_of(by_template) == OK
     page = by_template.json()
-    assert (page["total"], page["limit"], page["offset"]) == (2, 25, 0)
+    assert set(page) == {"items", "next_cursor"}
+    assert page["next_cursor"] is None
     assert [item["id"] for item in page["items"]] == [first["id"], second["id"]]
     item = page["items"][0]
     assert set(item) == {
@@ -244,11 +264,19 @@ def test_the_list_filters_and_pages(module_seeded_url, client):
     assert (item["tutor"], item["assignment_status"]) == (None, None)
     assert [i["id"] for i in by_name["items"]] == [second["id"]]
     assert {i["id"] for i in by_subject["items"]} == {first["id"], second["id"]}
-    assert [i["id"] for i in paged["items"]] == [second["id"]]
-    assert paged["total"] == 2
-    assert (past_end["items"], past_end["total"]) == ([], 2)
+    assert code_of(paged) == OK
+    assert [i["id"] for i in paged.json()["items"]] == [first["id"]]
+    assert paged.json()["next_cursor"] is not None
+    assert [i["id"] for i in follow["items"]] == [second["id"]]
+    assert follow["next_cursor"] is None
+    for bad in (broken, not_an_id, wrong_shape):
+        assert code_of(bad) == (400, "invalid_cursor")
     assert ended["items"] == []
-    assert everything["total"] == 2
+    assert [i["id"] for i in everything["items"]] == [
+        earlier["id"],
+        first["id"],
+        second["id"],
+    ]
     assert code_of(too_many) == INVALID
     assert code_of(too_few) == INVALID
     assert code_of(unknown_status) == INVALID
@@ -296,11 +324,13 @@ def test_the_list_takes_at_most_five_statements(module_seeded_url, client, size)
             template_id=template["id"],
             subject_id=None,
             status="all",
-            page=OffsetParams(limit=25, offset=0),
+            limit=25,
+            cursor=None,
         ),
     )
 
     assert len(page.items) == size
+    assert page.next_cursor is None
     assert count <= 5
 
 
