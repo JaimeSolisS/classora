@@ -42,7 +42,8 @@
     "groups": "Grupos",
     "schedule": "Agenda",
     "courses": "Cursos",
-    "offers": "Mis ofertas"
+    "offers": "Mis ofertas",
+    "sessionRequests": "Solicitudes de sesión"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -293,7 +294,8 @@
       "identity_registration": "Solicitud de cuenta",
       "staff_qualification": "Calificación de tutor",
       "scheduling_offer_reassignment": "Sesión por reasignar",
-      "scheduling_occurrence_conflict": "Conflicto en sesión de serie"
+      "scheduling_occurrence_conflict": "Conflicto en sesión de serie",
+      "scheduling_session_request": "Solicitud de sesión"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -308,7 +310,8 @@
       "seriesReassignmentExpired_many": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
       "seriesReassignmentExpired_other": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
       "substitutionDeclined": "El suplente {{tutor}} rechazó · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
-      "substitutionExpired": "El suplente {{tutor}} no respondió · {{subject}} · {{when}} · la sigue impartiendo {{original}}"
+      "substitutionExpired": "El suplente {{tutor}} no respondió · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
+      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · solicitada por {{requester}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -2260,6 +2263,68 @@
       "done_one": "Grupo creado: {{count}} sesión próxima.",
       "done_many": "Grupo creado: {{count}} sesiones próximas.",
       "done_other": "Grupo creado: {{count}} sesiones próximas."
+    }
+  },
+  "sessionRequests": {
+    "when": "{{date}}, {{start}}–{{end}}",
+    "minutes": "{{minutes}} min",
+    "subject": "{{subject}} ({{level}})",
+    "tooMany_one": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minuto.",
+    "tooMany_many": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minutos.",
+    "tooMany_other": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minutos.",
+    "status": {
+      "pending": "Pendiente",
+      "confirmed": "Confirmada",
+      "rejected": "Rechazada",
+      "withdrawn": "Retirada"
+    },
+    "new": {
+      "title": "Solicitar una sesión",
+      "intro": "Elige un alumno, una materia y una duración para ver los horarios disponibles para una sesión individual. Envías una solicitud; el centro la confirma o te avisa.",
+      "noStudents": "No hay ningún alumno para el que puedas solicitar sesiones. Si te parece un error, contacta al centro.",
+      "student": "Alumno",
+      "subject": "Materia",
+      "chooseSubject": "Elige una materia",
+      "length": "Duración",
+      "week": "Horarios disponibles, {{from}} – {{to}}",
+      "zone": "Los horarios están en la zona horaria del centro ({{zone}}).",
+      "previousWeek": "Semana anterior",
+      "nextWeek": "Semana siguiente",
+      "chooseFirst": "Elige una materia para ver los horarios disponibles.",
+      "loading": "Cargando horarios disponibles…",
+      "day": "{{weekday}}, {{date}}",
+      "noSlots": "No hay horarios disponibles",
+      "slot": "{{start}}–{{end}}",
+      "requestedSlot": "{{slot}} · Solicitado",
+      "sent": "Solicitud enviada. Está pendiente de revisión.",
+      "viewRequests": "Mis solicitudes de sesión"
+    },
+    "confirm": {
+      "title": "¿Solicitar esta sesión?",
+      "notBooking": "Esto es una solicitud, no una reserva. El centro la confirmará o te avisará.",
+      "student": "Alumno",
+      "subject": "Materia",
+      "when": "Cuándo",
+      "length": "Duración",
+      "note": "Nota para el centro (opcional)",
+      "counter": "{{length}} de {{max}} caracteres",
+      "noteTooLong": "La nota puede tener como máximo 500 caracteres.",
+      "cancel": "Cancelar",
+      "send": "Enviar solicitud",
+      "sending": "Enviando…"
+    },
+    "list": {
+      "title": "Mis solicitudes de sesión",
+      "intro": "Las sesiones individuales que solicitaste y su estado. Una solicitud no es una reserva hasta que el centro la confirma.",
+      "label": "{{subject}}, {{date}}, {{start}}",
+      "empty": "Todavía no has solicitado ninguna sesión.",
+      "requestOne": "Solicitar una sesión",
+      "note": "Nota",
+      "withdraw": "Retirar",
+      "withdrawFor": "Retirar {{request}}",
+      "withdrawTitle": "¿Retirar esta solicitud?",
+      "withdrawBody": "El centro ya no revisará {{request}}. Puedes solicitar otro horario más adelante.",
+      "withdrawn": "Retirada: {{request}}."
     }
   }
 }

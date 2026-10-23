@@ -7,6 +7,7 @@ import {
   itemName,
   occurrenceCodeName,
   occurrenceConflictSubject,
+  sessionRequestSubject,
   typeLabel,
 } from './summary';
 
@@ -99,5 +100,47 @@ describe('the series occurrence conflict summary', () => {
       'Crosses midnight',
     );
     expect(occurrenceCodeName('something_new', en)).toBe('something_new');
+  });
+});
+
+// The scheduling.session_request summary (#59 E1, E3): the student, the
+// subject and level, the time in the center zone, the length and who asked.
+describe('the session request summary', () => {
+  const REQUEST: ApprovalRequestItem = {
+    ...OCCURRENCE,
+    id: '00000000-0000-4000-8000-0000000000e1',
+    request_type: 'scheduling.session_request',
+    subject: {
+      student_name: 'Ana López',
+      subject_name: 'Física',
+      education_level_name: 'Secundaria',
+      starts_at: '2031-01-06T16:00:00Z',
+      ends_at: '2031-01-06T17:00:00Z',
+      duration_minutes: 60,
+      requested_by: 'Laura López',
+      note: null,
+    },
+  };
+
+  it('reads the subject only for its own type and labels the type', () => {
+    expect(sessionRequestSubject(REQUEST)?.student_name).toBe('Ana López');
+    expect(sessionRequestSubject(OCCURRENCE)).toBeNull();
+    expect(typeLabel('scheduling.session_request', en)).toBe('Session request');
+    expect(typeLabel('scheduling.session_request', es)).toBe(
+      'Solicitud de sesión',
+    );
+  });
+
+  it('shows the time in the center zone', () => {
+    expect(
+      approvalSummary(REQUEST, en, (instant) =>
+        formatInstant(instant, {
+          timeZone: 'America/Mexico_City',
+          language: 'en',
+        }),
+      ),
+    ).toBe(
+      'Ana López · Física (Secundaria) · Jan 6, 2031, 10:00 AM · 60 min · requested by Laura López',
+    );
   });
 });

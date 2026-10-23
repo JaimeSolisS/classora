@@ -42,7 +42,8 @@
     "groups": "Groups",
     "schedule": "Schedule",
     "courses": "Courses",
-    "offers": "My offers"
+    "offers": "My offers",
+    "sessionRequests": "Session requests"
   },
   "notFound": {
     "title": "Page not found",
@@ -293,7 +294,8 @@
       "identity_registration": "Account request",
       "staff_qualification": "Tutor qualification",
       "scheduling_offer_reassignment": "Session to reassign",
-      "scheduling_occurrence_conflict": "Series session conflict"
+      "scheduling_occurrence_conflict": "Series session conflict",
+      "scheduling_session_request": "Session request"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -306,7 +308,8 @@
       "seriesReassignmentExpired_one": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} session)",
       "seriesReassignmentExpired_other": "Expired, offered to {{tutor}} · {{subject}} · weekly series from {{date}} ({{count}} sessions)",
       "substitutionDeclined": "Substitute {{tutor}} declined · {{subject}} · {{when}} · still taught by {{original}}",
-      "substitutionExpired": "Substitute {{tutor}} didn't answer · {{subject}} · {{when}} · still taught by {{original}}"
+      "substitutionExpired": "Substitute {{tutor}} didn't answer · {{subject}} · {{when}} · still taught by {{original}}",
+      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · requested by {{requester}}"
     },
     "list": {
       "title": "Requests",
@@ -2223,6 +2226,67 @@
       "overrideDescription": "The group is created despite these rules. The reason is saved in the audit log.",
       "done_one": "Group created: {{count}} upcoming session.",
       "done_other": "Group created: {{count}} upcoming sessions."
+    }
+  },
+  "sessionRequests": {
+    "when": "{{date}}, {{start}}–{{end}}",
+    "minutes": "{{minutes}} min",
+    "subject": "{{subject}} ({{level}})",
+    "tooMany_one": "Too many requests. Try again in {{count}} minute.",
+    "tooMany_other": "Too many requests. Try again in {{count}} minutes.",
+    "status": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "rejected": "Rejected",
+      "withdrawn": "Withdrawn"
+    },
+    "new": {
+      "title": "Request a session",
+      "intro": "Choose a student, a subject and a length to see the times available for an individual session. You send a request; the center confirms it or lets you know.",
+      "noStudents": "There is no student you can request sessions for. If this looks wrong, contact the center.",
+      "student": "Student",
+      "subject": "Subject",
+      "chooseSubject": "Choose a subject",
+      "length": "Length",
+      "week": "Available times, {{from}} – {{to}}",
+      "zone": "Times are in the center's time zone ({{zone}}).",
+      "previousWeek": "Previous week",
+      "nextWeek": "Next week",
+      "chooseFirst": "Choose a subject to see the available times.",
+      "loading": "Loading available times…",
+      "day": "{{weekday}}, {{date}}",
+      "noSlots": "No available times",
+      "slot": "{{start}}–{{end}}",
+      "requestedSlot": "{{slot}} · Requested",
+      "sent": "Request sent. It's pending review.",
+      "viewRequests": "My session requests"
+    },
+    "confirm": {
+      "title": "Request this session?",
+      "notBooking": "This is a request, not a booking. The center will confirm it or let you know.",
+      "student": "Student",
+      "subject": "Subject",
+      "when": "When",
+      "length": "Length",
+      "note": "Note for the center (optional)",
+      "counter": "{{length}} of {{max}} characters",
+      "noteTooLong": "The note can have at most 500 characters.",
+      "cancel": "Cancel",
+      "send": "Send request",
+      "sending": "Sending…"
+    },
+    "list": {
+      "title": "My session requests",
+      "intro": "The individual sessions you requested and their status. A request is not a booking until the center confirms it.",
+      "label": "{{subject}}, {{date}}, {{start}}",
+      "empty": "You haven't requested any session yet.",
+      "requestOne": "Request a session",
+      "note": "Note",
+      "withdraw": "Withdraw",
+      "withdrawFor": "Withdraw {{request}}",
+      "withdrawTitle": "Withdraw this request?",
+      "withdrawBody": "The center will no longer review {{request}}. You can request another time later.",
+      "withdrawn": "Withdrawn: {{request}}."
     }
   }
 }

@@ -28,6 +28,23 @@ type Common = {
     courses: string;
     offers: string;
     groups: string;
+    sessionRequests: string;
+  };
+  sessionRequests: {
+    status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;
+    new: {
+      title: string;
+      subject: string;
+      length: string;
+      nextWeek: string;
+      slot: string;
+      requestedSlot: string;
+      sent: string;
+      viewRequests: string;
+    };
+    confirm: { note: string; send: string; notBooking: string };
+    list: { title: string; requestOne: string };
+    minutes: string;
   };
   roles: Record<string, string>;
   scheduling: {
@@ -482,7 +499,11 @@ type Common = {
       reject: string;
       rejectFor: string;
     };
-    summary: { qualification: string; reassignmentDeclined: string };
+    summary: {
+      qualification: string;
+      reassignmentDeclined: string;
+      sessionRequest: string;
+    };
     reassignment: { openSession: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };
