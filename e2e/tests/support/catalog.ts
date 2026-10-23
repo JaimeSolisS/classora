@@ -54,8 +54,15 @@ type Common = {
       scheduleSession: string;
       views: Record<'day' | 'week' | 'month' | 'list', string>;
       filters: { student: string };
+      // #58: rescheduling.
+      move: Record<
+        'moved' | 'movedWithOverride' | 'notSaved' | 'overrideAction' | 'close',
+        string
+      >;
+      reschedule: Record<'action' | 'title' | 'submit', string>;
     };
     states: Record<string, string>;
+    markers: Record<string, { label: string }>;
     session: {
       title: string;
       history: string;

@@ -150,7 +150,12 @@ unless a bullet says otherwise.
   session on the Schedule calendar (FullCalendar), by day, week, month or as
   a list, in the center's time zone, filtered by tutor, student, room and
   class type. Each session shows its state, and is marked when it falls on a
-  center closure or its tutor is no longer qualified for the subject.
+  center closure, its tutor is no longer qualified for the subject, or it was
+  booked or moved with an override.
+- Owners and Administrators reschedule a session on the calendar by dragging
+  it (or resizing its end), or with the keyboard from its "Reschedule"
+  dialog; the server checks every move, refused moves snap back, and soft
+  conflicts can be overridden with a reason.
 - Staff schedule one-off individual sessions from the calendar's "Schedule a
   session" page (one student, a subject, an optional tutor and classroom, a
   date and times in the center's time zone). Before anything is saved the
@@ -237,7 +242,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** rescheduling from the calendar, course cohorts,
+**Not built yet:** course cohorts,
 attendance, academic records, billing and payments, payroll, reporting and
 analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

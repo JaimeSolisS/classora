@@ -32,7 +32,11 @@ notification is sent.
 
 **Every later write path that runs the conflict checks** (#53 series,
 #56 / #65 enrollments, #58 reschedule, #59 / #60 requests) uses these two
-functions, so an override means the same thing everywhere.
+functions, so an override means the same thing everywhere. The reschedule
+path (#58) is ``PATCH /api/v1/class-sessions/{id}``
+(:mod:`~app.modules.scheduling.session_edit`): the calendar's drag and drop
+and its Reschedule dialog resend the same move with ``override``; an
+occurrence's row gets its own series as ``class_series_id``.
 
 **Series (#236, ADR-0005 D4: "listed occurrence and code pairs").** A
 series create or edit sends ``override: {pairs: [{occurrence_start, code}],

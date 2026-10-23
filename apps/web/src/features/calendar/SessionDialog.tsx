@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -16,11 +17,12 @@ import { MarkerLabel, StateLabel } from './EventContent';
 import { sessionTimeText, studentNames, type LabelContext } from './labels';
 
 // The details of one session (#57 D8), from the item already loaded (no
-// request). No actions yet: offering, cancelling, rescheduling and
-// overrides come with #52, #58 and #62. Focus is trapped while it is open
-// and goes back to the event on close (`onCloseAutoFocus`). An occurrence
-// of a weekly series gets "Open series" (#54b D2), once its session is read
-// (`fetchSeriesId`; the range item has no series id).
+// request). A holder of schedule.manage gets "Reschedule" on an editable
+// event (#58 E1: the keyboard and single-pointer alternative to dragging);
+// the caller then opens the Reschedule dialog in its place. Focus is
+// trapped while it is open and goes back to the event on close
+// (`onCloseAutoFocus`). An occurrence of a weekly series gets "Open series"
+// (#54b D2), once its session is read (`fetchSeriesId`).
 
 export interface SessionDialogProps {
   item: CalendarItem | null;
@@ -30,6 +32,9 @@ export interface SessionDialogProps {
   onReturnFocus: () => void;
   /** Reads the session's series (#54b D2); none: no "Open series" link. */
   fetchSeriesId?: CalendarLoaders['fetchSeriesId'];
+  /** Whether "Reschedule" is offered for the item (#58 D3, E1). */
+  canReschedule?: (item: CalendarItem) => boolean;
+  onReschedule?: (item: CalendarItem) => void;
 }
 
 function OpenSeriesLink({
@@ -73,6 +78,8 @@ export function SessionDialog({
   onClose,
   onReturnFocus,
   fetchSeriesId,
+  canReschedule,
+  onReschedule,
 }: SessionDialogProps) {
   const { t } = useTranslation();
   return (
@@ -147,7 +154,13 @@ export function SessionDialog({
           {fetchSeriesId ? (
             <OpenSeriesLink sessionId={item.id} fetchSeriesId={fetchSeriesId} />
           ) : null}
-          <DialogFooter showCloseButton />
+          <DialogFooter showCloseButton>
+            {onReschedule && canReschedule?.(item) ? (
+              <Button type="button" onClick={() => onReschedule(item)}>
+                {t('scheduling.calendar.reschedule.action')}
+              </Button>
+            ) : null}
+          </DialogFooter>
         </DialogContent>
       ) : null}
     </Dialog>

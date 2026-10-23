@@ -1513,7 +1513,7 @@
         "roomsFailed": "No se pudieron cargar las aulas."
       },
       "dialog": {
-        "description": "Detalles de la sesión. Aún no se puede cambiar nada aquí.",
+        "description": "Detalles de la sesión.",
         "subject": "Materia",
         "subjectValue": "{{subject}} ({{level}})",
         "kind": "Tipo de clase",
@@ -1527,6 +1527,36 @@
         "state": "Estado",
         "markers": "Avisos",
         "openSeries": "Abrir la serie"
+      },
+      "move": {
+        "saving": "Guardando…",
+        "moved": "Movida al {{date}}, {{time}}.",
+        "movedWithOverride": "Movida con una excepción.",
+        "occurrence": "Solo se movió esta sesión. Ahora es una excepción de su serie.",
+        "notSaved": "No se guardó el cambio",
+        "attempted": "{{subject}} no se movió al {{date}}, {{time}} ({{zone}}).",
+        "conflicts_one": "La sesión no se puede mover ahí: 1 conflicto",
+        "conflicts_many": "La sesión no se puede mover ahí: {{count}} conflictos",
+        "conflicts_other": "La sesión no se puede mover ahí: {{count}} conflictos",
+        "backInPlace": "No se guardó nada; la sesión volvió a su horario.",
+        "overrideAction": "Mover con excepción",
+        "overrideDescription": "La sesión se mueve a pesar de estas reglas. El motivo se guarda en la bitácora de auditoría.",
+        "overrideSubmitting": "Moviendo…",
+        "close": "Cerrar",
+        "stale": "Alguien más cambió esta sesión. Vuelve a cargar el calendario para ver la versión más reciente.",
+        "reload": "Volver a cargar",
+        "reloaded": "Calendario actualizado con la versión más reciente de cada sesión."
+      },
+      "reschedule": {
+        "action": "Reprogramar",
+        "title": "Reprogramar sesión",
+        "description": "{{subject}}: elige una nueva fecha y horario. Se revisan otra vez todas las reglas de programación.",
+        "roomUnchanged": "{{room}}, sin cambios",
+        "noRoomUnchanged": "Sin aula, sin cambios",
+        "occurrenceNote": "Esta sesión pertenece a una serie semanal: solo se mueve ella y queda como excepción de la serie.",
+        "cancel": "Cancelar",
+        "submit": "Guardar",
+        "submitting": "Guardando…"
       }
     },
     "states": {
@@ -1546,6 +1576,10 @@
       "tutor_not_qualified": {
         "label": "Tutor ya no calificado",
         "explanation": "El tutor ya no tiene una calificación aprobada para esta materia. La sesión no se cambió: asigna otro tutor o cancélala."
+      },
+      "overridden": {
+        "label": "Con excepción",
+        "explanation": "Se programó o se movió con una excepción a una regla flexible."
       }
     },
     "rules": {

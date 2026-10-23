@@ -17,8 +17,16 @@ DAY = date(2026, 11, 2)
 
 def test_the_codes_match_the_wire_literal_in_order():
     assert markers.MARKER_ORDER == get_args(MarkerCode.__value__)
-    assert markers.MARKER_ORDER == ("center_closed", "tutor_not_qualified")
-    assert (markers.CENTER_CLOSED, markers.TUTOR_NOT_QUALIFIED) == markers.MARKER_ORDER
+    assert markers.MARKER_ORDER == (
+        "center_closed",
+        "tutor_not_qualified",
+        "overridden",
+    )
+    assert (
+        markers.CENTER_CLOSED,
+        markers.TUTOR_NOT_QUALIFIED,
+        markers.OVERRIDDEN,
+    ) == markers.MARKER_ORDER
 
 
 def test_the_marked_state_sets():
@@ -59,13 +67,21 @@ def test_the_qualification_check_needs_a_tutor_and_a_future_start():
 
 
 @pytest.mark.parametrize(
-    ("closed", "not_qualified", "expected"),
+    ("closed", "not_qualified", "overridden", "expected"),
     [
-        (False, False, []),
-        (True, False, ["center_closed"]),
-        (False, True, ["tutor_not_qualified"]),
-        (True, True, ["center_closed", "tutor_not_qualified"]),
+        (False, False, False, []),
+        (True, False, False, ["center_closed"]),
+        (False, True, False, ["tutor_not_qualified"]),
+        (False, False, True, ["overridden"]),
+        (True, True, False, ["center_closed", "tutor_not_qualified"]),
+        (True, False, True, ["center_closed", "overridden"]),
+        (True, True, True, ["center_closed", "tutor_not_qualified", "overridden"]),
     ],
 )
-def test_markers_come_in_the_fixed_order(closed, not_qualified, expected):
-    assert markers.markers_of(closed=closed, not_qualified=not_qualified) == expected
+def test_markers_come_in_the_fixed_order(closed, not_qualified, overridden, expected):
+    assert (
+        markers.markers_of(
+            closed=closed, not_qualified=not_qualified, overridden=overridden
+        )
+        == expected
+    )

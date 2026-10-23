@@ -1,3 +1,8 @@
+import classicThemePlugin from '@fullcalendar/react/themes/classic';
+import dayGridPlugin from '@fullcalendar/react/daygrid';
+import interactionPlugin from '@fullcalendar/react/interaction';
+import listPlugin from '@fullcalendar/react/list';
+import timeGridPlugin from '@fullcalendar/react/timegrid';
 import { createElement, type ReactNode } from 'react';
 import type { RouteObject } from 'react-router';
 import { routes } from '@/app/router';
@@ -328,14 +333,23 @@ describe('the compact layout of short events', () => {
 });
 
 describe('the views', () => {
-  it('are exactly the four standard ones, without interaction', () => {
+  it('are exactly the four standard ones, plus the interaction plugin (#58 D1)', () => {
     expect(Object.values(CALENDAR_VIEWS)).toEqual([
       'timeGridDay',
       'timeGridWeek',
       'dayGridMonth',
       'listWeek',
     ]);
-    expect(CALENDAR_PLUGINS).toHaveLength(4);
+    expect(CALENDAR_PLUGINS).toHaveLength(5);
+    expect(CALENDAR_PLUGINS).toContain(interactionPlugin);
+    expect(CALENDAR_PLUGINS).toEqual(
+      expect.arrayContaining([
+        dayGridPlugin,
+        timeGridPlugin,
+        listPlugin,
+        classicThemePlugin,
+      ]),
+    );
   });
 });
 

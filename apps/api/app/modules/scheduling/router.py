@@ -38,7 +38,9 @@
   ``require("schedule.view")``; every holder sees every series.
 - ``PATCH /api/v1/class-sessions/{class_session_id}`` (#54 C1):
   ``require("schedule.manage")``; moves one session or occurrence
-  (:mod:`~app.modules.scheduling.session_edit` gives the order).
+  (:mod:`~app.modules.scheduling.session_edit` gives the order). Its
+  ``override`` (#58 A2) needs ``schedule.override``: ``403`` right after
+  the body's ``422``, before anything is read (before the ``404``).
 - ``POST /api/v1/class-sessions/{class_session_id}/conflict-overrides``
   (#236 G3): ``require("schedule.manage")`` plus ``schedule.override`` in
   the service (after the ``404``); overrides one ``conflict`` occurrence
@@ -254,8 +256,10 @@ async def list_class_sessions(
     Filters combine with AND; an unknown id matches nothing. `cancelled`
     sessions only with `include_cancelled`. `markers` are computed on read:
     `center_closed` (an unassigned, offered or confirmed session on a
-    closure's local date) and `tutor_not_qualified` (a future offered or
-    confirmed session whose tutor holds no approved qualification)."""
+    closure's local date), `tutor_not_qualified` (a future offered or
+    confirmed session whose tutor holds no approved qualification) and
+    `overridden` (booked or moved with an override, any state). Each item
+    has its `version` (a move sends it) and `series_id`."""
     return await service.list_calendar_sessions(uow.session, query)
 
 
@@ -279,6 +283,13 @@ async def get_class_session(
     "/{class_session_id:uuid}",
     responses={
         **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): no schedule.manage, or an"
+            " `override` without schedule.override (before anything is read,"
+            " even for a move without a conflict). The privacy notice must be"
+            " accepted first (privacy_notice_required); a failed Origin or"
+            " X-CSRF-Token check (csrf_failed)."
+        ),
         404: problem_response_doc("No such class session (not_found)."),
         409: problem_response_doc(
             "The session changed since it was read (version_conflict); it has"
@@ -286,16 +297,19 @@ async def get_class_session(
             " completed, cancelled or skipped for a closure"
             " (session_not_editable, details.state); or the new time breaks"
             " scheduling rules (scheduling_conflict, every conflict; a closure"
-            " date is center_closed). Nothing is changed."
+            " date is center_closed). A hard conflict, or a soft one the"
+            " `override` doesn't list, always refuses. Nothing is changed."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
-            " field (an `override` or `tutor_user_id` included); the bounds"
+            " field (`tutor_user_id` included); the `override`"
+            " (reason_required, reason_too_long, codes_required,"
+            " duplicate_code, code_not_overridable, code_unknown); the bounds"
             " (naive_datetime, not_whole_minutes, ends_before_start,"
             " duration_out_of_range, crosses_local_date); the references"
             " (classroom_unknown, classroom_inactive, and the session's"
             " student, subject or tutor codes), in one response; or"
-            " session_unchanged."
+            " session_unchanged (also with an `override`)."
         ),
     },
 )
@@ -313,7 +327,12 @@ async def update_class_session(
     the series' rule never recreate its original date. Offered and confirmed
     sessions keep their state and tutor; a session in `conflict` that now
     passes is scheduled. The tutor (offered or confirmed) and the family
-    (confirmed) are notified. `warnings` is always empty for now."""
+    (confirmed) are notified. With an `override` the listed soft conflicts
+    of the new time are allowed, stored with the reason and audited; an
+    earlier override never covers a later move. `warnings` lists the
+    tutor's workload warnings at the new time."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
     return await service.update_class_session(
         uow.session, class_session_id, body, actor_id=principal.user_id
     )

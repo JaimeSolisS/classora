@@ -49,6 +49,8 @@ export function item(overrides: Partial<CalendarItem> = {}): CalendarItem {
     id: `00000000-0000-4000-8000-${String(counter).padStart(12, '0')}`,
     kind: 'individual',
     state: 'confirmed',
+    version: 1,
+    series_id: null,
     starts_at: '2026-11-09T16:00:00Z',
     ends_at: '2026-11-09T17:00:00Z',
     subject: MATH,

@@ -7,7 +7,14 @@ import '@fullcalendar/react/skeleton.css';
 import '@fullcalendar/react/themes/classic/theme.css';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -21,8 +28,19 @@ import {
   type CalendarItem,
   type CalendarLoaders,
   type CalendarQuery,
+  type ClassSessionUpdate,
 } from './api';
 import { CalendarFilters } from './CalendarFilters';
+import { MoveNotSavedDialog } from './dnd/MoveNotSavedDialog';
+import { MoveNoticeView } from './dnd/MoveNotice';
+import { RescheduleDialog } from './dnd/RescheduleDialog';
+import {
+  droppedSlot,
+  isEditable,
+  overrideBody,
+  refusalKind,
+} from './dnd/rules';
+import { useMoveSession } from './dnd/useMoveSession';
 import { EventContent } from './EventContent';
 import { isCompact, type LabelContext } from './labels';
 import { SessionDialog } from './SessionDialog';
@@ -41,7 +59,15 @@ import './calendar.css';
 // state (view, date, filters) comes from the page (the URL); the visible
 // range comes from FullCalendar (`datesSet`) and is read as local dates,
 // turned into `from`/`to` instants by lib/time. One query per (range,
-// filters). Read-only: no dragging, selecting or date-click (#58).
+// filters).
+//
+// Rescheduling (#58): a holder of schedule.manage drags an editable event
+// (dnd/rules isEditable) in Week and Day (start and duration kept; the end
+// resizes; 15-minute snap) or Month (the date; times kept), or uses the
+// event dialog's "Reschedule" (keyboard and single pointer). Every move is
+// the same PATCH through dnd/useMoveSession: optimistic, reverted on any
+// refusal, the "Move not saved" dialog for a conflict (with the override
+// for holders of schedule.override). No selecting or date-click.
 
 export interface ScheduleCalendarProps {
   state: CalendarState;
@@ -51,12 +77,25 @@ export interface ScheduleCalendarProps {
   /** Today in the center zone. */
   today: LocalDate;
   loaders: CalendarLoaders;
-  /** Shows the "Schedule a session" link (schedule.manage). */
+  /**
+   * schedule.manage: the "Schedule a session" link, and moving sessions
+   * (drag, resize, Reschedule) when `loaders.updateSession` is given.
+   */
   canSchedule: boolean;
+  /** schedule.override: "Override and move" after a soft conflict. */
+  canOverride?: boolean;
 }
 
 interface EventProps {
   item: CalendarItem;
+  pending: boolean;
+  /** Draggable now (`cl-event--movable`). */
+  movable: boolean;
+}
+
+interface ChangeInfo {
+  event: { start: Date | null; end: Date | null; extendedProps: unknown };
+  revert: () => void;
 }
 
 /** The local date of a FullCalendar range edge ("2026-11-09…"). */
@@ -68,7 +107,8 @@ const SLOT_FORMATS = {
   en: { hour: 'numeric', minute: '2-digit', hour12: true },
 } as const;
 
-/** Day and week titles name the dates, not only the month. */
+/** Day and week titles name the dates, not only the month. In Month a
+ * drag moves the date only: no resize (#58 D4). */
 const VIEW_OPTIONS = {
   timeGridDay: {
     titleFormat: { year: 'numeric', month: 'long', day: 'numeric' },
@@ -76,6 +116,7 @@ const VIEW_OPTIONS = {
   timeGridWeek: {
     titleFormat: { year: 'numeric', month: 'short', day: 'numeric' },
   },
+  dayGridMonth: { eventDurationEditable: false },
 } as const;
 
 function localDateOf(edge: string): LocalDate {
@@ -89,6 +130,7 @@ export function ScheduleCalendar({
   today,
   loaders,
   canSchedule,
+  canOverride = false,
 }: ScheduleCalendarProps) {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -96,12 +138,20 @@ export function ScheduleCalendar({
   const controller = useCalendarController();
   const [range, setRange] = useState<LocalRange | null>(null);
   const [selected, setSelected] = useState<CalendarItem | null>(null);
+  const [rescheduling, setRescheduling] = useState<CalendarItem | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
   const opener = useRef<HTMLElement | null>(null);
+  // Focus after a dialog closes (see focusEvent below).
+  const focusNotice = useRef(false);
+  const skipReturn = useRef(false);
+  const returnId = useRef<string | null>(null);
   // FullCalendar's first view and date; later changes go through the
   // controller (the effect below).
   const [initial] = useState(() => ({ view: state.view, date: state.date }));
   const region = useRef<HTMLDivElement | null>(null);
+  const noticeRef = useRef<HTMLDivElement | null>(null);
+  const canMove = canSchedule && loaders.updateSession !== undefined;
+  const move = useMoveSession(canMove ? loaders.updateSession : undefined);
 
   // Keep FullCalendar on the URL's view and date (back/forward, the toolbar).
   useEffect(() => {
@@ -122,7 +172,19 @@ export function ScheduleCalendar({
     queryFn: ({ signal }) => loaders.fetchCalendar(query!, signal),
     enabled: query !== null,
   });
-  const items = useMemo(() => sessions.data?.items ?? [], [sessions.data]);
+  const loaded = useMemo(() => sessions.data?.items ?? [], [sessions.data]);
+  const { positions } = move;
+  // A move being saved shows at its new slot (#58 D6).
+  const items = useMemo(
+    () =>
+      loaded.map((item) =>
+        positions[item.id] ? { ...item, ...positions[item.id] } : item,
+      ),
+    [loaded, positions],
+  );
+  /** The loaded item now (a dialog opened on an older copy). */
+  const current = (item: CalendarItem | null) =>
+    item ? (loaded.find((found) => found.id === item.id) ?? item) : null;
 
   // Names for the filter chips after a reload: from the loaded sessions.
   const knownNames = useMemo(() => {
@@ -134,16 +196,39 @@ export function ScheduleCalendar({
     return { ...found, ...names };
   }, [items, names]);
 
-  const events = useMemo(
-    () =>
-      items.map((item) => ({
+  // "Not started" is judged at the last load (pure); the server stays the
+  // authority (a stale one is 409 session_not_editable).
+  const loadedAt = sessions.dataUpdatedAt;
+  const events = useMemo(() => {
+    return items.map((item) => {
+      const pending = item.id in positions;
+      const movable = isEditable(item, loadedAt, canMove) && !pending;
+      return {
         id: item.id,
         start: item.starts_at,
         end: item.ends_at,
         title: item.subject.name,
-        extendedProps: { item } satisfies EventProps,
-      })),
-    [items],
+        // Editable events follow the calendar's (and the view's) options;
+        // the others, and one being saved, are fixed (#58 D3, D6).
+        ...(movable ? {} : { editable: false }),
+        extendedProps: { item, pending, movable } satisfies EventProps,
+      };
+    });
+  }, [items, positions, canMove, loadedAt]);
+
+  // A drop or a resize (stable: `move.drop` is).
+  const { drop } = move;
+  const onChange = useCallback(
+    (info: ChangeInfo) => {
+      const { item } = info.event.extendedProps as EventProps;
+      const slot = droppedSlot(info.event.start, info.event.end);
+      if (!slot) {
+        info.revert();
+        return;
+      }
+      void drop(item, slot, info.revert);
+    },
+    [drop],
   );
 
   const context: LabelContext = useMemo(
@@ -174,15 +259,33 @@ export function ScheduleCalendar({
       eventContrastColor: 'var(--card-foreground)',
       noEventsText: t('scheduling.calendar.empty'),
       eventInteractive: true,
-      eventClass: (info) =>
-        `cl-event cl-event--${(info.event.extendedProps as EventProps).item.state}`,
+      // #58 D4: drag (start) and end-resize for schedule.manage, 15 minutes.
+      eventStartEditable: canMove,
+      eventDurationEditable: canMove,
+      eventResizableFromStart: false,
+      snapDuration: '00:15:00',
+      eventDrop: onChange,
+      eventResize: onChange,
+      eventClass: (info) => {
+        const { item, pending, movable } = info.event
+          .extendedProps as EventProps;
+        return [
+          'cl-event',
+          `cl-event--${item.state}`,
+          pending ? 'cl-event--pending' : '',
+          movable ? 'cl-event--movable' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+      },
       eventContent: (info) => {
-        const { item } = info.event.extendedProps as EventProps;
+        const { item, pending } = info.event.extendedProps as EventProps;
         return (
           <EventContent
             item={item}
             context={context}
             compact={isCompact(info.view.type, item)}
+            pending={pending}
           />
         );
       },
@@ -193,8 +296,10 @@ export function ScheduleCalendar({
       },
       eventClick: (info) => {
         info.jsEvent.preventDefault();
+        const { item } = info.event.extendedProps as EventProps;
         opener.current = info.el;
-        setSelected((info.event.extendedProps as EventProps).item);
+        returnId.current = item.id;
+        setSelected(item);
       },
       datesSet: (info) => {
         const next = {
@@ -208,8 +313,9 @@ export function ScheduleCalendar({
         );
       },
     }),
-    [t, timeZone, language, context, initial],
+    [t, timeZone, language, context, initial, canMove, onChange],
   );
+  const refused = move.refused;
   const fetching = sessions.isFetching || query === null;
 
   let status = '';
@@ -223,6 +329,43 @@ export function ScheduleCalendar({
   }
 
   const go = (date: LocalDate) => onStateChange({ ...state, date });
+
+  // Where the focus goes when a dialog closes: the event it is about
+  // (`returnId`, found again by its id: a move re-renders it), or the page
+  // notice after a refusal the dialog didn't show (`focusNotice`), or
+  // nowhere when the details make way for Reschedule (`skipReturn`).
+  useEffect(() => {
+    if (refused) {
+      returnId.current = refused.item.id;
+    }
+  }, [refused]);
+  const focusEvent = () => {
+    const id = returnId.current ?? '';
+    const element = opener.current;
+    const target =
+      element?.isConnected === true && element.dataset.sessionId === id
+        ? element
+        : region.current?.querySelector<HTMLElement>(
+            `[data-session-id="${id}"]`,
+          );
+    target?.focus();
+  };
+  const afterDialog = (event: Event) => {
+    event.preventDefault();
+    if (focusNotice.current) {
+      focusNotice.current = false;
+      return;
+    }
+    focusEvent();
+  };
+  const refuseFromDialog = (
+    item: CalendarItem,
+    body: ClassSessionUpdate,
+    error: unknown,
+  ) => {
+    focusNotice.current = true;
+    move.refuse(item, body, error, { focus: true });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -300,6 +443,15 @@ export function ScheduleCalendar({
         </p>
       </div>
 
+      {canMove ? (
+        <MoveNoticeView
+          notice={move.notice}
+          context={context}
+          onReload={() => void move.reload()}
+          noticeRef={noticeRef}
+        />
+      ) : null}
+
       <p role="status" className="flex min-h-5 items-center gap-2 text-sm">
         {fetching ? <Spinner /> : null}
         {status}
@@ -331,21 +483,78 @@ export function ScheduleCalendar({
       </div>
 
       <SessionDialog
-        item={selected}
+        item={current(selected)}
         context={context}
         fetchSeriesId={loaders.fetchSeriesId}
+        canReschedule={(item) => isEditable(item, loadedAt, canMove)}
+        onReschedule={(item) => {
+          // One dialog at a time: Reschedule replaces the details.
+          skipReturn.current = true;
+          setSelected(null);
+          setRescheduling(item);
+        }}
         onClose={() => setSelected(null)}
         onReturnFocus={() => {
-          const element = opener.current;
-          const target =
-            element?.isConnected === true
-              ? element
-              : region.current?.querySelector<HTMLElement>(
-                  `[data-session-id="${selected?.id ?? ''}"]`,
-                );
-          target?.focus();
+          if (skipReturn.current) {
+            skipReturn.current = false;
+            return;
+          }
+          focusEvent();
         }}
       />
+
+      {canMove ? (
+        <>
+          <RescheduleDialog
+            item={current(rescheduling)}
+            context={context}
+            canOverride={canOverride}
+            send={async (item, body) => {
+              await move.send(item, body);
+              setRescheduling(null);
+            }}
+            onRefused={(item, body, error) => {
+              setRescheduling(null);
+              refuseFromDialog(item, body, error);
+            }}
+            onCancel={() => setRescheduling(null)}
+            onCloseAutoFocus={afterDialog}
+          />
+          <MoveNotSavedDialog
+            refused={refused}
+            context={context}
+            canOverride={canOverride}
+            onConflicts={(conflicts) =>
+              move.setRefused((now) => (now ? { ...now, conflicts } : now))
+            }
+            onOverride={async (reason) => {
+              if (!refused) {
+                return;
+              }
+              // The same body and version as the refused move (#58 F3).
+              const body = overrideBody(
+                refused.body,
+                refused.conflicts,
+                reason,
+              );
+              try {
+                await move.send(refused.item, body);
+                move.setRefused(null);
+              } catch (error) {
+                const kind = refusalKind(error);
+                if (kind === 'stale' || kind === 'gone') {
+                  move.setRefused(null);
+                  refuseFromDialog(refused.item, body, error);
+                  return;
+                }
+                throw error;
+              }
+            }}
+            onClose={() => move.setRefused(null)}
+            onCloseAutoFocus={afterDialog}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

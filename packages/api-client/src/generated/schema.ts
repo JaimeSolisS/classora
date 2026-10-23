@@ -1841,8 +1841,10 @@ export interface paths {
          *     Filters combine with AND; an unknown id matches nothing. `cancelled`
          *     sessions only with `include_cancelled`. `markers` are computed on read:
          *     `center_closed` (an unassigned, offered or confirmed session on a
-         *     closure's local date) and `tutor_not_qualified` (a future offered or
-         *     confirmed session whose tutor holds no approved qualification).
+         *     closure's local date), `tutor_not_qualified` (a future offered or
+         *     confirmed session whose tutor holds no approved qualification) and
+         *     `overridden` (booked or moved with an override, any state). Each item
+         *     has its `version` (a move sends it) and `series_id`.
          */
         get: operations["list_class_sessions_api_v1_class_sessions_get"];
         put?: never;
@@ -1916,7 +1918,10 @@ export interface paths {
          *     the series' rule never recreate its original date. Offered and confirmed
          *     sessions keep their state and tutor; a session in `conflict` that now
          *     passes is scheduled. The tutor (offered or confirmed) and the family
-         *     (confirmed) are notified. `warnings` is always empty for now.
+         *     (confirmed) are notified. With an `override` the listed soft conflicts
+         *     of the new time are allowed, stored with the reason and audited; an
+         *     earlier override never covers a later move. `warnings` lists the
+         *     tutor's workload warnings at the new time.
          */
         patch: operations["update_class_session_api_v1_class_sessions__class_session_id__patch"];
         trace?: never;
@@ -3415,7 +3420,8 @@ export interface components {
         /**
          * ClassSessionCalendarItem
          * @description One session on the calendar (#57 A4). ``markers`` are computed on
-         *     read, in a fixed order (``center_closed``, ``tutor_not_qualified``).
+         *     read, in a fixed order (``center_closed``, ``tutor_not_qualified``,
+         *     ``overridden``). ``version`` is what a move sends (#58).
          */
         ClassSessionCalendarItem: {
             /**
@@ -3425,6 +3431,13 @@ export interface components {
             id: string;
             kind: components["schemas"]["SessionKindCode"];
             state: components["schemas"]["SessionStateCode"];
+            /** Version */
+            version: number;
+            /**
+             * Series Id
+             * @description The weekly series of an occurrence; null for a one-off session.
+             */
+            series_id: string | null;
             /**
              * Starts At
              * Format: date-time
@@ -3705,7 +3718,8 @@ export interface components {
          * @description Move one session (``PATCH /api/v1/class-sessions/{id}``, #54 C1): new
          *     instants and optionally a new room. The tutor, the subject and the
          *     students never change here. ``classroom_id`` absent keeps the room;
-         *     ``null`` removes it. No ``override`` yet (#58 adds it).
+         *     ``null`` removes it. ``override`` (#58, the #49 type) needs
+         *     ``schedule.override``.
          */
         ClassSessionUpdate: {
             /**
@@ -3730,6 +3744,8 @@ export interface components {
              * @description The new classroom; null is no room; absent keeps the room.
              */
             classroom_id?: string | null;
+            /** @description Override the listed soft conflicts of the new time with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
         };
         /**
          * ClassSessionUpdated
@@ -3813,7 +3829,7 @@ export interface components {
             group_id: string | null;
             /**
              * Warnings
-             * @description Always empty for an edit for now.
+             * @description The tutor's workload warnings at the new time (#50), the session itself counted once; empty without a tutor.
              */
             warnings: components["schemas"]["SchedulingWarning"][];
         };
@@ -5519,7 +5535,7 @@ export interface components {
             password: string;
         };
         /** @enum {string} */
-        MarkerCode: "center_closed" | "tutor_not_qualified";
+        MarkerCode: "center_closed" | "tutor_not_qualified" | "overridden";
         /**
          * NotificationItem
          * @description One of the caller's notifications. The client renders the message from
@@ -14061,7 +14077,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override (before anything is read, even for a move without a conflict). The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14079,7 +14095,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). Nothing is changed. */
+            /** @description The session changed since it was read (version_conflict); it has begun (session_not_editable, details.reason = started) or is completed, cancelled or skipped for a closure (session_not_editable, details.state); or the new time breaks scheduling rules (scheduling_conflict, every conflict; a closure date is center_closed). A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

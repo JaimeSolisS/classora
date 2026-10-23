@@ -179,3 +179,12 @@
 .cl-calendar .cl-event-content {
   align-self: flex-start;
 }
+
+/* A move being saved (#58 D6): "Saving…" with its icon, never colour alone. */
+.cl-badge--pending {
+  font-weight: 600;
+}
+
+.cl-calendar .cl-event--pending {
+  border-style: dashed;
+}
