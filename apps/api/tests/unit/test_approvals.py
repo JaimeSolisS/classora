@@ -142,12 +142,14 @@ REGISTERED_TYPES = {
     "staff.qualification",
     "scheduling.occurrence_conflict",
     "scheduling.offer_reassignment",
+    "scheduling.session_request",
 }
 
 
 def test_build_app_registers_exactly_the_real_types():
     # D3: build_app registers identity.registration, (#44 C1)
-    # staff.qualification and (#52 E2) scheduling.offer_reassignment.
+    # staff.qualification, (#52 E2) scheduling.offer_reassignment and (#59
+    # E1) scheduling.session_request.
     for request_type in REGISTERED_TYPES:
         unregister_approval_handler(request_type)
     build_app()

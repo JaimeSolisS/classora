@@ -11305,6 +11305,521 @@
           }
         }
       }
+    },
+    "/api/v1/available-slots": {
+      "get": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "List Available Slots",
+        "description": "The times your child (or you, as a student) can request for an\nindividual session of the subject and length, for every local date from\n`from` to `to` (at most 14 dates, from today up to 60 days ahead, center\nzone).\n\nSlots start on the hour or the half hour within the center's opening\nhours, on dates the center is open, meet the booking notice, don't\noverlap the student's sessions, and at least one qualified tutor is\nfree and available (which tutor is never shown). Rooms and other\nfamilies' pending requests are not considered. `already_requested`\nmarks a slot overlapping one of this student's pending requests.\n\nRange errors (422, on the field): `range_invalid`, `range_too_long`,\n`range_in_past`, `range_too_far`; references: `student_inactive`,\n`subject_unknown`, `subject_inactive`. At most 60 searches per 15\nminutes per user (429).",
+        "operationId": "list_available_slots_api_v1_available_slots_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "duration_minutes",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SessionRequestDuration",
+              "description": "The session length in minutes: 30, 45, 60, 90 or 120."
+            },
+            "description": "The session length in minutes: 30, 45, 60, 90 or 120."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "The first local date.",
+              "title": "From"
+            },
+            "description": "The first local date."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "The last local date (inclusive).",
+              "title": "To"
+            },
+            "description": "The last local date (inclusive)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableSlots"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one you may act for (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (rate_limited). Retry after the number of seconds in Retry-After.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the limit's window ends.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session-requests": {
+      "post": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Create Session Request",
+        "description": "Request an individual session at an available time. It is a request,\nnot a booking: it stays `pending` until the center confirms it or lets\nyou know, and holds no time meanwhile. The center chooses the tutor.\n\n`starts_at` is on the 30-minute local grid (422 `not_on_grid`\notherwise); other 422 codes on `starts_at`: `naive_datetime`,\n`not_whole_minutes`, `crosses_local_date`. At most 10 requests per\nhour per user (429).",
+        "operationId": "create_session_request_api_v1_session_requests_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one you may act for (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (rate_limited). Retry after the number of seconds in Retry-After.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the limit's window ends.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The student already has 5 pending requests (session_request_limit_reached), a pending request at an overlapping time (session_request_overlap), or the time is no longer available (slot_unavailable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "List Session Requests",
+        "description": "The requests of every student you may act for, newest first. A\n`student_id` you can't act for, or a caller without the guardian or\nstudent role, gets an empty page.",
+        "operationId": "list_session_requests_api_v1_session_requests_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "confirmed",
+                "rejected",
+                "withdrawn",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session-requests/{request_id}": {
+      "get": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Get Session Request",
+        "description": "One request of a student you may act for.",
+        "operationId": "get_session_request_api_v1_session_requests__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such request, or not one of a student you may act for (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session-requests/{request_id}/withdraw": {
+      "post": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Withdraw Session Request",
+        "description": "Withdraw a pending request you made; its inbox item is cancelled and\nthe student's pending limit and time are freed.",
+        "operationId": "withdraw_session_request_api_v1_session_requests__request_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequestWithdraw"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You didn't make this request (permission_denied), or privacy_notice_required / csrf_failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such request, or not one of a student you may act for (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12324,6 +12839,111 @@
         ],
         "title": "AvailabilityWindow",
         "description": "One weekly window, ``[starts_at, ends_at)`` in local time on an ISO\nweekday. Never crosses midnight."
+      },
+      "AvailableDay": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableSlot"
+            },
+            "type": "array",
+            "title": "Slots"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "slots"
+        ],
+        "title": "AvailableDay",
+        "description": "One local date of the range and its slots (empty when none)."
+      },
+      "AvailableSlot": {
+        "properties": {
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "already_requested": {
+            "type": "boolean",
+            "title": "Already Requested",
+            "description": "This student already has a pending request overlapping it (a hint; a request holds no time)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "starts_at",
+          "ends_at",
+          "already_requested"
+        ],
+        "title": "AvailableSlot",
+        "description": "A time the family may request. Never names a tutor or a room."
+      },
+      "AvailableSlots": {
+        "properties": {
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone",
+            "description": "The center's IANA time zone."
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableDay"
+            },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "time_zone",
+          "student_id",
+          "subject_id",
+          "duration_minutes",
+          "from",
+          "to",
+          "days"
+        ],
+        "title": "AvailableSlots",
+        "description": "``GET /api/v1/available-slots``: every date of the range, in order."
       },
       "BusinessSettingsDetail": {
         "properties": {
@@ -20061,6 +20681,338 @@
         ],
         "title": "SessionParticipant",
         "description": "A student of the session."
+      },
+      "SessionRequestCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At",
+            "description": "An instant with an offset (RFC 3339), on the 30-minute local grid (:00 or :30 in the center zone)."
+          },
+          "duration_minutes": {
+            "$ref": "#/components/schemas/SessionRequestDuration"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "An optional note for the center (trimmed, at most 500)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "subject_id",
+          "starts_at",
+          "duration_minutes"
+        ],
+        "title": "SessionRequestCreate",
+        "description": "``POST /api/v1/session-requests`` (#59 C1). No tutor, classroom or end\n(``422`` through ``extra=\"forbid\"``): the center chooses the tutor."
+      },
+      "SessionRequestDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/SessionRequestStudent"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionRequestSubject"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionRequestStatus"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "requested_by_me": {
+            "type": "boolean",
+            "title": "Requested By Me"
+          },
+          "can_withdraw": {
+            "type": "boolean",
+            "title": "Can Withdraw",
+            "description": "You made it and it is still pending."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "subject",
+          "starts_at",
+          "ends_at",
+          "duration_minutes",
+          "status",
+          "note",
+          "requested_by_me",
+          "can_withdraw",
+          "created_at",
+          "resolved_at",
+          "version"
+        ],
+        "title": "SessionRequestDetail",
+        "description": "A request as a family sees it (#59 D2; S3 allow-list)."
+      },
+      "SessionRequestDuration": {
+        "type": "integer",
+        "enum": [
+          30,
+          45,
+          60,
+          90,
+          120
+        ]
+      },
+      "SessionRequestItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/SessionRequestStudent"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionRequestSubject"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionRequestStatus"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "requested_by_me": {
+            "type": "boolean",
+            "title": "Requested By Me"
+          },
+          "can_withdraw": {
+            "type": "boolean",
+            "title": "Can Withdraw",
+            "description": "You made it and it is still pending."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "subject",
+          "starts_at",
+          "ends_at",
+          "duration_minutes",
+          "status",
+          "note",
+          "requested_by_me",
+          "can_withdraw",
+          "created_at",
+          "resolved_at",
+          "version"
+        ],
+        "title": "SessionRequestItem",
+        "description": "A list item: the same members as the detail."
+      },
+      "SessionRequestPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionRequestItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SessionRequestPage",
+        "description": "An offset page of requests, newest first (#21)."
+      },
+      "SessionRequestStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "confirmed",
+          "rejected",
+          "withdrawn"
+        ]
+      },
+      "SessionRequestStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "SessionRequestStudent"
+      },
+      "SessionRequestSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name"
+        ],
+        "title": "SessionRequestSubject"
+      },
+      "SessionRequestWithdraw": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "SessionRequestWithdraw",
+        "description": "``POST /api/v1/session-requests/{request_id}/withdraw`` (#59 D3)."
       },
       "SessionStateCode": {
         "type": "string",
