@@ -14,11 +14,13 @@ import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import {
   ACTIVE_CLASSROOM_OPTIONS_KEY,
   availabilityKey,
+  cancelAvailabilityChangeRequest,
   cancelQualification,
   createAvailabilityException,
   deleteAvailabilityException,
   fetchActiveClassroomOptions,
   fetchAvailability,
+  isChangeRequest,
   fetchQualifications,
   fetchTutor,
   qualificationsKey,
@@ -53,7 +55,9 @@ import { TutorForm } from './TutorForm';
 // Then the Availability section (#45 F1): the availability query; the
 // tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
 // edit it. After a change the query is refetched. Editors also load the
-// active classrooms for the preferred-room choices (#197).
+// active classrooms for the preferred-room choices (#197). A change sent for
+// approval (#63) refetches it too (its pending list); a `#availability`
+// hash scrolls to the section.
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -199,11 +203,26 @@ function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
 function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
   const queryClient = useQueryClient();
   const timeZone = useCenterTimeZone();
+  const location = useLocation();
   const key = availabilityKey(tutor.user_id);
   const availability = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => fetchAvailability(tutor.user_id, signal),
   });
+  const scrolled = useRef(false);
+
+  // #63: the availability decisions' notifications and the inbox link to
+  // `#availability`.
+  useEffect(() => {
+    if (
+      !scrolled.current &&
+      location.hash === '#availability' &&
+      availability.data !== undefined
+    ) {
+      scrolled.current = true;
+      document.getElementById('availability')?.scrollIntoView?.();
+    }
+  }, [location.hash, availability.data]);
 
   // Self or tutor.manage: exactly the callers with editable fields (#43).
   const canEdit = tutor.editable_fields.length > 0;
@@ -237,7 +256,13 @@ function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
           version,
           windows,
         });
+        if (isChangeRequest(saved)) {
+          // #63: sent for approval; the pending list shows it.
+          await refresh();
+          return saved;
+        }
         queryClient.setQueryData(key, saved);
+        return null;
       }}
       onReload={refresh}
       classrooms={
@@ -256,12 +281,20 @@ function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
         queryClient.setQueryData(key, saved);
       }}
       onAddException={async (body) => {
-        await createAvailabilityException(tutor.user_id, body);
+        const answer = await createAvailabilityException(tutor.user_id, body);
         await refresh();
+        return isChangeRequest(answer) ? answer : null;
       }}
       onDeleteException={async (item) => {
         try {
-          await deleteAvailabilityException(tutor.user_id, item.id);
+          return await deleteAvailabilityException(tutor.user_id, item.id);
+        } finally {
+          await refresh();
+        }
+      }}
+      onWithdrawChange={async (request) => {
+        try {
+          await cancelAvailabilityChangeRequest(tutor.user_id, request);
         } finally {
           await refresh();
         }

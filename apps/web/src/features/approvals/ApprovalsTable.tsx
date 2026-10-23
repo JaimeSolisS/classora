@@ -21,6 +21,7 @@ import type {
 import {
   actionLabelKey,
   approvalSummary,
+  availabilityChangeLink,
   itemName,
   namedActionLabelKey,
   reassignmentLink,
@@ -178,6 +179,21 @@ function RequestSummary({ item }: { item: ApprovalRequestItem }) {
     (instant) => formatInstant(instant, 'dateTime'),
     (localDate) => formatLocalDate(localDate),
   );
+  const availability = availabilityChangeLink(item);
+  if (availability) {
+    // #63 H2: the tutor's availability.
+    return (
+      <span className="flex flex-col gap-1">
+        <span>{summary}</span>
+        <Link
+          to={availability}
+          className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {t('approvals.availabilityChange.openAvailability')}
+        </Link>
+      </span>
+    );
+  }
   const link = reassignmentLink(item);
   if (!link) {
     return <>{summary}</>;

@@ -274,6 +274,15 @@ describe('the accessible name', () => {
     );
   });
 
+  it('names the reassignment marker as text (#63 H3)', () => {
+    const flagged = item({ markers: ['reassignment_needed'] });
+
+    expect(sessionName(flagged, context('en'))).toContain('Needs reassignment');
+    expect(sessionName(flagged, context('es'))).toContain(
+      'Requiere reasignación',
+    );
+  });
+
   it.each([
     ['unassigned', 'Unassigned', 'Sin asignar'],
     ['offered', 'Offered', 'Ofrecida'],

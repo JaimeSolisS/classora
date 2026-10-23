@@ -296,7 +296,8 @@
       "scheduling_offer_reassignment": "Session to reassign",
       "scheduling_occurrence_conflict": "Series session conflict",
       "scheduling_session_request": "Session request",
-      "scheduling_change_request": "Change request"
+      "scheduling_change_request": "Change request",
+      "staff_availability_change": "Availability change"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -312,7 +313,9 @@
       "substitutionExpired": "Substitute {{tutor}} didn't answer · {{subject}} · {{when}} · still taught by {{original}}",
       "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · requested by {{requester}}",
       "changeRequest": "{{kind}} · {{student}} · {{subject}} · {{when}} · {{classification}}",
-      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}"
+      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}",
+      "availabilityChange_one": "{{tutor}} · {{change}} · 1 class affected",
+      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} classes affected"
     },
     "list": {
       "title": "Requests",
@@ -387,6 +390,13 @@
       "review": "Review",
       "reviewFor": "Review {{name}}",
       "openReview": "Open the review page"
+    },
+    "availabilityChange": {
+      "affectedTitle": "Affected classes (when the change was sent)",
+      "more_one": "and 1 more",
+      "more_other": "and {{count}} more",
+      "openAvailability": "Open the tutor's availability",
+      "approveHelp": "Approving applies the change. Offered classes go back to unassigned; confirmed classes keep their tutor and are marked as needing reassignment."
     }
   },
   "users": {
@@ -677,6 +687,50 @@
           "roomUnavailable": "A chosen classroom is no longer available. Reload and choose again.",
           "invalid": "Check this field."
         }
+      },
+      "changes": {
+        "weekly": "Weekly availability: {{windows}}",
+        "noWindows": "no hours",
+        "kinds": {
+          "weekly": "Weekly availability",
+          "exception_create": "New exception",
+          "exception_delete": "Deleted exception"
+        },
+        "add": {
+          "unavailable": "Time off: {{when}}",
+          "available": "Extra availability: {{when}}"
+        },
+        "remove": {
+          "unavailable": "Remove time off: {{when}}",
+          "available": "Remove extra availability: {{when}}"
+        },
+        "datesHours": "{{dates}}, {{hours}}",
+        "session": "{{when}}–{{end}} · {{subject}}",
+        "sent_one": "Sent for approval: this change affects 1 scheduled class. Nothing changes until an Owner or Administrator approves it.",
+        "sent_other": "Sent for approval: this change affects {{count}} scheduled classes. Nothing changes until an Owner or Administrator approves it.",
+        "more_one": "and 1 more",
+        "more_other": "and {{count}} more",
+        "affected_one": "1 scheduled class affected",
+        "affected_other": "{{count}} scheduled classes affected",
+        "requestedBy": "Sent by {{name}} on {{when}}",
+        "pendingTitle": "Changes waiting for approval",
+        "pendingHelp": "These changes affect scheduled classes. An Owner or Administrator approves or rejects them on the Approvals page; until then the availability above stays as it is.",
+        "recentTitle": "Recent decisions",
+        "statuses": {
+          "pending": "Waiting for approval",
+          "approved": "Approved on {{when}}",
+          "rejected": "Rejected on {{when}}",
+          "cancelled": "Withdrawn on {{when}}"
+        },
+        "reason": "Reason: {{reason}}",
+        "withdraw": "Withdraw",
+        "withdrawFor": "Withdraw the change {{change}}",
+        "withdrawTitle": "Withdraw this change?",
+        "withdrawDescription": "{{change}} will no longer wait for approval. The availability doesn't change.",
+        "withdrawKeep": "Keep",
+        "withdrawConfirm": "Withdraw",
+        "withdrawing": "Withdrawing…",
+        "withdrawn": "Change withdrawn."
       }
     }
   },
@@ -1402,7 +1456,10 @@
       "scheduling_change_request_approved_reschedule": "Your request to move the class on {{starts_at}} was approved: it is now on {{new_starts_at}}.",
       "scheduling_change_request_rejected": "Your change request for the class on {{starts_at}} was rejected.",
       "scheduling_change_request_rejected_cancellation": "Your request to cancel the class on {{starts_at}} was rejected; the class stays as scheduled.",
-      "scheduling_change_request_rejected_reschedule": "Your request to move the class on {{starts_at}} was rejected; the class stays as scheduled."
+      "scheduling_change_request_rejected_reschedule": "Your request to move the class on {{starts_at}} was rejected; the class stays as scheduled.",
+      "staff_availability_change_approved": "Your availability change was approved. Classes flagged for reassignment: {{affected_count}}.",
+      "staff_availability_change_rejected": "Your availability change was rejected. See the reason in your availability.",
+      "scheduling_reassignment_needed": "{{tutor_name}}'s availability changed: {{session_count}} classes need another tutor, the first on {{first_starts_at}}."
     }
   },
   "scheduling": {
@@ -1595,6 +1652,10 @@
       "overridden": {
         "label": "Overridden",
         "explanation": "Booked or moved with an override of a soft rule."
+      },
+      "reassignment_needed": {
+        "label": "Needs reassignment",
+        "explanation": "The tutor's availability changed. The session keeps its time: offer it to another tutor or substitute the tutor."
       }
     },
     "rules": {
@@ -1713,7 +1774,11 @@
       "seriesNoTutor": "no tutor",
       "seriesPending": "offered to {{tutor}}, answer by {{when}}",
       "seriesPendingNoDeadline": "offered to {{tutor}}",
-      "seriesAccepted": "{{tutor}} from {{date}}"
+      "seriesAccepted": "{{tutor}} from {{date}}",
+      "reassignment": {
+        "title": "Needs reassignment: the tutor's availability changed",
+        "text": "{{tutor}}'s availability changed on {{when}}. Offer the session to another tutor or substitute the tutor."
+      }
     },
     "series": {
       "repeats": "Repeats weekly",

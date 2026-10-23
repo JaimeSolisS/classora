@@ -4,29 +4,55 @@ import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
+import type { AvailabilityChangeRequest } from './api';
 import { AvailabilitySection } from './AvailabilitySection';
-import { AVAILABILITY, CLASSROOM_OPTIONS, NO_AVAILABILITY } from './fixtures';
+import {
+  AVAILABILITY,
+  AVAILABILITY_WITH_CHANGES,
+  CLASSROOM_OPTIONS,
+  NO_AVAILABILITY,
+  TIME_OFF_CHANGE,
+  WEEKLY_CHANGE,
+} from './fixtures';
 
 // The tutor profile's Availability section (#45 F4): editable (the tutor or
 // tutor.manage) and read-only (a Coordinator), the empty states, and the
-// exception dialog with its field errors and a requires-approval answer;
-// the teaching limits and preferred classrooms (#197 C2): editable with an
-// inactive stored room, read-only, field errors, and a server rejection.
-// No request: every call is a stub.
+// exception dialog with its field errors; the teaching limits and preferred
+// classrooms (#197 C2): editable with an inactive stored room, read-only,
+// field errors, and a server rejection. M4-18 (#63 H4): time off sent for
+// approval (202), the "Sent for approval" notice, the pending changes with
+// Withdraw (and a 409 in its dialog), read-only, a rejected change's
+// reason, and the section at 320 px. No request: every call is a stub.
+
+/** A write that applied (no change request). */
+const NOT_SENT = (): Promise<AvailabilityChangeRequest | null> =>
+  Promise.resolve(null);
 
 const meta = {
   title: 'Tutors/AvailabilitySection',
   component: AvailabilitySection,
+  parameters: {
+    viewport: {
+      options: {
+        narrow320: {
+          name: 'Narrow (320 px)',
+          styles: { width: '320px', height: '640px' },
+          type: 'mobile',
+        },
+      },
+    },
+  },
   args: {
     state: { status: 'ready', availability: AVAILABILITY },
     canEdit: true,
     timeZone: 'America/Mexico_City',
-    onSaveWeekly: fn(() => Promise.resolve()),
+    onSaveWeekly: fn(NOT_SENT),
     onReload: fn(() => Promise.resolve()),
     classrooms: { status: 'ready', items: CLASSROOM_OPTIONS },
     onSaveSettings: fn(() => Promise.resolve()),
-    onAddException: fn(() => Promise.resolve()),
-    onDeleteException: fn(() => Promise.resolve()),
+    onAddException: fn(NOT_SENT),
+    onDeleteException: fn(NOT_SENT),
+    onWithdrawChange: fn(() => Promise.resolve()),
   },
   render: (args) => (
     <StoryQueryClient>
@@ -119,36 +145,119 @@ export const ExceptionDialogErrors: Story = {
   },
 };
 
-export const ExceptionDialogNeedsApproval: Story = {
+export const ExceptionDialogSentForApproval: Story = {
   args: {
     initiallyAdding: true,
-    onAddException: fn(() =>
-      Promise.reject(
-        new ApiError({
-          code: 'availability_change_requires_approval',
-          status: 409,
-        }),
-      ),
-    ),
+    onAddException: fn(() => Promise.resolve(TIME_OFF_CHANGE)),
   },
-  play: async ({ userEvent }) => {
+  play: async ({ canvas, userEvent }) => {
     const dialog = within(await screen.findByRole('dialog'));
     // Date inputs take the whole value at once.
     for (const label of ['startsOn', 'endsOn'] as const) {
       await fireEvent.change(
         dialog.getByLabelText(i18n.t(`tutors.availability.${label}`)),
-        { target: { value: '2026-12-21' } },
+        { target: { value: '2027-01-11' } },
       );
     }
     await userEvent.click(
       dialog.getByRole('button', { name: i18n.t('tutors.availability.send') }),
     );
     await expect(
-      await dialog.findByText(
-        i18n.t('errors:availability_change_requires_approval'),
+      await canvas.findByText(
+        i18n.t('tutors.availability.changes.sent', { count: 1 }),
+      ),
+    ).toBeVisible();
+    await expect(screen.queryByRole('dialog')).toBeNull();
+  },
+};
+
+export const SentForApproval: Story = {
+  args: { initiallySent: WEEKLY_CHANGE },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(
+        i18n.t('tutors.availability.changes.sent', { count: 5 }),
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(
+        i18n.t('tutors.availability.changes.more', { count: 2 }),
       ),
     ).toBeVisible();
   },
+};
+
+export const PendingChanges: Story = {
+  args: {
+    state: { status: 'ready', availability: AVAILABILITY_WITH_CHANGES },
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('heading', {
+        name: i18n.t('tutors.availability.changes.pendingTitle'),
+      }),
+    ).toBeVisible();
+    // Each button's accessible name names its change.
+    await expect(
+      canvas.getAllByText(i18n.t('tutors.availability.changes.withdraw')),
+    ).toHaveLength(2);
+    await expect(
+      canvas.getByText(
+        i18n.t('tutors.availability.changes.reason', {
+          reason: 'No hay sustituto para esas clases.',
+        }),
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const PendingChangesReadOnly: Story = {
+  args: {
+    canEdit: false,
+    state: { status: 'ready', availability: AVAILABILITY_WITH_CHANGES },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.queryAllByRole('button')).toHaveLength(0);
+    await expect(
+      canvas.getByText(
+        i18n.t('tutors.availability.changes.affected', { count: 5 }),
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const WithdrawNotPending: Story = {
+  args: {
+    state: { status: 'ready', availability: AVAILABILITY_WITH_CHANGES },
+    onWithdrawChange: fn(() =>
+      Promise.reject(
+        new ApiError({ code: 'availability_change_not_pending', status: 409 }),
+      ),
+    ),
+  },
+  play: async ({ canvas, userEvent }) => {
+    const [first] = canvas.getAllByText(
+      i18n.t('tutors.availability.changes.withdraw'),
+    );
+    await userEvent.click(first!);
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('tutors.availability.changes.withdrawConfirm'),
+      }),
+    );
+    await expect(
+      await dialog.findByText(i18n.t('errors:availability_change_not_pending')),
+    ).toBeVisible();
+  },
+};
+
+export const PendingChangesNarrow: Story = {
+  args: {
+    state: { status: 'ready', availability: AVAILABILITY_WITH_CHANGES },
+    initiallySent: WEEKLY_CHANGE,
+  },
+  globals: { viewport: { value: 'narrow320' } },
 };
 
 export const LimitsAndRooms: Story = {

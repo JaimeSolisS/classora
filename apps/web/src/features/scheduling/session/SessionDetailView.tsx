@@ -28,6 +28,8 @@ import type {
 // #62 G2: a pending change request shows a notice with the review link; a
 // session cancelled at a family's or tutor's request names that, not the
 // system code.
+// #63 H3: an open reassignment flag shows "Needs reassignment: the tutor's
+// availability changed" with whose and when.
 
 export interface SessionNotice {
   id: number;
@@ -167,6 +169,22 @@ export function SessionDetailView({
               : t('scheduling.substitution.reasonText', {
                   reason: cancellation.reason,
                 })}
+          </p>
+        </section>
+      ) : null}
+      {session.reassignment ? (
+        <section
+          aria-labelledby={`${id}-reassignment`}
+          className="flex flex-col gap-1 rounded-md border-2 border-foreground p-3"
+        >
+          <h2 id={`${id}-reassignment`} className="font-semibold">
+            {t('scheduling.session.reassignment.title')}
+          </h2>
+          <p className="text-sm break-words">
+            {t('scheduling.session.reassignment.text', {
+              tutor: session.reassignment.tutor.display_name,
+              when: when(session.reassignment.flagged_at),
+            })}
           </p>
         </section>
       ) : null}

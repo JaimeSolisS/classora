@@ -90,6 +90,7 @@ export const CREATED: ClassSessionCreated = {
   cancellation: null,
   group_id: null,
   pending_change_request_id: null,
+  reassignment: null,
   warnings: [],
 };
 

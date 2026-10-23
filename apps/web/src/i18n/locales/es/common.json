@@ -296,7 +296,8 @@
       "scheduling_offer_reassignment": "Sesión por reasignar",
       "scheduling_occurrence_conflict": "Conflicto en sesión de serie",
       "scheduling_session_request": "Solicitud de sesión",
-      "scheduling_change_request": "Solicitud de cambio"
+      "scheduling_change_request": "Solicitud de cambio",
+      "staff_availability_change": "Cambio de disponibilidad"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -314,7 +315,10 @@
       "substitutionExpired": "El suplente {{tutor}} no respondió · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
       "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · solicitada por {{requester}}",
       "changeRequest": "{{kind}} · {{student}} · {{subject}} · {{when}} · {{classification}}",
-      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}"
+      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}",
+      "availabilityChange_one": "{{tutor}} · {{change}} · 1 clase afectada",
+      "availabilityChange_many": "{{tutor}} · {{change}} · {{count}} clases afectadas",
+      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} clases afectadas"
     },
     "list": {
       "title": "Solicitudes",
@@ -389,6 +393,14 @@
       "review": "Revisar",
       "reviewFor": "Revisar {{name}}",
       "openReview": "Abrir la página de revisión"
+    },
+    "availabilityChange": {
+      "affectedTitle": "Clases afectadas (cuando se envió el cambio)",
+      "more_one": "y 1 más",
+      "more_many": "y {{count}} más",
+      "more_other": "y {{count}} más",
+      "openAvailability": "Abrir la disponibilidad del tutor",
+      "approveHelp": "Al aprobar se aplica el cambio. Las clases ofrecidas vuelven a quedar sin asignar; las confirmadas conservan su tutor y se marcan como pendientes de reasignación."
     }
   },
   "users": {
@@ -679,6 +691,53 @@
           "roomUnavailable": "Un aula elegida ya no está disponible. Recarga y vuelve a elegir.",
           "invalid": "Revisa este campo."
         }
+      },
+      "changes": {
+        "weekly": "Disponibilidad semanal: {{windows}}",
+        "noWindows": "sin horario",
+        "kinds": {
+          "weekly": "Disponibilidad semanal",
+          "exception_create": "Excepción nueva",
+          "exception_delete": "Excepción eliminada"
+        },
+        "add": {
+          "unavailable": "Tiempo libre: {{when}}",
+          "available": "Disponibilidad extra: {{when}}"
+        },
+        "remove": {
+          "unavailable": "Quitar tiempo libre: {{when}}",
+          "available": "Quitar disponibilidad extra: {{when}}"
+        },
+        "datesHours": "{{dates}}, {{hours}}",
+        "session": "{{when}}–{{end}} · {{subject}}",
+        "sent_one": "Enviado para aprobación: este cambio afecta 1 clase programada. Nada cambia hasta que un Propietario o Administrador lo apruebe.",
+        "sent_many": "Enviado para aprobación: este cambio afecta {{count}} clases programadas. Nada cambia hasta que un Propietario o Administrador lo apruebe.",
+        "sent_other": "Enviado para aprobación: este cambio afecta {{count}} clases programadas. Nada cambia hasta que un Propietario o Administrador lo apruebe.",
+        "more_one": "y 1 más",
+        "more_many": "y {{count}} más",
+        "more_other": "y {{count}} más",
+        "affected_one": "1 clase programada afectada",
+        "affected_many": "{{count}} clases programadas afectadas",
+        "affected_other": "{{count}} clases programadas afectadas",
+        "requestedBy": "Enviado por {{name}} el {{when}}",
+        "pendingTitle": "Cambios en espera de aprobación",
+        "pendingHelp": "Estos cambios afectan clases programadas. Un Propietario o Administrador los aprueba o rechaza en la página de Aprobaciones; mientras tanto, la disponibilidad de arriba no cambia.",
+        "recentTitle": "Decisiones recientes",
+        "statuses": {
+          "pending": "En espera de aprobación",
+          "approved": "Aprobado el {{when}}",
+          "rejected": "Rechazado el {{when}}",
+          "cancelled": "Retirado el {{when}}"
+        },
+        "reason": "Motivo: {{reason}}",
+        "withdraw": "Retirar",
+        "withdrawFor": "Retirar el cambio {{change}}",
+        "withdrawTitle": "¿Retirar este cambio?",
+        "withdrawDescription": "{{change}} dejará de esperar aprobación. La disponibilidad no cambia.",
+        "withdrawKeep": "Conservar",
+        "withdrawConfirm": "Retirar",
+        "withdrawing": "Retirando…",
+        "withdrawn": "Cambio retirado."
       }
     }
   },
@@ -1404,7 +1463,10 @@
       "scheduling_change_request_approved_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue aprobada: ahora es el {{new_starts_at}}.",
       "scheduling_change_request_rejected": "Tu solicitud de cambio para la clase del {{starts_at}} fue rechazada.",
       "scheduling_change_request_rejected_cancellation": "Tu solicitud para cancelar la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada.",
-      "scheduling_change_request_rejected_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada."
+      "scheduling_change_request_rejected_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada.",
+      "staff_availability_change_approved": "Tu cambio de disponibilidad fue aprobado. Clases marcadas para reasignar: {{affected_count}}.",
+      "staff_availability_change_rejected": "Tu cambio de disponibilidad fue rechazado. Consulta el motivo en tu disponibilidad.",
+      "scheduling_reassignment_needed": "La disponibilidad de {{tutor_name}} cambió: {{session_count}} clases necesitan otro tutor; la primera, el {{first_starts_at}}."
     }
   },
   "scheduling": {
@@ -1600,6 +1662,10 @@
       "overridden": {
         "label": "Con excepción",
         "explanation": "Se programó o se movió con una excepción a una regla flexible."
+      },
+      "reassignment_needed": {
+        "label": "Requiere reasignación",
+        "explanation": "La disponibilidad del tutor cambió. La sesión conserva su horario: ofrécela a otro tutor o sustituye al tutor."
       }
     },
     "rules": {
@@ -1721,7 +1787,11 @@
       "seriesNoTutor": "sin tutor",
       "seriesPending": "ofrecida a {{tutor}}, responde antes del {{when}}",
       "seriesPendingNoDeadline": "ofrecida a {{tutor}}",
-      "seriesAccepted": "{{tutor}} desde el {{date}}"
+      "seriesAccepted": "{{tutor}} desde el {{date}}",
+      "reassignment": {
+        "title": "Requiere reasignación: la disponibilidad del tutor cambió",
+        "text": "La disponibilidad de {{tutor}} cambió el {{when}}. Ofrece la sesión a otro tutor o sustituye al tutor."
+      }
     },
     "series": {
       "repeats": "Se repite cada semana",

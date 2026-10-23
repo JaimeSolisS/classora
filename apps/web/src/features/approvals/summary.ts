@@ -2,6 +2,11 @@ import { ApiError } from '@/app/api';
 import type { TFunction } from 'i18next';
 import type { RoleCode } from '@/features/auth/session';
 import { isConflictCode } from '@/features/scheduling/create/rules';
+import {
+  describeChange,
+  type AffectedSessionLike,
+  type ChangeLike,
+} from '@/features/tutors/changeRequests';
 import { roleNameKey } from '@/features/users/roles';
 import {
   APPROVAL_TYPE_LABELS,
@@ -330,6 +335,57 @@ export function reviewPath(requestId: string): string {
   return `/schedule/requests/${encodeURIComponent(requestId)}`;
 }
 
+interface AvailabilityChangeSubject extends ChangeLike {
+  tutor: { id: string; display_name: string };
+  affected_count: number;
+  affected_sessions: (AffectedSessionLike & { state: string })[];
+  change_request_status: string;
+}
+
+function isAvailabilityChange(
+  subject: unknown,
+): subject is AvailabilityChangeSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  const tutor = value.tutor as Record<string, unknown> | null | undefined;
+  return (
+    (value.kind === 'weekly' ||
+      value.kind === 'exception_create' ||
+      value.kind === 'exception_delete') &&
+    typeof value.change === 'object' &&
+    value.change !== null &&
+    typeof tutor === 'object' &&
+    tutor !== null &&
+    typeof tutor.id === 'string' &&
+    typeof tutor.display_name === 'string' &&
+    typeof value.affected_count === 'number' &&
+    Array.isArray(value.affected_sessions)
+  );
+}
+
+/** The availability change subject of `item` (#63 H2), or null. */
+export function availabilityChangeSubject(
+  item: ApprovalRequestItem,
+): AvailabilityChangeSubject | null {
+  return item.request_type === 'staff.availability_change' &&
+    isAvailabilityChange(item.subject)
+    ? item.subject
+    : null;
+}
+
+/** The tutor's availability section an availability change links to (#63
+ * H2), or null. */
+export function availabilityChangeLink(
+  item: ApprovalRequestItem,
+): string | null {
+  const subject = availabilityChangeSubject(item);
+  return subject
+    ? `/tutors/${encodeURIComponent(subject.tutor.id)}#availability`
+    : null;
+}
+
 /** Formats an instant for a summary (the center zone, from useFormatters). */
 export type InstantFormatter = (instant: string) => string;
 
@@ -407,6 +463,8 @@ export function registrationSubject(
  * <date, time> · <minutes> min · requested by <name>";
  * for a change request (#62) "<kind> · <student> · <subject> · <date, time>
  * [→ <proposed>] · <classification>";
+ * for an availability change (#63) "<tutor> · <change> · <n> classes
+ * affected";
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -502,6 +560,14 @@ export function approvalSummary(
           proposed: formatInstant(change.proposed_starts_at),
         })
       : t('approvals.summary.changeRequest', shared);
+  }
+  const availability = availabilityChangeSubject(item);
+  if (availability) {
+    return t('approvals.summary.availabilityChange', {
+      tutor: availability.tutor.display_name,
+      change: describeChange(availability, t, formatDate),
+      count: availability.affected_count,
+    });
   }
   const occurrence = occurrenceConflictSubject(item);
   if (occurrence) {

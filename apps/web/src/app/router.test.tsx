@@ -114,6 +114,7 @@ describe('route tree', () => {
         'qualification.review',
         'schedule.assign',
         'schedule.manage',
+        'tutor.manage',
       ],
     });
     expect(children[6]!.handle).toBeUndefined();

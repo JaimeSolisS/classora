@@ -215,3 +215,71 @@ describe('substitutions and cancellations (#55 F4)', () => {
     ).toContain('You have a new session offer');
   });
 });
+
+// #63 F1-F3: the availability decisions go to the tutor's own availability;
+// the reassignment notice to the calendar filtered by the tutor on the
+// first session's local date (22:00Z on Jan 6 is Jan 6 in Mexico City).
+describe('availability change notifications (#63)', () => {
+  const me = { userId: '00000000-0000-4000-8000-0000000000b1' };
+  const tutor = '00000000-0000-4000-8000-0000000000b2';
+
+  it('link to the availability and the calendar', () => {
+    for (const type of [
+      'staff.availability_change_approved',
+      'staff.availability_change_rejected',
+    ]) {
+      expect(NOTIFICATION_LINKS[type]?.({}, me)).toBe(
+        `/tutors/${me.userId}#availability`,
+      );
+    }
+    const params = {
+      tutor_user_id: tutor,
+      tutor_name: 'Carmen Ruiz',
+      session_count: 3,
+      first_starts_at: '2031-01-07T03:00:00Z',
+    };
+    expect(
+      NOTIFICATION_LINKS['scheduling.reassignment_needed']?.(params, {
+        ...me,
+        timeZone: 'America/Mexico_City',
+      }),
+    ).toBe(`/schedule?tutor=${tutor}&date=2031-01-06`);
+    expect(
+      NOTIFICATION_LINKS['scheduling.reassignment_needed']?.(params, me),
+    ).toBe(`/schedule?tutor=${tutor}`);
+  });
+
+  it('never name the rejection reason; show the first start in the zone', () => {
+    expect(
+      notificationMessage(i18n.getFixedT('en'), i18n, {
+        notification_type: 'staff.availability_change_rejected',
+        params: { change_request_id: 'x', kind: 'weekly', affected_count: 2 },
+      }),
+    ).toBe(
+      'Your availability change was rejected. See the reason in your availability.',
+    );
+    expect(
+      notificationMessage(
+        i18n.getFixedT('es'),
+        i18n,
+        {
+          notification_type: 'scheduling.reassignment_needed',
+          params: {
+            tutor_user_id: tutor,
+            tutor_name: 'Carmen Ruiz',
+            session_count: 3,
+            first_starts_at: '2031-01-06T22:00:00Z',
+          },
+        },
+        (instant) =>
+          formatInstant(instant, {
+            timeZone: 'America/Mexico_City',
+            language: 'es',
+            style: 'dateTime',
+          }),
+      ),
+    ).toBe(
+      'La disponibilidad de Carmen Ruiz cambió: 3 clases necesitan otro tutor; la primera, el 6 ene 2031, 16:00.',
+    );
+  });
+});

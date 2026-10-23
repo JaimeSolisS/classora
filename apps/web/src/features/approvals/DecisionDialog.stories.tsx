@@ -2,8 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { StoryRouter } from '@/test/StoryRouter';
 import { DecisionDialog } from './DecisionDialog';
-import { PENDING_REGISTRATION } from './fixtures';
+import { AVAILABILITY_CHANGE, PENDING_REGISTRATION } from './fixtures';
 
 // The decision confirmations (#40 F4, F6). No request: `onConfirm` is a
 // stub. The dialog is portalled to <body>, outside the story canvas.
@@ -134,5 +135,64 @@ export const RequestChangesNeedsAReason: Story = {
       within(dialog).getByText(i18n.t('approvals.dialog.reasonRequired')),
     ).toBeVisible();
     await expect(context.args.onConfirm).not.toHaveBeenCalled();
+  },
+};
+
+// #63 H4: an availability change: the affected classes ("and N more") and
+// the link to the tutor's availability; the stale error. The link needs a
+// router.
+
+const withRouter: Story['render'] = (args) => (
+  <StoryRouter
+    routes={[{ path: '*', element: <DecisionDialog {...args} /> }]}
+  />
+);
+
+export const AvailabilityChange: Story = {
+  args: { pending: { item: AVAILABILITY_CHANGE, action: 'approve' } },
+  render: withRouter,
+  play: async (context) => {
+    const dialog = await body(context).findByRole('dialog');
+    await expect(
+      within(dialog).getByText(
+        i18n.t('approvals.availabilityChange.affectedTitle'),
+      ),
+    ).toBeVisible();
+    await expect(within(dialog).getAllByRole('listitem')).toHaveLength(2);
+    await expect(
+      within(dialog).getByText(
+        i18n.t('approvals.availabilityChange.more', { count: 1 }),
+      ),
+    ).toBeVisible();
+    await expect(
+      within(dialog).getByRole('link', {
+        name: i18n.t('approvals.availabilityChange.openAvailability'),
+      }),
+    ).toBeVisible();
+  },
+};
+
+export const AvailabilityChangeStale: Story = {
+  args: {
+    pending: { item: AVAILABILITY_CHANGE, action: 'approve' },
+    onConfirm: fn(() =>
+      Promise.reject(
+        new ApiError({ code: 'availability_change_stale', status: 409 }),
+      ),
+    ),
+  },
+  render: withRouter,
+  play: async (context) => {
+    const dialog = await body(context).findByRole('dialog');
+    await context.userEvent.click(
+      within(dialog).getByRole('button', {
+        name: i18n.t('approvals.actions.approve'),
+      }),
+    );
+    await expect(
+      await within(dialog).findByText(
+        i18n.t('errors:availability_change_stale'),
+      ),
+    ).toBeVisible();
   },
 };

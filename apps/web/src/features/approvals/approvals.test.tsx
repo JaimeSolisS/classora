@@ -19,6 +19,7 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import type { ApprovalRequestItem } from './api';
+import { AVAILABILITY_CHANGE } from './fixtures';
 
 // #40 F1–F5: the /approvals page, its navigation item and route access, the
 // filters in the URL, the per-type summary, the decisions (reject body,
@@ -239,6 +240,7 @@ describe('the list (F3)', () => {
       ['scheduling.occurrence_conflict', 'Series session conflict'],
       ['scheduling.session_request', 'Session request'],
       ['scheduling.change_request', 'Change request'],
+      ['staff.availability_change', 'Availability change'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [
@@ -439,5 +441,49 @@ describe('decisions (F4)', () => {
 
     expect(api.calls(APPROVE)).toHaveLength(0);
     expect(api.calls(REJECT)).toHaveLength(0);
+  });
+});
+
+// #63 H2: an availability change lists its affected classes in the decision
+// dialog, links to the tutor's availability, and shows the stale error.
+describe('availability changes (#63 H2)', () => {
+  const ADMIN: SessionUserBody = {
+    ...TEST_USER,
+    roles: ['administrator'],
+    permissions: ['tutor.view', 'tutor.manage'],
+  };
+  const APPROVE_CHANGE = `POST /api/v1/approval-requests/${AVAILABILITY_CHANGE.id}/approve`;
+
+  it('the row links to the availability; the dialog lists the classes', async () => {
+    stub(ADMIN, { [LIST]: () => page([AVAILABILITY_CHANGE]) });
+    app = await renderApp('/approvals');
+
+    const link = [...main().querySelectorAll('a')].find(
+      (anchor) => anchor.textContent === "Open the tutor's availability",
+    );
+    expect(link?.getAttribute('href')).toBe(
+      '/tutors/00000000-0000-4000-8000-0000000000b1#availability',
+    );
+    await click(buttonNamed(main(), 'Approve'));
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain('Affected classes');
+    expect(dialog.querySelectorAll('li')).toHaveLength(2);
+    expect(dialog.textContent).toContain('Física');
+    expect(dialog.textContent).toContain('and 1 more');
+  });
+
+  it('availability_change_stale shows in the dialog', async () => {
+    stub(ADMIN, {
+      [LIST]: () => page([AVAILABILITY_CHANGE]),
+      [APPROVE_CHANGE]: () => problem(409, 'availability_change_stale'),
+    });
+    app = await renderApp('/approvals');
+
+    await click(buttonNamed(main(), 'Approve'));
+    await click(buttonNamed(openDialog()!, 'Approve'));
+
+    expect(alerts(openDialog()!)[0]).toContain(
+      'The availability changed since this request was made',
+    );
   });
 });

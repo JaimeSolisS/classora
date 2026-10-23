@@ -1,6 +1,6 @@
 import type { i18n as I18n, TFunction } from 'i18next';
 import { toLanguage } from '@/i18n/language';
-import { formatLocalDate } from '@/lib/time';
+import { formatLocalDate, toLocalDate } from '@/lib/time';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -50,6 +50,8 @@ const INSTANT_PARAMS = new Set([
   'respond_by',
   'new_starts_at',
   'makeup_until',
+  // #63 scheduling.reassignment_needed.
+  'first_starts_at',
 ]);
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers). */
@@ -136,6 +138,8 @@ export function notificationMessage(
 /** Who is reading the notification: its recipient, the signed-in user. */
 export interface NotificationRecipient {
   userId: string;
+  /** The center's time zone (a link to a calendar date needs it). */
+  timeZone?: string;
 }
 
 /** The tutor's own qualifications section (#44). */
@@ -169,6 +173,37 @@ function offeredSession(params: NotificationItem['params']): string {
   return isSeries(params) ? '/approvals' : '/schedule';
 }
 
+/** The tutor's own availability (#63 F1: the decision of their change
+ * request). */
+function ownAvailability(
+  _params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+): string {
+  return `/tutors/${encodeURIComponent(recipient.userId)}#availability`;
+}
+
+/** The calendar filtered by the tutor on the first flagged session's local
+ * date (#63 F2). */
+function reassignmentCalendar(
+  params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+): string {
+  const search = new URLSearchParams();
+  if (typeof params.tutor_user_id === 'string' && params.tutor_user_id) {
+    search.set('tutor', params.tutor_user_id);
+  }
+  const first = params.first_starts_at;
+  if (
+    recipient.timeZone &&
+    typeof first === 'string' &&
+    !Number.isNaN(Date.parse(first))
+  ) {
+    search.set('date', toLocalDate(first, recipient.timeZone));
+  }
+  const query = search.toString();
+  return query ? `/schedule?${query}` : '/schedule';
+}
+
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
@@ -199,6 +234,11 @@ export const NOTIFICATION_LINKS: Readonly<
   'scheduling.session_request_rejected': myRequests,
   // #62 F3: no family or tutor page for change requests until #62b, so
   // scheduling.change_request_approved / _rejected only become read.
+  // #63: the tutor's availability decisions and the staff's reassignment
+  // notice.
+  'staff.availability_change_approved': ownAvailability,
+  'staff.availability_change_rejected': ownAvailability,
+  'scheduling.reassignment_needed': reassignmentCalendar,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

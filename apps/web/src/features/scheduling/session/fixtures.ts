@@ -200,6 +200,17 @@ export const CONFIRMED_SESSION: ClassSessionDetail = {
   pending_offer: null,
 };
 
+/** A confirmed session flagged for reassignment (#63 H3). */
+export const FLAGGED_SESSION: ClassSessionDetail = {
+  ...CONFIRMED_SESSION,
+  reassignment: {
+    reason: 'availability_change',
+    tutor: { id: TUTORS[0]!.id, display_name: 'Carmen Ruiz' },
+    flagged_at: '2026-10-22T16:00:00Z',
+    change_request_id: '00000000-0000-4000-8000-0000000009c1',
+  },
+};
+
 export const PENDING_SUBSTITUTION: SubstitutionItem = {
   id: '00000000-0000-4000-8000-0000000007a1',
   class_session_id: CREATED.id,

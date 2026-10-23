@@ -41,12 +41,14 @@ import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { useFormatters } from '@/lib/formatters';
 import type {
+  AvailabilityChangeRequest,
   AvailabilityException,
   AvailabilityExceptionCreate,
   AvailabilitySettingsUpdate,
   ExceptionKind,
   TutorAvailability,
 } from './api';
+import { PendingChanges, SentForApprovalNotice } from './PendingChanges';
 import {
   AvailabilitySettingsForm,
   AvailabilitySettingsList,
@@ -72,8 +74,13 @@ import {
 // (type as words, dates, hours or "All day", note) with Delete behind a
 // confirmation, and "Add exception" opening a dialog (type, dates, "All
 // day" — forced off for extra availability —, times, note). Errors:
-// version_conflict with "Reload", availability_change_requires_approval
-// and anything else in an alert region, field errors on their fields.
+// version_conflict with "Reload" and anything else in an alert region,
+// field errors on their fields. A change that takes away time scheduled
+// classes use (M4-18 #63 H1) is answered with a pending change request:
+// the section announces "Sent for approval" with the first affected
+// classes, the forms keep showing the current availability, and the
+// "Changes waiting for approval" list (with Withdraw for editors) and the
+// recent decisions (a rejection's reason) follow the exceptions.
 // Between the weekly windows and the exceptions, the teaching limits and
 // preferred classrooms (#197, AvailabilitySettingsForm), saved with the
 // same `version`. Presentational: the page passes the query state and the
@@ -90,8 +97,12 @@ export interface AvailabilitySectionProps {
   canEdit: boolean;
   /** The center's IANA time zone (the help line). */
   timeZone: string;
-  /** Saves the weekly windows; rejects with the error to show. */
-  onSaveWeekly: (version: number, windows: WeeklyWindow[]) => Promise<void>;
+  /** Saves the weekly windows: null when applied, the change request when
+   * sent for approval; rejects with the error to show. */
+  onSaveWeekly: (
+    version: number,
+    windows: WeeklyWindow[],
+  ) => Promise<AvailabilityChangeRequest | null>;
   /** Refetches the availability after a version conflict. */
   onReload: () => Promise<void>;
   /** The active classrooms, the preferred-room choices (editors only). */
@@ -99,12 +110,22 @@ export interface AvailabilitySectionProps {
   /** Saves the limits and preferred classrooms; rejects with the error to
    * show. */
   onSaveSettings: (body: AvailabilitySettingsUpdate) => Promise<void>;
-  /** Adds an exception; rejects with the error to show in the dialog. */
-  onAddException: (body: AvailabilityExceptionCreate) => Promise<void>;
-  /** Deletes an exception; rejects with the error to show. */
-  onDeleteException: (item: AvailabilityException) => Promise<void>;
+  /** Adds an exception (null, or the change request sent for approval);
+   * rejects with the error to show in the dialog. */
+  onAddException: (
+    body: AvailabilityExceptionCreate,
+  ) => Promise<AvailabilityChangeRequest | null>;
+  /** Deletes an exception (null, or the change request sent for
+   * approval); rejects with the error to show. */
+  onDeleteException: (
+    item: AvailabilityException,
+  ) => Promise<AvailabilityChangeRequest | null>;
+  /** Withdraws a pending change request; rejects with the error to show. */
+  onWithdrawChange: (request: AvailabilityChangeRequest) => Promise<void>;
   /** Opens with the exception dialog shown (stories). */
   initiallyAdding?: boolean;
+  /** Opens showing this "Sent for approval" notice (stories). */
+  initiallySent?: AvailabilityChangeRequest | null;
 }
 
 export function AvailabilitySection({
@@ -117,15 +138,28 @@ export function AvailabilitySection({
   onSaveSettings,
   onAddException,
   onDeleteException,
+  onWithdrawChange,
   initiallyAdding = false,
+  initiallySent = null,
 }: AvailabilitySectionProps) {
   const { t } = useTranslation();
   const id = useId();
   const titleId = `${id}-title`;
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const [adding, setAdding] = useState(initiallyAdding && canEdit);
   const [deleting, setDeleting] = useState<AvailabilityException | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const [sent, setSent] = useState<AvailabilityChangeRequest | null>(
+    initiallySent,
+  );
   const [error, setError] = useState<unknown>(null);
+
+  /** A write's outcome: applied (`done` is announced) or sent for
+   * approval. */
+  function outcome(request: AvailabilityChangeRequest | null, done: string) {
+    setSent(request);
+    setAnnouncement(request ? '' : done);
+  }
 
   async function confirmDelete() {
     if (!deleting) {
@@ -133,8 +167,10 @@ export function AvailabilitySection({
     }
     setError(null);
     try {
-      await onDeleteException(deleting);
-      setAnnouncement(t('tutors.availability.deleted'));
+      outcome(
+        await onDeleteException(deleting),
+        t('tutors.availability.deleted'),
+      );
     } catch (caught) {
       setError(caught);
     } finally {
@@ -154,8 +190,10 @@ export function AvailabilitySection({
           <WeeklyEditor
             availability={state.availability}
             onSave={async (version, windows) => {
-              await onSaveWeekly(version, windows);
-              setAnnouncement(t('tutors.availability.saved'));
+              setSent(null);
+              const request = await onSaveWeekly(version, windows);
+              outcome(request, t('tutors.availability.saved'));
+              return request;
             }}
             onReload={onReload}
           />
@@ -178,13 +216,26 @@ export function AvailabilitySection({
           onAdd={() => {
             setError(null);
             setAnnouncement('');
+            setSent(null);
             setAdding(true);
           }}
           onDelete={(item) => {
             setError(null);
             setAnnouncement('');
+            setSent(null);
             setDeleting(item);
           }}
+        />
+        <PendingChanges
+          pending={state.availability.pending_changes}
+          recent={state.availability.recent_changes}
+          canEdit={canEdit}
+          onWithdraw={onWithdrawChange}
+          onWithdrawn={() => {
+            setSent(null);
+            setAnnouncement(t('tutors.availability.changes.withdrawn'));
+          }}
+          fallbackFocus={titleRef}
         />
       </>
     );
@@ -196,7 +247,12 @@ export function AvailabilitySection({
       aria-labelledby={titleId}
       className="flex scroll-mt-4 flex-col gap-4"
     >
-      <h2 id={titleId} className="text-lg font-semibold">
+      <h2
+        id={titleId}
+        ref={titleRef}
+        tabIndex={-1}
+        className="text-lg font-semibold outline-none"
+      >
         {t('tutors.availability.title')}
       </h2>
       <p className="text-sm">
@@ -205,15 +261,16 @@ export function AvailabilitySection({
       <p role="status" className="text-sm">
         {announcement}
       </p>
+      <SentForApprovalNotice request={sent} />
       {error ? <ErrorAlert error={error} /> : null}
       {body}
       <AddExceptionDialog
         open={adding}
         onCancel={() => setAdding(false)}
-        onAdd={async (request) => {
-          await onAddException(request);
+        onAdd={async (body) => {
+          const request = await onAddException(body);
           setAdding(false);
-          setAnnouncement(t('tutors.availability.added'));
+          outcome(request, t('tutors.availability.added'));
         }}
       />
       <DeleteExceptionDialog
@@ -321,7 +378,10 @@ function WeeklyEditor({
   onReload,
 }: {
   availability: TutorAvailability;
-  onSave: (version: number, windows: WeeklyWindow[]) => Promise<void>;
+  onSave: (
+    version: number,
+    windows: WeeklyWindow[],
+  ) => Promise<AvailabilityChangeRequest | null>;
   onReload: () => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -383,8 +443,14 @@ function WeeklyEditor({
     setBusy(true);
     try {
       // On success the page stores the answer; its new version resets the
-      // rows.
-      await onSave(availability.version, windows);
+      // rows. Sent for approval, nothing changed: the rows show the current
+      // windows again.
+      const request = await onSave(availability.version, windows);
+      if (request) {
+        setRows(rowsOf(availability.weekly));
+        setErrors([]);
+        setCheckRows(false);
+      }
     } catch (caught) {
       const fromServer =
         caught instanceof ApiError

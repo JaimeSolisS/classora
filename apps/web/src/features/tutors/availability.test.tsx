@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyLanguage } from '@/i18n';
+import { applyLanguage, i18n } from '@/i18n';
 import type { SessionUserBody } from '@/features/auth/session';
 import {
   meAs,
@@ -28,8 +28,13 @@ import {
   settingsValues,
   validateSettings,
 } from './availabilitySettingsRules';
+import { describeChange } from './changeRequests';
 import {
   AVAILABILITY,
+  AVAILABILITY_WITH_CHANGES,
+  REJECTED_CHANGE,
+  TIME_OFF_CHANGE,
+  WEEKLY_CHANGE,
   CLASSROOM_OPTIONS,
   EXCEPTIONS,
   NO_AVAILABILITY,
@@ -43,7 +48,8 @@ import {
 // #45 F1-F3: the Availability section of the tutor profile: edit rights
 // (the tutor themselves, an Administrator, a Coordinator read-only), the
 // weekly PUT body, the exception dialog's checks (all day vs hours, extra
-// availability needs hours), deleting, and the error messages.
+// availability needs hours), deleting, and the error messages. #63 H1: a
+// 202 "Sent for approval", the pending changes, Withdraw and its 409.
 
 const DETAIL = `GET /api/v1/tutors/${TUTOR_ID}`;
 const AVAILABILITY_ROUTE = `GET /api/v1/tutors/${TUTOR_ID}/availability`;
@@ -73,6 +79,9 @@ const SELF: SessionUserBody = {
   roles: ['tutor'],
   permissions: ['student.view', 'tutor.view'],
 };
+
+const WEEKLY_TEXT =
+  'Weekly availability: Monday 16:00–18:00; Wednesday 16:00–19:00';
 
 let app: RenderedApp | undefined;
 
@@ -281,18 +290,98 @@ describe('saving the weekly windows (F1, F3)', () => {
     expect(api.calls(AVAILABILITY_ROUTE).length).toBe(before + 1);
   });
 
-  it('availability_change_requires_approval shows in the alert region', async () => {
-    stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
-      [WEEKLY]: () => problem(409, 'availability_change_requires_approval'),
+  it('a 202 announces "Sent for approval" and keeps the current windows (#63)', async () => {
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
+      [WEEKLY]: () => jsonResponse(202, WEEKLY_CHANGE),
     });
     app = await renderApp(`/tutors/${TUTOR_ID}`);
+    const before = api.calls(AVAILABILITY_ROUTE).length;
 
     await click(buttonNamed(section(), 'Remove window 1'));
     await click(buttonNamed(section(), 'Save availability'));
 
-    expect(alerts(section()).join(' ')).toContain(
-      'This change affects scheduled classes and needs approval.',
+    const status = [...section().querySelectorAll('[role="status"]')]
+      .map((node) => node.textContent)
+      .join(' ');
+    expect(status).toContain(
+      'Sent for approval: this change affects 5 scheduled classes.',
     );
+    expect(status).toContain('and 2 more');
+    expect(status).not.toContain('Availability saved.');
+    expect(alerts(section())).toEqual([]);
+    // The rows show the current windows again (3, as loaded).
+    expect(byLabel(section(), 'Window 3 start time').value).toBe('18:00');
+    expect(api.calls(AVAILABILITY_ROUTE).length).toBeGreaterThan(before);
+  });
+});
+
+describe('pending changes (#63 H1)', () => {
+  const CANCEL = `POST /api/v1/tutors/${TUTOR_ID}/availability/change-requests/${WEEKLY_CHANGE.id}/cancel`;
+
+  it('lists the pending and the decided changes with the reason', async () => {
+    stub(COORDINATOR, TUTOR_READ_ONLY, AVAILABILITY_WITH_CHANGES);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const text = section().textContent ?? '';
+    expect(text).toContain('Changes waiting for approval');
+    expect(text).toContain('5 scheduled classes affected');
+    expect(text).toContain('1 scheduled class affected');
+    expect(text).toContain('Sent by Laura Admin');
+    expect(text).toContain('Reason: No hay sustituto para esas clases.');
+    expect(buttonTexts(section())).not.toContain('Withdraw');
+  });
+
+  it('Withdraw asks first, sends the version and refetches', async () => {
+    const api = stub(SELF, TUTOR_AS_SELF, AVAILABILITY_WITH_CHANGES, {
+      [CANCEL]: () =>
+        jsonResponse(200, { ...WEEKLY_CHANGE, status: 'cancelled' }),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    const before = api.calls(AVAILABILITY_ROUTE).length;
+
+    await click(buttonNamed(section(), `Withdraw the change ${WEEKLY_TEXT}`));
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain('will no longer wait for approval');
+    await click(buttonNamed(dialog, 'Withdraw'));
+
+    expect(api.calls(CANCEL).map((call) => call.body)).toEqual([
+      { version: 1 },
+    ]);
+    expect(openDialog()).toBeNull();
+    expect(section().textContent).toContain('Change withdrawn.');
+    expect(api.calls(AVAILABILITY_ROUTE).length).toBeGreaterThan(before);
+  });
+
+  it('a 409 shows in the Withdraw dialog', async () => {
+    stub(SELF, TUTOR_AS_SELF, AVAILABILITY_WITH_CHANGES, {
+      [CANCEL]: () => problem(409, 'availability_change_not_pending'),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    await click(buttonNamed(section(), `Withdraw the change ${WEEKLY_TEXT}`));
+    await click(buttonNamed(openDialog()!, 'Withdraw'));
+
+    expect(alerts(openDialog()!).join(' ')).toContain(
+      'This change request is no longer pending.',
+    );
+  });
+
+  it('describes each kind of change', () => {
+    const date = (value: string) => value;
+    expect(describeChange(WEEKLY_CHANGE, i18n.t, date)).toBe(WEEKLY_TEXT);
+    expect(describeChange(TIME_OFF_CHANGE, i18n.t, date)).toBe(
+      'Time off: 2027-01-11 – 2027-01-15',
+    );
+    expect(describeChange(REJECTED_CHANGE, i18n.t, date)).toBe(
+      'Remove extra availability: 2027-01-09, 10:00–12:00',
+    );
+    expect(
+      describeChange(
+        { kind: 'weekly', change: { windows: [], exception: null } },
+        i18n.t,
+        date,
+      ),
+    ).toBe('Weekly availability: no hours');
   });
 });
 
@@ -374,23 +463,23 @@ describe('the exception dialog (F1, F3)', () => {
     expect(dialog.querySelectorAll('input[type="time"]')).toHaveLength(2);
   });
 
-  it('a requires-approval answer stays in the dialog', async () => {
+  it('time off sent for approval (202) closes the dialog and says so', async () => {
     stub(SELF, TUTOR_AS_SELF, AVAILABILITY, {
-      [EXCEPTIONS_ROUTE]: () =>
-        problem(409, 'availability_change_requires_approval'),
+      [EXCEPTIONS_ROUTE]: () => jsonResponse(202, TIME_OFF_CHANGE),
     });
     app = await renderApp(`/tutors/${TUTOR_ID}`);
     await click(buttonNamed(section(), 'Add exception'));
     const dialog = openDialog()!;
-    typeInto(labelled(dialog, 'Start date'), '2026-12-21');
-    typeInto(labelled(dialog, 'End date'), '2026-12-21');
+    typeInto(labelled(dialog, 'Start date'), '2027-01-11');
+    typeInto(labelled(dialog, 'End date'), '2027-01-15');
 
     await click(buttonNamed(dialog, 'Add'));
 
-    expect(openDialog()).not.toBeNull();
-    expect(alerts(openDialog()!).join(' ')).toContain(
-      'This change affects scheduled classes and needs approval.',
+    expect(openDialog()).toBeNull();
+    expect(section().textContent).toContain(
+      'Sent for approval: this change affects 1 scheduled class.',
     );
+    expect(section().textContent).not.toContain('Exception added.');
   });
 
   it('the rules: dates, span, hours and the body', () => {
@@ -476,7 +565,7 @@ describe('deleting an exception (F1, F3)', () => {
 
   it('an error shows in the section alert', async () => {
     stub(ADMIN, TUTOR_AS_ADMIN, AVAILABILITY, {
-      [DELETE]: () => problem(409, 'availability_change_requires_approval'),
+      [DELETE]: () => problem(404, 'not_found'),
     });
     app = await renderApp(`/tutors/${TUTOR_ID}`);
 
@@ -486,9 +575,25 @@ describe('deleting an exception (F1, F3)', () => {
     await click(deletes[0]!);
     await click(buttonNamed(openDialog()!, 'Delete'));
 
-    expect(alerts(section()).join(' ')).toContain(
-      'This change affects scheduled classes and needs approval.',
+    expect(alerts(section())).not.toEqual([]);
+  });
+
+  it('a delete sent for approval (202) says so (#63)', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN, AVAILABILITY, {
+      [DELETE]: () => jsonResponse(202, REJECTED_CHANGE),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+
+    const deletes = [...section().querySelectorAll('button')].filter(
+      (button) => button.textContent === 'Delete',
     );
+    await click(deletes[0]!);
+    await click(buttonNamed(openDialog()!, 'Delete'));
+
+    expect(section().textContent).toContain(
+      'Sent for approval: this change affects 2 scheduled classes.',
+    );
+    expect(section().textContent).not.toContain('Exception deleted.');
   });
 });
 

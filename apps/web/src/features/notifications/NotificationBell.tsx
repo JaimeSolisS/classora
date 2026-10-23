@@ -157,6 +157,7 @@ function ConnectedBell() {
       session.status === 'signedIn'
         ? NOTIFICATION_LINKS[item.notification_type]?.(item.params, {
             userId: session.user.id,
+            timeZone: session.user.center_time_zone,
           })
         : undefined;
     try {

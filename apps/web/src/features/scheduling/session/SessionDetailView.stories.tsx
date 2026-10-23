@@ -9,6 +9,7 @@ import {
   CONFIRMED_SESSION,
   DECLINED,
   DECLINED_SUBSTITUTION,
+  FLAGGED_SESSION,
   NEW_SUBSTITUTION,
   PENDING_SUBSTITUTION,
   SUBSTITUTED_SESSION,
@@ -34,7 +35,8 @@ import { SubstitutionSection } from './SubstitutionSection';
 // grouped by date, and the pending and accepted series assignment; #55 H4:
 // the "Find a substitute" panel (with suggestions, with a conflict), a
 // pending substitution with its history, the cancel dialog with an error
-// and the cancelled banner. No request:
+// and the cancelled banner; #63 H4: the "Needs reassignment" notice. No
+// request:
 // the panel's calls are stubs. Axe runs in light and dark.
 
 const meta = {
@@ -335,5 +337,19 @@ export const Cancelled: Story = {
         name: i18n.t('scheduling.cancel.action'),
       }),
     ).not.toBeInTheDocument();
+  },
+};
+
+export const NeedsReassignment: Story = {
+  args: {
+    state: { status: 'ready', session: FLAGGED_SESSION, offers: [] },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = canvas.getByRole('heading', {
+      name: i18n.t('scheduling.session.reassignment.title'),
+    });
+    await expect(heading).toBeVisible();
+    await expect(heading.closest('section')).toHaveTextContent('Carmen Ruiz');
   },
 };

@@ -96,6 +96,7 @@ type Common = {
       history: string;
       noTutor: string;
       seriesOfferedTo: string;
+      reassignment: { title: string };
     };
     offer: {
       submit: string;
@@ -306,6 +307,8 @@ type Common = {
       endsOn: string;
       noteLabel: string;
       send: string;
+      // #63: changes that affect scheduled classes.
+      changes: { sent_one: string; pendingTitle: string };
       settings: {
         daily: string;
         weekly: string;
@@ -516,6 +519,7 @@ type Common = {
       sessionRequest: string;
     };
     reassignment: { openSession: string };
+    availabilityChange: { affectedTitle: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };
   };
