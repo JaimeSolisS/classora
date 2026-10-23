@@ -443,3 +443,106 @@ class SessionRequestReviewRouteRequiredError(AppError):
 
     def __init__(self, review_path: str) -> None:
         super().__init__(details={"review_path": review_path})
+
+
+# --- Change requests by families and tutors (#62) -----------------------------------
+#
+# The family- and tutor-facing bodies are closed (#62 S3): no ``conflicts``
+# or ``errors`` member with scheduling details, never a tutor or a room.
+
+
+class ChangeRequestKindUnsupportedError(AppError):
+    """``409 change_request_kind_unsupported`` (#62 B2 step 6, E2): only
+    individual sessions can be cancelled or moved by request; ``details.kind``
+    is the session's kind (``group`` or ``course``)."""
+
+    status = 409
+    code = "change_request_kind_unsupported"
+    detail = "Only individual sessions can be changed by request."
+
+    def __init__(self, kind: str) -> None:
+        super().__init__(details={"kind": kind})
+
+
+class ClassSessionNotChangeableError(AppError):
+    """``409 class_session_not_changeable`` (#62 B2 step 7): the session isn't
+    ``confirmed`` (a tutor's ``offered`` session, a ``completed`` one, ...);
+    ``details.state`` is its state."""
+
+    status = 409
+    code = "class_session_not_changeable"
+    detail = "Only a confirmed session can be changed by request."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})
+
+
+class ChangeRequestSessionStartedError(AppError):
+    """``409 change_request_session_started`` (#62 B2 step 7, C2 step 7, E6):
+    the session has already started, so it can't be changed any more."""
+
+    status = 409
+    code = "change_request_session_started"
+    detail = "The session has already started."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ChangeRequestPendingError(AppError):
+    """``409 change_request_pending`` (#62 A3, B2 step 8): the session already
+    has a pending request. ``details.change_request_id`` names it only when
+    the caller may read it (S2)."""
+
+    status = 409
+    code = "change_request_pending"
+    detail = "This session already has a pending change request."
+
+    def __init__(self, change_request_id: str | None = None) -> None:
+        super().__init__(
+            details=None
+            if change_request_id is None
+            else {"change_request_id": change_request_id}
+        )
+
+
+class ChangeRequestNotPendingError(AppError):
+    """``409 change_request_not_pending`` (#62 C2 step 6, C4, D3): the request
+    was already approved, rejected or withdrawn. The staff routes add
+    ``details.status``; the requester's withdraw keeps the body closed."""
+
+    status = 409
+    code = "change_request_not_pending"
+    detail = "This request is no longer pending."
+
+    def __init__(self, request_status: str | None = None) -> None:
+        super().__init__(
+            details=None if request_status is None else {"status": request_status}
+        )
+
+
+class ChangeRequestSessionChangedError(AppError):
+    """``409 change_request_session_changed`` (#62 C2 step 7): the session is
+    no longer ``confirmed`` (staff cancelled it, a closure skipped it, ...);
+    ``details.state`` is its state. Reject the request instead."""
+
+    status = 409
+    code = "change_request_session_changed"
+    detail = "The session changed since the request was made; reject it instead."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})
+
+
+class ChangeRequestReviewRouteRequiredError(AppError):
+    """``409 change_request_review_route_required`` (#62 C6, E3): the inbox's
+    generic approve or reject can't decide a change request;
+    ``details.review_path`` is the staff review page. The item stays
+    ``pending``."""
+
+    status = 409
+    code = "change_request_review_route_required"
+    detail = "Review this change request on its own page."
+
+    def __init__(self, review_path: str) -> None:
+        super().__init__(details={"review_path": review_path})

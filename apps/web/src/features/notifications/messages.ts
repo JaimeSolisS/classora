@@ -9,8 +9,11 @@ import type { NotificationItem } from './api';
 // type the client doesn't know shows a generic message, never its code.
 // An offer notification about a series (#233 E1: its params carry
 // `class_series_id`) uses the type's `_series` message when there is one;
-// a substitution offer (#55 F4: `kind = "substitution"`) its `_substitution`
-// message.
+// a notification whose params carry a `kind` uses the type's `_<kind>`
+// message when there is one (#55 F4: a substitution offer's
+// `_substitution`; #62 F3: a change request's `_cancellation` /
+// `_reschedule`), and `_<kind>_makeup` when the params name a
+// `makeup_until` (#62: an approved cancellation that allows a makeup).
 
 /** The i18n key of a type's message, for example `notifications.types.dev_demo`. */
 export function notificationMessageKey(type: string): string {
@@ -42,7 +45,12 @@ const RESERVED_OPTIONS = new Set([
  * Params that hold an instant (RFC 3339, #52 offers): shown formatted in
  * the center zone when the caller passes a formatter.
  */
-const INSTANT_PARAMS = new Set(['starts_at', 'respond_by']);
+const INSTANT_PARAMS = new Set([
+  'starts_at',
+  'respond_by',
+  'new_starts_at',
+  'makeup_until',
+]);
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers). */
 const DATE_PARAMS = new Set(['from_date']);
@@ -85,9 +93,19 @@ function isSeries(params: NotificationItem['params']): boolean {
   );
 }
 
-/** Whether the params are about a substitution offer (#55 F1, F4). */
-function isSubstitution(params: NotificationItem['params']): boolean {
-  return params.kind === 'substitution';
+/** The `_<kind>` variants of a message to try, most specific first (#55
+ * F4 substitutions; #62 F3 change requests). */
+function kindVariants(
+  base: string,
+  params: NotificationItem['params'],
+): string[] {
+  const kind = params.kind;
+  if (typeof kind !== 'string' || !/^[a-z_]+$/.test(kind)) {
+    return [];
+  }
+  const makeup =
+    typeof params.makeup_until === 'string' && params.makeup_until !== '';
+  return [...(makeup ? [`${base}_${kind}_makeup`] : []), `${base}_${kind}`];
 }
 
 /** The translated message of one notification. */
@@ -99,13 +117,12 @@ export function notificationMessage(
 ): string {
   const base = notificationMessageKey(item.notification_type);
   const series = `${base}_series`;
-  const substitution = `${base}_substitution`;
-  let key = base;
-  if (isSeries(item.params) && i18n.exists(series)) {
-    key = series;
-  } else if (isSubstitution(item.params) && i18n.exists(substitution)) {
-    key = substitution;
-  }
+  const key =
+    isSeries(item.params) && i18n.exists(series)
+      ? series
+      : (kindVariants(base, item.params).find((variant) =>
+          i18n.exists(variant),
+        ) ?? base);
   if (!i18n.exists(key)) {
     return t('notifications.unknown');
   }
@@ -180,6 +197,8 @@ export const NOTIFICATION_LINKS: Readonly<
   // #60 F3: the requester's decided request, in My requests.
   'scheduling.session_request_confirmed': myRequests,
   'scheduling.session_request_rejected': myRequests,
+  // #62 F3: no family or tutor page for change requests until #62b, so
+  // scheduling.change_request_approved / _rejected only become read.
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

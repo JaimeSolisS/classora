@@ -26,6 +26,7 @@ import {
   withdrawSubstitution,
   type SubstitutionCreated,
 } from './api';
+import { changeRequestPath } from '../change-requests/rules';
 import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
 import {
@@ -314,6 +315,18 @@ export function SessionPage() {
         actions={actions}
         substitutions={substitutionSection}
         notice={notice}
+        changeRequestLink={
+          canManage
+            ? (changeRequestId) => (
+                <Link
+                  to={changeRequestPath(changeRequestId)}
+                  className="underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {t('scheduling.changeRequest.pendingLink')}
+                </Link>
+              )
+            : undefined
+        }
       />
     </div>
   );

@@ -238,6 +238,7 @@ describe('the list (F3)', () => {
       ['scheduling.offer_reassignment', 'Session to reassign'],
       ['scheduling.occurrence_conflict', 'Series session conflict'],
       ['scheduling.session_request', 'Session request'],
+      ['scheduling.change_request', 'Change request'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [

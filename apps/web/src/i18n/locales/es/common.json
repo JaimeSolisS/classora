@@ -295,7 +295,8 @@
       "staff_qualification": "Calificación de tutor",
       "scheduling_offer_reassignment": "Sesión por reasignar",
       "scheduling_occurrence_conflict": "Conflicto en sesión de serie",
-      "scheduling_session_request": "Solicitud de sesión"
+      "scheduling_session_request": "Solicitud de sesión",
+      "scheduling_change_request": "Solicitud de cambio"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -311,7 +312,9 @@
       "seriesReassignmentExpired_other": "Vencida, ofrecida a {{tutor}} · {{subject}} · serie semanal desde el {{date}} ({{count}} sesiones)",
       "substitutionDeclined": "El suplente {{tutor}} rechazó · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
       "substitutionExpired": "El suplente {{tutor}} no respondió · {{subject}} · {{when}} · la sigue impartiendo {{original}}",
-      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · solicitada por {{requester}}"
+      "sessionRequest": "{{student}} · {{subject}} ({{level}}) · {{when}} · {{minutes}} min · solicitada por {{requester}}",
+      "changeRequest": "{{kind}} · {{student}} · {{subject}} · {{when}} · {{classification}}",
+      "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -1394,7 +1397,14 @@
       "scheduling_session_tutor_changed": "Una clase del {{starts_at}} tiene un nuevo tutor.",
       "scheduling_session_cancelled": "Una clase del {{starts_at}} se canceló.",
       "scheduling_session_request_confirmed": "Tu solicitud de sesión para {{student_name}} ({{subject_name}}, {{starts_at}}) fue confirmada.",
-      "scheduling_session_request_rejected": "Tu solicitud de sesión para {{student_name}} ({{subject_name}}, {{starts_at}}) fue rechazada. Consulta el motivo en tus solicitudes de sesión."
+      "scheduling_session_request_rejected": "Tu solicitud de sesión para {{student_name}} ({{subject_name}}, {{starts_at}}) fue rechazada. Consulta el motivo en tus solicitudes de sesión.",
+      "scheduling_change_request_approved": "Tu solicitud de cambio para la clase del {{starts_at}} fue aprobada.",
+      "scheduling_change_request_approved_cancellation": "Tu solicitud para cancelar la clase del {{starts_at}} fue aprobada.",
+      "scheduling_change_request_approved_cancellation_makeup": "Tu solicitud para cancelar la clase del {{starts_at}} fue aprobada. Se puede programar una clase de reposición hasta el {{makeup_until}}.",
+      "scheduling_change_request_approved_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue aprobada: ahora es el {{new_starts_at}}.",
+      "scheduling_change_request_rejected": "Tu solicitud de cambio para la clase del {{starts_at}} fue rechazada.",
+      "scheduling_change_request_rejected_cancellation": "Tu solicitud para cancelar la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada.",
+      "scheduling_change_request_rejected_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada."
     }
   },
   "scheduling": {
@@ -1950,6 +1960,104 @@
         "notPending": "Esta solicitud ya se decidió o se retiró. La página se actualizó.",
         "started": "La hora solicitada ya comenzó, así que la solicitud no se puede confirmar. La página se actualizó.",
         "changed": "Esta solicitud cambió desde que la cargaste. La página se actualizó."
+      }
+    },
+    "changeRequest": {
+      "title": "Revisar solicitud de cambio",
+      "summary": "Solicitud",
+      "status": "Estado",
+      "statuses": {
+        "pending": "Pendiente",
+        "approved": "Aprobada",
+        "rejected": "Rechazada",
+        "withdrawn": "Retirada"
+      },
+      "kind": "Cambio",
+      "kinds": {
+        "cancellation": "Cancelación",
+        "reschedule": "Cambio de horario"
+      },
+      "initiators": {
+        "family": "familia",
+        "tutor": "tutor"
+      },
+      "requestedBy": "Solicitada por",
+      "requestedByText": "{{name}} ({{role}}), {{when}}",
+      "session": "Sesión actual",
+      "sessionState": "Estado: {{state}}",
+      "proposed": "Horario propuesto",
+      "note": "Nota",
+      "policyOutcome": "Resultado según la política",
+      "policyVersion": "Política de programación vigente desde el {{date}}",
+      "outcomeText": "{{classification}} — {{makeup}}",
+      "makeupUntil": "reposición hasta el {{date}}",
+      "noMakeup": "sin reposición",
+      "classification": {
+        "on_time": "A tiempo",
+        "late": "Tardía",
+        "no_show": "Inasistencia",
+        "excused": "Justificada"
+      },
+      "outcome": "Decisión",
+      "approvedText": "Aprobada: el cambio se aplicó a la sesión.",
+      "approvedExceptionText": "Aprobada como excepción: se trata como justificada.",
+      "finalOutcome": "Resultado: {{outcome}}",
+      "rejectedText": "Rechazada: la sesión no cambió.",
+      "withdrawnText": "Quien la solicitó la retiró.",
+      "reasonText": "Motivo que ve quien la solicitó: {{reason}}",
+      "decidedBy": "Decidida por {{name}}, {{when}}",
+      "openSession": "Abrir la sesión",
+      "approvedCancelled": "Solicitud aprobada. La sesión se canceló y se avisó a todas las personas afectadas.",
+      "approvedMoved": "Solicitud aprobada. La sesión se movió y se avisó a todas las personas afectadas.",
+      "reason": "Motivo",
+      "reasonRequired": "Escribe un motivo.",
+      "reasonTooLong": "Usa como máximo 1000 caracteres.",
+      "decide": {
+        "heading": "Decidir",
+        "introCancellation": "Al aprobarla, la sesión se cancela como cualquier cancelación: se avisa al tutor y a la familia. Apruébala como excepción para tratarla como justificada, o recházala con un motivo.",
+        "introReschedule": "Al aprobarla, la sesión se mueve al horario propuesto y se vuelven a revisar todas las reglas (la anticipación de reserva cuenta desde que se hizo la solicitud). Apruébala como excepción para tratarla como justificada, o recházala con un motivo.",
+        "room": "Aula en el nuevo horario",
+        "keepRoom": "Mantener {{room}}",
+        "keepNoRoom": "Mantener sin aula",
+        "approveCancellation": "Aprobar: cancelar la sesión",
+        "approveReschedule": "Aprobar: mover la sesión",
+        "approving": "Aprobando…",
+        "exception": "Aprobar como excepción",
+        "reject": "Rechazar",
+        "cannotApprove": "La sesión ya empezó o ya no está confirmada, así que la solicitud ya no se puede aprobar. Todavía puedes rechazarla.",
+        "conflictsHeading_one": "La sesión no se puede mover: 1 conflicto",
+        "conflictsHeading_many": "La sesión no se puede mover: {{count}} conflictos",
+        "conflictsHeading_other": "La sesión no se puede mover: {{count}} conflictos",
+        "conflictsHint": "Elige otra aula, omite las reglas que se pueden omitir o rechaza la solicitud; no se guardó nada.",
+        "overrideAction": "Omitir y aprobar",
+        "overrideDescription": "La sesión se mueve a pesar de estas reglas. El motivo queda en el registro de auditoría.",
+        "fixHardFirst": "Algunos conflictos no se pueden omitir: elige otra aula o rechaza la solicitud."
+      },
+      "exception": {
+        "title": "Aprobar como excepción",
+        "description": "Se trata como justificada; la familia verá este motivo.",
+        "keep": "Cancelar",
+        "submit": "Aprobar como excepción",
+        "submitting": "Aprobando…"
+      },
+      "reject": {
+        "title": "Rechazar la solicitud de cambio",
+        "description": "Quien la solicitó verá este motivo.",
+        "keep": "Conservar la solicitud",
+        "submit": "Rechazar solicitud",
+        "submitting": "Rechazando…"
+      },
+      "stale": {
+        "notPending": "Esta solicitud ya se decidió o se retiró. La página se actualizó.",
+        "started": "La sesión ya empezó, así que la solicitud no se puede aprobar. La página se actualizó.",
+        "sessionChanged": "La sesión cambió desde que se hizo la solicitud (por ejemplo, se canceló), así que no se puede aprobar. La página se actualizó.",
+        "changed": "Esta solicitud cambió desde que la cargaste. La página se actualizó."
+      },
+      "pendingNotice": "Hay una solicitud de cambio pendiente para esta sesión.",
+      "pendingLink": "Revisar la solicitud de cambio",
+      "cancellationReasons": {
+        "family_request": "Cancelada a petición de la familia",
+        "tutor_request": "Cancelada a petición del tutor"
       }
     }
   },

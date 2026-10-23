@@ -63,6 +63,7 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
     ClassSessionSubstitution,
     GroupEnrollment,
+    SessionChangeRequest,
     SessionRequest,
 )
 from app.modules.staff.models import (
@@ -132,6 +133,7 @@ def test_the_guard_scans_the_real_audited_models():
         PrivacyNoticeAcceptance,
         RegistrationRequest,
         SchedulingPolicy,
+        SessionChangeRequest,
         SessionRequest,
         Student,
         StudentEmergencyContact,

@@ -314,6 +314,7 @@ def test_the_named_audit_event_and_the_seam(ctx, monkeypatch):
             "initiated_by": "center",
             "cancelled_at": ctx.tl.now,
             "by_user_id": ctx.owner.id,
+            "change_request_id": None,
         }
     ]
     found = events(
@@ -328,6 +329,7 @@ def test_the_named_audit_event_and_the_seam(ctx, monkeypatch):
         "reason": "Cierre por mantenimiento",
         "withdrawn_offer_ids": [offer_id],
         "cancelled_request_ids": [],
+        "change_request_id": None,
     }
     assert "update" in [e.action for e in found]
 

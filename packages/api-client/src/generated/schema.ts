@@ -2657,6 +2657,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/change-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Change Requests
+         * @description The change requests you may see, newest first (an offset page:
+         *     `limit` 1-100, default 25): your family's requests for the students you
+         *     act for, or as a tutor the requests you made. Filters you can't use give
+         *     an empty page.
+         */
+        get: operations["list_change_requests_api_v1_change_requests_get"];
+        put?: never;
+        /**
+         * Create Change Request
+         * @description Ask the center to cancel or move one upcoming confirmed individual
+         *     session: as a guardian or a student for your session, or as its tutor.
+         *     A reschedule proposes one new start (same length). The scheduling
+         *     policy's outcome (on time, late or excused, and whether a makeup is
+         *     allowed) is recorded now and shown with the request. The center
+         *     approves, approves as an exception or rejects it.
+         */
+        post: operations["create_change_request_api_v1_change_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-requests/{change_request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Change Request
+         * @description One change request you may see.
+         */
+        get: operations["get_change_request_api_v1_change_requests__change_request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-requests/{change_request_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Change Request
+         * @description Withdraw a pending request you made; its inbox item is cancelled.
+         *     Allowed after the session has started.
+         */
+        post: operations["withdraw_change_request_api_v1_change_requests__change_request_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-requests/{change_request_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Change Request Review
+         * @description A change request as staff review it: who asked, the session as it is
+         *     now (tutor and room included), the time when it was asked, the proposed
+         *     time, the note, the policy version and its outcome (and, once approved,
+         *     the effective outcome), its inbox item and the decision. `can_decide`
+         *     is true while it is pending, the session is still confirmed and it
+         *     hasn't started.
+         */
+        get: operations["get_change_request_review_api_v1_change_requests__change_request_id__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-requests/{change_request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Change Request
+         * @description Approve a pending request: a cancellation cancels the session, a
+         *     reschedule moves it to the proposed time (optionally to another room)
+         *     through the same checks as a manual move, the booking notice counted
+         *     from when the request was made. With `exception` (and a reason) the
+         *     outcome becomes excused. The requester is notified; the others affected
+         *     get the usual cancellation or reschedule notification.
+         */
+        post: operations["approve_change_request_api_v1_change_requests__change_request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/change-requests/{change_request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Change Request
+         * @description Reject a pending request with a reason the requester sees. The
+         *     session is untouched. Allowed after the session has started.
+         */
+        post: operations["reject_change_request_api_v1_change_requests__change_request_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3291,6 +3435,382 @@ export interface components {
         };
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /** @enum {string} */
+        ChangeClassification: "on_time" | "late" | "no_show" | "excused";
+        /**
+         * ChangeRequestApprove
+         * @description ``POST /api/v1/change-requests/{change_request_id}/approve`` (C2).
+         */
+        ChangeRequestApprove: {
+            /**
+             * Version
+             * @description The request's version, as read.
+             */
+            version: number;
+            /**
+             * Exception
+             * @description Approve as an exception: the outcome becomes `excused` (a cancellation then allows a makeup). Needs a `reason`.
+             * @default false
+             */
+            exception: boolean;
+            /**
+             * Reason
+             * @description Why (trimmed, at most 1000; required with `exception`). The requester sees it.
+             */
+            reason?: string | null;
+            /**
+             * Classroom Id
+             * @description Only for a reschedule: the room at the new time; null is no room; absent keeps the room.
+             */
+            classroom_id?: string | null;
+            /** @description Only for a reschedule: override the listed soft conflicts of the new time with a reason (needs schedule.override). */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * ChangeRequestApproved
+         * @description The approve's ``200`` (C2 step 16): the request, the session after the
+         *     change and the tutor's workload warnings at a new time (empty for a
+         *     cancellation).
+         */
+        ChangeRequestApproved: {
+            change_request: components["schemas"]["ChangeRequestReview"];
+            class_session: components["schemas"]["ClassSessionDetail"];
+            /** Warnings */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * ChangeRequestCreate
+         * @description ``POST /api/v1/change-requests`` (#62 B1).
+         */
+        ChangeRequestCreate: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            /**
+             * Proposed Starts At
+             * @description Only for a `reschedule` (required then): the proposed new start, an instant with an offset on a whole minute. The end follows from the session's length, which never changes.
+             */
+            proposed_starts_at?: string | null;
+            /**
+             * Note
+             * @description An optional note for the center (trimmed, at most 500).
+             */
+            note?: string | null;
+        };
+        /**
+         * ChangeRequestDecision
+         * @description How staff decided (only once approved or rejected).
+         */
+        ChangeRequestDecision: {
+            /**
+             * Exception
+             * @description Approved as an exception (excused).
+             */
+            exception: boolean;
+            /**
+             * Reason
+             * @description The reviewer's reason (always set for a rejection or an exception).
+             */
+            reason: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+        };
+        /**
+         * ChangeRequestDetail
+         * @description A change request as its family or tutor sees it (#62 S3 allow-list).
+         */
+        ChangeRequestDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            status: components["schemas"]["ChangeRequestStatus"];
+            class_session: components["schemas"]["ChangeRequestSession"];
+            /** @description The student the session is for. */
+            student: components["schemas"]["ChangeRequestStudent"] | null;
+            /** Proposed Starts At */
+            proposed_starts_at: string | null;
+            /** Proposed Ends At */
+            proposed_ends_at: string | null;
+            /** Note */
+            note: string | null;
+            /** @description The policy outcome: the effective one once `approved`, otherwise the one recorded when the request was made (as requested). */
+            outcome: components["schemas"]["ChangeRequestOutcome"];
+            decision: components["schemas"]["ChangeRequestDecision"] | null;
+            /** Requested By Me */
+            requested_by_me: boolean;
+            /**
+             * Can Withdraw
+             * @description You made it and it is still pending.
+             */
+            can_withdraw: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        ChangeRequestInitiator: "family" | "tutor";
+        /**
+         * ChangeRequestItem
+         * @description A list item: the same members as the detail.
+         */
+        ChangeRequestItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            status: components["schemas"]["ChangeRequestStatus"];
+            class_session: components["schemas"]["ChangeRequestSession"];
+            /** @description The student the session is for. */
+            student: components["schemas"]["ChangeRequestStudent"] | null;
+            /** Proposed Starts At */
+            proposed_starts_at: string | null;
+            /** Proposed Ends At */
+            proposed_ends_at: string | null;
+            /** Note */
+            note: string | null;
+            /** @description The policy outcome: the effective one once `approved`, otherwise the one recorded when the request was made (as requested). */
+            outcome: components["schemas"]["ChangeRequestOutcome"];
+            decision: components["schemas"]["ChangeRequestDecision"] | null;
+            /** Requested By Me */
+            requested_by_me: boolean;
+            /**
+             * Can Withdraw
+             * @description You made it and it is still pending.
+             */
+            can_withdraw: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        ChangeRequestKind: "cancellation" | "reschedule";
+        /**
+         * ChangeRequestOutcome
+         * @description A policy classification and its makeup eligibility (#61).
+         */
+        ChangeRequestOutcome: {
+            classification: components["schemas"]["ChangeClassification"];
+            /** Makeup Allowed */
+            makeup_allowed: boolean;
+            /** Makeup Until */
+            makeup_until: string | null;
+        };
+        /** ChangeRequestPerson */
+        ChangeRequestPerson: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * ChangeRequestPolicy
+         * @description The scheduling policy version the request was classified with.
+         */
+        ChangeRequestPolicy: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+        };
+        /**
+         * ChangeRequestReject
+         * @description ``POST /api/v1/change-requests/{change_request_id}/reject`` (C4).
+         */
+        ChangeRequestReject: {
+            /** Version */
+            version: number;
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed. The requester sees it.
+             */
+            reason: string;
+        };
+        /**
+         * ChangeRequestReview
+         * @description A change request as staff review it (C1; ``schedule.manage``).
+         */
+        ChangeRequestReview: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            status: components["schemas"]["ChangeRequestStatus"];
+            initiated_by: components["schemas"]["ChangeRequestInitiator"];
+            requested_by: components["schemas"]["ChangeRequestPerson"];
+            student: components["schemas"]["ChangeRequestStudent"] | null;
+            subject: components["schemas"]["ChangeRequestSubject"];
+            session: components["schemas"]["ChangeRequestReviewSession"];
+            /**
+             * Session Starts At
+             * Format: date-time
+             * @description The session's start when the request was made.
+             */
+            session_starts_at: string;
+            /**
+             * Session Ends At
+             * Format: date-time
+             */
+            session_ends_at: string;
+            /** Proposed Starts At */
+            proposed_starts_at: string | null;
+            /** Proposed Ends At */
+            proposed_ends_at: string | null;
+            /** Note */
+            note: string | null;
+            policy: components["schemas"]["ChangeRequestPolicy"];
+            /** @description The outcome recorded when the request was made (never recomputed). */
+            request_outcome: components["schemas"]["ChangeRequestOutcome"];
+            /** @description The effective outcome, once approved. */
+            final_outcome: components["schemas"]["ChangeRequestOutcome"] | null;
+            /** @description The effective outcome once approved, else the request-time one. */
+            outcome: components["schemas"]["ChangeRequestOutcome"];
+            decision: components["schemas"]["ChangeRequestDecision"] | null;
+            decided_by: components["schemas"]["ChangeRequestPerson"] | null;
+            /** Approval Request Id */
+            approval_request_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Can Decide
+             * @description Pending, the session still confirmed and not started: it can be approved (a started one can still be rejected).
+             */
+            can_decide: boolean;
+        };
+        /**
+         * ChangeRequestReviewSession
+         * @description The session, live.
+         */
+        ChangeRequestReviewSession: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["SessionStateCode"];
+            kind: components["schemas"]["SessionKindCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Series Id */
+            series_id: string | null;
+            tutor: components["schemas"]["ChangeRequestPerson"] | null;
+            classroom: components["schemas"]["ChangeRequestRoom"] | null;
+            /** Version */
+            version: number;
+        };
+        /** ChangeRequestRoom */
+        ChangeRequestRoom: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ChangeRequestSession
+         * @description The session, as it is now (its times change once a reschedule is
+         *     approved).
+         */
+        ChangeRequestSession: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["ChangeRequestSubject"];
+        };
+        /** @enum {string} */
+        ChangeRequestStatus: "pending" | "approved" | "rejected" | "withdrawn";
+        /** ChangeRequestStudent */
+        ChangeRequestStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** ChangeRequestSubject */
+        ChangeRequestSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /**
+         * ChangeRequestWithdraw
+         * @description ``POST /api/v1/change-requests/{change_request_id}/withdraw`` (D3).
+         */
+        ChangeRequestWithdraw: {
+            /** Version */
+            version: number;
+        };
         /**
          * ClassSeriesCancel
          * @description Cancel a series' occurrences from a date on (``POST
@@ -3862,6 +4382,11 @@ export interface components {
              */
             group_id: string | null;
             /**
+             * Pending Change Request Id
+             * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
+             */
+            pending_change_request_id: string | null;
+            /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
              */
@@ -3947,6 +4472,11 @@ export interface components {
              * @description The tutoring group of a `group` session (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Pending Change Request Id
+             * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
+             */
+            pending_change_request_id: string | null;
         };
         /**
          * ClassSessionOffers
@@ -4078,6 +4608,11 @@ export interface components {
              * @description The tutoring group of a `group` session (#56); null otherwise.
              */
             group_id: string | null;
+            /**
+             * Pending Change Request Id
+             * @description The pending cancellation or reschedule request of a family or the tutor (#62); null when there is none.
+             */
+            pending_change_request_id: string | null;
             /**
              * Warnings
              * @description The tutor's workload warnings at the new time (#50), the session itself counted once; empty without a tutor.
@@ -5970,6 +6505,17 @@ export interface components {
         OffsetPage_ApprovalRequestItem_: {
             /** Items */
             items: components["schemas"]["ApprovalRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ChangeRequestItem] */
+        OffsetPage_ChangeRequestItem_: {
+            /** Items */
+            items: components["schemas"]["ChangeRequestItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -16819,6 +17365,468 @@ export interface operations {
                 };
             };
             /** @description The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending, details.status). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_change_requests_api_v1_change_requests_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                class_session_id?: string | null;
+                status?: "pending" | "approved" | "rejected" | "withdrawn" | "all";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ChangeRequestItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_change_request_api_v1_change_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required / csrf_failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such session, or not one you may change (not_found): another family's or tutor's session, or one your family can't see yet. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only individual sessions (change_request_kind_unsupported, details.kind); only a confirmed session (class_session_not_changeable, details.state); the session has started (change_request_session_started); it already has a pending request (change_request_pending, with details.change_request_id when you may see it); the proposed time isn't available (slot_unavailable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_change_request_api_v1_change_requests__change_request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such request, or not one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    withdraw_change_request_api_v1_change_requests__change_request_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestWithdraw"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such request, or not one you made (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since you loaded it (version_conflict) or is no longer pending (change_request_not_pending). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_change_request_review_api_v1_change_requests__change_request_id__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestReview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such change request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    approve_change_request_api_v1_change_requests__change_request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestApproved"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such change request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Nothing changes and the request stays pending. The request changed since you loaded it (version_conflict) or is no longer pending (change_request_not_pending, details.status). The session has started (change_request_session_started) or is no longer confirmed (change_request_session_changed, details.state); the proposed time breaks scheduling rules now (scheduling_conflict, `conflicts` lists every one). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reject_change_request_api_v1_change_requests__change_request_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestReview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such change request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since you loaded it (version_conflict) or is no longer pending (change_request_not_pending, details.status). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -232,12 +232,86 @@ export function sessionRequestReviewLink(
   return reviewPath(item.subject.session_request_id);
 }
 
-/** The review page named by `409 session_request_review_route_required`. */
+interface ChangeRequestSubject {
+  change_request_id: string;
+  kind: 'cancellation' | 'reschedule';
+  initiated_by: string;
+  student_name: string;
+  subject_name: string;
+  starts_at: string;
+  proposed_starts_at: string | null;
+  classification: 'on_time' | 'late' | 'no_show' | 'excused';
+  status: string;
+}
+
+function isChangeRequest(subject: unknown): subject is ChangeRequestSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  return (
+    typeof value.change_request_id === 'string' &&
+    (value.kind === 'cancellation' || value.kind === 'reschedule') &&
+    typeof value.student_name === 'string' &&
+    typeof value.subject_name === 'string' &&
+    typeof value.starts_at === 'string' &&
+    (value.classification === 'on_time' ||
+      value.classification === 'late' ||
+      value.classification === 'no_show' ||
+      value.classification === 'excused')
+  );
+}
+
+/** The cancellation or reschedule request subject of `item` (#62 C6), or
+ * null. */
+export function changeRequestSubject(
+  item: ApprovalRequestItem,
+): ChangeRequestSubject | null {
+  return item.request_type === 'scheduling.change_request' &&
+    isChangeRequest(item.subject)
+    ? item.subject
+    : null;
+}
+
+/** The review page of a change request (#62 G1). */
+export function changeRequestReviewPath(requestId: string): string {
+  return `/schedule/change-requests/${encodeURIComponent(requestId)}`;
+}
+
+/**
+ * The staff review page of a pending change request (#62 G2): the inbox
+ * shows a "Review" link instead of Approve / Reject (the API lists no
+ * allowed actions for these items). Null otherwise.
+ */
+export function changeRequestReviewLink(
+  item: ApprovalRequestItem,
+): string | null {
+  const subject = changeRequestSubject(item);
+  if (!subject || item.status !== 'pending') {
+    return null;
+  }
+  return changeRequestReviewPath(subject.change_request_id);
+}
+
+/** The review page of a pending item decided on its own page (#60, #62),
+ * or null. */
+export function itemReviewLink(item: ApprovalRequestItem): string | null {
+  return sessionRequestReviewLink(item) ?? changeRequestReviewLink(item);
+}
+
+const REVIEW_ROUTE_CODES: Readonly<Record<string, string>> = {
+  session_request_review_route_required: '/schedule/requests/',
+  change_request_review_route_required: '/schedule/change-requests/',
+};
+
+/** The review page named by `409 session_request_review_route_required`
+ * (#60) or `change_request_review_route_required` (#62). */
 export function reviewLinkOf(error: unknown): string | null {
-  if (
-    !(error instanceof ApiError) ||
-    error.code !== 'session_request_review_route_required'
-  ) {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+  const prefix = REVIEW_ROUTE_CODES[error.code];
+  if (prefix === undefined) {
     return null;
   }
   const details: unknown = error.problem?.details;
@@ -245,7 +319,7 @@ export function reviewLinkOf(error: unknown): string | null {
     typeof details === 'object' && details !== null
       ? (details as Record<string, unknown>).review_path
       : undefined;
-  if (typeof path === 'string' && path.startsWith('/schedule/requests/')) {
+  if (typeof path === 'string' && path.startsWith(prefix)) {
     return path;
   }
   return null;
@@ -331,6 +405,8 @@ export function registrationSubject(
  * (#53) "Series occurrence <date, time> — <students> · <subject>: <codes>";
  * for a family's session request (#59) "<student> · <subject> (<level>) ·
  * <date, time> · <minutes> min · requested by <name>";
+ * for a change request (#62) "<kind> · <student> · <subject> · <date, time>
+ * [→ <proposed>] · <classification>";
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -408,6 +484,24 @@ export function approvalSummary(
       minutes: sessionRequest.duration_minutes,
       requester: sessionRequest.requested_by,
     });
+  }
+  const change = changeRequestSubject(item);
+  if (change) {
+    const shared = {
+      kind: t(`scheduling.changeRequest.kinds.${change.kind}`),
+      student: change.student_name,
+      subject: change.subject_name,
+      when: formatInstant(change.starts_at),
+      classification: t(
+        `scheduling.changeRequest.classification.${change.classification}`,
+      ),
+    };
+    return change.proposed_starts_at
+      ? t('approvals.summary.changeRequestReschedule', {
+          ...shared,
+          proposed: formatInstant(change.proposed_starts_at),
+        })
+      : t('approvals.summary.changeRequest', shared);
   }
   const occurrence = occurrenceConflictSubject(item);
   if (occurrence) {

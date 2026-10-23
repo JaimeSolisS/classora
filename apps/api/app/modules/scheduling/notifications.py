@@ -103,10 +103,16 @@ class Affected:
 
 
 async def recipients(
-    session: AsyncSession, rows: Sequence[Affected], *, actor_id: uuid.UUID | None
+    session: AsyncSession,
+    rows: Sequence[Affected],
+    *,
+    actor_id: uuid.UUID | None,
+    exclude_ids: Iterable[uuid.UUID] = (),
 ) -> dict[uuid.UUID, dict[Effect, int]]:
     """Per recipient user, how many affected rows of each effect concern
-    them (at most three statements). The actor is left out."""
+    them (at most three statements). The actor and ``exclude_ids`` are left
+    out."""
+    excluded = set(exclude_ids)
     family_rows = [
         row.class_session_id for row in rows if "family" in audience(row.previous_state)
     ]
@@ -133,6 +139,7 @@ async def recipients(
                 users.update(family_users.get(student_id, []))
         if actor_id is not None:
             users.discard(actor_id)
+        users -= excluded
         for user_id in users:
             counts = found.setdefault(user_id, {"changed": 0, "cancelled": 0})
             counts[row.effect] += 1
@@ -160,9 +167,11 @@ async def notify_session_rescheduled(
     *,
     starts_at: datetime,
     actor_id: uuid.UUID | None,
+    exclude_ids: Iterable[uuid.UUID] = (),
 ) -> None:
-    """D1: one ``scheduling.session_rescheduled`` per recipient of ``row``."""
-    found = await recipients(session, [row], actor_id=actor_id)
+    """D1: one ``scheduling.session_rescheduled`` per recipient of ``row``
+    (never ``exclude_ids``: #62's requester of an approved reschedule)."""
+    found = await recipients(session, [row], actor_id=actor_id, exclude_ids=exclude_ids)
     await _send(
         session,
         found,

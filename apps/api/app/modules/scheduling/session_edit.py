@@ -57,6 +57,8 @@ conflict):
 """
 
 import uuid
+from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,10 +129,19 @@ async def update_class_session(
     body: ClassSessionUpdate,
     *,
     actor_id: uuid.UUID,
+    notice_reference_at: datetime | None = None,
+    exclude_recipient_ids: Sequence[uuid.UUID] = (),
 ) -> ClassSessionUpdated:
     """``PATCH /api/v1/class-sessions/{id}``: see the module docstring.
     ``actor_id`` is the signed-in user (the override's actor); the route has
-    already checked ``schedule.override`` for an ``override``."""
+    already checked ``schedule.override`` for an ``override``.
+
+    #62 (an approved reschedule request) also passes ``notice_reference_at``
+    (the request's ``created_at``: the booking notice is measured from it,
+    with the policy in force then; every other check stays live, and the
+    "started" rule keeps using now) and ``exclude_recipient_ids`` (the
+    requester, left out of ``scheduling.session_rescheduled``). ``PATCH``
+    passes neither."""
     found = await session.get(ClassSession, class_session_id)
     if found is None:
         raise RecordNotFoundError()
@@ -211,7 +222,7 @@ async def update_class_session(
             ends_at=body.ends_at,
         ),
         zone=zone,
-        now=now,
+        now=now if notice_reference_at is None else notice_reference_at,
         check_center_closed=True,
         exclude_session_ids=frozenset({row.id}),
     )
@@ -266,7 +277,11 @@ async def update_class_session(
         # #55 G3: the pending substitution's snapshot no longer matches.
         await withdraw_pending_substitutions(session, [row.id])
     await notify_session_rescheduled(
-        session, affected, starts_at=row.starts_at, actor_id=actor_id
+        session,
+        affected,
+        starts_at=row.starts_at,
+        actor_id=actor_id,
+        exclude_ids=exclude_recipient_ids,
     )
     if decision.overridden:
         # Only an allowed override reaches here, so body.override is set.

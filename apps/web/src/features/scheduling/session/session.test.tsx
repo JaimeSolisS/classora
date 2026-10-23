@@ -834,3 +834,55 @@ describe('/schedule/sessions/:id substitutions and cancellation (#55)', () => {
     expect(main().textContent).not.toContain('Find a substitute');
   });
 });
+
+describe('/schedule/sessions/:id change requests (#62 G2)', () => {
+  const REQUEST_ID = '01d00000-0000-7000-8000-0000000000c1';
+
+  it('a pending change request shows a notice with the review link', async () => {
+    stub(MANAGER, {
+      [DETAIL]: () =>
+        jsonResponse(200, {
+          ...CONFIRMED_SESSION,
+          pending_change_request_id: REQUEST_ID,
+        }),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    expect(main().textContent).toContain(
+      'A change request is pending for this session.',
+    );
+    const link = main().querySelector<HTMLAnchorElement>(
+      `a[href="/schedule/change-requests/${REQUEST_ID}"]`,
+    );
+    expect(link?.textContent).toBe('Review the change request');
+    app.unmount();
+
+    // Without schedule.manage: no link (the review page needs it).
+    stub(ASSIGNER, {
+      [DETAIL]: () =>
+        jsonResponse(200, {
+          ...CONFIRMED_SESSION,
+          pending_change_request_id: REQUEST_ID,
+        }),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    expect(main().textContent).not.toContain('A change request is pending');
+  });
+
+  it('a session cancelled at a family’s request names it', async () => {
+    stub(MANAGER, {
+      [DETAIL]: () =>
+        jsonResponse(200, {
+          ...CANCELLED_SESSION,
+          cancellation: {
+            cancelled_at: '2026-10-22T10:00:00Z',
+            reason: 'family_request',
+          },
+        }),
+    });
+    app = await renderApp(`/schedule/sessions/${ID}`);
+
+    expect(main().textContent).toContain('Cancelled at the family’s request');
+    expect(main().textContent).not.toContain('family_request');
+  });
+});

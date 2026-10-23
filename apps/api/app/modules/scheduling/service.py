@@ -144,6 +144,23 @@ request the review routes already decided, #60 E1) and the time-zone check
 ``app.workflows.confirm_session_request``, and the two decision notification
 types (:func:`register_request_notifications`).
 
+Change requests by families and tutors (#62): :func:`create_change_request`,
+:func:`list_change_requests`, :func:`get_change_request` and
+:func:`withdraw_change_request` (:mod:`~app.modules.scheduling.change_requests`;
+the record policy in :mod:`~app.modules.scheduling.change_requests_policy`,
+the outcome rules in :mod:`~app.modules.scheduling.change_request_outcome`);
+the staff review (:mod:`~app.modules.scheduling.change_request_review`):
+:func:`get_change_request_review`, :func:`approve_change_request`,
+:func:`reject_change_request` and :func:`notify_change_request_decision`,
+called by ``app.workflows.change_request_decision``; the
+``scheduling.change_request`` approval handler
+:data:`CHANGE_REQUEST_APPROVAL_HANDLER`, the two decision notification types
+(:func:`register_change_request_notifications`) and the time-zone check
+:func:`has_pending_reschedule_requests`
+(:data:`CHANGE_REQUESTS_TIME_ZONE_DEPENDENCY`), all registered by
+``app.wiring``. M6-14 (billing) and M7-04 (tutor pay) read an approved
+request's effective outcome with :func:`get_change_request_outcome`.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -183,6 +200,54 @@ from app.modules.scheduling.capacity import (
 )
 from app.modules.scheduling.capacity import (
     effective_capacity as effective_capacity,
+)
+from app.modules.scheduling.change_request_approval import (
+    CHANGE_REQUEST_APPROVAL_HANDLER as CHANGE_REQUEST_APPROVAL_HANDLER,
+)
+from app.modules.scheduling.change_request_review import (
+    ApprovedChange as ApprovedChange,
+)
+from app.modules.scheduling.change_request_review import (
+    approve_change_request as approve_change_request,
+)
+from app.modules.scheduling.change_request_review import (
+    get_change_request_review as get_change_request_review,
+)
+from app.modules.scheduling.change_request_review import (
+    notify_change_request_decision as notify_change_request_decision,
+)
+from app.modules.scheduling.change_request_review import (
+    register_change_request_notifications as register_change_request_notifications,
+)
+from app.modules.scheduling.change_request_review import (
+    reject_change_request as reject_change_request,
+)
+from app.modules.scheduling.change_requests import (
+    CHANGE_REQUEST_TYPE as CHANGE_REQUEST_TYPE,
+)
+from app.modules.scheduling.change_requests import (
+    CHANGE_REQUESTS_TIME_ZONE_DEPENDENCY as CHANGE_REQUESTS_TIME_ZONE_DEPENDENCY,
+)
+from app.modules.scheduling.change_requests import (
+    ChangeRequestOutcomeView as ChangeRequestOutcomeView,
+)
+from app.modules.scheduling.change_requests import (
+    create_change_request as create_change_request,
+)
+from app.modules.scheduling.change_requests import (
+    get_change_request as get_change_request,
+)
+from app.modules.scheduling.change_requests import (
+    get_change_request_outcome as get_change_request_outcome,
+)
+from app.modules.scheduling.change_requests import (
+    has_pending_reschedule_requests as has_pending_reschedule_requests,
+)
+from app.modules.scheduling.change_requests import (
+    list_change_requests as list_change_requests,
+)
+from app.modules.scheduling.change_requests import (
+    withdraw_change_request as withdraw_change_request,
 )
 from app.modules.scheduling.checks import SlotCandidate as SlotCandidate
 from app.modules.scheduling.checks import collect_conflicts as collect_conflicts

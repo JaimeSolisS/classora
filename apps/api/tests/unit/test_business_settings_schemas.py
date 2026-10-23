@@ -227,4 +227,5 @@ def test_the_app_registers_only_the_scheduling_checks():
         "scheduling.class_sessions": scheduling.has_class_sessions,
         "scheduling.class_series": scheduling.has_class_series,
         "scheduling.session_requests": scheduling.has_pending_session_requests,
+        "scheduling.change_requests": scheduling.has_pending_reschedule_requests,
     }

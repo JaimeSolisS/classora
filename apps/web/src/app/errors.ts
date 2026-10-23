@@ -127,6 +127,17 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'session_request_review_route_required',
     'session_request_review_route_required',
   ],
+  // Change requests by families and tutors (#62).
+  ['change_request_kind_unsupported', 'change_request_kind_unsupported'],
+  ['class_session_not_changeable', 'class_session_not_changeable'],
+  ['change_request_session_started', 'change_request_session_started'],
+  ['change_request_pending', 'change_request_pending'],
+  ['change_request_not_pending', 'change_request_not_pending'],
+  ['change_request_session_changed', 'change_request_session_changed'],
+  [
+    'change_request_review_route_required',
+    'change_request_review_route_required',
+  ],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

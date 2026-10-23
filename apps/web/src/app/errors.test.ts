@@ -110,6 +110,13 @@ const API_CODES = [
   'session_request_not_pending',
   'session_request_started',
   'session_request_review_route_required',
+  'change_request_kind_unsupported',
+  'class_session_not_changeable',
+  'change_request_session_started',
+  'change_request_pending',
+  'change_request_not_pending',
+  'change_request_session_changed',
+  'change_request_review_route_required',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

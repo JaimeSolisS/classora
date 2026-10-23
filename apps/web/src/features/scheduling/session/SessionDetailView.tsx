@@ -6,6 +6,7 @@ import { toLanguage } from '@/i18n/language';
 import { formatInstant, formatLocalDate } from '@/lib/time';
 import type { SchedulingWarning } from '../create/api';
 import { useWarningMessage } from '../create/warningMessages';
+import { REQUEST_CANCELLATION_REASONS } from '../change-requests/rules';
 import type {
   AssignmentOfferItem,
   ClassSeriesDetail,
@@ -24,6 +25,9 @@ import type {
 // no actions; a pending substitution shows in the summary; the page passes
 // the "Cancel session" action, the substitute panel (in `offerPanel`), the
 // substitutions section and a notice for a refused write.
+// #62 G2: a pending change request shows a notice with the review link; a
+// session cancelled at a family's or tutor's request names that, not the
+// system code.
 
 export interface SessionNotice {
   id: number;
@@ -65,6 +69,11 @@ export interface SessionDetailViewProps {
   notice?: SessionNotice | null;
   /** The session's series, once read (#233 G2). */
   series?: ClassSeriesDetail | null;
+  /**
+   * The link to the review page of the session's pending change request
+   * (#62 G2: a holder of schedule.manage), or nothing.
+   */
+  changeRequestLink?: (changeRequestId: string) => ReactNode;
 }
 
 const OFFER_STATUS_KEYS = {
@@ -84,6 +93,7 @@ export function SessionDetailView({
   actions,
   substitutions,
   notice,
+  changeRequestLink,
 }: SessionDetailViewProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -150,9 +160,26 @@ export function SessionDetailView({
             })}
           </p>
           <p className="text-sm break-words">
-            {t('scheduling.substitution.reasonText', {
-              reason: cancellation.reason,
-            })}
+            {REQUEST_CANCELLATION_REASONS.has(cancellation.reason)
+              ? t(
+                  `scheduling.changeRequest.cancellationReasons.${cancellation.reason as 'family_request' | 'tutor_request'}`,
+                )
+              : t('scheduling.substitution.reasonText', {
+                  reason: cancellation.reason,
+                })}
+          </p>
+        </section>
+      ) : null}
+      {session.pending_change_request_id && changeRequestLink ? (
+        <section
+          aria-labelledby={`${id}-change-request`}
+          className="flex flex-col gap-1 rounded-md border border-border p-3"
+        >
+          <h2 id={`${id}-change-request`} className="font-semibold">
+            {t('scheduling.changeRequest.pendingNotice')}
+          </h2>
+          <p className="text-sm">
+            {changeRequestLink(session.pending_change_request_id)}
           </p>
         </section>
       ) : null}

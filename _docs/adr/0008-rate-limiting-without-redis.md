@@ -82,6 +82,12 @@ Recorded with M4-14 (#59 E2 (a), the recommended option, accepted under the owne
 - They are keyed by user because families share the center's Wi-Fi: a per-IP budget would let one family throttle another. Every request counts, `4xx` answers included.
 - They are separate from the general in-process API limit of D16 (#163), which is unchanged.
 
+### 2026-10-23: a per-user limit for change requests (#62, owner-delegated)
+
+Recorded with M4-17 (#62 S4, the groomed choice under the owner's delegation for the M4 run). The 2026-10-20 amendment above is otherwise unchanged.
+
+- `change_request.user`: 10 per hour on `POST /api/v1/change-requests` (a write limit; cancellation and reschedule requests by guardians, students and tutors), keyed by the signed-in user, every request counted (`4xx` included), on the same `rate_limit_counters` table.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.3 step 3, §10.7 ISSUE-S3, §10.10 ISSUE-I3, §11

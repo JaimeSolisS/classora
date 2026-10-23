@@ -21,6 +21,7 @@ from app.modules.identity.service import (
     get_account_references,
 )
 from app.modules.scheduling.service import (
+    CHANGE_REQUEST_APPROVAL_HANDLER,
     OCCURRENCE_CONFLICT_HANDLER,
     OFFER_REASSIGNMENT_HANDLER,
 )
@@ -143,13 +144,14 @@ REGISTERED_TYPES = {
     "scheduling.occurrence_conflict",
     "scheduling.offer_reassignment",
     "scheduling.session_request",
+    "scheduling.change_request",
 }
 
 
 def test_build_app_registers_exactly_the_real_types():
     # D3: build_app registers identity.registration, (#44 C1)
     # staff.qualification, (#52 E2) scheduling.offer_reassignment and (#59
-    # E1) scheduling.session_request.
+    # E1) scheduling.session_request and (#62 C6) scheduling.change_request.
     for request_type in REGISTERED_TYPES:
         unregister_approval_handler(request_type)
     build_app()
@@ -175,6 +177,13 @@ def test_build_app_registers_exactly_the_real_types():
     assert reassignment.review_permission == "schedule.assign"
     assert reassignment.supports_request_changes is False
     assert reassignment.reason_required_on_reject is True
+    # #62 C6: decided on the review page only.
+    change = CHANGE_REQUEST_APPROVAL_HANDLER
+    assert change.request_type == "scheduling.change_request"
+    assert change.review_permission == "schedule.manage"
+    assert change.supports_request_changes is False
+    assert change.reason_required_on_reject is True
+    assert change.inbox_decisions is False
 
 
 def test_build_app_registers_the_account_reference_resolver():

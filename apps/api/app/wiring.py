@@ -12,7 +12,9 @@ dependency checks (#37, #47: ``scheduling.class_sessions``; #53:
 ``scheduling.class_series``, and the ``scheduling.occurrence_conflict``
 approval type; #59: ``scheduling.session_requests`` and the
 ``scheduling.session_request`` approval type; #60: the two session request
-decision notification types) are wired here, by the API app factory
+decision notification types; #62: the ``scheduling.change_request``
+approval type, its two decision notification types and the
+``scheduling.change_requests`` time-zone check) are wired here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
@@ -45,11 +47,15 @@ def register_approval_wiring() -> None:
     administration_service.register_approval_handler(
         scheduling_service.SESSION_REQUEST_APPROVAL_HANDLER
     )
+    administration_service.register_approval_handler(
+        scheduling_service.CHANGE_REQUEST_APPROVAL_HANDLER
+    )
     scheduling_service.register_offer_notifications()
     scheduling_service.register_closure_notifications()
     scheduling_service.register_edit_notifications()
     scheduling_service.register_substitution_notifications()
     scheduling_service.register_request_notifications()
+    scheduling_service.register_change_request_notifications()
     scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_time_zone_dependency(
@@ -62,4 +68,8 @@ def register_approval_wiring() -> None:
     administration_service.register_time_zone_dependency(
         scheduling_service.SESSION_REQUESTS_TIME_ZONE_DEPENDENCY,
         scheduling_service.has_pending_session_requests,
+    )
+    administration_service.register_time_zone_dependency(
+        scheduling_service.CHANGE_REQUESTS_TIME_ZONE_DEPENDENCY,
+        scheduling_service.has_pending_reschedule_requests,
     )

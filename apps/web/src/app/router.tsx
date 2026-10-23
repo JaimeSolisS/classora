@@ -282,6 +282,18 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'schedule.manage' },
           },
+          // #62 G1: the staff review of a family's or tutor's change
+          // request (code-split; linked from the inbox's "Review" and the
+          // session page).
+          {
+            path: 'schedule/change-requests/:requestId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/scheduling/change-requests/ChangeRequestReviewPage')
+              ).ChangeRequestReviewPage,
+            }),
+            handle: { permission: 'schedule.manage' },
+          },
           // #52 H1: the tutor's own offers (the API filters by caller).
           {
             path: 'offers',

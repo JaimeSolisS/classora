@@ -20,7 +20,9 @@
   the caller's transaction, and the recipient's reads and read state;
   implemented in :mod:`app.modules.administration.notifications`.
 - The scheduling policy (#61): :func:`get_scheduling_policy` (the version
-  in force at an instant) and the pure evaluator
+  in force at an instant), :func:`get_scheduling_policy_version` (one
+  version by id, #62) and :func:`get_policy_version_and_approval_id` (a
+  version and an approval request id in one statement, #62 C1) and the pure evaluator
   (:class:`SchedulingPolicyValues`, :class:`PolicyOutcome`,
   :func:`classify_change`, :func:`violates_booking_notice`,
   :func:`default_respond_by`); implemented in
@@ -150,10 +152,16 @@ from app.modules.administration.policy_versions import (
     delete_scheduling_policy as delete_scheduling_policy,
 )
 from app.modules.administration.policy_versions import (
+    get_policy_version_and_approval_id as get_policy_version_and_approval_id,
+)
+from app.modules.administration.policy_versions import (
     get_scheduling_policy as get_scheduling_policy,
 )
 from app.modules.administration.policy_versions import (
     get_scheduling_policy_overview as get_scheduling_policy_overview,
+)
+from app.modules.administration.policy_versions import (
+    get_scheduling_policy_version as get_scheduling_policy_version,
 )
 from app.modules.administration.scheduling_policy import (
     ChangeInitiator as ChangeInitiator,

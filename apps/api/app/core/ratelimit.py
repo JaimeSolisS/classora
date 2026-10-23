@@ -204,6 +204,16 @@ _POLICIES: Final = (
         " ADR-0008 amendment, a domain limit).",
         "#59",
     ),
+    RateLimitPolicy(
+        "change_request.user",
+        10,
+        ONE_HOUR,
+        "user",
+        "requests",
+        "Cancellation and reschedule requests per signed-in user (POST"
+        " /api/v1/change-requests; ADR-0008 amendment, a domain limit).",
+        "#62",
+    ),
 )
 
 RATE_LIMIT_POLICIES: Final[Mapping[str, RateLimitPolicy]] = MappingProxyType(

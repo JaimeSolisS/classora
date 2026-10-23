@@ -140,6 +140,17 @@ Codes in use today:
 | `session_request_not_pending` | 409 | Withdrawing, confirming or rejecting a session request that was already confirmed, rejected or withdrawn. The staff routes add `details.status`; the family's withdraw body stays closed (see Session requests). |
 | `session_request_started` | 409 | `POST /api/v1/session-requests/{id}/confirm` once the requested time has started (`starts_at <= now`); reject it instead (M4-15, see Session requests). |
 | `session_request_review_route_required` | 409 | The inbox's generic approve or reject of a `scheduling.session_request` item whose request the review routes haven't decided; `details.review_path` is the staff review page (`/schedule/requests/<id>`). The item stays pending (M4-15, see Session requests). |
+| `change_request_kind_unsupported` | 409 | `POST /api/v1/change-requests` for a `group` or `course` session: only individual sessions are changed by request (`details.kind`; M4-17, see Change requests). |
+| `class_session_not_changeable` | 409 | `POST /api/v1/change-requests` for a session that isn't `confirmed` (a tutor's `offered` session, a `completed` one, ...; `details.state`). |
+| `change_request_session_started` | 409 | Creating or approving a change request once the session has started (`starts_at <= now`); staff reject it instead (see Change requests). |
+| `change_request_pending` | 409 | `POST /api/v1/change-requests` while the session already has a pending request; `details.change_request_id` only when the caller may read that request. |
+| `change_request_not_pending` | 409 | Withdrawing, approving or rejecting a change request that was already approved, rejected or withdrawn. The staff routes add `details.status`; the requester's withdraw body stays closed. |
+| `change_request_session_changed` | 409 | Approving a change request whose session is no longer `confirmed` (staff cancelled it, a closure skipped it, ...; `details.state`); reject it instead. |
+| `change_request_review_route_required` | 409 | The inbox's generic approve or reject of a `scheduling.change_request` item whose request the review routes haven't decided; `details.review_path` is `/schedule/change-requests/<id>`. The item stays pending. |
+| `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
+| `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
+| `exception_not_applicable` | 422 | Approving as an exception a change request that is already `excused` (every tutor request); on `["body","exception"]`. |
+| `classroom_not_applicable` / `override_not_applicable` | 422 | `classroom_id` or `override` on the approval of a cancellation request (they only apply to a reschedule). |
 | `not_on_grid` | 422 | A session request whose local start isn't on the hour or the half hour (center zone); on `["body","starts_at"]`. |
 | `range_in_past` / `range_too_far` | 422 | Available slots from a date before the center's today (`["query","from"]`) or to a date more than 60 days ahead (`["query","to"]`). |
 | `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
@@ -482,6 +493,7 @@ lockout: a window simply ends.
 | `registration.ip` | `POST /api/v1/auth/registrations` | 10 per hour | client IP | every request |
 | `available_slots.user` | `GET /api/v1/available-slots` | 60 per 15 min | signed-in user | every request |
 | `session_request.user` | `POST /api/v1/session-requests` | 10 per hour | signed-in user | every request |
+| `change_request.user` | `POST /api/v1/change-requests` | 10 per hour | signed-in user | every request |
 
 - **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
   `:45`; the full hour for registration). Up to twice a limit can pass across
@@ -788,6 +800,11 @@ offer's `scheduling.offer_received` / `_declined` / `_expired` params add
 `scheduling.session_request_confirmed` and `_rejected` `{session_request_id,
 student_name, subject_name, starts_at}` (#60, see Session requests; to the
 requester only; never the reason).
+`scheduling.change_request_approved` `{change_request_id, kind, starts_at,
+new_starts_at, makeup_until, exception}` and
+`scheduling.change_request_rejected` `{change_request_id, kind, starts_at}`
+(#62, see Change requests; to the requester only; never the reason, a
+tutor, a room or the classification; no link until #62b).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -2350,6 +2367,13 @@ substitution is withdrawn (#55 G3; so are the substitutions of rows a series
 edit moves to a new slot or room, skips or cancels, and of rows the closure
 reconcile skips).
 
+The service is `scheduling.service.update_class_session(session, id, body,
+*, actor_id, notice_reference_at=None, exclude_recipient_ids=())`. An
+approved #62 reschedule request (see Change requests) passes the request's
+`created_at` as `notice_reference_at` (the booking notice is measured from
+it, with the policy in force then; every other check stays live) and the
+requester in `exclude_recipient_ids`. `PATCH` passes neither.
+
 #### Cancelling a session
 
 `POST /api/v1/class-sessions/{class_session_id}/cancel` (M4-10, #55 C;
@@ -2378,8 +2402,9 @@ characters (`422 reason_required` / `reason_too_long`). Order:
    a `conflict` row are cancelled by the caller;
 9. the named audit event `scheduling.session_cancelled`
    `{class_session_id, series_id, previous_state, reason,
-   withdrawn_offer_ids, cancelled_request_ids}` (plus the automatic update
-   event);
+   withdrawn_offer_ids, cancelled_request_ids, change_request_id}` (plus the
+   automatic update event; `change_request_id` is the approved #62 request,
+   else `null`);
 10. `scheduling.session_cancelled` to the tutor of an `offered` or
     `confirmed` session, to a pending substitute, and for `confirmed` only to
     the students' logins and their linked guardians (from the state before
@@ -2394,8 +2419,16 @@ characters (`422 reason_required` / `reason_too_long`). Order:
 A cancelled occurrence keeps `series_id` and `original_start`: the series is
 unchanged and the nightly job never re-creates the date. The service is
 `scheduling.service.cancel_class_session(session, id, *, expected_version,
-reason, by_user_id, initiated_by="center" | "family" | "tutor")`; #62
-(M4-17) reuses it for approved family and tutor requests.
+reason, by_user_id, initiated_by="center" | "family" | "tutor",
+change_request_id=None, exclude_recipient_ids=())`; #62 (M4-17) reuses it
+for approved family and tutor requests: the stored reason is then the system
+code `family_request` or `tutor_request` (the web translates it), the seam
+receives the `change_request_id`, and the requester is left out of
+`scheduling.session_cancelled` (they get their own decision notification).
+
+`ClassSessionDetail.pending_change_request_id` (#62 G2) is the session's
+pending change request, or `null` (read with the session row: no extra
+statement).
 
 `ClassSessionDetail` also carries `pending_substitution {id, substitute {id,
 display_name}, respond_by} | null` and `cancellation {cancelled_at, reason}
@@ -3440,6 +3473,210 @@ for a type decided on its own page.
 `session_request.user` 10 per hour, per signed-in user (see Rate limits).
 `session_requests` rows are audited (`create`/`update`); pending ones block
 a change of the center's time zone (`scheduling.session_requests`).
+
+### Change requests
+
+Implemented by M4-17 (#62; spec §2, §3 "cancellations and rescheduling follow
+configurable notice/no-show/makeup policies, with user requests and admin
+approvals, exception handling, and audit trails"; ADR-0005 D2, D6, D9;
+ADR-0008 amendment) in `apps/api/app/modules/scheduling/`
+(`change_requests.py`: create, reads, withdraw; `change_requests_policy.py`:
+the record policy; `change_request_outcome.py`: the outcome rules;
+`change_request_review.py`: the staff review and decisions;
+`change_request_approval.py`: the inbox type; `change_requests_router.py`:
+the family and tutor routes), the workflow
+`app/workflows/change_request_decision.py` and its routes in
+`app/workflows/change_requests_router.py`. The staff page is
+`/schedule/change-requests/:id`; the family and tutor pages are #62b
+(M4-17b).
+
+A guardian, a student or the tutor asks to **cancel** or **reschedule** one
+upcoming **confirmed individual** session. The scheduling policy's outcome
+is recorded when the request is made; staff approve it (the change goes
+through the existing services), approve it **as an exception**, or reject
+it.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/change-requests` | `authenticated()` + record policy; `rate_limit("change_request.user")` | `{class_session_id, kind: cancellation\|reschedule, proposed_starts_at?, note?}`; `201` with `ChangeRequestDetail`. |
+| `GET /api/v1/change-requests` | `authenticated()` + record policy | `?student_id&class_session_id&status=pending\|approved\|rejected\|withdrawn\|all` (default `all`); the #21 offset page (`limit` 1-100, default 25); newest first; at most 5 statements. |
+| `GET /api/v1/change-requests/{change_request_id}` | `authenticated()` + record policy | `ChangeRequestDetail`. |
+| `POST /api/v1/change-requests/{change_request_id}/withdraw` | `authenticated()` + record policy + the requester | `{version}`; `200` with `ChangeRequestDetail`. |
+| `GET /api/v1/change-requests/{change_request_id}/review` | `require("schedule.manage")` | `200` with `ChangeRequestReview`; at most 6 statements. |
+| `POST /api/v1/change-requests/{change_request_id}/approve` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{version, exception?, reason?, classroom_id?, override?}`; `200` with `{change_request: ChangeRequestReview, class_session: ClassSessionDetail, warnings}`. |
+| `POST /api/v1/change-requests/{change_request_id}/reject` | `require("schedule.manage")` | `{version, reason}`; `200` with `ChangeRequestReview`. |
+
+No permission is added: families and tutors act through the record policy
+(ADR-0005 D9), staff through `schedule.manage` (Owner, Administrator; a
+Coordinator or Finance user gets `403`). Staff can't create requests: they
+edit the schedule directly (Class sessions).
+
+**Record policy (S1/S2).** A caller may request a change of session X when
+they hold `tutor` and teach X (`initiated_by = "tutor"`; a user who is both
+X's tutor and a family member acts as the tutor), or X is family-visible
+(`confirmed` or `completed`) and the caller may act for one of its
+participants by the Session requests record policy (`initiated_by =
+"family"`, `student_id` = that participant; a linked guardian of an adult
+without the consent gets `403 student_consent_required`). Anyone else
+(another family, another tutor, staff, a session families can't see yet)
+gets the same `404 not_found` as an unknown id. **Reads:** a family caller
+sees the `family` requests of the students they may act for (so the child's
+other guardians see them too); a tutor sees only the requests they made.
+**Tutor requests are never visible to families.** Lists filter (unknown or
+foreign filters give an empty page); details hide (`404`). Only the
+requester may withdraw (anyone else gets `404`).
+
+**Create order** (one Unit of Work): `401` → `429` → `422` schema
+(`proposal_required` / `proposal_not_allowed` on `proposed_starts_at`; a
+`note` over 500 characters) → the session and its participants, unlocked,
+and the record policy (`404` / `403`) → for a reschedule the zone `FOR
+SHARE` → the session `FOR UPDATE` → `409 change_request_kind_unsupported`
+(`details.kind`: group and course sessions are refused, cancelling for one
+student would cancel everyone's class) → `409 class_session_not_changeable`
+(`details.state`) unless `confirmed` → `409 change_request_session_started`
+→ `409 change_request_pending` (`details.change_request_id` only when the
+caller may read it) → for a reschedule `422` on `proposed_starts_at`
+(`naive_datetime`, `not_whole_minutes`, `crosses_local_date`, ...;
+`proposal_in_past`; `proposal_unchanged`) and, **for a family**, the
+Session requests slot rule at the proposed time (tutor-agnostic: the
+student's sessions, the center's hours and closures, the booking notice
+from now, at least one eligible tutor) with the session itself left out →
+`409 slot_unavailable` (opaque) → the classification → the request and its
+inbox item → `201`. A **tutor's** proposal is checked for the bounds only.
+The proposed end is the proposed start plus the session's length (the
+length never changes). No staff notification: the inbox item is the signal.
+
+**Classification (request time, never recomputed).** The scheduling policy
+version in force when the request is made classifies it
+(`administration.service.classify_change`, see Scheduling policies) for the
+session's start at that time: a family request is `on_time` (exactly the
+`change_notice_hours` before the start included), `late`, or `no_show`
+(never, since a started session is refused); a tutor request is always
+`excused`. A cancellation allows a makeup per the policy's flags (until the
+start + `makeup_window_days`); a reschedule never does. The request stores
+`policy_id`, `classification`, `makeup_allowed`, `makeup_until` and the
+session's times; later policy versions or edits never change them.
+
+**Detail** (`ChangeRequestDetail`, also the list items; a closed allow-list):
+`id`, `kind`, `status`, `class_session {id, starts_at, ends_at, subject {id,
+name, education_level_name}}` (live: the new times once a reschedule is
+approved), `student {id, display_name}`, `proposed_starts_at`,
+`proposed_ends_at`, `note`, `outcome {classification, makeup_allowed,
+makeup_until}` (the effective outcome once `approved`, otherwise the
+request-time one, "as requested"), `decision {exception, reason,
+decided_at} | null` (once approved or rejected; the requester sees the
+reason), `requested_by_me`, `can_withdraw`, `created_at`, `resolved_at`,
+`version`. Never a tutor, a classroom, another participant, the requester's
+name, a `policy_id` or conflict details; the `409` bodies above carry only
+the `details` named.
+
+**Withdraw order:** `422` → `404` (not visible, or not the requester) → the
+request `FOR UPDATE` → `409 version_conflict` → `409
+change_request_not_pending` → `withdrawn` with `resolved_at`, and its inbox
+item `cancelled`. Allowed after the session has started.
+
+**Staff review** (`ChangeRequestReview`): the detail's facts plus
+`initiated_by`, `requested_by {id, display_name}`, `session {id, state,
+kind, starts_at, ends_at, series_id, tutor, classroom, version}` (live),
+`session_starts_at` / `session_ends_at` (when asked), `policy {id,
+effective_from}`, `request_outcome`, `final_outcome` (once approved),
+`outcome`, `decided_by`, `approval_request_id` and `can_decide` (`pending`,
+the session still `confirmed` and not started).
+
+**Approve order** (one Unit of Work): `401` / `403` → `422` schema (`reason`
+trimmed, at most 1000; `reason_required` with `exception`) → `403
+permission_denied` for an `override` without `schedule.override` → `404` →
+`422 classroom_not_applicable` / `override_not_applicable` on a
+cancellation → the locks: a **cancellation** takes the series `FOR UPDATE`
+(when there is one) → the session `FOR UPDATE`; a **reschedule** the
+students' lock → the zone `FOR SHARE` → the series `FOR SHARE` → the
+session `FOR UPDATE`; then the request `FOR UPDATE` → `409
+version_conflict` → `409 change_request_not_pending` (`details.status`) →
+`409 change_request_session_started` → `409 change_request_session_changed`
+(`details.state`) → `422 exception_not_applicable` → the change:
+
+- **cancellation:** "Cancelling a session" with `initiated_by` = the
+  request's, the reason `family_request` / `tutor_request`, the
+  `change_request_id` and the requester left out of
+  `scheduling.session_cancelled`;
+- **reschedule:** "Moving a session" to the proposed times (room kept, or
+  `classroom_id`), every check live with the session's own tutor (overlaps
+  without the session itself, availability, qualification, closures,
+  hours, room) **except the booking notice, measured from the request's
+  `created_at`** with the policy in force then; `override` as for `PATCH`.
+  A series occurrence becomes an exception. The state and the tutor are
+  kept. The requester is left out of `scheduling.session_rescheduled`. A
+  `409 scheduling_conflict` / `422` passes through unchanged and the request
+  stays `pending`;
+
+→ the effective outcome → `approved` (`exception`, `decision_reason`,
+`decided_by_user_id`, `resolved_at`) → the named audit event
+`scheduling.change_request_decided` `{change_request_id, class_session_id,
+kind, initiated_by, decision, exception, classification,
+final_classification, final_makeup_until, policy_id, reason}` → the seam of
+a reschedule → the inbox item `approved` → the requester's notification →
+`200`. Approving after the session has started is refused; there is no
+automatic close of pending requests (staff reject them, or the requester
+withdraws).
+
+**Exception.** `exception: true` (with a reason) approves the request as
+`excused`: the effective outcome is the stored policy version's `excused`
+outcome for the same start and request time, so a cancellation gets a
+makeup until the start + `makeup_window_days` and a reschedule none. The
+request-time outcome is kept beside it. An exception on a request that is
+already `excused` (every tutor request) is `422 exception_not_applicable`.
+Staff who would rather find a substitute for a tutor's request use
+Substitutions and reject the request with a reason.
+
+**Reject order:** `401` / `403` → `422` (`reason` trimmed, 1-1000:
+`missing` / `string_too_long`) → the request `FOR UPDATE` → `404` → `409
+version_conflict` → `409 change_request_not_pending` (`details.status`) →
+`rejected` with the reason → the audit event (`decision: "rejected"`) → the
+inbox item `rejected` with the same reason → the requester's notification →
+`200`. The session is untouched; allowed after the start. Lock order:
+request → inbox item (as the withdraw).
+
+**Other writers** (a staff cancel or move, series edits, closures,
+substitutions) leave pending requests alone; the approval re-checks the
+session and `can_decide` shows staff that it is stale.
+
+**Notifications.** The requester only, while their account is active and,
+for a family requester, they may still act for the student:
+`scheduling.change_request_approved` `{change_request_id, kind, starts_at,
+new_starts_at, makeup_until, exception}` and
+`scheduling.change_request_rejected` `{change_request_id, kind, starts_at}`
+(`starts_at` is the session's start when asked; never the reason, a tutor,
+a room or the classification). Everyone else affected gets the services'
+`scheduling.session_cancelled` / `scheduling.session_rescheduled`, without
+the requester; the deciding staff member is never notified. A tutor's
+approved cancellation reaches the family as `session_cancelled`, without
+saying who asked.
+
+**Inbox type** `scheduling.change_request`: reviewed by `schedule.manage`
+holders, no request-changes, a rejection needs a reason, `high` priority
+when the session starts within 24 hours of the request. Its items list no
+`allowed_actions` (the inbox shows a "Review" link); the generic approve
+and reject answer `409 change_request_review_route_required` with
+`details.review_path` unless the review routes already decided it. The
+summary (three statements) is `{change_request_id, kind, initiated_by,
+student_name, subject_name, education_level_name, starts_at,
+proposed_starts_at, classification, status, class_session_id}`.
+
+**Hooks for billing and pay.** `app/workflows/session_cancellation.py`
+`on_session_cancelled` receives the `change_request_id` (else `None`), and
+`app/workflows/session_reschedule.py` `on_session_rescheduled(session, *,
+class_session_id, previous_starts_at, previous_ends_at, initiated_by,
+change_request_id, by_user_id)` runs after an approved reschedule; both are
+no-ops today. M6-14 (billing) and M7-04 (tutor pay) add their steps there
+and read the effective outcome with
+`scheduling.service.get_change_request_outcome(session, change_request_id)`.
+A rejected or withdrawn request has no money effect.
+
+**Limits and data.** `change_request.user` 10 per hour per signed-in user,
+every request counted (see Rate limits). `session_change_requests` rows are
+audited; one `pending` request per session (a partial unique index); pending
+**reschedule** requests block a change of the center's time zone
+(`scheduling.change_requests`).
 
 ### Course templates
 
