@@ -122,6 +122,19 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   ``class_session_id`` and ``group_enrollment_id`` is set
   (``class_series_id`` is context, never a subject, #236).
 
+- ``session_requests`` (#59 A1; spec §1 "request, not booking", W2.2): a
+  guardian's or a student's request for one individual session of a
+  subject: ``student_id``, ``subject_id``, ``requested_by_user_id``, the
+  whole-minute instants ``starts_at`` / ``ends_at`` (``ends_at = starts_at +
+  duration_minutes``), ``duration_minutes`` (30, 45, 60, 90 or 120), an
+  optional trimmed ``note`` (at most 500 characters), ``status``
+  (``pending`` → ``confirmed`` | ``rejected`` by #60, or ``withdrawn`` by
+  the requester) and ``resolved_at`` (set exactly when not ``pending``). A
+  request **holds no time**: nothing else reads it as occupancy.
+  ``ex_session_requests_student_pending_overlap`` (``EXCLUDE USING gist``,
+  partial on ``pending``) backs the "no two overlapping pending requests
+  per student" rule (back-to-back is allowed). ``Audited``, versioned.
+
 Cohorts add their own columns and tables (#65).
 """
 
@@ -176,6 +189,21 @@ GROUP_ENROLLMENTS_WRITE_ONCE_TRIGGER: Final = "group_enrollments_write_once"
 GROUP_NAME_UNIQUE: Final = "uq_class_groups_name"
 GROUP_ENROLLMENT_ACTIVE_UNIQUE: Final = "uq_group_enrollments_active"
 GROUP_NAME_MAX_LENGTH: Final = 120
+SESSION_REQUEST_PENDING_OVERLAP_CONSTRAINT: Final = (
+    "ex_session_requests_student_pending_overlap"
+)
+SESSION_REQUEST_NOTE_MAX_LENGTH: Final = 500
+SESSION_REQUEST_DURATIONS: Final = (30, 45, 60, 90, 120)
+SESSION_REQUEST_PENDING: Final = "pending"
+SESSION_REQUEST_CONFIRMED: Final = "confirmed"
+SESSION_REQUEST_REJECTED: Final = "rejected"
+SESSION_REQUEST_WITHDRAWN: Final = "withdrawn"
+SESSION_REQUEST_STATUSES: Final = (
+    SESSION_REQUEST_PENDING,
+    SESSION_REQUEST_CONFIRMED,
+    SESSION_REQUEST_REJECTED,
+    SESSION_REQUEST_WITHDRAWN,
+)
 GROUP_MAX_STUDENTS_MAX: Final = 500
 WITHDRAWAL_REASON_MAX_LENGTH: Final = 1000
 OVERRIDE_REASON_MAX_LENGTH: Final = 1000
@@ -764,4 +792,82 @@ class GroupEnrollment(Audited, VersionedMixin, Model):
     )
     withdrawal_reason: Mapped[str | None] = mapped_column(
         String(WITHDRAWAL_REASON_MAX_LENGTH), nullable=True
+    )
+
+
+# --- Session requests by families (#59 A) -------------------------------------------
+
+
+class SessionRequest(Audited, VersionedMixin, Model):
+    """A family's request for one individual session (#59 A1). See the
+    module docstring; it holds no time."""
+
+    __tablename__ = "session_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "mod(EXTRACT(EPOCH FROM starts_at), 60) = 0"
+            " AND mod(EXTRACT(EPOCH FROM ends_at), 60) = 0",
+            name="whole_minutes",
+        ),
+        CheckConstraint(
+            "duration_minutes IN"
+            f" ({', '.join(str(m) for m in SESSION_REQUEST_DURATIONS)})",
+            name="duration_valid",
+        ),
+        CheckConstraint(
+            "ends_at = starts_at + duration_minutes * interval '1 minute'",
+            name="ends_after_duration",
+        ),
+        CheckConstraint(
+            "note IS NULL OR (note = btrim(note) AND note <> '')",
+            name="note_trimmed",
+        ),
+        CheckConstraint(
+            f"status IN ({_quoted(SESSION_REQUEST_STATUSES)})", name="status_valid"
+        ),
+        CheckConstraint(
+            "(status = 'pending') = (resolved_at IS NULL)",
+            name="resolved_iff_not_pending",
+        ),
+        ExcludeConstraint(
+            (text("student_id"), "="),
+            (text(SESSION_RANGE_SQL), "&&"),
+            name=SESSION_REQUEST_PENDING_OVERLAP_CONSTRAINT,
+            using="gist",
+            where=sql_column("status") == SESSION_REQUEST_PENDING,
+        ),
+        Index(
+            "ix_session_requests_student_id_created_at",
+            "student_id",
+            text("created_at DESC"),
+        ),
+        Index(
+            "ix_session_requests_requested_by_user_id_created_at",
+            "requested_by_user_id",
+            text("created_at DESC"),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT")
+    )
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    duration_minutes: Mapped[int] = mapped_column(SmallInteger)
+    note: Mapped[str | None] = mapped_column(
+        String(SESSION_REQUEST_NOTE_MAX_LENGTH), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16),
+        default=SESSION_REQUEST_PENDING,
+        server_default=text("'pending'"),
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

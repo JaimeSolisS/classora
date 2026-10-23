@@ -445,6 +445,53 @@ async def tutor_availability_rules(
     )
 
 
+async def tutor_availability_rules_many(
+    session: AsyncSession,
+    tutor_user_ids: Iterable[uuid.UUID],
+    first_date: date,
+    last_date: date,
+) -> dict[uuid.UUID, TutorAvailabilityRules]:
+    """:func:`tutor_availability_rules` for many tutors at once (#59 B5, the
+    family slot search): every requested tutor is a key (one without
+    windows gets empty rules, so it is never available). Two statements
+    whatever the number of tutors, none for an empty collection; no
+    visibility check (the caller's). ``first_date`` after ``last_date``
+    raises :class:`ValueError`."""
+    if first_date > last_date:
+        raise ValueError("first_date must not be after last_date")
+    ids = set(tutor_user_ids)
+    if not ids:
+        return {}
+    windows: dict[uuid.UUID, list[WindowKey]] = {tutor: [] for tutor in ids}
+    for window in await session.scalars(
+        select(TutorAvailabilityWindow).where(
+            TutorAvailabilityWindow.tutor_user_id.in_(ids)
+        )
+    ):
+        windows[window.tutor_user_id].append(_key(window))
+    exceptions: dict[uuid.UUID, list[TutorAvailabilityException]] = {
+        tutor: [] for tutor in ids
+    }
+    for row in await session.scalars(
+        select(TutorAvailabilityException).where(
+            TutorAvailabilityException.tutor_user_id.in_(ids),
+            TutorAvailabilityException.starts_on <= last_date,
+            TutorAvailabilityException.ends_on >= first_date,
+        )
+    ):
+        exceptions[row.tutor_user_id].append(row)
+    return {
+        tutor: TutorAvailabilityRules(
+            windows=tuple(_rule_window(key) for key in sorted(windows[tutor])),
+            exceptions=tuple(
+                _rule_exception(row)
+                for row in sorted(exceptions[tutor], key=_exception_order)
+            ),
+        )
+        for tutor in ids
+    }
+
+
 async def check_availability(
     session: AsyncSession,
     *,

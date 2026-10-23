@@ -1,6 +1,7 @@
 import type { ParseKeys } from 'i18next';
 import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
+import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
@@ -60,4 +61,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/schedule', labelKey: 'nav.schedule', permission: 'schedule.view' },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
+  // Session requests (#59 F1): guardians and students (the API decides
+  // which students).
+  {
+    to: '/requests',
+    labelKey: 'nav.sessionRequests',
+    ...SESSION_REQUESTS_ACCESS,
+  },
 ];

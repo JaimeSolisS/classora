@@ -116,6 +116,13 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['group_ended', 'group_ended'],
   ['already_enrolled', 'already_enrolled'],
   ['enrollment_not_active', 'enrollment_not_active'],
+  // Session requests by families (#59).
+  ['student_consent_required', 'student_consent_required'],
+  ['slot_unavailable', 'slot_unavailable'],
+  ['session_request_overlap', 'session_request_overlap'],
+  ['session_request_limit_reached', 'session_request_limit_reached'],
+  ['session_request_not_pending', 'session_request_not_pending'],
+  ['session_request_review_unavailable', 'session_request_review_unavailable'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

@@ -88,6 +88,12 @@ from app.modules.identity.service import (
     resolve_session_principal,
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
+from app.modules.scheduling.requests_router import (
+    requests_router as session_requests_router,
+)
+from app.modules.scheduling.requests_router import (
+    slots_router as available_slots_router,
+)
 from app.modules.scheduling.router import (
     offers_router as assignment_offers_router,
 )
@@ -203,6 +209,8 @@ def build_app(
     app.include_router(class_series_router)
     app.include_router(assignment_offers_router)
     app.include_router(groups_router)
+    app.include_router(available_slots_router)
+    app.include_router(session_requests_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
         # The dev.demo notification type exists only with its route (#41 D1).

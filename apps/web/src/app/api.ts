@@ -31,6 +31,7 @@ interface ApiErrorInit {
   requestId?: string;
   fieldErrors?: FieldError[];
   problem?: ProblemDetails;
+  retryAfter?: number;
 }
 
 /**
@@ -48,6 +49,8 @@ export class ApiError extends Error {
   readonly fieldErrors: FieldError[];
   /** The body, only when it was valid Problem Details. */
   readonly problem: ProblemDetails | undefined;
+  /** Whole seconds of a `Retry-After` header (a 429), when there is one. */
+  readonly retryAfter: number | undefined;
 
   constructor(init: ApiErrorInit) {
     super(init.code);
@@ -57,6 +60,7 @@ export class ApiError extends Error {
     this.requestId = init.requestId;
     this.fieldErrors = init.fieldErrors ?? [];
     this.problem = init.problem;
+    this.retryAfter = init.retryAfter;
   }
 }
 
@@ -86,6 +90,12 @@ function mediaType(response: Response): string {
     .toLowerCase();
 }
 
+/** Whole seconds from a `Retry-After` header (delta-seconds only). */
+function retryAfterOf(response: Response): number | undefined {
+  const value = response.headers.get('Retry-After')?.trim();
+  return value && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
 /** Turns a non-2xx response (body already parsed by openapi-fetch) into an ApiError. */
 export function errorFromResponse(response: Response, body: unknown): ApiError {
   if (mediaType(response) === PROBLEM_CONTENT_TYPE && isProblemDetails(body)) {
@@ -95,6 +105,7 @@ export function errorFromResponse(response: Response, body: unknown): ApiError {
       requestId: body.request_id,
       fieldErrors: body.errors ?? [],
       problem: body,
+      retryAfter: retryAfterOf(response),
     });
   }
   // HTML from a proxy, an empty or text body, malformed JSON, or a Problem

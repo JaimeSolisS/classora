@@ -176,6 +176,42 @@ export function reassignmentLink(item: ApprovalRequestItem): string | null {
     : null;
 }
 
+interface SessionRequestSubject {
+  student_name: string;
+  subject_name: string;
+  education_level_name: string;
+  starts_at: string;
+  ends_at: string;
+  duration_minutes: number;
+  requested_by: string;
+  note: string | null;
+}
+
+function isSessionRequest(subject: unknown): subject is SessionRequestSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  return (
+    typeof value.student_name === 'string' &&
+    typeof value.subject_name === 'string' &&
+    typeof value.education_level_name === 'string' &&
+    typeof value.starts_at === 'string' &&
+    typeof value.duration_minutes === 'number' &&
+    typeof value.requested_by === 'string'
+  );
+}
+
+/** The family session request subject of `item` (#59 E1), or null. */
+export function sessionRequestSubject(
+  item: ApprovalRequestItem,
+): SessionRequestSubject | null {
+  return item.request_type === 'scheduling.session_request' &&
+    isSessionRequest(item.subject)
+    ? item.subject
+    : null;
+}
+
 /** Formats an instant for a summary (the center zone, from useFormatters). */
 export type InstantFormatter = (instant: string) => string;
 
@@ -249,6 +285,8 @@ export function registrationSubject(
  * date time · still taught by original";
  * for a series occurrence in conflict
  * (#53) "Series occurrence <date, time> — <students> · <subject>: <codes>";
+ * for a family's session request (#59) "<student> · <subject> (<level>) ·
+ * <date, time> · <minutes> min · requested by <name>";
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -315,6 +353,17 @@ export function approvalSummary(
         when: formatInstant(reassignment.starts_at),
       },
     );
+  }
+  const sessionRequest = sessionRequestSubject(item);
+  if (sessionRequest) {
+    return t('approvals.summary.sessionRequest', {
+      student: sessionRequest.student_name,
+      subject: sessionRequest.subject_name,
+      level: sessionRequest.education_level_name,
+      when: formatInstant(sessionRequest.starts_at),
+      minutes: sessionRequest.duration_minutes,
+      requester: sessionRequest.requested_by,
+    });
   }
   const occurrence = occurrenceConflictSubject(item);
   if (occurrence) {

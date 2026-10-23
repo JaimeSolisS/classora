@@ -51,6 +51,12 @@ contact events (the version bump changes no audited column).
 student's id, display name and active flag, without any access check (the
 caller's own permission decides, e.g. ``schedule.view``).
 
+**Ages of referenced students** (#59 S1): :func:`student_age_references`
+is :func:`student_references` with each student's ``birthdate``, so another
+module's record policy can apply the adult rule (``is_minor`` with the
+center's today and :func:`guardian_has_academic_access`, re-exported from
+``permissions``) in the same statement. No access check.
+
 **Notification recipients** (#232 C2): :func:`student_notification_recipients`
 gives other modules, per student, the login user of the student and those
 of its linked guardians (no access check; the caller decides what the
@@ -106,6 +112,7 @@ from app.modules.families.permissions import (
     AccessLevel,
     StudentAccessFacts,
     can_view_student,
+    guardian_has_academic_access,
     sees_every_student,
     sees_student_guardians,
     student_access_level,
@@ -129,6 +136,8 @@ from app.modules.identity import service as identity
 
 __all__ = [
     "STUDENT_LOGIN_GATE",
+    "StudentAccessFacts",
+    "StudentAgeReference",
     "add_family_guardian",
     "add_family_student",
     "create_family",
@@ -138,6 +147,7 @@ __all__ = [
     "get_family",
     "get_guardian",
     "get_student",
+    "guardian_has_academic_access",
     "is_minor",
     "link_guardian",
     "list_families",
@@ -149,6 +159,7 @@ __all__ = [
     "remove_family_student",
     "revoke_consent",
     "set_student_account",
+    "student_age_references",
     "student_notification_recipients",
     "student_references",
     "unlink_guardian",
@@ -205,6 +216,45 @@ async def student_references(
             id=row.id,
             display_name=f"{row.given_names} {row.family_names}",
             is_active=row.is_active,
+        )
+        for row in rows
+    }
+
+
+@dataclass(frozen=True)
+class StudentAgeReference:
+    """A referenced student with the birthdate (#59 S1; never sent to a
+    client by this module)."""
+
+    id: uuid.UUID
+    display_name: str
+    is_active: bool
+    birthdate: date
+
+
+async def student_age_references(
+    session: AsyncSession, ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, StudentAgeReference]:
+    """:func:`student_references` with each student's birthdate (unknown ids
+    are left out). One statement (none for an empty collection)."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(
+            Student.id,
+            Student.given_names,
+            Student.family_names,
+            Student.is_active,
+            Student.birthdate,
+        ).where(Student.id.in_(wanted))
+    )
+    return {
+        row.id: StudentAgeReference(
+            id=row.id,
+            display_name=f"{row.given_names} {row.family_names}",
+            is_active=row.is_active,
+            birthdate=row.birthdate,
         )
         for row in rows
     }

@@ -193,6 +193,9 @@ unless a bullet says otherwise.
   schedule and a maximum size, and enroll or withdraw students at any time
   (going over the size needs an override). Students see their own groups
   and sessions.
+- Guardians and students see available times for individual sessions and
+  request one; requests stay pending for staff review and never book a slot
+  by themselves.
 
 **Courses**
 

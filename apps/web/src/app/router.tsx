@@ -51,6 +51,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
+import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 
@@ -327,6 +328,25 @@ export const routes: RouteObject[] = [
                 .GroupPage,
             }),
             handle: GROUPS_ACCESS,
+          },
+          // Session requests (#59 F1, code-split): guardians and students.
+          {
+            path: 'requests',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/family-portal/requests/MyRequestsPage')
+              ).MyRequestsPage,
+            }),
+            handle: SESSION_REQUESTS_ACCESS,
+          },
+          {
+            path: 'requests/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/family-portal/requests/RequestSessionPage')
+              ).RequestSessionPage,
+            }),
+            handle: SESSION_REQUESTS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

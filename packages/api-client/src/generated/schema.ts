@@ -2475,6 +2475,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/available-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Slots
+         * @description The times your child (or you, as a student) can request for an
+         *     individual session of the subject and length, for every local date from
+         *     `from` to `to` (at most 14 dates, from today up to 60 days ahead, center
+         *     zone).
+         *
+         *     Slots start on the hour or the half hour within the center's opening
+         *     hours, on dates the center is open, meet the booking notice, don't
+         *     overlap the student's sessions, and at least one qualified tutor is
+         *     free and available (which tutor is never shown). Rooms and other
+         *     families' pending requests are not considered. `already_requested`
+         *     marks a slot overlapping one of this student's pending requests.
+         *
+         *     Range errors (422, on the field): `range_invalid`, `range_too_long`,
+         *     `range_in_past`, `range_too_far`; references: `student_inactive`,
+         *     `subject_unknown`, `subject_inactive`. At most 60 searches per 15
+         *     minutes per user (429).
+         */
+        get: operations["list_available_slots_api_v1_available_slots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Session Requests
+         * @description The requests of every student you may act for, newest first (an
+         *     offset page: `limit` 1-100, default 25). A
+         *     `student_id` you can't act for, or a caller without the guardian or
+         *     student role, gets an empty page.
+         */
+        get: operations["list_session_requests_api_v1_session_requests_get"];
+        put?: never;
+        /**
+         * Create Session Request
+         * @description Request an individual session at an available time. It is a request,
+         *     not a booking: it stays `pending` until the center confirms it or lets
+         *     you know, and holds no time meanwhile. The center chooses the tutor.
+         *
+         *     `starts_at` is on the 30-minute local grid (422 `not_on_grid`
+         *     otherwise); other 422 codes on `starts_at`: `naive_datetime`,
+         *     `not_whole_minutes`, `crosses_local_date`. At most 10 requests per
+         *     hour per user (429).
+         */
+        post: operations["create_session_request_api_v1_session_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Request
+         * @description One request of a student you may act for.
+         */
+        get: operations["get_session_request_api_v1_session_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session-requests/{request_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Session Request
+         * @description Withdraw a pending request you made; its inbox item is cancelled and
+         *     the student's pending limit and time are freed.
+         */
+        post: operations["withdraw_session_request_api_v1_session_requests__request_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2940,6 +3050,75 @@ export interface components {
              * @description After starts_at (same day).
              */
             ends_at: string;
+        };
+        /**
+         * AvailableDay
+         * @description One local date of the range and its slots (empty when none).
+         */
+        AvailableDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Slots */
+            slots: components["schemas"]["AvailableSlot"][];
+        };
+        /**
+         * AvailableSlot
+         * @description A time the family may request. Never names a tutor or a room.
+         */
+        AvailableSlot: {
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Already Requested
+             * @description This student already has a pending request overlapping it (a hint; a request holds no time).
+             */
+            already_requested: boolean;
+        };
+        /**
+         * AvailableSlots
+         * @description ``GET /api/v1/available-slots``: every date of the range, in order.
+         */
+        AvailableSlots: {
+            /**
+             * Time Zone
+             * @description The center's IANA time zone.
+             */
+            time_zone: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Days */
+            days: components["schemas"]["AvailableDay"][];
         };
         /**
          * BusinessSettingsDetail
@@ -5803,6 +5982,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[SessionRequestItem] */
+        OffsetPage_SessionRequestItem_: {
+            /** Items */
+            items: components["schemas"]["SessionRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[StudentListItem] */
         OffsetPage_StudentListItem_: {
             /** Items */
@@ -6684,6 +6874,157 @@ export interface components {
             display_name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * SessionRequestCreate
+         * @description ``POST /api/v1/session-requests`` (#59 C1). No tutor, classroom or end
+         *     (``422`` through ``extra="forbid"``): the center chooses the tutor.
+         */
+        SessionRequestCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339), on the 30-minute local grid (:00 or :30 in the center zone).
+             */
+            starts_at: string;
+            duration_minutes: components["schemas"]["SessionRequestDuration"];
+            /**
+             * Note
+             * @description An optional note for the center (trimmed, at most 500).
+             */
+            note?: string | null;
+        };
+        /**
+         * SessionRequestDetail
+         * @description A request as a family sees it (#59 D2; S3 allow-list).
+         */
+        SessionRequestDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["SessionRequestStudent"];
+            subject: components["schemas"]["SessionRequestSubject"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            status: components["schemas"]["SessionRequestStatus"];
+            /** Note */
+            note: string | null;
+            /** Requested By Me */
+            requested_by_me: boolean;
+            /**
+             * Can Withdraw
+             * @description You made it and it is still pending.
+             */
+            can_withdraw: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {integer} */
+        SessionRequestDuration: 30 | 45 | 60 | 90 | 120;
+        /**
+         * SessionRequestItem
+         * @description A list item: the same members as the detail.
+         */
+        SessionRequestItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["SessionRequestStudent"];
+            subject: components["schemas"]["SessionRequestSubject"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            status: components["schemas"]["SessionRequestStatus"];
+            /** Note */
+            note: string | null;
+            /** Requested By Me */
+            requested_by_me: boolean;
+            /**
+             * Can Withdraw
+             * @description You made it and it is still pending.
+             */
+            can_withdraw: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        SessionRequestStatus: "pending" | "confirmed" | "rejected" | "withdrawn";
+        /** SessionRequestStudent */
+        SessionRequestStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** SessionRequestSubject */
+        SessionRequestSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /**
+         * SessionRequestWithdraw
+         * @description ``POST /api/v1/session-requests/{request_id}/withdraw`` (#59 D3).
+         */
+        SessionRequestWithdraw: {
+            /** Version */
+            version: number;
         };
         /** @enum {string} */
         SessionStateCode: "unassigned" | "offered" | "confirmed" | "completed" | "cancelled" | "skipped_closure" | "conflict";
@@ -15717,6 +16058,343 @@ export interface operations {
                 };
             };
             /** @description The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_available_slots_api_v1_available_slots_get: {
+        parameters: {
+            query: {
+                student_id: string;
+                subject_id: string;
+                /** @description The session length in minutes: 30, 45, 60, 90 or 120. */
+                duration_minutes: components["schemas"]["SessionRequestDuration"];
+                /** @description The first local date. */
+                from: string;
+                /** @description The last local date (inclusive). */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableSlots"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one you may act for (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_session_requests_api_v1_session_requests_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                status?: "pending" | "confirmed" | "rejected" | "withdrawn" | "all";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_SessionRequestItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_session_request_api_v1_session_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one you may act for (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student already has 5 pending requests (session_request_limit_reached), a pending request at an overlapping time (session_request_overlap), or the time is no longer available (slot_unavailable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts (rate_limited). Retry after the number of seconds in Retry-After. */
+            429: {
+                headers: {
+                    /** @description Seconds until the limit's window ends. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_session_request_api_v1_session_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such request, or not one of a student you may act for (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    withdraw_session_request_api_v1_session_requests__request_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequestWithdraw"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You didn't make this request (permission_denied), or privacy_notice_required / csrf_failed. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such request, or not one of a student you may act for (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -344,3 +344,84 @@ class EnrollmentNotActiveError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# --- Session requests by families (#59 G2) -----------------------------------------
+#
+# The family-facing bodies are closed (#59 S3): no ``conflicts``, ``errors``
+# or ``details`` member, no id, never a tutor or another student.
+
+
+class StudentConsentRequiredError(AppError):
+    """``403 student_consent_required`` (#59 S2, E3): a linked guardian of an
+    **adult** student without that student's ``guardian_academic_access``
+    consent naming their profile (ADR-0007 D17)."""
+
+    status = 403
+    code = "student_consent_required"
+    detail = "The student must give you consent before you can do this."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SlotUnavailableError(AppError):
+    """``409 slot_unavailable`` (#59 C2 step 10): the time no longer passes
+    the slot checks. Opaque on purpose: the reason could reveal a tutor's
+    or another family's schedule."""
+
+    status = 409
+    code = "slot_unavailable"
+    detail = "That time is no longer available."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionRequestOverlapError(AppError):
+    """``409 session_request_overlap`` (#59 C2 step 9): a ``pending`` request
+    of this student overlaps the time."""
+
+    status = 409
+    code = "session_request_overlap"
+    detail = "This student already has a pending request at that time."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionRequestLimitReachedError(AppError):
+    """``409 session_request_limit_reached`` (#59 S5): the student already
+    has the maximum number of ``pending`` requests."""
+
+    status = 409
+    code = "session_request_limit_reached"
+    detail = "This student already has the maximum number of pending requests."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionRequestNotPendingError(AppError):
+    """``409 session_request_not_pending`` (#59 D3): the request was already
+    confirmed, rejected or withdrawn."""
+
+    status = 409
+    code = "session_request_not_pending"
+    detail = "This request is no longer pending."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionRequestReviewUnavailableError(AppError):
+    """``409 session_request_review_unavailable`` (#59 E2): the inbox can't
+    approve or reject a session request yet. #60 replaces the handler's
+    ``approve`` and ``reject`` (and removes this error)."""
+
+    status = 409
+    code = "session_request_review_unavailable"
+    detail = "Session requests can't be decided from the inbox yet."
+
+    def __init__(self) -> None:
+        super().__init__()

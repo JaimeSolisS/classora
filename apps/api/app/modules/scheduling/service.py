@@ -125,6 +125,20 @@ The group row lock (:func:`lock_group`, :mod:`~app.modules.scheduling.
 group_lock`) comes after the students and the zone for every writer that
 changes a group occurrence's participants or room.
 
+Session requests by families (#59): the read-only slot search
+:func:`available_slots` (the pure rules in
+:mod:`~app.modules.scheduling.family_slots`, loaded once by
+:func:`load_family_context`), :func:`create_session_request`,
+:func:`list_session_requests`, :func:`get_session_request` and
+:func:`withdraw_session_request` (:mod:`~app.modules.scheduling.requests`,
+the family record policy in :mod:`~app.modules.scheduling.requests_policy`);
+the ``scheduling.session_request`` approval handler
+:data:`SESSION_REQUEST_APPROVAL_HANDLER` (approve / reject answer ``409``
+until #60 replaces them) and the time-zone check
+:func:`has_pending_session_requests`
+(:data:`SESSION_REQUESTS_TIME_ZONE_DEPENDENCY`), both registered by
+``app.wiring``. #62 and #67 reuse the record policy.
+
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 (:class:`SessionValidationError`). Every function runs in the caller's Unit
@@ -317,6 +331,37 @@ from app.modules.scheduling.overrides import (
 )
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,
+)
+from app.modules.scheduling.request_approval import (
+    SESSION_REQUEST_APPROVAL_HANDLER as SESSION_REQUEST_APPROVAL_HANDLER,
+)
+from app.modules.scheduling.requests import (
+    MAX_PENDING_REQUESTS_PER_STUDENT as MAX_PENDING_REQUESTS_PER_STUDENT,
+)
+from app.modules.scheduling.requests import (
+    SESSION_REQUEST_TYPE as SESSION_REQUEST_TYPE,
+)
+from app.modules.scheduling.requests import (
+    SESSION_REQUESTS_TIME_ZONE_DEPENDENCY as SESSION_REQUESTS_TIME_ZONE_DEPENDENCY,
+)
+from app.modules.scheduling.requests import available_slots as available_slots
+from app.modules.scheduling.requests import (
+    create_session_request as create_session_request,
+)
+from app.modules.scheduling.requests import (
+    get_session_request as get_session_request,
+)
+from app.modules.scheduling.requests import (
+    has_pending_session_requests as has_pending_session_requests,
+)
+from app.modules.scheduling.requests import (
+    list_session_requests as list_session_requests,
+)
+from app.modules.scheduling.requests import (
+    load_family_context as load_family_context,
+)
+from app.modules.scheduling.requests import (
+    withdraw_session_request as withdraw_session_request,
 )
 from app.modules.scheduling.series import (
     SERIES_TIME_ZONE_DEPENDENCY as SERIES_TIME_ZONE_DEPENDENCY,

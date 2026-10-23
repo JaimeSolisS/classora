@@ -103,6 +103,12 @@ const API_CODES = [
   'group_ended',
   'already_enrolled',
   'enrollment_not_active',
+  'student_consent_required',
+  'slot_unavailable',
+  'session_request_overlap',
+  'session_request_limit_reached',
+  'session_request_not_pending',
+  'session_request_review_unavailable',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

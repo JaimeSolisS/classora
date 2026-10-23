@@ -93,7 +93,7 @@ Codes in use today:
 | `reauth_required` | 403 | A sensitive action whose session has no password reauthentication in the last 5 minutes; reauthenticate and retry (see Reauthentication). |
 | `reauth_failed` | 403 | `POST /api/v1/auth/reauthenticate` with a wrong password (or a user without one). The session stays signed in. |
 | `current_password_invalid` | 403 | `POST /api/v1/auth/password` with a wrong current password (or a user without one). The session stays signed in (see Password reset and change). |
-| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption, self-registration); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
+| `rate_limited` | 429 | Too many attempts on a rate-limited endpoint (login, reauthentication and the password change, one-time link lookup and redemption, self-registration, available slots and session requests); a `Retry-After` header gives the seconds to wait. The same body whether or not the account exists (see Rate limits). |
 | `token_invalid` | 410 | A one-time link (invitation or password reset) that is unknown, malformed, used, replaced or expired, of the other kind, or that can no longer be redeemed. One body for every case (see Invitations). |
 | `username_taken` | 409 | `POST /api/v1/invitations` or `POST /api/v1/auth/registrations` with a username another user already has, in any state. |
 | `registration_already_decided` | 409 | Since #40 only the `identity.registration` approval handler's defensive check: approving or rejecting a registration whose own record was already decided, or whose account is no longer `pending` (for example archived meanwhile); the approval request stays `pending` (see Registration requests). |
@@ -133,6 +133,14 @@ Codes in use today:
 | `from_date_in_past` | 422 | A series offer, edit or cancellation whose `from_date` is before the center's local today; the field error is on `["body","from_date"]` (see Assignment offers, "Series offers", and Class series, "Editing and cancelling"). |
 | `from_date_required` / `from_date_not_allowed` | 422 | A series edit or cancellation with `mode = "following"` and no `from_date`, or `mode = "all"` with one; on `["body","from_date"]`. |
 | `session_unchanged` / `series_unchanged` | 422 | A session move with the same times and room, or a series edit whose new rule equals the series' (and no edited occurrence is in scope); on `["body"]`. |
+| `student_consent_required` | 403 | A linked guardian acting for an **adult** student who hasn't given that guardian the `guardian_academic_access` consent (available slots, session requests; M4-14). See Session requests. |
+| `slot_unavailable` | 409 | `POST /api/v1/session-requests` for a time that no longer passes the slot checks. Opaque on purpose: no reason, no `conflicts` (see Session requests). |
+| `session_request_overlap` | 409 | `POST /api/v1/session-requests` while the student has a `pending` request at an overlapping time (see Session requests). |
+| `session_request_limit_reached` | 409 | `POST /api/v1/session-requests` while the student already has 5 `pending` requests (see Session requests). |
+| `session_request_not_pending` | 409 | Withdrawing a session request that was already confirmed, rejected or withdrawn (see Session requests). |
+| `session_request_review_unavailable` | 409 | Approving or rejecting a `scheduling.session_request` inbox item before M4-15 (#60) adds the review; the item stays pending (see Session requests). |
+| `not_on_grid` | 422 | A session request whose local start isn't on the hour or the half hour (center zone); on `["body","starts_at"]`. |
+| `range_in_past` / `range_too_far` | 422 | Available slots from a date before the center's today (`["query","from"]`) or to a date more than 60 days ahead (`["query","to"]`). |
 | `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
 | `respond_by_requires_tutor` | 422 | `POST /api/v1/class-sessions` or `POST /api/v1/class-series` with `respond_by` but no `tutor_user_id`; the field error is on `["body","respond_by"]`. |
 | `decline_note_too_long` | 422 | A decline note over 500 characters once trimmed; the field error is on `["body","note"]` (see Assignment offers). |
@@ -471,6 +479,8 @@ lockout: a window simply ends.
 | `reauth.user` | `POST /api/v1/auth/reauthenticate` and `POST /api/v1/auth/password` (the current-password check); one shared budget | 5 per 15 min | user | failed attempts |
 | `token_redemption.ip` | `POST /api/v1/auth/invitation/lookup`, `POST /api/v1/auth/invitation/redeem`, `POST /api/v1/auth/password-reset/lookup` and `POST /api/v1/auth/password-reset/redeem`; one shared budget | 20 per 15 min | client IP | every request |
 | `registration.ip` | `POST /api/v1/auth/registrations` | 10 per hour | client IP | every request |
+| `available_slots.user` | `GET /api/v1/available-slots` | 60 per 15 min | signed-in user | every request |
+| `session_request.user` | `POST /api/v1/session-requests` | 10 per hour | signed-in user | every request |
 
 - **Fixed windows**, aligned to the Unix epoch in UTC (`:00`, `:15`, `:30`,
   `:45`; the full hour for registration). Up to twice a limit can pass across
@@ -481,6 +491,12 @@ lockout: a window simply ends.
   Each `429` writes one `WARNING` line on the `app.security` logger with the
   policy code, method and path (no IP, username or user id) and no audit
   event.
+- **Keyed by user** (ADR-0008 amendment, M4-14): a `requests` policy may be
+  keyed by the signed-in user instead of the IP, so families behind the
+  center's Wi-Fi don't share a budget. The dependency resolves the principal
+  first (`401` before `429`) and ends the transaction the session lookup
+  opened before counting. These two domain limits are separate from the
+  general API limit (#163).
 - **Requests versus failures.** A `requests` policy takes one unit per request
   before anything else, so `401`, `403` and `422` answers count too. A
   `failures` policy reserves a unit before the password is verified (no
@@ -3261,6 +3277,101 @@ student_id, change: enrolled | withdrawn, effective_at, actor_user_id}` in
 the same Unit of Work; M6-07 adds its charge step there, and its sweeper
 reads `scheduling.service.list_group_enrollment_periods(changed_since,
 limit)`. No job is enqueued and there is no event bus.
+
+### Session requests
+
+Implemented by M4-14 (#59; spec §1 "request, not booking", §3, §15
+W2.1-W2.2; ADR-0005 D1, D2, D9; ADR-0007 D17; ADR-0008 amendment) in
+`apps/api/app/modules/scheduling/` (`requests.py`: the reads and writes;
+`requests_policy.py`: the family record policy; `family_slots.py`: the
+pure slot rules; `request_approval.py`: the inbox type;
+`requests_router.py`: the routes). The web pages are `/requests` and
+`/requests/new`. M4-15 (#60) adds the staff review.
+
+A guardian (for a linked child) or a student (for themselves) sees the free
+times for an **individual** session of a subject and length, and requests
+one. A request is `pending` until staff decide it; it creates **no session
+and holds no time**: other families, the slots and staff scheduling are
+unaffected.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/available-slots` | `authenticated()` + record policy; `rate_limit("available_slots.user")` | `?student_id&subject_id&duration_minutes&from&to`; `200` with `AvailableSlots`. Read-only, at most 14 statements. |
+| `POST /api/v1/session-requests` | `authenticated()` + record policy; `rate_limit("session_request.user")` | `{student_id, subject_id, starts_at, duration_minutes, note?}`; `201` with `SessionRequestDetail`. |
+| `GET /api/v1/session-requests` | `authenticated()` + record policy | `?student_id&status=pending\|confirmed\|rejected\|withdrawn\|all` (default `all`), the #21 offset page `{items, total, limit, offset}` (`limit` 1-100, default 25; `offset` from 0); newest first; at most 5 statements. |
+| `GET /api/v1/session-requests/{request_id}` | `authenticated()` + record policy | `SessionRequestDetail`. |
+| `POST /api/v1/session-requests/{request_id}/withdraw` | `authenticated()` + record policy + the requester | `{version}`; `200` with `SessionRequestDetail`. |
+
+There is no permission (ADR-0005 D9: families reach their schedules through
+record policies).
+
+**Record policy.** A caller may act for a student when they hold
+`guardian` and the student is linked to their **active** guardian profile
+(for an **adult** student, only with that student's
+`guardian_academic_access` consent naming their profile: otherwise `403
+student_consent_required`), or they hold `student` and it is their own
+profile. Anyone else (staff, tutors, an unlinked or deactivated guardian)
+gets the same `404 not_found` as an unknown id. Lists filter (an empty page
+for a `student_id` the caller can't act for); details hide (`404`).
+
+**Available slots.** `from`/`to` are local dates in the center zone: `to >=
+from` (`range_invalid` on `to`), at most 14 dates (`range_too_long` on
+`to`), `from >=` today (`range_in_past` on `from`), `to <=` today + 60 days
+(`range_too_far` on `to`); `duration_minutes` is 30, 45, 60, 90 or 120.
+Order: `401` → `429` → `422` (schema, range) → `404` / `403` → `422`
+references (`student_inactive`, `subject_unknown`, `subject_inactive`) →
+`200`. Candidates start on a **30-minute local grid** (`:00` / `:30`) from
+the weekday's opening time (rounded up) to the last start ending by the
+closing time; closed weekdays and closure dates have none; a start in a
+spring-forward gap is skipped (`fold=0`). A candidate is shown when the
+booking notice is met (#61), it is within the operating hours on an open
+date, the student has no overlapping session in a student-occupying state,
+and **at least one** tutor is eligible (approved qualification, active
+`tutor` account, weekly windows covering it with no time off, no
+overlapping session as tutor). **Slots are tutor-agnostic:** no tutor id,
+name or count is returned. Rooms, workload warnings and pending requests
+are not considered. Response: `{time_zone, student_id, subject_id,
+duration_minutes, from, to, days: [{date, slots: [{starts_at, ends_at,
+already_requested}]}]}`, every date of the range in order;
+`already_requested` marks a slot overlapping one of this student's pending
+requests (a hint, not occupancy).
+
+**Create order:** `401` → `429` → `422` schema (unknown fields such as
+`tutor_user_id`, `classroom_id` or `ends_at` included) → `404` / `403` → the
+per-student lock → the zone `FOR SHARE` → `422` (`naive_datetime`,
+`not_whole_minutes`, `crosses_local_date`, `not_on_grid` on `starts_at`;
+`student_inactive`; `subject_unknown` / `subject_inactive`) → `409
+session_request_limit_reached` (5 pending per student) → `409
+session_request_overlap` → the slot check for exactly that time (`409
+slot_unavailable`, opaque) → the request and its inbox item → `201`. The
+`note` is trimmed (at most 500 characters; empty becomes `null`). No
+notification is sent.
+
+**Withdraw order:** `422` → `404` → `403 permission_denied` (not the
+requester; a co-guardian sees the request but can't withdraw it) → the row
+`FOR UPDATE` → `409 version_conflict` → `409 session_request_not_pending` →
+`withdrawn` with `resolved_at`, and its inbox item `cancelled`. A withdrawn
+request frees the student's cap and time.
+
+**Detail** (`SessionRequestDetail`, also the list items): `id`, `student
+{id, display_name}`, `subject {id, name, education_level_name}`,
+`starts_at`, `ends_at`, `duration_minutes`, `status`, `note`,
+`requested_by_me`, `can_withdraw` (the requester, while `pending`),
+`created_at`, `resolved_at`, `version`. Family responses are closed
+allow-lists: never a tutor, room, session, another student or the
+requester's name, and the `409` bodies carry no `conflicts` or `details`.
+
+**Inbox type** `scheduling.session_request`: reviewed by `schedule.manage`
+holders (Owner, Administrator), no request-changes, a rejection needs a
+reason; the summary is `{student_name, subject_name,
+education_level_name, starts_at, ends_at, duration_minutes, requested_by,
+note}`. Until M4-15 (#60), approve and reject answer `409
+session_request_review_unavailable` and the item stays pending.
+
+**Limits and data.** `available_slots.user` 60 per 15 min and
+`session_request.user` 10 per hour, per signed-in user (see Rate limits).
+`session_requests` rows are audited (`create`/`update`); pending ones block
+a change of the center's time zone (`scheduling.session_requests`).
 
 ### Course templates
 

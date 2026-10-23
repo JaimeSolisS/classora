@@ -262,6 +262,17 @@ rate_limit = ["registration.ip"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/available-slots"
+access = "authenticated"
+# #59 B: the family record policy (no permission, ADR-0005 D9). Without the
+# query every role gets 422; the 200, the 404 for another family's student
+# and the 403 student_consent_required are in
+# tests/integration/test_available_slots.py and
+# tests/integration/test_session_requests_security.py.
+rate_limit = ["available_slots.user"]
+
+[[route]]
+method = "GET"
 path = "/api/v1/business-settings"
 access = "authenticated"
 
@@ -913,6 +924,35 @@ access = "permission"
 permission = "settings.manage"
 allow = ["owner", "administrator"]
 # The placeholder id is no policy version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests"
+access = "authenticated"
+# #59 D1: lists filter (an empty page for a caller with no family role).
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests"
+access = "authenticated"
+# #59 C: the minimal body gets 422 for every role; the 201 and the
+# record-policy outcomes are in tests/integration/test_session_requests*.py.
+json = {}
+rate_limit = ["session_request.user"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests/{request_id}"
+access = "authenticated"
+# #59 D2: the placeholder id is no request: 404 for every role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/withdraw"
+access = "authenticated"
+# #59 D3: the minimal body gets 422 for every role (then 404 for the
+# placeholder id).
+json = {}
 
 [[route]]
 method = "GET"

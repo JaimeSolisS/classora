@@ -27,6 +27,8 @@ export const APPROVAL_REVIEW_PERMISSIONS: readonly PermissionCode[] = [
   'qualification.review',
   // #52 E2: the reassignment items of declined or expired offers.
   'schedule.assign',
+  // #53 occurrence conflicts and #59 session requests.
+  'schedule.manage',
 ];
 
 /** The approval types the page knows, with their label key. */
@@ -39,6 +41,7 @@ export const APPROVAL_TYPE_LABELS: Readonly<
     'approvals.types.scheduling_offer_reassignment',
   'scheduling.occurrence_conflict':
     'approvals.types.scheduling_occurrence_conflict',
+  'scheduling.session_request': 'approvals.types.scheduling_session_request',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
@@ -144,6 +147,7 @@ export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
   'staff.qualification',
   'scheduling.offer_reassignment',
   'scheduling.occurrence_conflict',
+  'scheduling.session_request',
 ]);
 
 /** Whether `action` on an item of `type` needs a reason (UX only; the API

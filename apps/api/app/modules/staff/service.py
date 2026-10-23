@@ -20,8 +20,9 @@ classrooms (#197): :func:`teaching_limits` (a :class:`TeachingLimits`, for
 the M4-05 workload warnings) and :func:`preferred_classroom_ids` (M4-05,
 M4-06 suggestions). For checking many intervals in memory (the M4-05 slot
 search): :func:`tutor_availability_rules` (a :class:`TutorAvailabilityRules`:
-the weekly windows and the exceptions of a date range, two statements) and
-the pure rules :func:`evaluate`, :func:`evaluate_interval`,
+the weekly windows and the exceptions of a date range, two statements; for
+many tutors at once, #59: :func:`tutor_availability_rules_many`, also two
+statements) and the pure rules :func:`evaluate`, :func:`evaluate_interval`,
 :class:`WeeklyWindow` and :class:`DatedException`.
 
 Tutors are the users holding the ``tutor`` role; ``staff`` reads them only
@@ -136,6 +137,9 @@ from app.modules.staff.tutor_availability import (
     tutor_availability_rules as tutor_availability_rules,
 )
 from app.modules.staff.tutor_availability import (
+    tutor_availability_rules_many as tutor_availability_rules_many,
+)
+from app.modules.staff.tutor_availability import (
     update_availability_settings as update_availability_settings,
 )
 
@@ -169,6 +173,7 @@ __all__ = [
     "revoke_qualification",
     "teaching_limits",
     "tutor_availability_rules",
+    "tutor_availability_rules_many",
     "update_availability_settings",
     "update_tutor",
 ]

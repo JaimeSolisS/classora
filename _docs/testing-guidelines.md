@@ -447,6 +447,14 @@ follows these rules.
     (`support/consent.ts`), which returns the invitation link without
     redeeming it. The same rules: created by that test in every run, no
     other test may use the names.
+  - `e2e.requests.parent`: the Parent/Guardian who requests a session in
+    the #59 step of `e2e/tests/tutors/qualifications.spec.ts`. It is a
+    self-registration the Owner's shared session approves
+    (`createApprovedAccount`: 1 of the run's registrations, no redemption)
+    and signs in once (1 login). The same rules: created by that test in
+    every run, no other test may use the name. With it the run sends 48
+    login attempts (`LOGIN_ATTEMPTS_PER_RUN`) and 8 registration requests
+    (`REGISTRATIONS_PER_RUN`).
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,

@@ -63,6 +63,7 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
     ClassSessionSubstitution,
     GroupEnrollment,
+    SessionRequest,
 )
 from app.modules.staff.models import (
     TutorAvailabilityException,
@@ -131,6 +132,7 @@ def test_the_guard_scans_the_real_audited_models():
         PrivacyNoticeAcceptance,
         RegistrationRequest,
         SchedulingPolicy,
+        SessionRequest,
         Student,
         StudentEmergencyContact,
         StudentGuardian,

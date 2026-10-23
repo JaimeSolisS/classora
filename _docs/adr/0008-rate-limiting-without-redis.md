@@ -69,6 +69,19 @@ Behaviour:
 - **Building the general in-process limit now as an extra M2 issue** (D16 (b)). Rejected: more M2 scope for a single center with a small user base, where authentication is the real brute-force target.
 - **Requiring a Caddy rate-limit module** (custom build, decided in ADR-0010 in M9-01; D16 (c)). Rejected: it pushes the decision to Phase 2/3, and the module does not exist locally.
 
+## Amendments
+
+### 2026-10-20: per-user domain limits for session requests (#59, owner-delegated)
+
+Recorded with M4-14 (#59 E2 (a), the recommended option, accepted under the owner's delegation for the M4 run). D15 and D16 are otherwise unchanged.
+
+- A `requests` policy may be keyed by the **authenticated user** (key `user`) instead of the client IP. The route's dependency resolves the signed-in principal first (`401` before `429`) and ends the transaction the session lookup opened before the counter statement (one connection per request at a time). Keys are stored as SHA-256 hashes, as for the other policies.
+- Two domain limits use it, on the same `rate_limit_counters` table (no new dependency, no Redis):
+  - `available_slots.user`: 60 per 15 minutes on `GET /api/v1/available-slots` (a read limit);
+  - `session_request.user`: 10 per hour on `POST /api/v1/session-requests` (a write limit).
+- They are keyed by user because families share the center's Wi-Fi: a per-IP budget would let one family throttle another. Every request counts, `4xx` answers included.
+- They are separate from the general in-process API limit of D16 (#163), which is unchanged.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.3 step 3, §10.7 ISSUE-S3, §10.10 ISSUE-I3, §11

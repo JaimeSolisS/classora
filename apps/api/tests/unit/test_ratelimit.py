@@ -50,6 +50,9 @@ def test_the_registry_has_exactly_the_adr_0008_limits():
         "reauth.user": (5, timedelta(minutes=15), "account", "failures"),
         "token_redemption.ip": (20, timedelta(minutes=15), "ip", "requests"),
         "registration.ip": (10, timedelta(hours=1), "ip", "requests"),
+        # The ADR-0008 amendment (#59 E2): per-user domain limits.
+        "available_slots.user": (60, timedelta(minutes=15), "user", "requests"),
+        "session_request.user": (10, timedelta(hours=1), "user", "requests"),
     }
     for code, policy in RATE_LIMIT_POLICIES.items():
         assert policy.code == code
@@ -231,6 +234,70 @@ async def test_reserving_a_requests_policy_is_a_programming_error():
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+# --- #59 S4: requests policies keyed by the signed-in user ---------------------------
+
+
+def test_requests_policies_may_be_keyed_by_ip_or_user_only():
+    for policy in RATE_LIMIT_POLICIES.values():
+        if policy.counts == "requests":
+            assert policy.key in ("ip", "user"), policy.code
+        else:
+            assert policy.key == "account", policy.code
+
+
+def test_a_user_keyed_policy_is_declared_with_the_principal_dependency():
+    from app.core.authz import get_current_principal
+
+    app = FastAPI()
+
+    @app.get("/slots")
+    async def slots(
+        limiter: Annotated[RateLimiter, rate_limit("available_slots.user")],
+    ) -> None: ...
+
+    @app.post("/login", dependencies=[public(reason="probe")])
+    async def login(
+        limiter: Annotated[RateLimiter, rate_limit("login.ip")],
+    ) -> None: ...
+
+    contexts = {str(c.path): c for c in iter_route_contexts(app.routes)}
+
+    def calls(path: str) -> set[object]:
+        found: set[object] = set()
+        stack = list(contexts[path].dependant.dependencies)
+        while stack:
+            dependency = stack.pop()
+            found.add(dependency.call)
+            stack.extend(dependency.dependencies)
+        return found
+
+    assert route_rate_limit_rules(contexts["/slots"]) == [
+        RateLimitRule(("available_slots.user",))
+    ]
+    # The user's id needs the principal (401 before 429); an IP policy never
+    # resolves one (the login route is public).
+    assert get_current_principal in calls("/slots")
+    assert get_current_principal not in calls("/login")
+
+
+@pytest.mark.anyio
+async def test_a_user_keyed_policy_without_the_user_id_is_a_programming_error():
+    with pytest.raises(RuntimeError, match="needs the user id"):
+        await limiter("session_request.user").consume_requests("1.2.3.4")
+
+
+def test_user_keys_are_hashed_per_policy_and_user():
+    user = "0199f3a4-0000-7000-8000-000000000001"
+
+    assert (
+        key_hash("session_request.user", user)
+        == hashlib.sha256(f"session_request.user\x00{user}".encode()).digest()
+    )
+    assert key_hash("session_request.user", user) != key_hash(
+        "available_slots.user", user
+    )
 
 
 # --- B6: the error --------------------------------------------------------------------

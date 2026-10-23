@@ -134,5 +134,15 @@
   "max_students_below_enrolled": "The maximum can't be lower than the students enrolled.",
   "student_ids_duplicate": "Each student can be added only once.",
   "no_changes": "Change the name or the maximum first.",
-  "reason_too_long": "The reason can have at most 1000 characters."
+  "reason_too_long": "The reason can have at most 1000 characters.",
+  "student_consent_required": "This student is an adult: they must give you consent before you can see their times or request sessions for them. Ask them, or ask the center.",
+  "slot_unavailable": "That time is no longer available. Choose another one.",
+  "session_request_overlap": "This student already has a pending request at that time.",
+  "session_request_limit_reached": "This student already has 5 pending requests. Wait for an answer, or withdraw one, before sending another.",
+  "session_request_not_pending": "This request is no longer pending. The list is updated.",
+  "session_request_changed": "This request changed since you loaded it. The list is updated.",
+  "session_request_review_unavailable": "Session requests can't be decided here yet.",
+  "not_on_grid": "Start on the hour or the half hour.",
+  "range_in_past": "Choose a first date from today on.",
+  "range_too_far": "Choose dates at most 60 days ahead."
 }

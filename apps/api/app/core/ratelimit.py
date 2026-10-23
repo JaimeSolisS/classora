@@ -4,11 +4,12 @@ The counters live in PostgreSQL (``rate_limit_counters``,
 ``app.core.ratelimit_models``), so a limit holds across every API process.
 No Redis.
 
-**Policies.** :data:`RATE_LIMIT_POLICIES` holds the five ADR-0008 limits.
+**Policies.** :data:`RATE_LIMIT_POLICIES` holds the ADR-0008 limits (the
+five D15 ones and the two domain limits of the 2026-10-20 amendment, #59).
 They are code constants, not settings (ADR-0008 fixes them). A policy counts
-either **requests** (every request, keyed by the client IP) or **failures**
-(failed password checks, keyed by an account: the normalized username or the
-user id).
+either **requests** (every request, keyed by the client IP or, #59, by the
+signed-in **user**) or **failures** (failed password checks, keyed by an
+account: the normalized username or the user id).
 
 **Fixed windows.** A window starts at a multiple of its length since the Unix
 epoch, in UTC (``:00``, ``:15``, ``:30``, ``:45`` for 15 minutes; the full hour
@@ -26,7 +27,13 @@ later error response (``401``, ``403``, ``422``, ``500``) never rolls the
 count back.
 
 - ``requests`` policies: :func:`rate_limit` takes one unit of each when the
-  dependency runs, before the handler and before body validation.
+  dependency runs, before the handler and before body validation. A
+  ``user``-keyed policy (#59) is counted per authenticated user id: the
+  dependency then resolves the signed-in principal first (``401`` before
+  ``429``), and commits the transaction the session lookup opened (keeping
+  its activity update, as ``/auth/reauthenticate`` does) before the counter
+  statement, so the request never holds two connections. Users behind one
+  shared IP don't share such a budget.
 - ``failures`` policies: the handler **reserves** one unit
   (:meth:`RateLimiter.reserve`) **before** it verifies the password; a ``429``
   means no verification at all. A failed verification keeps the reservation
@@ -86,7 +93,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.core import clock
-from app.core.authz import mark_dependency, route_markers
+from app.core.authz import (
+    CurrentPrincipal,
+    as_principal,
+    mark_dependency,
+    route_markers,
+)
 from app.core.client_ip import client_ip, ip_key
 from app.core.config import Settings, get_settings
 from app.core.db import get_engine
@@ -94,7 +106,7 @@ from app.core.errors import AppError, problem_response_doc
 from app.core.ratelimit_models import RateLimitCounter
 from app.core.uow import UnitOfWork, UnitOfWorkDep
 
-PolicyKey = Literal["ip", "account"]
+PolicyKey = Literal["ip", "account", "user"]
 PolicyCounts = Literal["requests", "failures"]
 
 security_logger = logging.getLogger("app.security")
@@ -113,7 +125,9 @@ class RateLimitPolicy:
     window: timedelta
     key: PolicyKey
     """``ip``: the client IP (``app.core.client_ip``); ``account``: a key the
-    handler passes (the normalized username, or the user id)."""
+    handler passes (the normalized username, or the user id); ``user``: the
+    signed-in user's id, taken by the dependency (``requests`` policies
+    only, #59)."""
     counts: PolicyCounts
     """``requests``: every request; ``failures``: failed password checks."""
     description: str
@@ -170,12 +184,32 @@ _POLICIES: Final = (
         "Self-registration requests per client IP (POST /api/v1/auth/registrations).",
         "#169",
     ),
+    RateLimitPolicy(
+        "available_slots.user",
+        60,
+        FIFTEEN_MINUTES,
+        "user",
+        "requests",
+        "Available-slot searches per signed-in user (GET /api/v1/available-slots;"
+        " ADR-0008 amendment, a domain limit).",
+        "#59",
+    ),
+    RateLimitPolicy(
+        "session_request.user",
+        10,
+        ONE_HOUR,
+        "user",
+        "requests",
+        "Session requests per signed-in user (POST /api/v1/session-requests;"
+        " ADR-0008 amendment, a domain limit).",
+        "#59",
+    ),
 )
 
 RATE_LIMIT_POLICIES: Final[Mapping[str, RateLimitPolicy]] = MappingProxyType(
     {policy.code: policy for policy in _POLICIES}
 )
-"""Every ADR-0008 D15 rate-limit policy, by code."""
+"""Every ADR-0008 rate-limit policy (D15 and its amendments), by code."""
 
 PENDING_POLICIES: Final[Mapping[str, str]] = MappingProxyType({})
 """Policies no route declares yet, with the issue that applies them. That
@@ -370,14 +404,21 @@ class RateLimiter:
                 )
             raise RateLimitedError(max(u.window.retry_after(now) for u in exhausted))
 
-    async def consume_requests(self, ip: str) -> None:
-        """Take one unit of every declared ``requests`` policy for ``ip``."""
+    async def consume_requests(self, ip: str, user_id: str | None = None) -> None:
+        """Take one unit of every declared ``requests`` policy: an ``ip``
+        policy for ``ip``, a ``user`` policy for ``user_id`` (which the
+        dependency always passes when the route declares one)."""
         now = clock.now()
-        units = [
-            _Unit(policy, key_hash(policy.code, ip), window_for(policy, now))
-            for policy in (RATE_LIMIT_POLICIES[c] for c in self.codes)
-            if policy.counts == "requests"
-        ]
+        units = []
+        for policy in (RATE_LIMIT_POLICIES[c] for c in self.codes):
+            if policy.counts != "requests":
+                continue
+            key = ip if policy.key == "ip" else user_id
+            if key is None:
+                raise RuntimeError(f"rate limit {policy.code!r} needs the user id")
+            units.append(
+                _Unit(policy, key_hash(policy.code, key), window_for(policy, now))
+            )
         if units:
             await self._take_units(units)
 
@@ -403,9 +444,15 @@ def _checked_codes(codes: Sequence[str]) -> tuple[str, ...]:
         policy = RATE_LIMIT_POLICIES.get(code)
         if policy is None:
             raise ValueError(f"not a rate-limit policy: {code!r}")
-        if policy.counts == "requests" and policy.key != "ip":
-            raise ValueError(f"a requests policy must be keyed by IP: {code!r}")
+        if policy.counts == "requests" and policy.key not in ("ip", "user"):
+            raise ValueError(f"a requests policy must be keyed by IP or user: {code!r}")
+        if policy.counts == "failures" and policy.key != "account":
+            raise ValueError(f"a failures policy must be keyed by account: {code!r}")
     return tuple(codes)
+
+
+def _needs_user(codes: Sequence[str]) -> bool:
+    return any(RATE_LIMIT_POLICIES[code].key == "user" for code in codes)
 
 
 def rate_limit(*codes: str) -> Any:
@@ -429,4 +476,30 @@ def rate_limit(*codes: str) -> Any:
         await limiter.consume_requests(ip_key(client_ip(request, settings)))
         return limiter
 
-    return Depends(mark_dependency(rate_limit_access, RateLimitRule(checked)))
+    async def user_rate_limit_access(
+        request: Request,
+        principal: CurrentPrincipal,
+        uow: UnitOfWorkDep,
+        engine: Annotated[AsyncEngine, Depends(get_engine)],
+        settings: Annotated[Settings, Depends(get_settings)],
+    ) -> RateLimiter:
+        checked_principal = as_principal(principal)
+        limiter = RateLimiter(
+            checked,
+            engine=engine,
+            method=request.method,
+            path=request.url.path,
+            uow=uow,
+        )
+        # End the transaction the session lookup opened, keeping its activity
+        # update (#25), so the counter's own committed transaction never runs
+        # while this request holds a second connection (module docstring).
+        if uow.session.in_transaction():
+            await uow.session.commit()
+        await limiter.consume_requests(
+            ip_key(client_ip(request, settings)), str(checked_principal.user_id)
+        )
+        return limiter
+
+    dependency = user_rate_limit_access if _needs_user(checked) else rate_limit_access
+    return Depends(mark_dependency(dependency, RateLimitRule(checked)))
