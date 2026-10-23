@@ -300,6 +300,8 @@ def test_the_output_models_are_closed_allow_lists():
             "created_at",
             "resolved_at",
             "version",
+            # #60 E5/G1: only the reason, never the session, tutor or room.
+            "rejection_reason",
         },
         SessionRequestStudent: {"id", "display_name"},
         SessionRequestSubject: {"id", "name", "education_level_name"},

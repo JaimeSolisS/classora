@@ -643,6 +643,7 @@ def _detail(
         created_at=row.created_at,
         resolved_at=row.resolved_at,
         version=row.version,
+        rejection_reason=row.rejection_reason,
     )
 
 
@@ -810,6 +811,25 @@ async def withdraw_session_request(
             session, request_id=approval_id, by_user_id=principal.user_id
         )
     return await _detail_of(session, locked, student, principal.user_id)
+
+
+async def user_may_act_for(
+    session: AsyncSession, user_id: uuid.UUID, student_id: uuid.UUID
+) -> bool:
+    """Whether the account ``user_id`` is ``active`` and may still act for
+    ``student_id`` by S1 (#60 F2: the requester is notified of a decision
+    only then). The principal is built from the account's roles
+    (``identity.service``); no permission is involved. At most five
+    statements."""
+    account = (await identity.get_account_references(session, [user_id])).get(user_id)
+    if account is None or account.state != ACTIVE:
+        return False
+    principal = Principal(
+        user_id=account.id, roles=frozenset(account.roles), permissions=frozenset()
+    )
+    facts = await _facts(session, principal)
+    wanted = {student_id} & candidate_student_ids(principal, facts)
+    return student_id in await _allowed_students(session, principal, facts, wanted)
 
 
 # --- A4: the time-zone dependency ----------------------------------------------------

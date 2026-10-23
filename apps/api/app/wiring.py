@@ -11,7 +11,8 @@ account-reference resolver of the approval inbox and the modules' time-zone
 dependency checks (#37, #47: ``scheduling.class_sessions``; #53:
 ``scheduling.class_series``, and the ``scheduling.occurrence_conflict``
 approval type; #59: ``scheduling.session_requests`` and the
-``scheduling.session_request`` approval type) are wired here, by the API app factory
+``scheduling.session_request`` approval type; #60: the two session request
+decision notification types) are wired here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
@@ -48,6 +49,7 @@ def register_approval_wiring() -> None:
     scheduling_service.register_closure_notifications()
     scheduling_service.register_edit_notifications()
     scheduling_service.register_substitution_notifications()
+    scheduling_service.register_request_notifications()
     scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_time_zone_dependency(

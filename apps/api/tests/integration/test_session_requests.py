@@ -70,6 +70,7 @@ DETAIL_KEYS = {
     "created_at",
     "resolved_at",
     "version",
+    "rejection_reason",
 }
 
 
@@ -577,9 +578,11 @@ def test_unknown_requests_are_404(client, cookie):
 # --- E: the inbox type ---------------------------------------------------------------
 
 
-def test_approve_and_reject_wait_for_60(
+def test_the_inbox_cannot_decide_a_pending_request(
     module_seeded_url, client, cookie, family, subject, owner_cookie
 ):
+    # #60 E1/E2: the generic approve and reject point to the review page and
+    # change nothing (the decision tests are in test_session_request_review.py).
     detail = created(
         create_request(
             client, cookie, request_body(family.student_id, subject, note="Hola")
@@ -596,8 +599,11 @@ def test_approve_and_reject_wait_for_60(
         {"reason": "No hay cupo"},
     )
 
-    assert code_of(approve) == (409, "session_request_review_unavailable")
-    assert code_of(reject) == (409, "session_request_review_unavailable")
+    for response in (approve, reject):
+        assert code_of(response) == (409, "session_request_review_route_required")
+        assert response.json()["details"] == {
+            "review_path": f"/schedule/requests/{detail['id']}"
+        }
     assert approval_of(module_seeded_url, detail["id"]).status == "pending"
     assert request_rows(module_seeded_url, family.student_id)[0].status == "pending"
     assert item["request_type"] == "scheduling.session_request"
@@ -611,6 +617,9 @@ def test_approve_and_reject_wait_for_60(
         "duration_minutes": 60,
         "requested_by": item["requester"]["display_name"],
         "note": "Hola",
+        "status": "pending",
+        "class_session_id": None,
+        "session_request_id": detail["id"],
     }
 
 
@@ -644,7 +653,7 @@ def test_inbox_visibility(
 
     if sees:
         assert response.status_code == 200, response.text
-        assert code_of(approve) == (409, "session_request_review_unavailable")
+        assert code_of(approve) == (409, "session_request_review_route_required")
     else:
         assert code_of(response) == (404, "not_found")
         assert code_of(approve) == (404, "not_found")

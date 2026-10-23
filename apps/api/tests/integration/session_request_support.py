@@ -18,7 +18,9 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.administration import service as administration
 from app.modules.families.models import Guardian, Student
+from app.modules.scheduling.models import SessionRequest
 from tests.factories.base import persist
 from tests.factories.families import (
     ADULT_BIRTHDATE,
@@ -282,3 +284,65 @@ def approval_of(url: str, request_id: Any) -> Any:
         {"s": request_id},
     )
     return row
+
+
+async def insert_request_row(
+    session: AsyncSession,
+    *,
+    student_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    requested_by: uuid.UUID,
+    starts_at: datetime,
+    minutes: int = 60,
+    created_at: datetime | None = None,
+) -> uuid.UUID:
+    """A ``pending`` request and its inbox item, written directly (no slot
+    check and no rate limit; #60 tests). ``created_at`` defaults to the
+    database's now."""
+    row = SessionRequest(
+        id=uuid.uuid7(),
+        student_id=student_id,
+        subject_id=subject_id,
+        requested_by_user_id=requested_by,
+        starts_at=starts_at,
+        ends_at=starts_at + timedelta(minutes=minutes),
+        duration_minutes=minutes,
+        status="pending",
+    )
+    if created_at is not None:
+        row.created_at = created_at
+    session.add(row)
+    await session.flush()
+    await administration.create_approval_request(
+        session,
+        request_type="scheduling.session_request",
+        subject_id=row.id,
+        requester_user_id=requested_by,
+    )
+    return row.id
+
+
+def insert_request(
+    url: str,
+    *,
+    student_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    requested_by: uuid.UUID,
+    starts_at: datetime,
+    minutes: int = 60,
+    created_at: datetime | None = None,
+) -> uuid.UUID:
+    """:func:`insert_request_row` in its own committed Unit of Work."""
+
+    async def _make(session: AsyncSession) -> uuid.UUID:
+        return await insert_request_row(
+            session,
+            student_id=student_id,
+            subject_id=subject_id,
+            requested_by=requested_by,
+            starts_at=starts_at,
+            minutes=minutes,
+            created_at=created_at,
+        )
+
+    return in_uow(url, _make, actor_id=requested_by)

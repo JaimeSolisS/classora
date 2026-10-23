@@ -134,6 +134,12 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   ``ex_session_requests_student_pending_overlap`` (``EXCLUDE USING gist``,
   partial on ``pending``) backs the "no two overlapping pending requests
   per student" rule (back-to-back is allowed). ``Audited``, versioned.
+  #60 A1/A2: ``class_session_id`` (``class_sessions``, ``RESTRICT``; one
+  request per session, ``uq_session_requests_class_session_id`` partial on
+  ``NOT NULL``) is set exactly when ``confirmed``
+  (``ck_session_requests_confirmed_iff_session``), and ``rejection_reason``
+  (at most 1000 characters, shown to the family) exactly when ``rejected``
+  (``ck_session_requests_rejected_iff_reason``).
 
 Cohorts add their own columns and tables (#65).
 """
@@ -194,6 +200,8 @@ SESSION_REQUEST_PENDING_OVERLAP_CONSTRAINT: Final = (
 )
 SESSION_REQUEST_NOTE_MAX_LENGTH: Final = 500
 SESSION_REQUEST_DURATIONS: Final = (30, 45, 60, 90, 120)
+SESSION_REQUEST_REJECTION_REASON_MAX_LENGTH: Final = 1000
+"""The #40 ``REASON_MAX_LENGTH`` (#60 A1)."""
 SESSION_REQUEST_PENDING: Final = "pending"
 SESSION_REQUEST_CONFIRMED: Final = "confirmed"
 SESSION_REQUEST_REJECTED: Final = "rejected"
@@ -829,6 +837,14 @@ class SessionRequest(Audited, VersionedMixin, Model):
             "(status = 'pending') = (resolved_at IS NULL)",
             name="resolved_iff_not_pending",
         ),
+        CheckConstraint(
+            "(status = 'confirmed') = (class_session_id IS NOT NULL)",
+            name="confirmed_iff_session",
+        ),
+        CheckConstraint(
+            "(status = 'rejected') = (rejection_reason IS NOT NULL)",
+            name="rejected_iff_reason",
+        ),
         ExcludeConstraint(
             (text("student_id"), "="),
             (text(SESSION_RANGE_SQL), "&&"),
@@ -845,6 +861,12 @@ class SessionRequest(Audited, VersionedMixin, Model):
             "ix_session_requests_requested_by_user_id_created_at",
             "requested_by_user_id",
             text("created_at DESC"),
+        ),
+        Index(
+            "uq_session_requests_class_session_id",
+            "class_session_id",
+            unique=True,
+            postgresql_where=text("class_session_id IS NOT NULL"),
         ),
     )
 
@@ -871,3 +893,13 @@ class SessionRequest(Audited, VersionedMixin, Model):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """The session a confirmation created (#60 A1)."""
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(SESSION_REQUEST_REJECTION_REASON_MAX_LENGTH), nullable=True
+    )
+    """Why staff rejected it (#60 A1, E5); the family sees it."""

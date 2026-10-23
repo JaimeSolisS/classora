@@ -133,11 +133,16 @@ Session requests by families (#59): the read-only slot search
 :func:`withdraw_session_request` (:mod:`~app.modules.scheduling.requests`,
 the family record policy in :mod:`~app.modules.scheduling.requests_policy`);
 the ``scheduling.session_request`` approval handler
-:data:`SESSION_REQUEST_APPROVAL_HANDLER` (approve / reject answer ``409``
-until #60 replaces them) and the time-zone check
+:data:`SESSION_REQUEST_APPROVAL_HANDLER` (its approve / reject accept only a
+request the review routes already decided, #60 E1) and the time-zone check
 :func:`has_pending_session_requests`
 (:data:`SESSION_REQUESTS_TIME_ZONE_DEPENDENCY`), both registered by
-``app.wiring``. #62 and #67 reuse the record policy.
+``app.wiring``. #62 and #67 reuse the record policy. The staff review (#60,
+:mod:`~app.modules.scheduling.request_review`):
+:func:`get_session_request_review`, :func:`confirm_session_request`,
+:func:`reject_session_request` and :func:`notify_request_decision`, called by
+``app.workflows.confirm_session_request``, and the two decision notification
+types (:func:`register_request_notifications`).
 
 The #47 errors are plain exceptions; the create maps them into ``409
 scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
@@ -334,6 +339,27 @@ from app.modules.scheduling.overrides import (
 )
 from app.modules.scheduling.request_approval import (
     SESSION_REQUEST_APPROVAL_HANDLER as SESSION_REQUEST_APPROVAL_HANDLER,
+)
+from app.modules.scheduling.request_review import (
+    SESSION_REQUEST_CONFIRMED_NOTIFICATION as SESSION_REQUEST_CONFIRMED_NOTIFICATION,
+)
+from app.modules.scheduling.request_review import (
+    SESSION_REQUEST_REJECTED_NOTIFICATION as SESSION_REQUEST_REJECTED_NOTIFICATION,
+)
+from app.modules.scheduling.request_review import (
+    confirm_session_request as confirm_session_request,
+)
+from app.modules.scheduling.request_review import (
+    get_session_request_review as get_session_request_review,
+)
+from app.modules.scheduling.request_review import (
+    notify_request_decision as notify_request_decision,
+)
+from app.modules.scheduling.request_review import (
+    register_request_notifications as register_request_notifications,
+)
+from app.modules.scheduling.request_review import (
+    reject_session_request as reject_session_request,
 )
 from app.modules.scheduling.requests import (
     MAX_PENDING_REQUESTS_PER_STUDENT as MAX_PENDING_REQUESTS_PER_STUDENT,

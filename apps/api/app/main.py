@@ -108,6 +108,9 @@ from app.modules.scheduling.router import (
 from app.modules.staff.router import router as tutors_router
 from app.wiring import register_approval_wiring
 from app.workflows.groups_router import router as groups_router
+from app.workflows.session_requests_router import (
+    router as session_request_review_router,
+)
 
 
 @asynccontextmanager
@@ -211,6 +214,7 @@ def build_app(
     app.include_router(groups_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
+    app.include_router(session_request_review_router)
     if include_dev_routes:
         app.include_router(demo_jobs_router)
         # The dev.demo notification type exists only with its route (#41 D1).
