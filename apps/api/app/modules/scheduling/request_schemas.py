@@ -24,7 +24,7 @@ type SessionRequestStatusFilter = Literal[
     "pending", "confirmed", "rejected", "withdrawn", "all"
 ]
 
-SESSION_REQUESTS_DEFAULT_LIMIT: Final = 20
+SESSION_REQUESTS_DEFAULT_LIMIT: Final = 25
 SESSION_REQUESTS_MAX_LIMIT: Final = 100
 
 
@@ -158,10 +158,3 @@ class SessionRequestDetail(_Closed):
 
 class SessionRequestItem(SessionRequestDetail):
     """A list item: the same members as the detail."""
-
-
-class SessionRequestPage(_Closed):
-    """An offset page of requests, newest first (#21)."""
-
-    items: list[SessionRequestItem]
-    total: int

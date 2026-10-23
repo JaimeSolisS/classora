@@ -3298,7 +3298,7 @@ unaffected.
 | ----- | ------ | ----- |
 | `GET /api/v1/available-slots` | `authenticated()` + record policy; `rate_limit("available_slots.user")` | `?student_id&subject_id&duration_minutes&from&to`; `200` with `AvailableSlots`. Read-only, at most 14 statements. |
 | `POST /api/v1/session-requests` | `authenticated()` + record policy; `rate_limit("session_request.user")` | `{student_id, subject_id, starts_at, duration_minutes, note?}`; `201` with `SessionRequestDetail`. |
-| `GET /api/v1/session-requests` | `authenticated()` + record policy | `?student_id&status=pending\|confirmed\|rejected\|withdrawn\|all` (default `all`), offset page (`limit` 1-100, default 20); newest first; at most 5 statements. |
+| `GET /api/v1/session-requests` | `authenticated()` + record policy | `?student_id&status=pending\|confirmed\|rejected\|withdrawn\|all` (default `all`), the #21 offset page `{items, total, limit, offset}` (`limit` 1-100, default 25; `offset` from 0); newest first; at most 5 statements. |
 | `GET /api/v1/session-requests/{request_id}` | `authenticated()` + record policy | `SessionRequestDetail`. |
 | `POST /api/v1/session-requests/{request_id}/withdraw` | `authenticated()` + record policy + the requester | `{version}`; `200` with `SessionRequestDetail`. |
 

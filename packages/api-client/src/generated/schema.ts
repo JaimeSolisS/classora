@@ -2519,7 +2519,8 @@ export interface paths {
         };
         /**
          * List Session Requests
-         * @description The requests of every student you may act for, newest first. A
+         * @description The requests of every student you may act for, newest first (an
+         *     offset page: `limit` 1-100, default 25). A
          *     `student_id` you can't act for, or a caller without the guardian or
          *     student role, gets an empty page.
          */
@@ -5981,6 +5982,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[SessionRequestItem] */
+        OffsetPage_SessionRequestItem_: {
+            /** Items */
+            items: components["schemas"]["SessionRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[StudentListItem] */
         OffsetPage_StudentListItem_: {
             /** Items */
@@ -6981,16 +6993,6 @@ export interface components {
             resolved_at: string | null;
             /** Version */
             version: number;
-        };
-        /**
-         * SessionRequestPage
-         * @description An offset page of requests, newest first (#21).
-         */
-        SessionRequestPage: {
-            /** Items */
-            items: components["schemas"]["SessionRequestItem"][];
-            /** Total */
-            total: number;
         };
         /** @enum {string} */
         SessionRequestStatus: "pending" | "confirmed" | "rejected" | "withdrawn";
@@ -16171,7 +16173,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRequestPage"];
+                    "application/json": components["schemas"]["OffsetPage_SessionRequestItem_"];
                 };
             };
             /** @description Authentication required. */

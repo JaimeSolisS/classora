@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from app.core.pagination import OffsetPage
 from app.modules.identity.permissions import ACADEMIC_COORDINATOR, FINANCE_STAFF, TUTOR
 from app.modules.scheduling.request_schemas import (
     AvailableDay,
@@ -21,7 +22,6 @@ from app.modules.scheduling.request_schemas import (
     AvailableSlots,
     SessionRequestDetail,
     SessionRequestItem,
-    SessionRequestPage,
     SessionRequestStudent,
     SessionRequestSubject,
 )
@@ -131,7 +131,7 @@ def test_another_familys_child_is_the_same_404_as_an_unknown_id(
         withdraw(client, cookie, unknown, 1),
     )
     listed = get(client, cookie, REQUESTS, student_id=str(other.student_id))
-    assert listed.json() == {"items": [], "total": 0}
+    assert listed.json() == {"items": [], "total": 0, "limit": 25, "offset": 0}
     assert request_rows(module_seeded_url, other.student_id)[0].status == "pending"
 
 
@@ -155,7 +155,12 @@ def test_a_student_cannot_act_for_another_student(module_seeded_url, client, sub
         "not_found",
     )
     assert code_of(withdraw(client, cookie, theirs["id"], 1)) == (404, "not_found")
-    assert get(client, cookie, REQUESTS).json() == {"items": [], "total": 0}
+    assert get(client, cookie, REQUESTS).json() == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+    }
     assert created(create_request(client, cookie, request_body(mine, subject)))
 
 
@@ -182,7 +187,12 @@ def test_a_guardian_who_lost_the_link_loses_their_old_request(
     assert code_of(
         get_slots(client, cookie, slots_params(family.student_id, subject))
     ) == (404, "not_found")
-    assert get(client, cookie, REQUESTS).json() == {"items": [], "total": 0}
+    assert get(client, cookie, REQUESTS).json() == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+    }
     # It stays pending for staff.
     assert request_rows(module_seeded_url, family.student_id)[0].status == "pending"
 
@@ -203,7 +213,12 @@ def test_staff_and_tutors_get_404_and_an_empty_list(
     assert code_of(
         create_request(client, viewer, request_body(family.student_id, subject))
     ) == (404, "not_found")
-    assert get(client, viewer, REQUESTS).json() == {"items": [], "total": 0}
+    assert get(client, viewer, REQUESTS).json() == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+    }
 
 
 # --- E3: adults ----------------------------------------------------------------------
@@ -237,7 +252,12 @@ def test_a_guardian_of_an_adult_needs_the_students_consent(
         404,
         "not_found",
     )
-    assert get(client, cookie, REQUESTS).json() == {"items": [], "total": 0}
+    assert get(client, cookie, REQUESTS).json() == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+    }
 
 
 def test_a_guardian_with_consent_from_the_start(module_seeded_url, client, subject):
@@ -283,12 +303,18 @@ def test_the_output_models_are_closed_allow_lists():
         },
         SessionRequestStudent: {"id", "display_name"},
         SessionRequestSubject: {"id", "name", "education_level_name"},
-        SessionRequestPage: {"items", "total"},
     }
     for model, fields in expected.items():
         assert set(model.model_fields) == fields, model
         assert model.model_config.get("extra") == "forbid", model
     assert set(SessionRequestItem.model_fields) == expected[SessionRequestDetail]
+    # The list is the #21 offset page of closed items.
+    assert set(OffsetPage[SessionRequestItem].model_fields) == {
+        "items",
+        "total",
+        "limit",
+        "offset",
+    }
 
 
 def test_no_family_response_leaks_tutors_sessions_or_other_families(

@@ -64,6 +64,7 @@ from app.core import clock
 from app.core.authz import PermissionDeniedError, Principal, RecordNotFoundError
 from app.core.errors import FieldError
 from app.core.models import ensure_version
+from app.core.pagination import OffsetPage
 from app.modules.administration import service as administration
 from app.modules.administration.schemas import BusinessSettingsDetail
 from app.modules.catalog import service as catalog
@@ -104,7 +105,6 @@ from app.modules.scheduling.request_schemas import (
     SessionRequestCreate,
     SessionRequestDetail,
     SessionRequestItem,
-    SessionRequestPage,
     SessionRequestStatusFilter,
     SessionRequestStudent,
     SessionRequestSubject,
@@ -665,10 +665,12 @@ async def list_session_requests(
     status: SessionRequestStatusFilter,
     limit: int,
     offset: int,
-) -> SessionRequestPage:
+) -> OffsetPage[SessionRequestItem]:
     """``GET /api/v1/session-requests`` (D1): at most five statements for a
     page of any size."""
-    empty = SessionRequestPage(items=[], total=0)
+    empty = OffsetPage[SessionRequestItem](
+        items=[], total=0, limit=limit, offset=offset
+    )
     if not has_family_role(principal):
         return empty
     facts = await _facts(session, principal)
@@ -707,7 +709,7 @@ async def list_session_requests(
     subjects = await catalog.subject_references(
         session, {row.subject_id for row in requests}
     )
-    return SessionRequestPage(
+    return OffsetPage[SessionRequestItem](
         items=[
             SessionRequestItem(
                 **_detail(
@@ -723,6 +725,8 @@ async def list_session_requests(
             for row in requests
         ],
         total=total,
+        limit=limit,
+        offset=offset,
     )
 
 

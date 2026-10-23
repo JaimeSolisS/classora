@@ -80,7 +80,7 @@ const subjectPage = () =>
   });
 
 const requestPage = (items = [PENDING_REQUEST]) =>
-  jsonResponse(200, { items, total: items.length });
+  jsonResponse(200, { items, total: items.length, limit: 100, offset: 0 });
 
 function stub(routes: Record<string, Responder | Responder[]> = {}): ApiStub {
   return stubApi({

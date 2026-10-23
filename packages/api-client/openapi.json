@@ -11548,7 +11548,7 @@
           "session-requests"
         ],
         "summary": "List Session Requests",
-        "description": "The requests of every student you may act for, newest first. A\n`student_id` you can't act for, or a caller without the guardian or\nstudent role, gets an empty page.",
+        "description": "The requests of every student you may act for, newest first (an\noffset page: `limit` 1-100, default 25). A\n`student_id` you can't act for, or a caller without the guardian or\nstudent role, gets an empty page.",
         "operationId": "list_session_requests_api_v1_session_requests_get",
         "parameters": [
           {
@@ -11593,7 +11593,7 @@
               "type": "integer",
               "maximum": 100,
               "minimum": 1,
-              "default": 20,
+              "default": 25,
               "title": "Limit"
             }
           },
@@ -11615,7 +11615,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionRequestPage"
+                  "$ref": "#/components/schemas/OffsetPage_SessionRequestItem_"
                 }
               }
             }
@@ -19123,6 +19123,37 @@
         ],
         "title": "OffsetPage[InvitationListItem]"
       },
+      "OffsetPage_SessionRequestItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionRequestItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[SessionRequestItem]"
+      },
       "OffsetPage_StudentListItem_": {
         "properties": {
           "items": {
@@ -20920,29 +20951,6 @@
         ],
         "title": "SessionRequestItem",
         "description": "A list item: the same members as the detail."
-      },
-      "SessionRequestPage": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/SessionRequestItem"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "items",
-          "total"
-        ],
-        "title": "SessionRequestPage",
-        "description": "An offset page of requests, newest first (#21)."
       },
       "SessionRequestStatus": {
         "type": "string",

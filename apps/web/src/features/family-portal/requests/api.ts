@@ -12,7 +12,9 @@ export type AvailableSlot = components['schemas']['AvailableSlot'];
 export type SessionRequestDetail =
   components['schemas']['SessionRequestDetail'];
 export type SessionRequestItem = components['schemas']['SessionRequestItem'];
-export type SessionRequestPage = components['schemas']['SessionRequestPage'];
+/** The #21 offset page of the caller's requests. */
+export type SessionRequestPage =
+  components['schemas']['OffsetPage_SessionRequestItem_'];
 export type SessionRequestStatus = SessionRequestDetail['status'];
 export type RequestDuration = 30 | 45 | 60 | 90 | 120;
 

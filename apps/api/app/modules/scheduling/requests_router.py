@@ -23,6 +23,7 @@ from fastapi import APIRouter, Query
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, authenticated
 from app.core.errors import problem_response_doc
+from app.core.pagination import OffsetPage
 from app.core.ratelimit import RATE_LIMIT_RESPONSES, RateLimiter, rate_limit
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
@@ -33,7 +34,7 @@ from app.modules.scheduling.request_schemas import (
     AvailableSlotsQuery,
     SessionRequestCreate,
     SessionRequestDetail,
-    SessionRequestPage,
+    SessionRequestItem,
     SessionRequestStatusFilter,
     SessionRequestWithdraw,
 )
@@ -125,8 +126,9 @@ async def list_session_requests(
         int, Query(ge=1, le=SESSION_REQUESTS_MAX_LIMIT)
     ] = SESSION_REQUESTS_DEFAULT_LIMIT,
     offset: Annotated[int, Query(ge=0)] = 0,
-) -> SessionRequestPage:
-    """The requests of every student you may act for, newest first. A
+) -> OffsetPage[SessionRequestItem]:
+    """The requests of every student you may act for, newest first (an
+    offset page: `limit` 1-100, default 25). A
     `student_id` you can't act for, or a caller without the guardian or
     student role, gets an empty page."""
     return await service.list_session_requests(

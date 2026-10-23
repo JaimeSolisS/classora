@@ -444,7 +444,14 @@ def test_the_list_holds_every_childs_requests_newest_first(
     assert {i["status"] for i in everything.json()["items"]} == {"pending", "withdrawn"}
     assert [i["id"] for i in pending.json()["items"]] == [second_id, first_id]
     assert [i["id"] for i in by_child.json()["items"]] == [second_id]
-    assert paged.json() == {"items": [everything.json()["items"][1]], "total": 3}
+    assert paged.json() == {
+        "items": [everything.json()["items"][1]],
+        "total": 3,
+        "limit": 1,
+        "offset": 1,
+    }
+    assert (everything.json()["limit"], everything.json()["offset"]) == (25, 0)
+    assert code_of(get(client, cookie, REQUESTS, limit=101)) == INVALID
     assert set(everything.json()["items"][0]) == DETAIL_KEYS
 
 
@@ -466,8 +473,15 @@ def test_a_foreign_student_filter_and_a_staff_caller_get_an_empty_page(
     assert _ok(get(client, cookie, REQUESTS, student_id=str(other.student_id))) == {
         "items": [],
         "total": 0,
+        "limit": 25,
+        "offset": 0,
     }
-    assert _ok(get(client, owner_cookie, REQUESTS)) == {"items": [], "total": 0}
+    assert _ok(get(client, owner_cookie, REQUESTS)) == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+    }
 
 
 def test_the_list_takes_at_most_five_statements(
