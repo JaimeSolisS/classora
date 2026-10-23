@@ -105,6 +105,16 @@ async def get_scheduling_policy(
     return _values(row)
 
 
+async def get_scheduling_policy_version(
+    session: AsyncSession, policy_id: uuid.UUID
+) -> SchedulingPolicyValues | None:
+    """One version by id, or ``None`` (one statement). #62 re-evaluates a
+    change request's stored version this way: versions are never edited and
+    a version in force can't be deleted, so the stored id stays valid."""
+    row = await session.get(SchedulingPolicy, policy_id)
+    return None if row is None else _values(row)
+
+
 async def get_scheduling_policy_overview(
     session: AsyncSession,
 ) -> SchedulingPolicyOverview:

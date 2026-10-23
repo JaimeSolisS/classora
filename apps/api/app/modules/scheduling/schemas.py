@@ -398,6 +398,12 @@ class ClassSessionDetail(BaseModel):
     group_id: uuid.UUID | None = Field(
         description="The tutoring group of a `group` session (#56); null otherwise."
     )
+    pending_change_request_id: uuid.UUID | None = Field(
+        description=(
+            "The pending cancellation or reschedule request of a family or the"
+            " tutor (#62); null when there is none."
+        )
+    )
 
 
 type SchedulingWarningCode = Literal[

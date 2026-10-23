@@ -22,6 +22,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.core.db import async_direct_database_url
 from app.core.model_registry import include_name, target_metadata
+from app.modules.scheduling.models import CHANGE_REQUEST_CHECKS
 from tests.authz.csrf import origin_for
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 
@@ -67,7 +68,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0043"
+HEAD = "0044"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -118,6 +119,7 @@ SERIES_TABLES = ["class_series", "class_series_participants"]
 SUBSTITUTION_TABLES = ["class_session_substitutions"]
 GROUP_TABLES = ["class_groups", "group_enrollments"]
 SESSION_REQUEST_TABLES = ["session_requests"]
+CHANGE_REQUEST_TABLES = ["session_change_requests"]
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -315,6 +317,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *SUBSTITUTION_TABLES,
             *GROUP_TABLES,
             *SESSION_REQUEST_TABLES,
+            *CHANGE_REQUEST_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4230,6 +4233,16 @@ def _of_0043(diff: Any) -> bool:
     return False
 
 
+def _of_0044(diff: Any) -> bool:
+    """A metadata difference that revision 0044 adds: the
+    ``session_change_requests`` table and its indexes (#62 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in CHANGE_REQUEST_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in CHANGE_REQUEST_TABLES
+    return False
+
+
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
     """A metadata difference that is a table (or one of its indexes) a later
     revision adds; with the 0034 tables, also 0034's class_sessions columns,
@@ -4243,6 +4256,7 @@ def _of_later_revision(diff: Any, tables: list[str]) -> bool:
         or _of_0041(diff)
         or _of_0042(diff)
         or _of_0043(diff)
+        or _of_0044(diff)
     ):
         return True
     if diff[0] == "add_table":
@@ -5198,6 +5212,7 @@ def test_0035_adds_the_series_tables_and_columns_and_downgrade_drops_them(
             or _of_0041(d)
             or _of_0042(d)
             or _of_0043(d)
+            or _of_0044(d)
         )
     ] == []
     [row] = run_sql(
@@ -5427,6 +5442,7 @@ def test_0036_backfills_series_and_downgrade_removes_series_offers(
             or _of_0041(d)
             or _of_0042(d)
             or _of_0043(d)
+            or _of_0044(d)
         )
     ] == []
     for table, added in SERIES_OFFER_COLUMNS.items():
@@ -5712,6 +5728,7 @@ def test_0037_clears_the_backfilled_series_assignments(fresh_database_url):
             or _of_0041(d)
             or _of_0042(d)
             or _of_0043(d)
+            or _of_0044(d)
         )
     ] == []
     sessions = _session_rows(dsn)
@@ -5767,6 +5784,7 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
             or _of_0041(d)
             or _of_0042(d)
             or _of_0043(d)
+            or _of_0044(d)
         )
     ] == []
 
@@ -5776,7 +5794,14 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0039(d) or _of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d))
+        if not (
+            _of_0039(d)
+            or _of_0040(d)
+            or _of_0041(d)
+            or _of_0042(d)
+            or _of_0043(d)
+            or _of_0044(d)
+        )
     ] == []
     [row] = run_sql(
         dsn, "SELECT split_from_series_id FROM class_series WHERE id = :id", {"id": old}
@@ -5811,6 +5836,7 @@ def test_0038_adds_the_series_lineage_and_downgrade_drops_it(fresh_database_url)
             or _of_0041(d)
             or _of_0042(d)
             or _of_0043(d)
+            or _of_0044(d)
         )
     ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM class_series")} >= {old, new}
@@ -5851,7 +5877,7 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d))
+        if not (_of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d))
     ] == []
     [row] = run_sql(
         dsn,
@@ -5892,7 +5918,14 @@ def test_0039_adds_the_override_context_and_downgrade_drops_it(fresh_database_ur
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0039(d) or _of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d))
+        if not (
+            _of_0039(d)
+            or _of_0040(d)
+            or _of_0041(d)
+            or _of_0042(d)
+            or _of_0043(d)
+            or _of_0044(d)
+        )
     ] == []
     assert len(run_sql(dsn, "SELECT id FROM class_session_overrides")) == 2
 
@@ -5947,7 +5980,9 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
 
     assert version_nums(dsn) == ["0040"]
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0041(d) or _of_0042(d) or _of_0043(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d))
     ] == []
     assert public_tables(dsn) - before == {SUBSTITUTIONS_TABLE}
     [row] = run_sql(
@@ -6004,7 +6039,7 @@ def test_0040_adds_kind_and_substitutions_and_downgrade_drops_them(
     assert [
         d
         for d in metadata_diff(dsn)
-        if not (_of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d))
+        if not (_of_0040(d) or _of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d))
     ] == []
     assert {r.id for r in run_sql(dsn, "SELECT id FROM assignment_offers")} == {old}
 
@@ -6115,7 +6150,9 @@ def test_0041_adds_the_group_tables_and_downgrade_drops_them(fresh_database_url)
     command.upgrade(config, "0041")
 
     assert version_nums(dsn) == ["0041"]
-    assert [d for d in metadata_diff(dsn) if not (_of_0042(d) or _of_0043(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0042(d) or _of_0043(d) or _of_0044(d))
+    ] == []
     assert public_tables(dsn) - before == set(GROUP_TABLES)
     [group] = run_sql(
         dsn,
@@ -6199,7 +6236,9 @@ def test_0041_adds_the_group_tables_and_downgrade_drops_them(fresh_database_url)
     assert "group_id" not in _columns(dsn, "class_sessions")
     assert "group_id" not in _columns(dsn, "class_series")
     assert [
-        d for d in metadata_diff(dsn) if not (_of_0041(d) or _of_0042(d) or _of_0043(d))
+        d
+        for d in metadata_diff(dsn)
+        if not (_of_0041(d) or _of_0042(d) or _of_0043(d) or _of_0044(d))
     ] == []
     remaining = {r.id for r in run_sql(dsn, "SELECT id FROM class_session_overrides")}
     assert remaining == {kept.id}
@@ -6308,14 +6347,16 @@ def test_0042_adds_the_session_requests_table_and_downgrade_drops_it(
     command.upgrade(config, "0042")
 
     assert version_nums(dsn) == ["0042"]
-    assert [d for d in metadata_diff(dsn) if not _of_0043(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0043(d) or _of_0044(d))] == []
     assert public_tables(dsn) - before == set(SESSION_REQUEST_TABLES)
 
     command.downgrade(config, "0041")
 
     assert version_nums(dsn) == ["0041"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not (_of_0042(d) or _of_0043(d))] == []
+    assert [
+        d for d in metadata_diff(dsn) if not (_of_0042(d) or _of_0043(d) or _of_0044(d))
+    ] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -6519,7 +6560,7 @@ def test_0043_adds_the_decision_columns_and_downgrade_drops_them(fresh_database_
     command.upgrade(config, "0043")
 
     assert version_nums(dsn) == ["0043"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0044(d)] == []
     # Existing rows satisfy both CHECKs without a backfill.
     [row] = run_sql(
         dsn,
@@ -6539,7 +6580,7 @@ def test_0043_adds_the_decision_columns_and_downgrade_drops_them(fresh_database_
     command.downgrade(config, "0042")
 
     assert version_nums(dsn) == ["0042"]
-    assert [d for d in metadata_diff(dsn) if not _of_0043(d)] == []
+    assert [d for d in metadata_diff(dsn) if not (_of_0043(d) or _of_0044(d))] == []
     assert "class_session_id" not in _columns(dsn, "session_requests")
 
     command.upgrade(config, "head")
@@ -6614,4 +6655,331 @@ def test_one_session_belongs_to_one_request(fresh_database_url):
             dsn,
             DECIDED_INSERT,
             _decided_values(_student_row(dsn), subject, user, **confirmed),
+        )
+
+
+# --- 0044: change requests (#62 A) ---------------------------------------------------
+
+CHANGE_REQUEST_COLUMNS = (
+    "class_session_id",
+    "kind",
+    "initiated_by",
+    "requested_by_user_id",
+    "student_id",
+    "note",
+    "session_starts_at",
+    "session_ends_at",
+    "proposed_starts_at",
+    "proposed_ends_at",
+    "policy_id",
+    "classification",
+    "makeup_allowed",
+    "makeup_until",
+    "status",
+    "exception",
+    "decision_reason",
+    "decided_by_user_id",
+    "resolved_at",
+    "final_classification",
+    "final_makeup_allowed",
+    "final_makeup_until",
+)
+CHANGE_REQUEST_INSERT = (
+    f"INSERT INTO session_change_requests ({', '.join(CHANGE_REQUEST_COLUMNS)})"  # noqa: S608 (fixed names)
+    f" VALUES ({', '.join(f':{name}' for name in CHANGE_REQUEST_COLUMNS)})"
+    " RETURNING id"
+)
+CHANGE_START = datetime(2031, 1, 12, 16, tzinfo=UTC)
+
+
+def _change_values(dsn: str, session: uuid.UUID, **overrides: Any) -> dict[str, Any]:
+    [policy] = run_sql(dsn, "SELECT id FROM scheduling_policies LIMIT 1")
+    values: dict[str, Any] = {
+        "class_session_id": session,
+        "kind": "cancellation",
+        "initiated_by": "family",
+        "requested_by_user_id": _user_row(dsn),
+        "student_id": _student_row(dsn),
+        "note": None,
+        "session_starts_at": CHANGE_START,
+        "session_ends_at": CHANGE_START + timedelta(hours=1),
+        "proposed_starts_at": None,
+        "proposed_ends_at": None,
+        "policy_id": policy.id,
+        "classification": "late",
+        "makeup_allowed": False,
+        "makeup_until": None,
+        "status": "pending",
+        "exception": False,
+        "decision_reason": None,
+        "decided_by_user_id": None,
+        "resolved_at": None,
+        "final_classification": None,
+        "final_makeup_allowed": None,
+        "final_makeup_until": None,
+    }
+    return values | overrides
+
+
+def _approved(dsn: str, **overrides: Any) -> dict[str, Any]:
+    return {
+        "status": "approved",
+        "resolved_at": CHANGE_START,
+        "decided_by_user_id": _user_row(dsn),
+        "final_classification": "late",
+        "final_makeup_allowed": False,
+    } | overrides
+
+
+def test_0044_adds_the_change_requests_table_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0043")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0044")
+
+    assert version_nums(dsn) == ["0044"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(CHANGE_REQUEST_TABLES)
+
+    command.downgrade(config, "0043")
+
+    assert version_nums(dsn) == ["0043"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0044(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_change_requests_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    instant = ("timestamp with time zone", "NO", None, None)
+    optional_instant = ("timestamp with time zone", "YES", None, None)
+
+    assert _columns(dsn, "session_change_requests") == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "version": STANDARD_COLUMNS["version"],
+        "class_session_id": ("uuid", "NO", None, None),
+        "kind": ("character varying", "NO", 20, None),
+        "initiated_by": ("character varying", "NO", 10, None),
+        "requested_by_user_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "YES", None, None),
+        "note": ("character varying", "YES", 500, None),
+        "session_starts_at": instant,
+        "session_ends_at": instant,
+        "proposed_starts_at": optional_instant,
+        "proposed_ends_at": optional_instant,
+        "policy_id": ("uuid", "NO", None, None),
+        "classification": ("character varying", "NO", 10, None),
+        "makeup_allowed": ("boolean", "NO", None, None),
+        "makeup_until": optional_instant,
+        "status": ("character varying", "NO", 16, "'pending'::character varying"),
+        "exception": ("boolean", "NO", None, "false"),
+        "decision_reason": ("character varying", "YES", 1000, None),
+        "decided_by_user_id": ("uuid", "YES", None, None),
+        "resolved_at": optional_instant,
+        "final_classification": ("character varying", "YES", 10, None),
+        "final_makeup_allowed": ("boolean", "YES", None, None),
+        "final_makeup_until": optional_instant,
+    }
+    constraints = _constraints(dsn, "session_change_requests")
+    foreign_keys = {
+        "fk_session_change_requests_class_session_id_class_sessions",
+        "fk_session_change_requests_requested_by_user_id_users",
+        "fk_session_change_requests_student_id_students",
+        "fk_session_change_requests_policy_id_scheduling_policies",
+        "fk_session_change_requests_decided_by_user_id_users",
+    }
+    checks = {f"ck_session_change_requests_{name}" for name in CHANGE_REQUEST_CHECKS}
+    assert set(constraints) == {"pk_session_change_requests"} | foreign_keys | checks
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    indexes = _indexes(dsn, "session_change_requests")
+    pending = indexes["uq_session_change_requests_pending_session"]
+    assert "UNIQUE" in pending and "WHERE ((status)::text = 'pending'::text)" in pending
+    assert (
+        "(class_session_id)" in indexes["ix_session_change_requests_class_session_id"]
+    )
+    assert (
+        "(student_id, created_at DESC)"
+        in indexes["ix_session_change_requests_student_id_created_at"]
+    )
+    assert (
+        "(requested_by_user_id, created_at DESC)"
+        in indexes["ix_session_change_requests_requested_by_user_id_created_at"]
+    )
+
+
+RESCHEDULE = {
+    "kind": "reschedule",
+    "proposed_starts_at": CHANGE_START + timedelta(days=1),
+    "proposed_ends_at": CHANGE_START + timedelta(days=1, hours=1),
+}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"kind": "reschedule"},
+        RESCHEDULE | {"kind": "cancellation"},
+        RESCHEDULE | {"proposed_ends_at": None},
+        RESCHEDULE | {"proposed_ends_at": CHANGE_START + timedelta(days=1)},
+        RESCHEDULE
+        | {"proposed_starts_at": CHANGE_START + timedelta(days=1, seconds=30)},
+        {"student_id": None},
+        {"initiated_by": "tutor"},
+        {"initiated_by": "center", "student_id": None},
+        {"kind": "absence"},
+        {"makeup_until": CHANGE_START},
+        {"makeup_allowed": True},
+        RESCHEDULE
+        | {"makeup_allowed": True, "makeup_until": CHANGE_START + timedelta(days=30)},
+        {"classification": "maybe"},
+        {"session_ends_at": CHANGE_START},
+        {"status": "approved", "resolved_at": CHANGE_START},
+        "approved-without-final",
+        "rejected-without-reason",
+        "exception-not-excused",
+        "exception-without-reason",
+        "exception-pending",
+        "approved-without-decider",
+        {"decided_by_user_id": "user"},
+        {"resolved_at": CHANGE_START},
+        {"status": "withdrawn"},
+        {"status": "withdrawn", "resolved_at": CHANGE_START, "decision_reason": "x"},
+        {"note": " padded "},
+        {"note": ""},
+        "final-makeup-without-until",
+        "final-makeup-on-reschedule",
+    ],
+    ids=[
+        "reschedule-without-proposal",
+        "cancellation-with-proposal",
+        "proposal-without-end",
+        "proposal-ends-at-start",
+        "proposal-not-whole-minute",
+        "family-without-student",
+        "tutor-with-student",
+        "unknown-initiator",
+        "unknown-kind",
+        "makeup-until-without-makeup",
+        "makeup-without-until",
+        "makeup-on-reschedule",
+        "unknown-classification",
+        "session-ends-at-start",
+        "approved-without-decider-or-final",
+        "approved-without-final",
+        "rejected-without-reason",
+        "exception-not-excused",
+        "exception-without-reason",
+        "exception-pending",
+        "approved-without-decider",
+        "pending-with-decider",
+        "pending-resolved",
+        "withdrawn-unresolved",
+        "withdrawn-with-reason",
+        "untrimmed-note",
+        "empty-note",
+        "final-makeup-without-until",
+        "final-makeup-on-reschedule",
+    ],
+)
+def test_change_requests_reject_invalid_rows(fresh_database_url, overrides):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    session = _session_row(dsn, _subject_row(dsn))
+    named: dict[str, dict[str, Any]] = {
+        "approved-without-final": _approved(
+            dsn, final_classification=None, final_makeup_allowed=None
+        ),
+        "rejected-without-reason": {
+            "status": "rejected",
+            "resolved_at": CHANGE_START,
+            "decided_by_user_id": _user_row(dsn),
+        },
+        "exception-not-excused": _approved(
+            dsn, exception=True, decision_reason="Enfermedad"
+        ),
+        "exception-without-reason": _approved(
+            dsn, exception=True, final_classification="excused"
+        ),
+        "exception-pending": {"exception": True, "decision_reason": "Enfermedad"},
+        "approved-without-decider": _approved(dsn, decided_by_user_id=None),
+        "final-makeup-without-until": _approved(dsn, final_makeup_allowed=True),
+        "final-makeup-on-reschedule": RESCHEDULE
+        | _approved(
+            dsn,
+            final_classification="excused",
+            final_makeup_allowed=True,
+            final_makeup_until=CHANGE_START + timedelta(days=30),
+        ),
+    }
+    if isinstance(overrides, str):
+        overrides = named[overrides]
+    if overrides.get("decided_by_user_id") == "user":
+        overrides = overrides | {"decided_by_user_id": _user_row(dsn)}
+    values = _change_values(dsn, session, **overrides)
+
+    with pytest.raises(IntegrityError):
+        run_sql(dsn, CHANGE_REQUEST_INSERT, values)
+
+
+def test_change_requests_accept_every_valid_shape(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    subject = _subject_row(dsn)
+
+    def insert(**overrides: Any) -> None:
+        session = _session_row(dsn, subject)
+        run_sql(dsn, CHANGE_REQUEST_INSERT, _change_values(dsn, session, **overrides))
+
+    insert()
+    insert(**RESCHEDULE)
+    insert(initiated_by="tutor", student_id=None, classification="excused")
+    insert(makeup_allowed=True, makeup_until=CHANGE_START + timedelta(days=30))
+    insert(**_approved(dsn))
+    insert(
+        **_approved(
+            dsn,
+            exception=True,
+            decision_reason="Enfermedad",
+            final_classification="excused",
+            final_makeup_allowed=True,
+            final_makeup_until=CHANGE_START + timedelta(days=30),
+        )
+    )
+    insert(
+        status="rejected",
+        resolved_at=CHANGE_START,
+        decided_by_user_id=_user_row(dsn),
+        decision_reason="Sin cupo",
+    )
+    insert(status="withdrawn", resolved_at=CHANGE_START)
+
+
+def test_one_pending_change_request_per_session(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    session = _session_row(dsn, _subject_row(dsn))
+    run_sql(dsn, CHANGE_REQUEST_INSERT, _change_values(dsn, session))
+
+    with pytest.raises(IntegrityError):
+        run_sql(
+            dsn,
+            CHANGE_REQUEST_INSERT,
+            _change_values(dsn, session, initiated_by="tutor", student_id=None),
+        )
+
+    # Decided requests don't count: two approved ones on one session too.
+    for _ in range(2):
+        run_sql(
+            dsn, CHANGE_REQUEST_INSERT, _change_values(dsn, session, **_approved(dsn))
         )

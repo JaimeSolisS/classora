@@ -141,6 +141,22 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   (at most 1000 characters, shown to the family) exactly when ``rejected``
   (``ck_session_requests_rejected_iff_reason``).
 
+- ``session_change_requests`` (#62 A): a family's or a tutor's request to
+  cancel or reschedule one ``confirmed`` individual session
+  (:class:`SessionChangeRequest`). ``kind`` ``cancellation`` |
+  ``reschedule``; ``initiated_by`` ``family`` (with ``student_id``, the
+  participant the requester acts for) | ``tutor`` (without it); the
+  session's times at request time; a reschedule's proposed instants; the
+  **request-time outcome** of the scheduling policy (``policy_id``,
+  ``classification``, ``makeup_allowed``, ``makeup_until``: never
+  recomputed); ``status`` ``pending`` | ``approved`` | ``rejected`` |
+  ``withdrawn``; and the decision (``exception``, ``decision_reason``,
+  ``decided_by_user_id``, ``resolved_at``) with the **effective outcome**
+  (``final_*``, set exactly when ``approved``). CHECKs tie each group to
+  the status; ``uq_session_change_requests_pending_session`` (partial
+  unique, ``WHERE status = 'pending'``) allows one pending request per
+  session. ``Audited``, versioned.
+
 Cohorts add their own columns and tables (#65).
 """
 
@@ -212,6 +228,26 @@ SESSION_REQUEST_STATUSES: Final = (
     SESSION_REQUEST_REJECTED,
     SESSION_REQUEST_WITHDRAWN,
 )
+CHANGE_REQUEST_PENDING_UNIQUE: Final = "uq_session_change_requests_pending_session"
+CHANGE_REQUEST_NOTE_MAX_LENGTH: Final = 500
+CHANGE_REQUEST_REASON_MAX_LENGTH: Final = 1000
+CHANGE_REQUEST_CANCELLATION: Final = "cancellation"
+CHANGE_REQUEST_RESCHEDULE: Final = "reschedule"
+CHANGE_REQUEST_KINDS: Final = (CHANGE_REQUEST_CANCELLATION, CHANGE_REQUEST_RESCHEDULE)
+CHANGE_REQUEST_FAMILY: Final = "family"
+CHANGE_REQUEST_TUTOR: Final = "tutor"
+CHANGE_REQUEST_INITIATORS: Final = (CHANGE_REQUEST_FAMILY, CHANGE_REQUEST_TUTOR)
+CHANGE_REQUEST_PENDING: Final = "pending"
+CHANGE_REQUEST_APPROVED: Final = "approved"
+CHANGE_REQUEST_REJECTED: Final = "rejected"
+CHANGE_REQUEST_WITHDRAWN: Final = "withdrawn"
+CHANGE_REQUEST_STATUSES: Final = (
+    CHANGE_REQUEST_PENDING,
+    CHANGE_REQUEST_APPROVED,
+    CHANGE_REQUEST_REJECTED,
+    CHANGE_REQUEST_WITHDRAWN,
+)
+CHANGE_REQUEST_CLASSIFICATIONS: Final = ("on_time", "late", "no_show", "excused")
 GROUP_MAX_STUDENTS_MAX: Final = 500
 WITHDRAWAL_REASON_MAX_LENGTH: Final = 1000
 OVERRIDE_REASON_MAX_LENGTH: Final = 1000
@@ -903,3 +939,156 @@ class SessionRequest(Audited, VersionedMixin, Model):
         String(SESSION_REQUEST_REJECTION_REASON_MAX_LENGTH), nullable=True
     )
     """Why staff rejected it (#60 A1, E5); the family sees it."""
+
+
+CHANGE_REQUEST_CHECKS: Final = {
+    "kind_valid": f"kind IN ({_quoted(CHANGE_REQUEST_KINDS)})",
+    "initiated_by_valid": f"initiated_by IN ({_quoted(CHANGE_REQUEST_INITIATORS)})",
+    "student_iff_family": "(initiated_by = 'family') = (student_id IS NOT NULL)",
+    "note_trimmed": "note IS NULL OR (note = btrim(note) AND note <> '')",
+    "session_times_order": "session_ends_at > session_starts_at",
+    "proposal_both_or_none": (
+        "(proposed_starts_at IS NULL) = (proposed_ends_at IS NULL)"
+    ),
+    "proposal_iff_reschedule": (
+        "(kind = 'reschedule') = (proposed_starts_at IS NOT NULL)"
+    ),
+    "proposal_order": (
+        "proposed_starts_at IS NULL OR proposed_ends_at > proposed_starts_at"
+    ),
+    "proposal_whole_minutes": (
+        "proposed_starts_at IS NULL"
+        " OR (mod(EXTRACT(EPOCH FROM proposed_starts_at), 60) = 0"
+        " AND mod(EXTRACT(EPOCH FROM proposed_ends_at), 60) = 0)"
+    ),
+    "classification_valid": (
+        f"classification IN ({_quoted(CHANGE_REQUEST_CLASSIFICATIONS)})"
+    ),
+    "makeup_iff_until": "makeup_allowed = (makeup_until IS NOT NULL)",
+    "no_makeup_on_reschedule": "kind = 'cancellation' OR NOT makeup_allowed",
+    "status_valid": f"status IN ({_quoted(CHANGE_REQUEST_STATUSES)})",
+    "resolved_iff_not_pending": "(status = 'pending') = (resolved_at IS NULL)",
+    "final_iff_approved": "(status = 'approved') = (final_classification IS NOT NULL)",
+    "final_classification_valid": (
+        "final_classification IS NULL OR final_classification IN"
+        f" ({_quoted(CHANGE_REQUEST_CLASSIFICATIONS)})"
+    ),
+    "final_makeup_with_final": (
+        "(final_classification IS NULL) = (final_makeup_allowed IS NULL)"
+    ),
+    "final_makeup_iff_until": (
+        "(final_makeup_until IS NOT NULL) = (final_makeup_allowed IS TRUE)"
+    ),
+    "no_final_makeup_on_reschedule": (
+        "kind = 'cancellation' OR final_makeup_allowed IS NOT TRUE"
+    ),
+    "rejected_needs_reason": "status <> 'rejected' OR decision_reason IS NOT NULL",
+    "reason_only_when_decided": (
+        "decision_reason IS NULL OR status IN ('approved', 'rejected')"
+    ),
+    "reason_trimmed": (
+        "decision_reason IS NULL"
+        " OR (decision_reason = btrim(decision_reason) AND decision_reason <> '')"
+    ),
+    "exception_rule": (
+        "NOT exception OR (status = 'approved' AND decision_reason IS NOT NULL"
+        " AND final_classification = 'excused')"
+    ),
+    "decided_by_iff_decided": (
+        "(decided_by_user_id IS NOT NULL) = (status IN ('approved', 'rejected'))"
+    ),
+}
+"""The CHECKs of ``session_change_requests`` (#62 A1, A2), by name suffix
+(``ck_session_change_requests_<name>``); the migration uses the same
+text."""
+
+
+class SessionChangeRequest(Audited, VersionedMixin, Model):
+    """A family's or a tutor's request to cancel or reschedule one session
+    (#62 A1; see the module docstring)."""
+
+    __tablename__ = "session_change_requests"
+    __table_args__ = (
+        *(
+            CheckConstraint(condition, name=name)
+            for name, condition in CHANGE_REQUEST_CHECKS.items()
+        ),
+        Index(
+            CHANGE_REQUEST_PENDING_UNIQUE,
+            "class_session_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_session_change_requests_student_id_created_at",
+            "student_id",
+            text("created_at DESC"),
+        ),
+        Index(
+            "ix_session_change_requests_requested_by_user_id_created_at",
+            "requested_by_user_id",
+            text("created_at DESC"),
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    initiated_by: Mapped[str] = mapped_column(String(10))
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    student_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """The participant a family requester acts for; ``NULL`` for a tutor."""
+    note: Mapped[str | None] = mapped_column(
+        String(CHANGE_REQUEST_NOTE_MAX_LENGTH), nullable=True
+    )
+    session_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    session_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    """The session's times at request time (the classification's basis)."""
+    proposed_starts_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    proposed_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scheduling_policies.id", ondelete="RESTRICT"),
+    )
+    classification: Mapped[str] = mapped_column(String(10))
+    makeup_allowed: Mapped[bool] = mapped_column(Boolean)
+    makeup_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16),
+        default=CHANGE_REQUEST_PENDING,
+        server_default=text("'pending'"),
+    )
+    exception: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    decision_reason: Mapped[str | None] = mapped_column(
+        String(CHANGE_REQUEST_REASON_MAX_LENGTH), nullable=True
+    )
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    final_classification: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    final_makeup_allowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    final_makeup_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

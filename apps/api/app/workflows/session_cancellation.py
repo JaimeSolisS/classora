@@ -16,7 +16,11 @@ classification (#55 E3). The steps to add here:
   the session.
 
 ``initiated_by`` is ``"center"`` for an administrator's cancel (#55) and
-``"family"`` / ``"tutor"`` for an approved request (#62, M4-17).
+``"family"`` / ``"tutor"`` for an approved request (#62, M4-17), which also
+passes its ``change_request_id`` (``None`` otherwise). M6-14 and M7-04 read
+the request's effective outcome (classification, makeup) with
+``scheduling.service.get_change_request_outcome(session, change_request_id)``
+instead of classifying the cancellation again.
 """
 
 import uuid
@@ -34,6 +38,8 @@ async def on_session_cancelled(
     initiated_by: CancellationInitiator,
     cancelled_at: datetime,
     by_user_id: uuid.UUID | None,
+    change_request_id: uuid.UUID | None = None,
 ) -> None:
     """Run the billing and pay steps of one cancelled session (none yet)."""
     del session, class_session_id, initiated_by, cancelled_at, by_user_id
+    del change_request_id

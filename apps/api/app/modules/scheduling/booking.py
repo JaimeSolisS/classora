@@ -94,6 +94,7 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.models import (
+    CHANGE_REQUEST_PENDING,
     OFFER_KIND_ASSIGNMENT,
     OFFER_KIND_SUBSTITUTION,
     OFFER_PENDING,
@@ -103,6 +104,7 @@ from app.modules.scheduling.models import (
     ClassSessionOverride,
     ClassSessionParticipant,
     ClassSessionSubstitution,
+    SessionChangeRequest,
 )
 from app.modules.scheduling.offer_records import insert_offer, notify_offer_received
 from app.modules.scheduling.offers import RespondByInvalidError, resolve_respond_by
@@ -350,6 +352,7 @@ def _detail(
     overrides: list[SessionOverrideItem],
     pending_offer: PendingOffer | None,
     pending_substitution: PendingSubstitution | None = None,
+    pending_change_request_id: uuid.UUID | None = None,
 ) -> ClassSessionDetail:
     cancellation = None
     if row.cancelled_at is not None and row.cancellation_reason is not None:
@@ -385,6 +388,7 @@ def _detail(
         pending_substitution=pending_substitution,
         cancellation=cancellation,
         group_id=row.group_id,
+        pending_change_request_id=pending_change_request_id,
     )
 
 
@@ -580,6 +584,11 @@ async def get_class_session(
         .where(AssignmentOffer.kind == OFFER_KIND_SUBSTITUTION)
         .subquery()
     )
+    change_request = (
+        select(SessionChangeRequest.class_session_id, SessionChangeRequest.id)
+        .where(SessionChangeRequest.status == CHANGE_REQUEST_PENDING)
+        .subquery()
+    )
     found = (
         await session.execute(
             select(
@@ -590,9 +599,13 @@ async def get_class_session(
                 substitution.c.id,
                 substitution.c.substitute_tutor_user_id,
                 substitution.c.respond_by,
+                change_request.c.id,
             )
             .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
             .outerjoin(substitution, substitution.c.class_session_id == ClassSession.id)
+            .outerjoin(
+                change_request, change_request.c.class_session_id == ClassSession.id
+            )
             .where(ClassSession.id == class_session_id)
         )
     ).first()
@@ -606,6 +619,7 @@ async def get_class_session(
         substitution_id,
         substitute_id,
         substitution_respond_by,
+        change_request_id,
     ) = found
     student_ids = list(
         await session.scalars(
@@ -684,4 +698,5 @@ async def get_class_session(
                 respond_by=substitution_respond_by.astimezone(UTC),
             )
         ),
+        pending_change_request_id=change_request_id,
     )

@@ -53,6 +53,8 @@ def test_the_registry_has_exactly_the_adr_0008_limits():
         # The ADR-0008 amendment (#59 E2): per-user domain limits.
         "available_slots.user": (60, timedelta(minutes=15), "user", "requests"),
         "session_request.user": (10, timedelta(hours=1), "user", "requests"),
+        # #62 S4.
+        "change_request.user": (10, timedelta(hours=1), "user", "requests"),
     }
     for code, policy in RATE_LIMIT_POLICIES.items():
         assert policy.code == code

@@ -26,11 +26,15 @@ W1.5; ADR-0005 D2, D9).
    rows);
 9. the named audit event ``scheduling.session_cancelled`` ``{class_session_id,
    series_id, previous_state, reason, withdrawn_offer_ids,
-   cancelled_request_ids}``, on top of the automatic update event;
+   cancelled_request_ids, change_request_id}``, on top of the automatic
+   update event (``change_request_id``: the approved #62 request, else
+   ``null``);
 10. ``scheduling.session_cancelled`` (no reason in the params) to the tutor
     of an ``offered`` or ``confirmed`` session, the substitute of a
     pending substitution, and for ``confirmed`` only the students' logins
-    and their guardians; never the actor;
+    and their guardians; never the actor, nor ``exclude_recipient_ids``
+    (#62 E1: the requester of an approved change request, who gets their
+    own decision notification instead);
 11. the cancellation steps registered by the composition root
     (:func:`register_cancellation_step`; ``app/workflows/
     session_cancellation.py``, the E3 seam for billing M6-14 and pay
@@ -46,7 +50,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from typing import Final, Literal, Protocol
 
@@ -101,6 +105,7 @@ class CancellationStep(Protocol):
         initiated_by: CancellationInitiator,
         cancelled_at: datetime,
         by_user_id: uuid.UUID | None,
+        change_request_id: uuid.UUID | None,
     ) -> Awaitable[None]: ...
 
 
@@ -170,10 +175,14 @@ async def cancel_class_session(
     reason: str,
     by_user_id: uuid.UUID | None,
     initiated_by: CancellationInitiator = "center",
+    change_request_id: uuid.UUID | None = None,
+    exclude_recipient_ids: Sequence[uuid.UUID] = (),
 ) -> ClassSession:
     """Cancel one session (C3; see the module docstring for the order) and
     return the row. ``reason`` is the trimmed reason. #62 (M4-17) calls it
-    with ``initiated_by = "family"`` or ``"tutor"`` and stores its own
+    with ``initiated_by = "family"`` or ``"tutor"``, the approved request's
+    ``change_request_id`` (passed to the steps and the audit event) and the
+    requester in ``exclude_recipient_ids``; it stores its own
     classification."""
     found = (
         await session.execute(
@@ -228,11 +237,12 @@ async def cancel_class_session(
             "reason": row.cancellation_reason,
             "withdrawn_offer_ids": withdrawn,
             "cancelled_request_ids": cancelled_requests,
+            "change_request_id": change_request_id,
         },
     )
     await notify_session(
         session,
-        recipients,
+        recipients - set(exclude_recipient_ids),
         SESSION_CANCELLED,
         class_session_id=row.id,
         starts_at=row.starts_at,
@@ -247,6 +257,7 @@ async def cancel_class_session(
             initiated_by=initiated_by,
             cancelled_at=cancelled_at,
             by_user_id=by_user_id,
+            change_request_id=change_request_id,
         )
     await session.flush()
     return row

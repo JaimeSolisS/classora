@@ -290,6 +290,62 @@ reauth = "settings.payment_methods_or_time_zone"
 reauth_conditional = true
 
 [[route]]
+method = "GET"
+path = "/api/v1/change-requests"
+access = "authenticated"
+# #62 D1: lists filter (an empty page for a caller with no family or tutor role).
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests"
+access = "authenticated"
+# #62 B: the minimal body gets 422 for every role; the 201 and the
+# record-policy outcomes are in tests/integration/test_change_requests.py.
+json = {}
+rate_limit = ["change_request.user"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests/{change_request_id}"
+access = "authenticated"
+# #62 D2: the placeholder id is no request: 404 for every role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/approve"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C2: the minimal body gets 422 for every allowed role (no version); the
+# 200, 404 and 409 cases are in tests/integration/test_change_request_decisions.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/reject"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C4: the minimal body gets 422 for every allowed role (no reason).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests/{change_request_id}/review"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C1: the placeholder id is no request: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/withdraw"
+access = "authenticated"
+# #62 D3: the minimal body gets 422 for every role (then 404 for the
+# placeholder id).
+json = {}
+
+[[route]]
 method = "POST"
 path = "/api/v1/class-series"
 access = "permission"

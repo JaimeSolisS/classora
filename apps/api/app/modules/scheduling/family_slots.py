@@ -40,7 +40,7 @@ E1): nothing here returns a tutor.
 
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Final
 from zoneinfo import ZoneInfo
@@ -198,8 +198,48 @@ def tutor_is_eligible(tutor: TutorSlotFacts, candidate: Candidate, zone: str) ->
     ).available
 
 
-def family_slot_ok(candidate: Candidate, context: FamilySlotContext) -> bool:
-    """Whether the candidate is shown (module docstring, B4 1-4)."""
+def _without(
+    context: FamilySlotContext, session_ids: frozenset[uuid.UUID]
+) -> FamilySlotContext:
+    """The context without the sessions ``session_ids`` (#62 E4)."""
+    return replace(
+        context,
+        slot=replace(
+            context.slot,
+            student_sessions=tuple(
+                busy
+                for busy in context.slot.student_sessions
+                if busy.class_session_id not in session_ids
+            ),
+        ),
+        tutors=tuple(
+            replace(
+                tutor,
+                sessions=tuple(
+                    busy
+                    for busy in tutor.sessions
+                    if busy.class_session_id not in session_ids
+                ),
+            )
+            for tutor in context.tutors
+        ),
+    )
+
+
+def family_slot_ok(
+    candidate: Candidate,
+    context: FamilySlotContext,
+    *,
+    exclude_session_ids: frozenset[uuid.UUID] = frozenset(),
+) -> bool:
+    """Whether the candidate is shown (module docstring, B4 1-4).
+
+    ``exclude_session_ids`` (#62 E4: a family's reschedule proposal for the
+    session being moved) leaves those sessions out of the student's and
+    the tutors' occupying sessions, so a proposal never conflicts with the
+    session it replaces. ``GET /available-slots`` passes none."""
+    if exclude_session_ids:
+        context = _without(context, exclude_session_ids)
     if slot_conflicts(candidate, context.slot):
         return False
     return any(
