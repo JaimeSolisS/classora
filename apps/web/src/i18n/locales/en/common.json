@@ -379,6 +379,11 @@
       "classroom_unknown": "Unknown classroom",
       "classroom_inactive": "Inactive classroom",
       "crosses_local_date": "Crosses midnight"
+    },
+    "sessionRequest": {
+      "review": "Review",
+      "reviewFor": "Review {{name}}",
+      "openReview": "Open the review page"
     }
   },
   "users": {
@@ -1385,7 +1390,9 @@
       "scheduling_offer_expired_substitution": "The substitution for {{original_tutor_name}} ({{subject_name}}, {{starts_at}}) offered to {{tutor_name}} expired without an answer. {{original_tutor_name}} still teaches it.",
       "scheduling_tutor_substituted": "Your class on {{starts_at}} is now taught by a substitute.",
       "scheduling_session_tutor_changed": "A class on {{starts_at}} has a new tutor.",
-      "scheduling_session_cancelled": "A class on {{starts_at}} is cancelled."
+      "scheduling_session_cancelled": "A class on {{starts_at}} is cancelled.",
+      "scheduling_session_request_confirmed": "Your session request for {{student_name}} ({{subject_name}}, {{starts_at}}) was confirmed.",
+      "scheduling_session_request_rejected": "Your session request for {{student_name}} ({{subject_name}}, {{starts_at}}) was rejected. See the reason in your session requests."
     }
   },
   "scheduling": {
@@ -1871,6 +1878,51 @@
       },
       "banner": "Cancelled",
       "bannerWhen": "Cancelled on {{when}}."
+    },
+    "requestReview": {
+      "title": "Review session request",
+      "summary": "Request",
+      "status": "Status",
+      "inactive": "{{name}} (inactive)",
+      "subjectInactive": "(inactive)",
+      "length": "Length",
+      "requestedBy": "Requested by",
+      "requestedOn": "{{name}}, {{when}}",
+      "note": "Note from the family",
+      "outcome": "Decision",
+      "confirmedText": "Confirmed: the session was created and offered to the tutor.",
+      "rejectedText": "Rejected.",
+      "reasonText": "Reason the family sees: {{reason}}",
+      "withdrawnText": "The family withdrew this request.",
+      "startedHelp": "The requested time has started, so the request can no longer be confirmed. You can still reject it.",
+      "openSession": "Open the session",
+      "confirmedTo": "Request confirmed. The session was offered to {{tutor}}.",
+      "confirm": {
+        "heading": "Confirm with a tutor",
+        "intro": "Choose a qualified tutor and, if needed, a classroom. The session is created at the requested time with every rule checked again and offered to the tutor, who accepts or declines. The family is notified.",
+        "submit": "Confirm request",
+        "submitting": "Confirming…",
+        "overrideAction": "Override and confirm",
+        "overrideDescription": "The session is created despite these rules. The reason is saved in the audit log."
+      },
+      "reject": {
+        "heading": "Reject",
+        "intro": "Reject the request with a reason; the family sees it in their requests.",
+        "open": "Reject request",
+        "title": "Reject the session request",
+        "description": "The family will see this reason.",
+        "reason": "Reason",
+        "reasonRequired": "Give a reason.",
+        "reasonTooLong": "Use at most 1000 characters.",
+        "keep": "Keep the request",
+        "submit": "Reject request",
+        "submitting": "Rejecting…"
+      },
+      "stale": {
+        "notPending": "This request was already decided or withdrawn. The page is updated.",
+        "started": "The requested time has started, so the request can’t be confirmed. The page is updated.",
+        "changed": "This request changed since you loaded it. The page is updated."
+      }
     }
   },
   "courses": {
@@ -2286,7 +2338,9 @@
       "withdrawFor": "Withdraw {{request}}",
       "withdrawTitle": "Withdraw this request?",
       "withdrawBody": "The center will no longer review {{request}}. You can request another time later.",
-      "withdrawn": "Withdrawn: {{request}}."
+      "withdrawn": "Withdrawn: {{request}}.",
+      "reason": "Reason",
+      "confirmedHelp": "Confirmed — the center scheduled this session."
     }
   }
 }

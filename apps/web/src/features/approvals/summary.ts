@@ -1,3 +1,4 @@
+import { ApiError } from '@/app/api';
 import type { TFunction } from 'i18next';
 import type { RoleCode } from '@/features/auth/session';
 import { isConflictCode } from '@/features/scheduling/create/rules';
@@ -210,6 +211,49 @@ export function sessionRequestSubject(
     isSessionRequest(item.subject)
     ? item.subject
     : null;
+}
+
+/**
+ * The staff review page of a pending session request (#60 H2): the inbox
+ * shows a "Review" link instead of Approve / Reject, which can't carry the
+ * tutor. Null for another type, a decided item or an older summary without
+ * the request id.
+ */
+export function sessionRequestReviewLink(
+  item: ApprovalRequestItem,
+): string | null {
+  if (
+    !sessionRequestSubject(item) ||
+    item.allowed_actions.length === 0 ||
+    typeof item.subject.session_request_id !== 'string'
+  ) {
+    return null;
+  }
+  return reviewPath(item.subject.session_request_id);
+}
+
+/** The review page named by `409 session_request_review_route_required`. */
+export function reviewLinkOf(error: unknown): string | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.code !== 'session_request_review_route_required'
+  ) {
+    return null;
+  }
+  const details: unknown = error.problem?.details;
+  const path =
+    typeof details === 'object' && details !== null
+      ? (details as Record<string, unknown>).review_path
+      : undefined;
+  if (typeof path === 'string' && path.startsWith('/schedule/requests/')) {
+    return path;
+  }
+  return null;
+}
+
+/** The review page of a session request (#60 H1). */
+export function reviewPath(requestId: string): string {
+  return `/schedule/requests/${encodeURIComponent(requestId)}`;
 }
 
 /** Formats an instant for a summary (the center zone, from useFormatters). */

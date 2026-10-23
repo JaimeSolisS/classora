@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import {
   approvalSummary,
   reassignmentSubject,
   registrationSubject,
+  reviewLinkOf,
 } from './summary';
 
 // The confirmation of a decision (#40 F4; moved from #169 G3). Approve asks
@@ -33,6 +35,8 @@ import {
 // approval_transition_invalid) show in the dialog's alert region. Without
 // any API call: the page passes `onConfirm`, stories pass a stub. While the
 // decision is sent the confirm button is disabled and shows the Spinner.
+// A `409 session_request_review_route_required` (#60 H2: a page loaded
+// before the inbox showed "Review") adds the link to the review page.
 
 export const REASON_MAX_LENGTH = 1000;
 
@@ -229,6 +233,14 @@ function DecisionDialogContent({
         </div>
       ) : null}
       {error ? <ErrorAlert error={error} /> : null}
+      {reviewLinkOf(error) ? (
+        <Link
+          to={reviewLinkOf(error) ?? ''}
+          className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {t('approvals.sessionRequest.openReview')}
+        </Link>
+      ) : null}
       <DialogFooter>
         <Button
           type="button"

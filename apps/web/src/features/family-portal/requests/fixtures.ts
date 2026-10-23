@@ -184,6 +184,7 @@ const BASE_REQUEST: SessionRequestItem = {
   created_at: '2031-01-05T12:00:00Z',
   resolved_at: null,
   version: 1,
+  rejection_reason: null,
 };
 
 export const PENDING_REQUEST = BASE_REQUEST;
@@ -225,4 +226,5 @@ export const REJECTED_REQUEST: SessionRequestItem = {
   requested_by_me: false,
   can_withdraw: false,
   resolved_at: '2031-01-05T15:00:00Z',
+  rejection_reason: 'No hay tutores disponibles ese día.',
 };

@@ -25,6 +25,7 @@ import {
   namedActionLabelKey,
   reassignmentLink,
   reassignmentSubject,
+  sessionRequestReviewLink,
   typeLabel,
 } from './summary';
 
@@ -212,6 +213,19 @@ function ActionButtons({
     (instant) => formatInstant(instant, 'dateTime'),
     (localDate) => formatLocalDate(localDate),
   );
+  const review = sessionRequestReviewLink(item);
+  if (review) {
+    // #60 H2: a session request is decided on its review page.
+    return (
+      <Link
+        to={review}
+        aria-label={t('approvals.sessionRequest.reviewFor', { name })}
+        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        {t('approvals.sessionRequest.review')}
+      </Link>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-2">
       {item.allowed_actions.map((action) => (

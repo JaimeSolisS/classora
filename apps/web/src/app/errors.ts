@@ -122,7 +122,11 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['session_request_overlap', 'session_request_overlap'],
   ['session_request_limit_reached', 'session_request_limit_reached'],
   ['session_request_not_pending', 'session_request_not_pending'],
-  ['session_request_review_unavailable', 'session_request_review_unavailable'],
+  ['session_request_started', 'session_request_started'],
+  [
+    'session_request_review_route_required',
+    'session_request_review_route_required',
+  ],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

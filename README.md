@@ -195,7 +195,9 @@ unless a bullet says otherwise.
   and sessions.
 - Guardians and students see available times for individual sessions and
   request one; requests stay pending for staff review and never book a slot
-  by themselves.
+  by themselves. Staff confirm a request by choosing the tutor (the session
+  is offered to that tutor) or reject it with a reason, and the requester is
+  notified.
 
 **Courses**
 
@@ -212,9 +214,10 @@ unless a bullet says otherwise.
 
 - The Approvals page is the shared list of requests waiting for a decision,
   filtered by status, type and assignee. It holds account requests, tutor
-  qualification requests and sessions to reassign after a tutor declined or
-  didn't answer an offer; staff approve or reject them. Approving an account
-  request never enrolls anyone.
+  qualification requests, sessions to reassign after a tutor declined or
+  didn't answer an offer, and families' session requests (reviewed on their
+  own page); staff approve or reject them. Approving an account request
+  never enrolls anyone.
 
 **Notifications**
 
