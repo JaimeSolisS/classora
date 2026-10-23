@@ -6,6 +6,10 @@ compares their JSON keys to the expected sets): no tutor id, name or count,
 no class session id, no classroom, no other student and never the
 requester's name (only ``requested_by_me``).
 
+#60 adds ``rejection_reason`` to the family detail (E5) and the **staff**
+models of the review (:class:`SessionRequestReview`, the confirm and reject
+bodies): staff-only, so they are outside the family allow-list.
+
 Times are instants with an offset (ADR-0004); dates are local dates in the
 center zone.
 """
@@ -14,9 +18,21 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+)
+from pydantic_core import PydanticCustomError
 
-from app.modules.scheduling.models import SESSION_REQUEST_NOTE_MAX_LENGTH
+from app.modules.scheduling.models import (
+    SESSION_REQUEST_NOTE_MAX_LENGTH,
+    SESSION_REQUEST_REJECTION_REASON_MAX_LENGTH,
+)
+from app.modules.scheduling.schemas import ClassSessionCreated, SessionOverride
 
 type SessionRequestDuration = Literal[30, 45, 60, 90, 120]
 type SessionRequestStatus = Literal["pending", "confirmed", "rejected", "withdrawn"]
@@ -154,7 +170,125 @@ class SessionRequestDetail(_Closed):
     created_at: datetime
     resolved_at: datetime | None
     version: int
+    rejection_reason: str | None = Field(
+        description="Why the center rejected it (only when `rejected`; #60 E5)."
+    )
 
 
 class SessionRequestItem(SessionRequestDetail):
     """A list item: the same members as the detail."""
+
+
+# --- Staff review (#60 B, C, D) ------------------------------------------------------
+
+
+class SessionRequestReviewStudent(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    is_active: bool
+
+
+class SessionRequestReviewSubject(BaseModel):
+    id: uuid.UUID
+    name: str
+    education_level_name: str
+    is_active: bool = Field(description="False when the subject or its level is.")
+
+
+class SessionRequestRequester(BaseModel):
+    id: uuid.UUID
+    display_name: str
+
+
+class SessionRequestReview(BaseModel):
+    """A session request as staff review it (#60 B2; ``schedule.manage``)."""
+
+    id: uuid.UUID
+    status: SessionRequestStatus
+    version: int
+    created_at: datetime
+    resolved_at: datetime | None
+    student: SessionRequestReviewStudent
+    subject: SessionRequestReviewSubject
+    starts_at: datetime
+    ends_at: datetime
+    duration_minutes: int
+    note: str | None
+    requested_by: SessionRequestRequester
+    approval_request_id: uuid.UUID | None = Field(
+        description="The request's inbox item."
+    )
+    class_session_id: uuid.UUID | None = Field(
+        description="The session a confirmation created (only when `confirmed`)."
+    )
+    rejection_reason: str | None
+    can_decide: bool = Field(
+        description=(
+            "Pending and not yet started: it can be confirmed (a started one"
+            " can still be rejected)."
+        )
+    )
+
+
+class SessionRequestConfirm(BaseModel):
+    """``POST /api/v1/session-requests/{request_id}/confirm`` (#60 C1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    tutor_user_id: uuid.UUID = Field(
+        description="The qualified tutor the session is offered to (required)."
+    )
+    classroom_id: uuid.UUID | None = Field(
+        default=None, description="The classroom; null is no room."
+    )
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "An earlier deadline for the tutor's answer, after now and no later"
+            " than the default (#52). Null or absent: the default."
+        ),
+    )
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts with a reason (needs"
+            " schedule.override)."
+        ),
+    )
+
+
+def _check_rejection_reason(value: Any) -> Any:
+    # The #40 codes: an empty reason is "missing", a long one
+    # "string_too_long".
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    if not trimmed:
+        raise PydanticCustomError("missing", "Give a reason.")
+    if len(trimmed) > SESSION_REQUEST_REJECTION_REASON_MAX_LENGTH:
+        raise PydanticCustomError(
+            "string_too_long", "The reason can be at most 1000 characters long."
+        )
+    return trimmed
+
+
+class SessionRequestReject(BaseModel):
+    """``POST /api/v1/session-requests/{request_id}/reject`` (#60 D1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    reason: str = Field(
+        description="Why: 1-1000 characters, trimmed. The family sees it."
+    )
+
+    _reason = field_validator("reason", mode="before")(_check_rejection_reason)
+
+
+class SessionRequestConfirmed(BaseModel):
+    """The confirm's ``200`` (#60 C2 step 12): the confirmed request and the
+    session it created (``offered`` to the tutor, with #50's warnings)."""
+
+    request: SessionRequestReview
+    class_session: ClassSessionCreated

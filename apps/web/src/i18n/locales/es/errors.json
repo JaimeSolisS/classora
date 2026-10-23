@@ -141,8 +141,9 @@
   "session_request_limit_reached": "Este alumno ya tiene 5 solicitudes pendientes. Espera una respuesta, o retira una, antes de enviar otra.",
   "session_request_not_pending": "Esta solicitud ya no está pendiente. La lista se actualizó.",
   "session_request_changed": "Esta solicitud cambió desde que la cargaste. La lista se actualizó.",
-  "session_request_review_unavailable": "Las solicitudes de sesión todavía no se pueden decidir aquí.",
   "not_on_grid": "Empieza en punto o a la media hora.",
   "range_in_past": "Elige una primera fecha a partir de hoy.",
-  "range_too_far": "Elige fechas de hasta 60 días adelante."
+  "range_too_far": "Elige fechas de hasta 60 días adelante.",
+  "session_request_started": "La hora solicitada ya comenzó, así que no se puede confirmar. Rechaza la solicitud.",
+  "session_request_review_route_required": "Las solicitudes de sesión se confirman o rechazan en su página de revisión."
 }

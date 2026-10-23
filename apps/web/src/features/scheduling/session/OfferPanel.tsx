@@ -64,6 +64,12 @@ import { SeriesConflictList } from './SeriesConflictList';
 // override dialog, plus a required reason (1-1000 characters, with a
 // counter), with its own labels; the session stays with its tutor until the
 // substitute accepts.
+//
+// `variant="confirm"` (#60 H1) confirms a family's session request on its
+// review page: the same picker, suggestions (the #51 tutors for the
+// request's slot), deadline, conflict panel and override dialog, plus an
+// optional classroom (`classrooms`), with its own labels. A 422 on the
+// student or the subject (inactive since the request) shows its message.
 
 export interface OfferPanelProps<T = AssignmentOfferCreated> {
   tutors: readonly Option[];
@@ -77,8 +83,10 @@ export interface OfferPanelProps<T = AssignmentOfferCreated> {
   series?: {
     onSubmit: (values: OfferValues) => Promise<T>;
   };
-  /** "offer" (#52) or "substitute" (#55). */
-  variant?: 'offer' | 'substitute';
+  /** "offer" (#52), "substitute" (#55) or "confirm" (#60). */
+  variant?: 'offer' | 'substitute' | 'confirm';
+  /** The classroom choice (#60: the request confirmation). */
+  classrooms?: readonly Option[];
   /** Stories. */
   initialValues?: OfferValues;
   initialConflicts?: SchedulingConflict[];
@@ -95,6 +103,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   onOffered,
   series,
   variant = 'offer',
+  classrooms,
   initialValues = EMPTY_OFFER,
   initialConflicts,
   initialScope = 'session',
@@ -102,27 +111,43 @@ export function OfferPanel<T = AssignmentOfferCreated>({
 }: OfferPanelProps<T>) {
   const { t } = useTranslation();
   const substitute = variant === 'substitute';
-  const labels = substitute
-    ? {
-        heading: t('scheduling.substitution.heading'),
-        intro: t('scheduling.substitution.intro'),
-        chooseTutor: t('scheduling.substitution.chooseTutor'),
-        tutor: t('scheduling.substitution.tutor'),
-        submit: t('scheduling.substitution.submit'),
-        submitting: t('scheduling.substitution.submitting'),
-        overrideAction: t('scheduling.substitution.overrideAction'),
-        overrideDescription: t('scheduling.substitution.overrideDescription'),
-      }
-    : {
-        heading: t('scheduling.offer.heading'),
-        intro: t('scheduling.offer.intro'),
-        chooseTutor: t('scheduling.offer.chooseTutor'),
-        tutor: t('scheduling.fields.tutor'),
-        submit: t('scheduling.offer.submit'),
-        submitting: t('scheduling.offer.submitting'),
-        overrideAction: t('scheduling.offer.overrideAction'),
-        overrideDescription: t('scheduling.offer.overrideDescription'),
-      };
+  const labels =
+    variant === 'confirm'
+      ? {
+          heading: t('scheduling.requestReview.confirm.heading'),
+          intro: t('scheduling.requestReview.confirm.intro'),
+          chooseTutor: t('scheduling.offer.chooseTutor'),
+          tutor: t('scheduling.fields.tutor'),
+          submit: t('scheduling.requestReview.confirm.submit'),
+          submitting: t('scheduling.requestReview.confirm.submitting'),
+          overrideAction: t('scheduling.requestReview.confirm.overrideAction'),
+          overrideDescription: t(
+            'scheduling.requestReview.confirm.overrideDescription',
+          ),
+        }
+      : substitute
+        ? {
+            heading: t('scheduling.substitution.heading'),
+            intro: t('scheduling.substitution.intro'),
+            chooseTutor: t('scheduling.substitution.chooseTutor'),
+            tutor: t('scheduling.substitution.tutor'),
+            submit: t('scheduling.substitution.submit'),
+            submitting: t('scheduling.substitution.submitting'),
+            overrideAction: t('scheduling.substitution.overrideAction'),
+            overrideDescription: t(
+              'scheduling.substitution.overrideDescription',
+            ),
+          }
+        : {
+            heading: t('scheduling.offer.heading'),
+            intro: t('scheduling.offer.intro'),
+            chooseTutor: t('scheduling.offer.chooseTutor'),
+            tutor: t('scheduling.fields.tutor'),
+            submit: t('scheduling.offer.submit'),
+            submitting: t('scheduling.offer.submitting'),
+            overrideAction: t('scheduling.offer.overrideAction'),
+            overrideDescription: t('scheduling.offer.overrideDescription'),
+          };
   const { t: tErrors } = useTranslation('errors');
   const id = useId();
   const headingId = `${id}-heading`;
@@ -162,6 +187,20 @@ export function OfferPanel<T = AssignmentOfferCreated>({
     return key.startsWith('errors:')
       ? tErrors(key.slice('errors:'.length) as 'validation_error')
       : t(key as 'scheduling.offer.validation.tutorRequired');
+  }
+
+  /** A 422 on a reference the form doesn't show (#60: the request's student
+   * or subject became inactive): its own message. */
+  function referenceMessage(error: unknown): string | undefined {
+    if (!(error instanceof ApiError)) {
+      return undefined;
+    }
+    const found = error.fieldErrors.find(
+      ({ code }) => code === 'student_inactive' || code === 'subject_inactive',
+    );
+    return found
+      ? tErrors(found.code as 'student_inactive' | 'subject_inactive')
+      : undefined;
   }
 
   function suggest() {
@@ -219,7 +258,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   }
 
   function focusFirst(found: OfferErrors) {
-    const first = (['tutor', 'reason', 'deadline'] as const).find(
+    const first = (['tutor', 'classroom', 'reason', 'deadline'] as const).find(
       (f) => found[f],
     );
     if (first) {
@@ -323,7 +362,17 @@ export function OfferPanel<T = AssignmentOfferCreated>({
       ) : null}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
-          <ConflictPanel conflicts={conflicts} />
+          {variant === 'confirm' ? (
+            <ConflictPanel
+              conflicts={conflicts}
+              heading={t('scheduling.requestReview.confirm.conflictsHeading', {
+                count: conflicts.length,
+              })}
+              hint={t('scheduling.requestReview.confirm.conflictsHint')}
+            />
+          ) : (
+            <ConflictPanel conflicts={conflicts} />
+          )}
           {action === 'override' ? (
             <div>
               <Button
@@ -359,7 +408,9 @@ export function OfferPanel<T = AssignmentOfferCreated>({
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      {failure ? <ErrorAlert error={failure} /> : null}
+      {failure ? (
+        <ErrorAlert error={failure} message={referenceMessage(failure)} />
+      ) : null}
       <form
         method="post"
         noValidate
@@ -441,6 +492,40 @@ export function OfferPanel<T = AssignmentOfferCreated>({
             <TutorSuggestions state={suggestions} onChoose={choose} />
           ) : null}
         </div>
+        {classrooms ? (
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor={fieldId('classroom')}
+              className="text-sm font-medium"
+            >
+              {t('scheduling.fields.classroom')}
+            </label>
+            <select
+              id={fieldId('classroom')}
+              className={SELECT_CLASS}
+              value={values.classroomId ?? ''}
+              aria-invalid={errors.classroom ? true : undefined}
+              aria-describedby={describedBy('classroom')}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  classroomId: event.target.value,
+                }))
+              }
+            >
+              <option value="">{t('scheduling.noClassroom')}</option>
+              {classrooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+            <FieldError
+              id={errorId('classroom')}
+              message={message(errors.classroom)}
+            />
+          </div>
+        ) : null}
         {substitute ? (
           <div className="flex flex-col gap-2">
             <label htmlFor={fieldId('reason')} className="text-sm font-medium">

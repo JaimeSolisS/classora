@@ -381,6 +381,11 @@
       "classroom_unknown": "Aula desconocida",
       "classroom_inactive": "Aula inactiva",
       "crosses_local_date": "Cruza la medianoche"
+    },
+    "sessionRequest": {
+      "review": "Revisar",
+      "reviewFor": "Revisar {{name}}",
+      "openReview": "Abrir la página de revisión"
     }
   },
   "users": {
@@ -1387,7 +1392,9 @@
       "scheduling_offer_expired_substitution": "La suplencia de {{original_tutor_name}} ({{subject_name}}, {{starts_at}}) ofrecida a {{tutor_name}} venció sin respuesta. {{original_tutor_name}} sigue impartiéndola.",
       "scheduling_tutor_substituted": "Tu clase del {{starts_at}} ahora la imparte un suplente.",
       "scheduling_session_tutor_changed": "Una clase del {{starts_at}} tiene un nuevo tutor.",
-      "scheduling_session_cancelled": "Una clase del {{starts_at}} se canceló."
+      "scheduling_session_cancelled": "Una clase del {{starts_at}} se canceló.",
+      "scheduling_session_request_confirmed": "Tu solicitud de sesión para {{student_name}} ({{subject_name}}, {{starts_at}}) fue confirmada.",
+      "scheduling_session_request_rejected": "Tu solicitud de sesión para {{student_name}} ({{subject_name}}, {{starts_at}}) fue rechazada. Consulta el motivo en tus solicitudes de sesión."
     }
   },
   "scheduling": {
@@ -1895,6 +1902,55 @@
       },
       "banner": "Cancelada",
       "bannerWhen": "Cancelada el {{when}}."
+    },
+    "requestReview": {
+      "title": "Revisar solicitud de sesión",
+      "summary": "Solicitud",
+      "status": "Estado",
+      "inactive": "{{name}} (inactivo)",
+      "subjectInactive": "(inactiva)",
+      "length": "Duración",
+      "requestedBy": "Solicitada por",
+      "requestedOn": "{{name}}, {{when}}",
+      "note": "Nota de la familia",
+      "outcome": "Decisión",
+      "confirmedText": "Confirmada: la sesión se creó y se ofreció al tutor.",
+      "rejectedText": "Rechazada.",
+      "reasonText": "Motivo que ve la familia: {{reason}}",
+      "withdrawnText": "La familia retiró esta solicitud.",
+      "startedHelp": "La hora solicitada ya comenzó, así que la solicitud ya no se puede confirmar. Aún puedes rechazarla.",
+      "openSession": "Abrir la sesión",
+      "confirmedTo": "Solicitud confirmada. La sesión se ofreció a {{tutor}}.",
+      "confirm": {
+        "heading": "Confirmar con un tutor",
+        "intro": "Elige un tutor calificado y, si hace falta, un salón. La sesión se crea a la hora solicitada revisando de nuevo todas las reglas y se ofrece al tutor, que la acepta o la rechaza. La familia recibe un aviso.",
+        "submit": "Confirmar solicitud",
+        "submitting": "Confirmando…",
+        "overrideAction": "Omitir reglas y confirmar",
+        "overrideDescription": "La sesión se crea a pesar de estas reglas. El motivo se guarda en el registro de auditoría.",
+        "conflictsHeading_one": "La solicitud no se puede confirmar: 1 conflicto",
+        "conflictsHeading_many": "La solicitud no se puede confirmar: {{count}} conflictos",
+        "conflictsHeading_other": "La solicitud no se puede confirmar: {{count}} conflictos",
+        "conflictsHint": "Elige otro tutor o salón, omite las reglas que se pueden omitir o rechaza la solicitud; no se guardó nada."
+      },
+      "reject": {
+        "heading": "Rechazar",
+        "intro": "Rechaza la solicitud con un motivo; la familia lo ve en sus solicitudes.",
+        "open": "Rechazar solicitud",
+        "title": "Rechazar la solicitud de sesión",
+        "description": "La familia verá este motivo.",
+        "reason": "Motivo",
+        "reasonRequired": "Indica un motivo.",
+        "reasonTooLong": "Usa como máximo 1000 caracteres.",
+        "keep": "Conservar la solicitud",
+        "submit": "Rechazar solicitud",
+        "submitting": "Rechazando…"
+      },
+      "stale": {
+        "notPending": "Esta solicitud ya se decidió o se retiró. La página se actualizó.",
+        "started": "La hora solicitada ya comenzó, así que la solicitud no se puede confirmar. La página se actualizó.",
+        "changed": "Esta solicitud cambió desde que la cargaste. La página se actualizó."
+      }
     }
   },
   "courses": {
@@ -2324,7 +2380,9 @@
       "withdrawFor": "Retirar {{request}}",
       "withdrawTitle": "¿Retirar esta solicitud?",
       "withdrawBody": "El centro ya no revisará {{request}}. Puedes solicitar otro horario más adelante.",
-      "withdrawn": "Retirada: {{request}}."
+      "withdrawn": "Retirada: {{request}}.",
+      "reason": "Motivo",
+      "confirmedHelp": "Confirmada: el centro programó esta sesión."
     }
   }
 }

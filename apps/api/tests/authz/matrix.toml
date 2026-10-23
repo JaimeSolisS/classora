@@ -948,6 +948,33 @@ access = "authenticated"
 
 [[route]]
 method = "POST"
+path = "/api/v1/session-requests/{request_id}/confirm"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 C: the minimal body gets 422 for every allowed role (no tutor); the
+# 200, 404 and 409 cases are in tests/integration/test_session_request_review.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/reject"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 D: the minimal body gets 422 for every allowed role (no reason).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests/{request_id}/review"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 B: the placeholder id is no request: 404 for every allowed role.
+
+[[route]]
+method = "POST"
 path = "/api/v1/session-requests/{request_id}/withdraw"
 access = "authenticated"
 # #59 D3: the minimal body gets 422 for every role (then 404 for the

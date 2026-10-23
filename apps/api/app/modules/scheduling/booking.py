@@ -306,19 +306,24 @@ def candidate_of(body: ClassSessionSlot) -> SlotCandidate:
 
 
 async def find_conflicts(
-    session: AsyncSession, body: ClassSessionSlot, zone: str
+    session: AsyncSession,
+    body: ClassSessionSlot,
+    zone: str,
+    *,
+    notice_reference_at: datetime | None = None,
 ) -> list[Conflict]:
     """Every hard and soft conflict of the body, sorted. The caller holds the
     student locks and the zone ``FOR SHARE``, and has validated the bounds
     and the references. The one shared collector
     (:func:`~app.modules.scheduling.checks.collect_conflicts`, #53 D1) with
-    the booking notice taken from now and ``center_closed`` checked (one-off
-    sessions)."""
+    ``center_closed`` checked (one-off sessions) and the booking notice
+    measured from ``notice_reference_at`` with the policy in force then
+    (default: now; #60 E3 passes a session request's ``created_at``)."""
     return await collect_conflicts(
         session,
         candidate_of(body),
         zone=zone,
-        now=clock.now(),
+        now=clock.now() if notice_reference_at is None else notice_reference_at,
         check_center_closed=True,
     )
 
@@ -439,18 +444,27 @@ def respond_by_error() -> FieldError:
 
 
 async def create_class_session(
-    session: AsyncSession, body: ClassSessionCreate, *, actor_id: uuid.UUID
+    session: AsyncSession,
+    body: ClassSessionCreate,
+    *,
+    actor_id: uuid.UUID,
+    notice_reference_at: datetime | None = None,
 ) -> ClassSessionCreated:
     """``POST /api/v1/class-sessions``: see the module docstring for the
     order. ``actor_id`` is the signed-in user (the override's actor); the
-    route has already checked ``schedule.override`` for an ``override``."""
+    route has already checked ``schedule.override`` for an ``override``.
+    ``notice_reference_at`` (#60 E3) is the instant the booking notice is
+    measured from (default now): a confirmed session request passes its
+    ``created_at``; every other check stays live."""
     await lock_students(session, [body.student_id])
     zone = await administration.get_center_time_zone(session, for_share=True)
     validate_bounds(body, zone)
     refs = await references(session, body)
     offered_at = clock.now()
     respond_by = await _respond_by(session, body, offered_at)
-    conflicts = await find_conflicts(session, body, zone)
+    conflicts = await find_conflicts(
+        session, body, zone, notice_reference_at=notice_reference_at
+    )
     decision = evaluate_override(conflicts, body.override)
     if not decision.allowed:
         raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])

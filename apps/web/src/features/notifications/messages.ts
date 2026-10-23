@@ -129,6 +129,11 @@ function ownQualifications(
   return `/tutors/${encodeURIComponent(recipient.userId)}#qualifications`;
 }
 
+/** The family's session requests (#60 F3). */
+function myRequests(): string {
+  return '/requests';
+}
+
 /** The tutor's offers (#52 F3). */
 function myOffers(): string {
   return '/offers';
@@ -172,6 +177,9 @@ export const NOTIFICATION_LINKS: Readonly<
   'scheduling.offer_received': myOffers,
   'scheduling.offer_declined': offeredSession,
   'scheduling.offer_expired': offeredSession,
+  // #60 F3: the requester's decided request, in My requests.
+  'scheduling.session_request_confirmed': myRequests,
+  'scheduling.session_request_rejected': myRequests,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

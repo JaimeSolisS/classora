@@ -403,25 +403,43 @@ class SessionRequestLimitReachedError(AppError):
 
 
 class SessionRequestNotPendingError(AppError):
-    """``409 session_request_not_pending`` (#59 D3): the request was already
-    confirmed, rejected or withdrawn."""
+    """``409 session_request_not_pending`` (#59 D3, #60 C2/D2): the request
+    was already confirmed, rejected or withdrawn. The family's withdraw
+    keeps the closed body (#59 S3); the staff routes add ``details.status``
+    (#60)."""
 
     status = 409
     code = "session_request_not_pending"
     detail = "This request is no longer pending."
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, request_status: str | None = None) -> None:
+        super().__init__(
+            details=None if request_status is None else {"status": request_status}
+        )
 
 
-class SessionRequestReviewUnavailableError(AppError):
-    """``409 session_request_review_unavailable`` (#59 E2): the inbox can't
-    approve or reject a session request yet. #60 replaces the handler's
-    ``approve`` and ``reject`` (and removes this error)."""
+class SessionRequestStartedError(AppError):
+    """``409 session_request_started`` (#60 C2 step 7): the requested time
+    has already begun, so nobody could accept the offer; reject it
+    instead."""
 
     status = 409
-    code = "session_request_review_unavailable"
-    detail = "Session requests can't be decided from the inbox yet."
+    code = "session_request_started"
+    detail = "The requested time has already started; reject the request instead."
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class SessionRequestReviewRouteRequiredError(AppError):
+    """``409 session_request_review_route_required`` (#60 E1, E2): the inbox's
+    generic approve or reject can't decide a session request (it can't carry
+    the tutor); ``details.review_path`` is the staff review page. The item
+    stays ``pending``."""
+
+    status = 409
+    code = "session_request_review_route_required"
+    detail = "Review this session request on its own page."
+
+    def __init__(self, review_path: str) -> None:
+        super().__init__(details={"review_path": review_path})

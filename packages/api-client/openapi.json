@@ -11820,6 +11820,268 @@
           }
         }
       }
+    },
+    "/api/v1/session-requests/{request_id}/review": {
+      "get": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Get Session Request Review",
+        "description": "A session request as staff review it: the student, the subject, the\nrequested time, the requester and the note, its inbox item and, once\ndecided, the created session or the rejection reason. `can_decide` is\ntrue while it is pending and its time hasn't started.",
+        "operationId": "get_session_request_review_api_v1_session_requests__request_id__review_get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session request (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session-requests/{request_id}/confirm": {
+      "post": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Confirm Session Request",
+        "description": "Confirm a pending request by choosing a qualified tutor (and\noptionally a room). The session is created through the same checks as\nscheduling one by hand, at the requested time, and **offered** to the\ntutor (who accepts or declines); the booking notice counts from when the\nfamily made the request. The request becomes `confirmed` (it stays so\nif the tutor later declines), its inbox item is approved and the\nrequester is notified.",
+        "operationId": "confirm_session_request_api_v1_session_requests__request_id__confirm_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequestConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestConfirmed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session request (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing is created and the request stays pending. The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending, details.status). The requested time has started (session_request_started); the session breaks scheduling rules now (scheduling_conflict, `conflicts` lists every one: a hard conflict, or a soft one the `override` doesn't list, refuses).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session-requests/{request_id}/reject": {
+      "post": {
+        "tags": [
+          "session-requests"
+        ],
+        "summary": "Reject Session Request",
+        "description": "Reject a pending request with a reason. The family sees the reason\nin their requests (not in the notification); the inbox item is rejected\nwith it and the student's pending limit is freed. Allowed after the\nrequested time has started.",
+        "operationId": "reject_session_request_api_v1_session_requests__request_id__reject_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequestReject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRequestReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session request (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending, details.status).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -20713,6 +20975,83 @@
         "title": "SessionParticipant",
         "description": "A student of the session."
       },
+      "SessionRequestConfirm": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id",
+            "description": "The qualified tutor the session is offered to (required)."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "An earlier deadline for the tutor's answer, after now and no later than the default (#52). Null or absent: the default."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "tutor_user_id"
+        ],
+        "title": "SessionRequestConfirm",
+        "description": "``POST /api/v1/session-requests/{request_id}/confirm`` (#60 C1)."
+      },
+      "SessionRequestConfirmed": {
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/SessionRequestReview"
+          },
+          "class_session": {
+            "$ref": "#/components/schemas/ClassSessionCreated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "class_session"
+        ],
+        "title": "SessionRequestConfirmed",
+        "description": "The confirm's ``200`` (#60 C2 step 12): the confirmed request and the\nsession it created (``offered`` to the tutor, with #50's warnings)."
+      },
       "SessionRequestCreate": {
         "properties": {
           "student_id": {
@@ -20828,6 +21167,18 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason",
+            "description": "Why the center rejected it (only when `rejected`; #60 E5)."
           }
         },
         "additionalProperties": false,
@@ -20845,7 +21196,8 @@
           "can_withdraw",
           "created_at",
           "resolved_at",
-          "version"
+          "version",
+          "rejection_reason"
         ],
         "title": "SessionRequestDetail",
         "description": "A request as a family sees it (#59 D2; S3 allow-list)."
@@ -20930,6 +21282,18 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason",
+            "description": "Why the center rejected it (only when `rejected`; #60 E5)."
           }
         },
         "additionalProperties": false,
@@ -20947,10 +21311,236 @@
           "can_withdraw",
           "created_at",
           "resolved_at",
-          "version"
+          "version",
+          "rejection_reason"
         ],
         "title": "SessionRequestItem",
         "description": "A list item: the same members as the detail."
+      },
+      "SessionRequestReject": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why: 1-1000 characters, trimmed. The family sees it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "SessionRequestReject",
+        "description": "``POST /api/v1/session-requests/{request_id}/reject`` (#60 D1)."
+      },
+      "SessionRequestRequester": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "SessionRequestRequester"
+      },
+      "SessionRequestReview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionRequestStatus"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "student": {
+            "$ref": "#/components/schemas/SessionRequestReviewStudent"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionRequestReviewSubject"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "requested_by": {
+            "$ref": "#/components/schemas/SessionRequestRequester"
+          },
+          "approval_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Request Id",
+            "description": "The request's inbox item."
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id",
+            "description": "The session a confirmation created (only when `confirmed`)."
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "can_decide": {
+            "type": "boolean",
+            "title": "Can Decide",
+            "description": "Pending and not yet started: it can be confirmed (a started one can still be rejected)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "version",
+          "created_at",
+          "resolved_at",
+          "student",
+          "subject",
+          "starts_at",
+          "ends_at",
+          "duration_minutes",
+          "note",
+          "requested_by",
+          "approval_request_id",
+          "class_session_id",
+          "rejection_reason",
+          "can_decide"
+        ],
+        "title": "SessionRequestReview",
+        "description": "A session request as staff review it (#60 B2; ``schedule.manage``)."
+      },
+      "SessionRequestReviewStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "is_active"
+        ],
+        "title": "SessionRequestReviewStudent"
+      },
+      "SessionRequestReviewSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "False when the subject or its level is."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name",
+          "is_active"
+        ],
+        "title": "SessionRequestReviewSubject"
       },
       "SessionRequestStatus": {
         "type": "string",

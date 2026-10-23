@@ -137,8 +137,9 @@ Codes in use today:
 | `slot_unavailable` | 409 | `POST /api/v1/session-requests` for a time that no longer passes the slot checks. Opaque on purpose: no reason, no `conflicts` (see Session requests). |
 | `session_request_overlap` | 409 | `POST /api/v1/session-requests` while the student has a `pending` request at an overlapping time (see Session requests). |
 | `session_request_limit_reached` | 409 | `POST /api/v1/session-requests` while the student already has 5 `pending` requests (see Session requests). |
-| `session_request_not_pending` | 409 | Withdrawing a session request that was already confirmed, rejected or withdrawn (see Session requests). |
-| `session_request_review_unavailable` | 409 | Approving or rejecting a `scheduling.session_request` inbox item before M4-15 (#60) adds the review; the item stays pending (see Session requests). |
+| `session_request_not_pending` | 409 | Withdrawing, confirming or rejecting a session request that was already confirmed, rejected or withdrawn. The staff routes add `details.status`; the family's withdraw body stays closed (see Session requests). |
+| `session_request_started` | 409 | `POST /api/v1/session-requests/{id}/confirm` once the requested time has started (`starts_at <= now`); reject it instead (M4-15, see Session requests). |
+| `session_request_review_route_required` | 409 | The inbox's generic approve or reject of a `scheduling.session_request` item whose request the review routes haven't decided; `details.review_path` is the staff review page (`/schedule/requests/<id>`). The item stays pending (M4-15, see Session requests). |
 | `not_on_grid` | 422 | A session request whose local start isn't on the hour or the half hour (center zone); on `["body","starts_at"]`. |
 | `range_in_past` / `range_too_far` | 422 | Available slots from a date before the center's today (`["query","from"]`) or to a date more than 60 days ahead (`["query","to"]`). |
 | `respond_by_invalid` | 422 | An offer deadline that is not after now or is later than the default (the policy's response time, never after the start); the field error is on `["body","respond_by"]` (see Assignment offers). |
@@ -784,6 +785,9 @@ Class sessions and Class series; no link yet); `scheduling.tutor_substituted`,
 never the reason or a tutor's name; no link until #67). A substitution
 offer's `scheduling.offer_received` / `_declined` / `_expired` params add
 `kind = "substitution"` and `original_tutor_name`.
+`scheduling.session_request_confirmed` and `_rejected` `{session_request_id,
+student_name, subject_name, starts_at}` (#60, see Session requests; to the
+requester only; never the reason).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -3286,7 +3290,11 @@ W2.1-W2.2; ADR-0005 D1, D2, D9; ADR-0007 D17; ADR-0008 amendment) in
 `requests_policy.py`: the family record policy; `family_slots.py`: the
 pure slot rules; `request_approval.py`: the inbox type;
 `requests_router.py`: the routes). The web pages are `/requests` and
-`/requests/new`. M4-15 (#60) adds the staff review.
+`/requests/new`. M4-15 (#60) adds the staff review
+(`scheduling/request_review.py`, the workflow
+`app/workflows/confirm_session_request.py` and its routes in
+`app/workflows/session_requests_router.py`; web page
+`/schedule/requests/:id`).
 
 A guardian (for a linked child) or a student (for themselves) sees the free
 times for an **individual** session of a subject and length, and requests
@@ -3301,9 +3309,14 @@ unaffected.
 | `GET /api/v1/session-requests` | `authenticated()` + record policy | `?student_id&status=pending\|confirmed\|rejected\|withdrawn\|all` (default `all`), the #21 offset page `{items, total, limit, offset}` (`limit` 1-100, default 25; `offset` from 0); newest first; at most 5 statements. |
 | `GET /api/v1/session-requests/{request_id}` | `authenticated()` + record policy | `SessionRequestDetail`. |
 | `POST /api/v1/session-requests/{request_id}/withdraw` | `authenticated()` + record policy + the requester | `{version}`; `200` with `SessionRequestDetail`. |
+| `GET /api/v1/session-requests/{request_id}/review` | `require("schedule.manage")` | Staff view; `200` with `SessionRequestReview`; at most 6 statements (M4-15). |
+| `POST /api/v1/session-requests/{request_id}/confirm` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{version, tutor_user_id, classroom_id?, respond_by?, override?}`; `200` with `{request: SessionRequestReview, class_session: ClassSessionCreated}` (M4-15). |
+| `POST /api/v1/session-requests/{request_id}/reject` | `require("schedule.manage")` | `{version, reason}`; `200` with `SessionRequestReview` (M4-15). |
 
-There is no permission (ADR-0005 D9: families reach their schedules through
-record policies).
+The family routes need no permission (ADR-0005 D9: families reach their
+schedules through record policies); the three staff review routes need
+`schedule.manage` (Owner, Administrator; ADR-0005 D9 "review session …
+requests"), so callers without it get `403 permission_denied`.
 
 **Record policy.** A caller may act for a student when they hold
 `guardian` and the student is linked to their **active** guardian profile
@@ -3357,16 +3370,71 @@ request frees the student's cap and time.
 {id, display_name}`, `subject {id, name, education_level_name}`,
 `starts_at`, `ends_at`, `duration_minutes`, `status`, `note`,
 `requested_by_me`, `can_withdraw` (the requester, while `pending`),
-`created_at`, `resolved_at`, `version`. Family responses are closed
-allow-lists: never a tutor, room, session, another student or the
-requester's name, and the `409` bodies carry no `conflicts` or `details`.
+`created_at`, `resolved_at`, `version`, `rejection_reason` (only when
+`rejected`, M4-15). Family responses are closed allow-lists: never a tutor,
+room, session, another student or the requester's name, and the `409`
+bodies carry no `conflicts` or `details`.
+
+**Staff review (M4-15, #60; spec W2.3-W2.4).** `SessionRequestReview`:
+`id`, `status`, `version`, `created_at`, `resolved_at`, `student {id,
+display_name, is_active}`, `subject {id, name, education_level_name,
+is_active}`, `starts_at`, `ends_at`, `duration_minutes`, `note`,
+`requested_by {id, display_name}`, `approval_request_id`,
+`class_session_id` (when `confirmed`), `rejection_reason` (when
+`rejected`), `can_decide` (`pending` and not started). Review order: `401`
+/ `403` → `404` → `200`.
+
+**Confirm order** (one Unit of Work): `401` / `403` (`schedule.manage`) →
+`422` schema (`tutor_user_id` is required: a request is never confirmed
+unassigned) → `403 permission_denied` for an `override` without
+`schedule.override` → `404` → the student lock → the zone `FOR SHARE` → the
+request `FOR UPDATE` → `409 version_conflict` → `409
+session_request_not_pending` (`details.status`) → `409
+session_request_started` → the **Class sessions create path** for the
+request's student, subject and time with the chosen tutor and room (its
+`422` references, every conflict, the override and the `EXCLUDE` race; the
+`409` / `422` bodies pass through unchanged and the request stays
+`pending`) → the request `confirmed` with `class_session_id` and
+`resolved_at` → its inbox item `approved` (through the #40 core) → the
+requester's notification → `200`. **The booking notice is measured from
+the request's `created_at`**, with the scheduling policy in force then (the
+family met it when asking); every other check runs at confirmation time.
+**The session is `offered`** to the chosen tutor (one `pending` offer,
+`offered_by` the confirming user, default `respond_by` as for Class
+sessions, the tutor's `scheduling.offer_received`); a later decline or
+expiry follows Assignment offers (`unassigned` plus a reassignment item)
+and the request **stays `confirmed`**. Lock order: students → zone →
+request → inbox item. M6-06 adds the session's charge in this Unit of
+Work.
+
+**Reject order:** `401` / `403` → `422` (`reason` trimmed, 1-1000:
+`missing` / `string_too_long`) → the request `FOR UPDATE` → `404` → `409
+version_conflict` → `409 session_request_not_pending` → `rejected` with
+`rejection_reason` and `resolved_at` → its inbox item `rejected` with the
+same reason → the requester's notification → `200`. Lock order: request →
+inbox item (as the withdraw). Rejecting after the requested time has
+started is allowed; it frees the student's pending cap. Pending requests
+are never expired automatically.
+
+**Notifications:** `scheduling.session_request_confirmed` and
+`scheduling.session_request_rejected`, params `{session_request_id,
+student_name, subject_name, starts_at}` (never a tutor, room, session id or
+the reason), to the **requester only**, and only while their account is
+active and they may still act for the student by the record policy above;
+otherwise none is sent and the decision still succeeds. Other guardians and
+the student see the status in their requests.
 
 **Inbox type** `scheduling.session_request`: reviewed by `schedule.manage`
 holders (Owner, Administrator), no request-changes, a rejection needs a
 reason; the summary is `{student_name, subject_name,
 education_level_name, starts_at, ends_at, duration_minutes, requested_by,
-note}`. Until M4-15 (#60), approve and reject answer `409
-session_request_review_unavailable` and the item stays pending.
+note, status, class_session_id, session_request_id}`. The generic approve and reject can't
+decide it (they carry no tutor): they succeed only for a request the review
+routes already confirmed or rejected, otherwise `409
+session_request_review_route_required` with `details.review_path` and the
+item stays pending. Its items list no `allowed_actions` (the inbox
+shows a "Review" link instead): a handler may set `inbox_decisions = False`
+for a type decided on its own page.
 
 **Limits and data.** `available_slots.user` 60 per 15 min and
 `session_request.user` 10 per hour, per signed-in user (see Rate limits).

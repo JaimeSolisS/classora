@@ -271,6 +271,17 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'schedule.view' },
           },
+          // #60 H1: the staff review of a family's session request
+          // (code-split; linked from the inbox's "Review").
+          {
+            path: 'schedule/requests/:requestId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/scheduling/request-review/RequestReviewPage')
+              ).RequestReviewPage,
+            }),
+            handle: { permission: 'schedule.manage' },
+          },
           // #52 H1: the tutor's own offers (the API filters by caller).
           {
             path: 'offers',

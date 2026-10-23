@@ -34,8 +34,17 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // "Request a session", chooses Física and 60 min, goes to that week and
 // sees 10:00 with no tutor name on the page, requests it with a note (the
 // success panel), finds it Pending in "My session requests", and the week
-// still offers 10:00, now as "Requested". The Owner's Approvals page lists
-// the session request. Both family pages get an axe scan.
+// still offers 10:00, now as "Requested". Both family pages get an axe
+// scan.
+//
+// #60 I5: the guardian also requests 11:00 the same day. The Owner opens
+// /approvals, follows "Review" on the 10:00 request, sees the tutor in
+// "Suggested tutors", chooses them and confirms: the success link opens the
+// session page, which shows Offered to that tutor (axe on the review page).
+// Then the Owner rejects 11:00 with a reason. The guardian reloads My
+// requests: 10:00 Confirmed, 11:00 Rejected with the reason, both
+// notifications in the bell, and no tutor name on the family pages. The
+// offered session doesn't block the revocation that follows (#198 E1).
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
@@ -53,6 +62,8 @@ const PARENT = 'e2e.requests.parent';
 const PARENT_NAME = 'E2E Madre Solicitudes';
 const PARENT_PASSWORD = 'e2e-requests-parent-password';
 const REQUEST_NOTE = 'Prefiere la sesión antes del mediodía.';
+// #60 I5: the reason the family sees for the 11:00 request.
+const REJECT_REASON = 'Ese día solo hay una tutora disponible.';
 const CENTER_ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // A seeded level (#32) that no spec deactivates.
@@ -64,9 +75,9 @@ const LEVEL = 'Secundaria';
 const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of (401|409)/;
 
-// Three browsers, two logins, two decisions, a session request and a
-// revocation: more than the default 30 s under machine load.
-const TEST_TIMEOUT_MS = 240_000;
+// Three browsers, two logins, two decisions, two session requests and their
+// review, and a revocation: more than the default 30 s under machine load.
+const TEST_TIMEOUT_MS = 300_000;
 
 function watchConsole(page: Page): string[] {
   const consoleErrors: string[] = [];
@@ -481,26 +492,170 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         }),
       ).toBeDisabled();
 
+      // #60 I5: a second request, 11:00 the same day (no note).
+      const lateSlotName = fill(common.sessionRequests.new.slot, {
+        start: '11:00',
+        end: '12:00',
+      });
+      await form
+        .getByRole('button', { name: lateSlotName, exact: true })
+        .click();
+      const second = parent.page.getByRole('dialog');
+      await second
+        .getByRole('button', { name: common.sessionRequests.confirm.send })
+        .click();
+      await expect(second).toBeHidden();
+
       await form
         .getByRole('status')
         .getByRole('link', { name: common.sessionRequests.new.viewRequests })
         .click();
       await expect(parent.page).toHaveURL('/requests');
-      const card = parent.page
+      const cards = parent.page
         .getByRole('main')
         .getByRole('listitem')
         .filter({ hasText: physics });
-      await expect(card).toContainText(common.sessionRequests.status.pending);
-      await expect(card).toContainText(REQUEST_NOTE);
+      await expect(cards).toHaveCount(2);
+      const early = cards.filter({ hasText: REQUEST_NOTE });
+      const late = cards.filter({ hasNotText: REQUEST_NOTE });
+      await expect(early).toContainText(common.sessionRequests.status.pending);
+      await expect(late).toContainText(common.sessionRequests.status.pending);
+      expect(await axeViolations(parent.page)).toEqual([]);
+
+      // The ids of both requests (newest first), through the guardian's API.
+      const mine = await api(parent.page, '/api/v1/session-requests');
+      expect(mine.status).toBe(200);
+      const items = (
+        mine.body as { items: { id: string; starts_at: string }[] }
+      ).items;
+      expect(items).toHaveLength(2);
+      const [lateId, earlyId] = [items[0]!.id, items[1]!.id];
+      expect(Date.parse(items[0]!.starts_at)).toBeGreaterThan(
+        Date.parse(items[1]!.starts_at),
+      );
+
+      // #60 I5: the Owner reviews 10:00 from the inbox and confirms it with
+      // the suggested tutor.
+      await page.goto('/approvals?type=scheduling.session_request');
+      const main = page.getByRole('main');
+      await expect(main).toContainText(studentName);
+      await main.locator(`a[href="/schedule/requests/${earlyId}"]`).click();
+      await expect(page).toHaveURL(`/schedule/requests/${earlyId}`);
+      await expect(
+        main.getByRole('heading', {
+          level: 1,
+          name: common.scheduling.requestReview.title,
+        }),
+      ).toBeVisible();
+      await expect(main).toContainText(REQUEST_NOTE);
+      await main
+        .getByRole('button', {
+          name: common.scheduling.tutorSuggestions.button,
+        })
+        .click();
+      const chooseTutor = main.getByRole('button', {
+        name: fill(common.scheduling.tutorSuggestions.chooseTutor, {
+          name: TUTOR_NAME,
+        }),
+      });
+      await expect(chooseTutor).toBeVisible();
+      expect(await axeViolations(page)).toEqual([]);
+      await chooseTutor.click();
+      await main
+        .getByRole('button', {
+          name: common.scheduling.requestReview.confirm.submit,
+        })
+        .click();
+      await expect(
+        main.getByRole('status').filter({
+          hasText: fill(common.scheduling.requestReview.confirmedTo, {
+            tutor: TUTOR_NAME,
+          }),
+        }),
+      ).toBeVisible();
+      await main
+        .getByRole('status')
+        .getByRole('link', {
+          name: common.scheduling.requestReview.openSession,
+        })
+        .click();
+      await expect(page).toHaveURL(/\/schedule\/sessions\/[0-9a-f-]{36}$/);
+      await expect(main).toContainText(common.scheduling.states.offered);
+      await expect(main).toContainText(TUTOR_NAME);
+
+      // The Owner rejects 11:00 with a reason the family will see.
+      await page.goto(`/schedule/requests/${lateId}`);
+      await main
+        .getByRole('button', {
+          name: common.scheduling.requestReview.reject.open,
+        })
+        .click();
+      const rejectDialog = page.getByRole('dialog');
+      await expect(rejectDialog).toContainText(
+        common.scheduling.requestReview.reject.description,
+      );
+      await rejectDialog
+        .getByLabel(common.scheduling.requestReview.reject.reason, {
+          exact: true,
+        })
+        .fill(REJECT_REASON);
+      await rejectDialog
+        .getByRole('button', {
+          name: common.scheduling.requestReview.reject.submit,
+        })
+        .click();
+      await expect(rejectDialog).toBeHidden();
+      await expect(main).toContainText(REJECT_REASON);
+      expect(await cspViolations(page)).toEqual([]);
+      expect(ownerErrors).toEqual([]);
+
+      // The guardian reloads: Confirmed and Rejected with the reason, both
+      // notifications, and never the tutor's name.
+      await parent.page.reload();
+      await expect(early).toContainText(
+        common.sessionRequests.status.confirmed,
+      );
+      await expect(early).toContainText(
+        common.sessionRequests.list.confirmedHelp,
+      );
+      await expect(late).toContainText(common.sessionRequests.status.rejected);
+      await expect(late).toContainText(REJECT_REASON);
+      const [unreadBefore, unreadAfter] =
+        common.notifications.bellUnread.split('{{unread}}');
+      const escapeText = (text: string) =>
+        text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const parentBell = parent.page.getByRole('banner').getByRole('button', {
+        name: new RegExp(
+          `^${escapeText(unreadBefore!)}[1-9]${escapeText(unreadAfter!)}$`,
+        ),
+      });
+      await parentBell.click();
+      const parentPanel = parent.page.getByRole('dialog', {
+        name: common.notifications.title,
+      });
+      const decided = (template: string) =>
+        fill(template.split('{{starts_at}}')[0]!, {
+          student_name: studentName,
+          subject_name: physics,
+        });
+      await expect(parentPanel).toContainText(
+        decided(
+          common.notifications.types.scheduling_session_request_confirmed,
+        ),
+      );
+      await expect(parentPanel).toContainText(
+        decided(common.notifications.types.scheduling_session_request_rejected),
+      );
+      await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
+      await parent.page.keyboard.press('Escape');
+      await expect(parentPanel).toBeHidden();
+      await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
       expect(await axeViolations(parent.page)).toEqual([]);
       expect(await cspViolations(parent.page)).toEqual([]);
       expect(parent.consoleErrors).toEqual([]);
     } finally {
       await parent.context.close();
     }
-    // The Owner's inbox lists the request (approve/reject come with #60).
-    await page.goto('/approvals?type=scheduling.session_request');
-    await expect(page.getByRole('main')).toContainText(studentName);
 
     // 5. (#198) The Owner opens the tutor's profile and revokes Física.
     await openTutorProfile(page);

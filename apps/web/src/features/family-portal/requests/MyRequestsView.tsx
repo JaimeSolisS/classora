@@ -19,7 +19,9 @@ import { slotTimes, staleWithdrawal } from './rules';
 // `409 version_conflict` / `session_request_not_pending` shows its message
 // on the card (or above the list once the refreshed list no longer has it)
 // and the page refreshes the list. An empty state links to "Request a
-// session".
+// session". #60 G2: a confirmed card says the center scheduled the session
+// (never which tutor or room); a rejected one shows the center's reason as
+// plain text.
 
 export type MyRequestsState =
   | { status: 'loading' }
@@ -225,7 +227,23 @@ export function MyRequestsView({
                         <dd className="min-w-0 break-words">{request.note}</dd>
                       </>
                     ) : null}
+                    {request.status === 'rejected' &&
+                    request.rejection_reason ? (
+                      <>
+                        <dt className="font-medium">
+                          {t('sessionRequests.list.reason')}
+                        </dt>
+                        <dd className="min-w-0 break-words whitespace-pre-line">
+                          {request.rejection_reason}
+                        </dd>
+                      </>
+                    ) : null}
                   </dl>
+                  {request.status === 'confirmed' ? (
+                    <p className="text-sm">
+                      {t('sessionRequests.list.confirmedHelp')}
+                    </p>
+                  ) : null}
                   {notice?.requestId === request.id ? (
                     <p role="alert" className="text-sm text-destructive">
                       {tErrors(notice.key)}

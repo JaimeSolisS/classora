@@ -43,7 +43,7 @@ type Common = {
       viewRequests: string;
     };
     confirm: { note: string; send: string; notBooking: string };
-    list: { title: string; requestOne: string };
+    list: { title: string; requestOne: string; confirmedHelp: string };
     minutes: string;
   };
   roles: Record<string, string>;
@@ -78,7 +78,18 @@ type Common = {
       >;
       reschedule: Record<'action' | 'title' | 'submit', string>;
     };
-    states: Record<string, string>;
+    states: Record<'offered' | 'confirmed' | 'unassigned', string> &
+      Record<string, string>;
+    // #51: suggested tutors (#60 uses them on the review page).
+    tutorSuggestions: { button: string; chooseTutor: string };
+    // #60: the staff review of a session request.
+    requestReview: {
+      title: string;
+      confirmedTo: string;
+      openSession: string;
+      confirm: { submit: string };
+      reject: Record<'open' | 'description' | 'reason' | 'submit', string>;
+    };
     markers: Record<string, { label: string }>;
     session: {
       title: string;
@@ -541,6 +552,8 @@ type Common = {
       staff_qualification_rejected: string;
       staff_qualification_revoked: string;
       scheduling_session_cancelled: string;
+      scheduling_session_request_confirmed: string;
+      scheduling_session_request_rejected: string;
     };
   };
   courses: {

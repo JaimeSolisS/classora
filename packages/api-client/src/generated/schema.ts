@@ -2585,6 +2585,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session-requests/{request_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Request Review
+         * @description A session request as staff review it: the student, the subject, the
+         *     requested time, the requester and the note, its inbox item and, once
+         *     decided, the created session or the rejection reason. `can_decide` is
+         *     true while it is pending and its time hasn't started.
+         */
+        get: operations["get_session_request_review_api_v1_session_requests__request_id__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session-requests/{request_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Session Request
+         * @description Confirm a pending request by choosing a qualified tutor (and
+         *     optionally a room). The session is created through the same checks as
+         *     scheduling one by hand, at the requested time, and **offered** to the
+         *     tutor (who accepts or declines); the booking notice counts from when the
+         *     family made the request. The request becomes `confirmed` (it stays so
+         *     if the tutor later declines), its inbox item is approved and the
+         *     requester is notified.
+         */
+        post: operations["confirm_session_request_api_v1_session_requests__request_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session-requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Session Request
+         * @description Reject a pending request with a reason. The family sees the reason
+         *     in their requests (not in the notification); the inbox item is rejected
+         *     with it and the student's pending limit is freed. Allowed after the
+         *     requested time has started.
+         */
+        post: operations["reject_session_request_api_v1_session_requests__request_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6876,6 +6948,41 @@ export interface components {
             is_active: boolean;
         };
         /**
+         * SessionRequestConfirm
+         * @description ``POST /api/v1/session-requests/{request_id}/confirm`` (#60 C1).
+         */
+        SessionRequestConfirm: {
+            /** Version */
+            version: number;
+            /**
+             * Tutor User Id
+             * Format: uuid
+             * @description The qualified tutor the session is offered to (required).
+             */
+            tutor_user_id: string;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Respond By
+             * @description An earlier deadline for the tutor's answer, after now and no later than the default (#52). Null or absent: the default.
+             */
+            respond_by?: string | null;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * SessionRequestConfirmed
+         * @description The confirm's ``200`` (#60 C2 step 12): the confirmed request and the
+         *     session it created (``offered`` to the tutor, with #50's warnings).
+         */
+        SessionRequestConfirmed: {
+            request: components["schemas"]["SessionRequestReview"];
+            class_session: components["schemas"]["ClassSessionCreated"];
+        };
+        /**
          * SessionRequestCreate
          * @description ``POST /api/v1/session-requests`` (#59 C1). No tutor, classroom or end
          *     (``422`` through ``extra="forbid"``): the center chooses the tutor.
@@ -6947,6 +7054,11 @@ export interface components {
             resolved_at: string | null;
             /** Version */
             version: number;
+            /**
+             * Rejection Reason
+             * @description Why the center rejected it (only when `rejected`; #60 E5).
+             */
+            rejection_reason: string | null;
         };
         /** @enum {integer} */
         SessionRequestDuration: 30 | 45 | 60 | 90 | 120;
@@ -6993,6 +7105,118 @@ export interface components {
             resolved_at: string | null;
             /** Version */
             version: number;
+            /**
+             * Rejection Reason
+             * @description Why the center rejected it (only when `rejected`; #60 E5).
+             */
+            rejection_reason: string | null;
+        };
+        /**
+         * SessionRequestReject
+         * @description ``POST /api/v1/session-requests/{request_id}/reject`` (#60 D1).
+         */
+        SessionRequestReject: {
+            /** Version */
+            version: number;
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed. The family sees it.
+             */
+            reason: string;
+        };
+        /** SessionRequestRequester */
+        SessionRequestRequester: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * SessionRequestReview
+         * @description A session request as staff review it (#60 B2; ``schedule.manage``).
+         */
+        SessionRequestReview: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["SessionRequestStatus"];
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            student: components["schemas"]["SessionRequestReviewStudent"];
+            subject: components["schemas"]["SessionRequestReviewSubject"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note: string | null;
+            requested_by: components["schemas"]["SessionRequestRequester"];
+            /**
+             * Approval Request Id
+             * @description The request's inbox item.
+             */
+            approval_request_id: string | null;
+            /**
+             * Class Session Id
+             * @description The session a confirmation created (only when `confirmed`).
+             */
+            class_session_id: string | null;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            /**
+             * Can Decide
+             * @description Pending and not yet started: it can be confirmed (a started one can still be rejected).
+             */
+            can_decide: boolean;
+        };
+        /** SessionRequestReviewStudent */
+        SessionRequestReviewStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** SessionRequestReviewSubject */
+        SessionRequestReviewSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+            /**
+             * Is Active
+             * @description False when the subject or its level is.
+             */
+            is_active: boolean;
         };
         /** @enum {string} */
         SessionRequestStatus: "pending" | "confirmed" | "rejected" | "withdrawn";
@@ -16395,6 +16619,206 @@ export interface operations {
                 };
             };
             /** @description The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_session_request_review_api_v1_session_requests__request_id__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestReview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such session request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    confirm_session_request_api_v1_session_requests__request_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequestConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestConfirmed"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such session request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Nothing is created and the request stays pending. The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending, details.status). The requested time has started (session_request_started); the session breaks scheduling rules now (scheduling_conflict, `conflicts` lists every one: a hard conflict, or a soft one the `override` doesn't list, refuses). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reject_session_request_api_v1_session_requests__request_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequestReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRequestReview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such session request (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since you loaded it (version_conflict) or is no longer pending (session_request_not_pending, details.status). */
             409: {
                 headers: {
                     [name: string]: unknown;

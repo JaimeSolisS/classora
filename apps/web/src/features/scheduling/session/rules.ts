@@ -22,6 +22,8 @@ export interface OfferValues {
   deadlineTime: string;
   /** Why the tutor is replaced (#55 H1; the substitution form only). */
   reason?: string;
+  /** The optional classroom (#60 H1; the request confirmation only). */
+  classroomId?: string;
 }
 
 export const EMPTY_OFFER: OfferValues = {
@@ -29,9 +31,10 @@ export const EMPTY_OFFER: OfferValues = {
   deadlineDate: '',
   deadlineTime: '',
   reason: '',
+  classroomId: '',
 };
 
-export type OfferField = 'tutor' | 'deadline' | 'reason';
+export type OfferField = 'tutor' | 'deadline' | 'reason' | 'classroom';
 
 /** The most characters of a substitution or cancellation reason (#55). */
 export const REASON_MAX_LENGTH = 1000;
@@ -50,6 +53,8 @@ export type OfferMessage =
   | 'errors:tutor_inactive'
   | 'errors:substitute_is_current_tutor'
   | 'errors:respond_by_invalid'
+  | 'errors:classroom_unknown'
+  | 'errors:classroom_inactive'
   | 'errors:validation_error';
 
 export type OfferErrors = Partial<Record<OfferField, OfferMessage>>;
@@ -158,6 +163,11 @@ export function offerServerErrors(
         code === 'reason_too_long'
           ? 'scheduling.substitution.validation.reasonTooLong'
           : 'scheduling.substitution.validation.reasonRequired';
+    } else if (name === 'classroom_id' && !errors.classroom) {
+      errors.classroom =
+        code === 'classroom_unknown' || code === 'classroom_inactive'
+          ? `errors:${code}`
+          : 'errors:validation_error';
     } else if (name === 'respond_by' && !errors.deadline) {
       errors.deadline =
         code === 'respond_by_invalid'

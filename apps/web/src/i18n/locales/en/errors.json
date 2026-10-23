@@ -141,8 +141,9 @@
   "session_request_limit_reached": "This student already has 5 pending requests. Wait for an answer, or withdraw one, before sending another.",
   "session_request_not_pending": "This request is no longer pending. The list is updated.",
   "session_request_changed": "This request changed since you loaded it. The list is updated.",
-  "session_request_review_unavailable": "Session requests can't be decided here yet.",
   "not_on_grid": "Start on the hour or the half hour.",
   "range_in_past": "Choose a first date from today on.",
-  "range_too_far": "Choose dates at most 60 days ahead."
+  "range_too_far": "Choose dates at most 60 days ahead.",
+  "session_request_started": "The requested time has already started, so it can't be confirmed. Reject the request instead.",
+  "session_request_review_route_required": "Session requests are confirmed or rejected on their review page."
 }
