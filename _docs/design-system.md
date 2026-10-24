@@ -26,6 +26,7 @@ arbitrary color classes.
 | `popover-foreground` | Text in dialogs and popovers | `#0f172a` | `#f8fafc` |
 | `primary` | Primary action, links | `#1d4ed8` | `#60a5fa` |
 | `primary-foreground` | Text on primary | `#ffffff` | `#020617` |
+| `primary-hover` | Hover background of the primary action | `#1e40af` | `#3b82f6` |
 | `secondary` | Secondary action | `#f1f5f9` | `#1e293b` |
 | `secondary-foreground` | Text on secondary | `#0f172a` | `#f8fafc` |
 | `muted` | Subtle surfaces, skeletons | `#f1f5f9` | `#1e293b` |
@@ -47,6 +48,7 @@ from `tokens.css` and checks them in both themes:
 
 - At least 4.5:1 (SC 1.4.3): `foreground`/`background`, `card-foreground`/`card`,
   `popover-foreground`/`popover`, `primary-foreground`/`primary`,
+  `primary-foreground`/`primary-hover` (hovered primary button),
   `secondary-foreground`/`secondary`, `muted-foreground`/`muted`,
   `muted-foreground`/`background`, `accent-foreground`/`accent`,
   `destructive-foreground`/`destructive`, `destructive`/`background` (error
