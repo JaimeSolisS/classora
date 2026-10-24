@@ -3,7 +3,8 @@ import { api, apiCall } from '@/app/api';
 
 // The calls of the cohort pages (#243, the #65 API): the list (cursor
 // pagination), one cohort, its sessions in a range, the create and the
-// rename / new maximum. Plus the course templates the pickers offer (one
+// rename / new maximum; the enrollment and the withdrawal (#245, the #66
+// API). Plus the course templates the pickers offer (one
 // page of the templates list: the active ones for the create form, every
 // one for the list's filter).
 
@@ -23,6 +24,13 @@ export type CohortSyllabus = components['schemas']['CohortSyllabus'];
 export type CohortSeries = components['schemas']['ClassSeriesSummary'];
 export type CohortOverride = components['schemas']['SeriesOverride'];
 export type TemplateOption = components['schemas']['CourseTemplateSummary'];
+export type CohortEnrollmentItem =
+  components['schemas']['CohortEnrollmentItem'];
+export type CohortEnrollmentCreate =
+  components['schemas']['CohortEnrollmentCreate'];
+export type CohortEnrollmentCreated =
+  components['schemas']['CohortEnrollmentCreated'];
+export type CohortWithdrawal = components['schemas']['CohortWithdrawal'];
 
 /** The list's filters (the URL holds them, B1). */
 export interface CohortListFilters {
@@ -123,6 +131,36 @@ export function updateCohort(
       params: { path: { cohort_id: id } },
       body,
     }),
+  );
+}
+
+/** Enrolls a student (#66 C1; `override` is the #49 `{codes, reason}`). */
+export function enrollInCohort(
+  id: string,
+  body: CohortEnrollmentCreate,
+): Promise<CohortEnrollmentCreated> {
+  return apiCall(() =>
+    api.POST('/api/v1/cohorts/{cohort_id}/enrollments', {
+      params: { path: { cohort_id: id } },
+      body,
+    }),
+  );
+}
+
+/** Withdraws one active enrollment (#66 D1). */
+export function withdrawFromCohort(
+  cohortId: string,
+  enrollmentId: string,
+  body: CohortWithdrawal,
+): Promise<CohortEnrollmentItem> {
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw',
+      {
+        params: { path: { cohort_id: cohortId, enrollment_id: enrollmentId } },
+        body,
+      },
+    ),
   );
 }
 

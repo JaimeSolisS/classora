@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -41,6 +41,32 @@ import { enrollAccepts, type GroupMessage } from './rules';
 // enroll" (the #49 dialog, reason 1-1000), which resends `{student_id,
 // override: {codes, reason}}`; a new 409 replaces the list. already_enrolled,
 // group_ended and the student's 422 show translated messages.
+//
+// A cohort enrollment (#245) reuses it with its own texts (`labels`), a
+// help line under the description (`help`), "Can't be overridden" on the
+// hard conflicts and, for anyone without schedule.override, "Needs an
+// override (Owner)" on the soft ones.
+
+/** Texts for another write than a group's (#245); default: the group's. */
+export interface EnrollDialogLabels {
+  title: string;
+  description: string;
+  studentHelp: string;
+  alreadyEnrolled: (name: string) => string;
+  submit: string;
+  submitting: string;
+  conflictsHeading: (count: number) => string;
+  overrideAction: string;
+  overrideDescription: string;
+  noDateHeading: string;
+  /** A soft code the write doesn't accept (holders of schedule.override). */
+  notYetLabel: string;
+  notYet: string;
+  /** The label of a hard conflict (default: "Not allowed"). */
+  hardLabel?: string;
+  /** The label of a soft conflict for a caller without schedule.override. */
+  needsOverrideLabel?: string;
+}
 
 export interface EnrollDialogProps {
   open: boolean;
@@ -56,6 +82,10 @@ export interface EnrollDialogProps {
   /** After a 201: the page refreshes and announces it. */
   onDone: (created: GroupEnrollmentCreated, student: Option) => void;
   onCancel: () => void;
+  /** Texts for another write (#245); default: the group's. */
+  labels?: EnrollDialogLabels;
+  /** A help line under the description (#245 B2). */
+  help?: ReactNode;
   /** Stories: a chosen student and a 409 to start from. */
   initialStudent?: Option;
   initialConflicts?: SchedulingConflict[];
@@ -93,10 +123,14 @@ export function EnrollDialog(props: EnrollDialogProps) {
           className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
         >
           <DialogHeader>
-            <DialogTitle>{t('groups.enroll.title')}</DialogTitle>
+            <DialogTitle>
+              {props.labels?.title ?? t('groups.enroll.title')}
+            </DialogTitle>
             <DialogDescription>
-              {t('groups.enroll.description', { group: props.groupName })}
+              {props.labels?.description ??
+                t('groups.enroll.description', { group: props.groupName })}
             </DialogDescription>
+            {props.help ? <p className="text-sm">{props.help}</p> : null}
           </DialogHeader>
           <EnrollContent {...props} busyRef={busy} />
         </DialogContent>
@@ -115,9 +149,29 @@ function EnrollContent({
   initialStudent,
   initialConflicts,
   initialReason,
+  groupName,
+  labels: custom,
   busyRef,
 }: EnrollDialogProps & { busyRef: { current: boolean } }) {
   const { t } = useTranslation();
+  const labels: EnrollDialogLabels = custom ?? {
+    title: t('groups.enroll.title'),
+    description: t('groups.enroll.description', { group: groupName }),
+    studentHelp: t('groups.enroll.studentHelp'),
+    alreadyEnrolled: (name) => t('groups.enroll.alreadyEnrolled', { name }),
+    submit: t('groups.enroll.submit'),
+    submitting: t('groups.enroll.submitting'),
+    conflictsHeading: (count) => t('groups.enroll.conflictsHeading', { count }),
+    overrideAction: t('groups.enroll.overrideAction'),
+    overrideDescription: t('groups.enroll.overrideDescription'),
+    noDateHeading: t('groups.conflicts.wholeGroup'),
+    notYetLabel: t('groups.conflicts.notYetLabel'),
+    notYet: t('groups.conflicts.notYet'),
+  };
+  // Without schedule.override, a write with its own label says each soft
+  // conflict needs an override (#245 B3); the group's keeps "Can be
+  // overridden" and the "Only an Owner…" text under the panel.
+  const needsOverride = !canOverride && labels.needsOverrideLabel;
   const message = useFieldMessage();
   const id = useId();
   const [student, setStudent] = useState<Option | null>(initialStudent ?? null);
@@ -204,21 +258,20 @@ function EnrollContent({
       {conflicts ? (
         <SeriesOverrideSection
           conflicts={conflicts}
-          heading={t('groups.enroll.conflictsHeading', {
-            count: conflicts.length,
-          })}
+          heading={labels.conflictsHeading(conflicts.length)}
           canOverride={canOverride}
-          accepts={enrollAccepts}
+          accepts={needsOverride ? () => false : enrollAccepts}
           onOverride={override}
           onRefused={handleFailure}
           initialReason={initialReason}
           labels={{
-            action: t('groups.enroll.overrideAction'),
-            submitting: t('groups.enroll.submitting'),
-            description: t('groups.enroll.overrideDescription'),
-            noDateHeading: t('groups.conflicts.wholeGroup'),
-            noOverrideLabel: t('groups.conflicts.notYetLabel'),
-            notYet: t('groups.conflicts.notYet'),
+            action: labels.overrideAction,
+            submitting: labels.submitting,
+            description: labels.overrideDescription,
+            noDateHeading: labels.noDateHeading,
+            noOverrideLabel: needsOverride || labels.notYetLabel,
+            notYet: labels.notYet,
+            hardLabel: labels.hardLabel,
           }}
         />
       ) : null}
@@ -234,14 +287,14 @@ function EnrollContent({
             help={
               student
                 ? t('scheduling.studentChosen', { name: student.name })
-                : t('groups.enroll.studentHelp')
+                : labels.studentHelp
             }
             queryKey={['groups', 'enroll', 'students']}
             search={searchStudents}
             optionId={(option) => option.id}
             optionLabel={(option) =>
               enrolledIds.has(option.id)
-                ? t('groups.enroll.alreadyEnrolled', { name: option.name })
+                ? labels.alreadyEnrolled(option.name)
                 : option.name
             }
             optionDisabled={(option) => enrolledIds.has(option.id)}
@@ -265,9 +318,9 @@ function EnrollContent({
           </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
-              <Spinner label={t('groups.enroll.submitting')} showLabel />
+              <Spinner label={labels.submitting} showLabel />
             ) : (
-              t('groups.enroll.submit')
+              labels.submit
             )}
           </Button>
         </DialogFooter>

@@ -51,6 +51,11 @@ export function useConflictMessage(): (conflict: SchedulingConflict) => string {
               date: day,
             });
       }
+      case 'group_capacity_exceeded':
+        // A cohort's maximum (#66: its details name the cohort, #245).
+        return typeof details.cohort_id === 'string'
+          ? t('scheduling.conflicts.cohort_capacity_exceeded')
+          : t('scheduling.conflicts.group_capacity_exceeded');
       case 'notice_window':
         return t('scheduling.conflicts.notice_window', {
           hours: Number(details.booking_notice_hours ?? 0),

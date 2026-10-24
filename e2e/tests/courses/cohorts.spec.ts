@@ -1,8 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
+import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
 // Course cohorts (#243 F1). The demo Owner's shared session creates a
@@ -17,6 +18,15 @@ import { createSubjectViaApi } from '../support/tutors';
 // 2. The template's first module is renamed through the API; after a
 //    reload the cohort still shows "Introducción": its syllabus is the
 //    snapshot, never the live template.
+//
+// Cohort enrollment (#245 F1), a second test: a cohort with a maximum of 1
+// (no tutor, no room, weekly on that Tuesday at 10:00) and two students
+// "Uno/Dos Cohorte <suffix>" are created through the API, then in the
+// Students panel: enroll Uno (1 of 1, "Full"); enroll Dos → the 409 panel
+// (the cohort is full, "Whole cohort") → "Override and enroll" with a
+// reason → "Overridden"; withdraw Uno with a reason; "Show withdrawn" lists
+// it with the reason. Axe on the panel and the dialogs. Never demo
+// students.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (API calls with the shared Owner session). A Tuesday at
@@ -123,6 +133,54 @@ async function renameFirstModuleViaApi(page: Page, id: string, title: string) {
     },
   });
   expect(replaced.status).toBe(200);
+}
+
+/** A cohort through the API: no tutor, no room, weekly on `startsOn`. */
+async function createCohortViaApi(
+  page: Page,
+  {
+    name,
+    templateId,
+    subjectId,
+    maxStudents,
+    startsOn,
+  }: {
+    name: string;
+    templateId: string;
+    subjectId: string;
+    maxStudents: number;
+    startsOn: string;
+  },
+): Promise<string> {
+  const created = await api(page, '/api/v1/cohorts', {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': await csrf(page) },
+    json: {
+      name,
+      template_id: templateId,
+      subject_id: subjectId,
+      max_students: maxStudents,
+      starts_on: startsOn,
+      start_time: '10:00',
+      // ISO weekday of a Tuesday.
+      recurrence: { weekdays: [2], interval: 1 },
+    },
+  });
+  expect(created.status).toBe(201);
+  return (created.body as { id: string }).id;
+}
+
+/** Searches the picker and checks the student's option. */
+async function pick(
+  scope: Locator,
+  label: string,
+  query: string,
+  name: string,
+) {
+  await scope.getByLabel(label, { exact: true }).fill(query);
+  const option = scope.getByRole('radio', { name, exact: true });
+  await expect(option).toBeVisible();
+  await option.check();
 }
 
 async function expectNoAxeViolations(page: Page) {
@@ -236,6 +294,180 @@ test('an Owner creates a cohort whose syllabus stays frozen', async ({
   ).toBeVisible();
   await expect(firstModule('Introducción')).toBeVisible();
   await expect(firstModule('Introducción editada')).toHaveCount(0);
+
+  expect(await cspViolations(page)).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('an Owner enrolls over the maximum with an override, then withdraws', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  const enrollment = cohorts.enrollment;
+  const suffix = `${testInfo.workerIndex}${Date.now().toString(36)}`;
+  const familyNames = `Cohorte ${suffix}`;
+  const [first, second] = ['Uno', 'Dos'].map(
+    (given) => `${given} ${familyNames}`,
+  ) as [string, string];
+  const cohortName = `Cohorte inscripción ${suffix}`;
+  await recordCspViolations(page);
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text());
+    }
+  });
+  const main = page.getByRole('main');
+  const notice = (text: string) =>
+    main.getByRole('status').filter({ hasText: text });
+
+  // The app origin first, so the API calls carry the session.
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const subjectId = await createSubjectViaApi(
+    page,
+    'Secundaria',
+    `Materia inscripción ${suffix}`,
+  );
+  const templateId = await createTemplateViaApi(
+    page,
+    `Curso inscripción ${suffix}`,
+    subjectId,
+  );
+  const cohortId = await createCohortViaApi(page, {
+    name: cohortName,
+    templateId,
+    subjectId,
+    maxStudents: 1,
+    startsOn: firstTuesdayAhead(),
+  });
+  for (const given of ['Uno', 'Dos']) {
+    await createStudentViaApi(page, { givenNames: given, familyNames });
+  }
+
+  await page.goto(`/courses/cohorts/${cohortId}`);
+  await expect(
+    main.getByRole('heading', { level: 1, name: cohortName }),
+  ).toBeVisible();
+  const panel = main.getByRole('region', { name: enrollment.heading });
+  await expect(panel).toContainText(
+    fill(enrollment.capacity, { enrolled: 0, max: 1 }),
+  );
+
+  // 1. Enroll the first student: the cohort is full.
+  await panel
+    .getByRole('button', { name: enrollment.enroll, exact: true })
+    .click();
+  const enrollDialog = page.getByRole('dialog', {
+    name: enrollment.dialog.title,
+  });
+  await pick(enrollDialog, common.groups.enroll.student, familyNames, first);
+  const enrolled = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/api/v1/cohorts/${cohortId}/enrollments`),
+  );
+  await enrollDialog
+    .getByRole('button', { name: enrollment.dialog.submit, exact: true })
+    .click();
+  expect((await enrolled).status()).toBe(201);
+  await expect(enrollDialog).toBeHidden();
+  await expect(
+    notice(fill(enrollment.dialog.done, { name: first })),
+  ).toBeVisible();
+  await expect(panel).toContainText(
+    fill(enrollment.capacity, { enrolled: 1, max: 1 }),
+  );
+  await expect(panel.getByText(enrollment.full, { exact: true })).toBeVisible();
+
+  // 2. Enroll the second: over the maximum, then an override.
+  await panel
+    .getByRole('button', { name: enrollment.enroll, exact: true })
+    .click();
+  await pick(enrollDialog, common.groups.enroll.student, familyNames, second);
+  await enrollDialog
+    .getByRole('button', { name: enrollment.dialog.submit, exact: true })
+    .click();
+  const conflicts = enrollDialog.getByRole('alert');
+  await expect(conflicts).toContainText(
+    common.scheduling.conflicts.cohort_capacity_exceeded,
+  );
+  await expect(
+    conflicts.getByRole('heading', { name: enrollment.dialog.wholeCohort }),
+  ).toBeVisible();
+  await expect(
+    conflicts.getByText(common.scheduling.severity.soft, { exact: true }),
+  ).toHaveCount(1);
+  await expectNoAxeViolations(page);
+  await enrollDialog
+    .getByRole('button', {
+      name: enrollment.dialog.overrideAction,
+      exact: true,
+    })
+    .click();
+  const overrideDialog = page.getByRole('dialog', {
+    name: enrollment.dialog.overrideAction,
+  });
+  await overrideDialog
+    .getByLabel(common.scheduling.override.reason, { exact: true })
+    .fill('Hermano de una alumna inscrita; el aula tiene lugar.');
+  await overrideDialog
+    .getByRole('button', {
+      name: enrollment.dialog.overrideAction,
+      exact: true,
+    })
+    .click();
+  await expect(overrideDialog).toBeHidden();
+  await expect(enrollDialog).toBeHidden();
+  await expect(
+    notice(fill(enrollment.dialog.done, { name: second })),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole('row').filter({ hasText: second }),
+  ).toContainText(enrollment.overridden);
+  await expect(panel).toContainText(
+    fill(enrollment.capacity, { enrolled: 2, max: 1 }),
+  );
+  await expectNoAxeViolations(page);
+
+  // 3. Withdraw the first student with a reason.
+  await panel
+    .getByRole('button', {
+      name: fill(enrollment.withdrawOf, { name: first }),
+      exact: true,
+    })
+    .click();
+  const withdrawDialog = page.getByRole('dialog', {
+    name: enrollment.withdrawDialog.title,
+  });
+  await withdrawDialog
+    .getByLabel(enrollment.withdrawDialog.reason, { exact: true })
+    .fill('Cambió de horario escolar.');
+  await expectNoAxeViolations(page);
+  await withdrawDialog
+    .getByRole('button', {
+      name: enrollment.withdrawDialog.submit,
+      exact: true,
+    })
+    .click();
+  await expect(withdrawDialog).toBeHidden();
+  await expect(
+    notice(fill(enrollment.withdrawDialog.done, { name: first })),
+  ).toBeVisible();
+
+  // 4. "Show withdrawn" lists it with the reason.
+  await panel
+    .getByRole('checkbox', { name: enrollment.showWithdrawn, exact: true })
+    .click();
+  await expect(page).toHaveURL(/\?withdrawn=1$/);
+  const withdrawn = panel.getByRole('table', {
+    name: fill(enrollment.withdrawn_one, { count: 1 }),
+  });
+  await expect(
+    withdrawn.getByRole('row').filter({ hasText: first }),
+  ).toContainText('Cambió de horario escolar.');
+  await expectNoAxeViolations(page);
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);

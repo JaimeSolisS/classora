@@ -38,7 +38,9 @@ import {
 // version and only the changed fields; Save is disabled while nothing
 // changed (the client side of `422 no_changes`). cohort_name_taken goes on
 // the name. A maximum above the room's capacity is allowed; the field then
-// says the room still limits the sessions. A version conflict says "This
+// says the room still limits the sessions; one below the students enrolled
+// (`422 max_students_below_enrolled`) says how many are (#245 D1). A
+// version conflict says "This
 // cohort changed. Reload to see the latest." with a reload action. The
 // focus returns to "Edit" when the dialog closes (#234 QA D1).
 
@@ -105,6 +107,13 @@ function EditContent({
 }: EditCohortDialogProps & { busyRef: { current: boolean } }) {
   const { t } = useTranslation();
   const message = useFieldMessage();
+  // #245 D1: "At least {n} students are enrolled", n from the loaded cohort.
+  const maxMessage = (key: EditErrors['max']) =>
+    key === 'courses.cohorts.enrollment.belowEnrolled'
+      ? t('courses.cohorts.enrollment.belowEnrolled', {
+          count: cohort.enrolled_count ?? 0,
+        })
+      : message(key);
   const id = useId();
   const fieldId = (field: EditField) => `${id}-${field}`;
   const errorId = (field: EditField) => `${id}-${field}-error`;
@@ -230,7 +239,7 @@ function EditContent({
             {t('courses.cohorts.edit.roomLimit', { capacity: limit })}
           </p>
         ) : null}
-        <FieldError id={errorId('max')} message={message(errors.max)} />
+        <FieldError id={errorId('max')} message={maxMessage(errors.max)} />
       </div>
       <DialogFooter>
         <Button

@@ -3,6 +3,8 @@ import { ALGEBRA, PHYSICS_LAB, summaryOf } from '../fixtures';
 import type {
   CohortCreated,
   CohortDetail,
+  CohortEnrollmentCreated,
+  CohortEnrollmentItem,
   CohortListItem,
   CohortSessionItem,
   TemplateOption,
@@ -258,4 +260,160 @@ export const COHORT_LEVEL_CONFLICT: SchedulingConflict = {
   code: 'notice_window',
   severity: 'soft',
   details: { booking_notice_hours: 24 },
+};
+
+// --- Enrollment (#245) ---------------------------------------------------------
+
+const STAFF = {
+  id: '01900000-0000-7000-8000-00000000e071',
+  display_name: 'Demo Owner',
+};
+
+export const STUDENT_ANA = {
+  id: '01900000-0000-7000-8000-00000000e081',
+  display_name: 'Ana López',
+  is_active: true,
+};
+export const STUDENT_BRUNO = {
+  id: '01900000-0000-7000-8000-00000000e082',
+  display_name: 'Bruno Díaz',
+  is_active: false,
+};
+export const STUDENT_CARLA = {
+  id: '01900000-0000-7000-8000-00000000e083',
+  display_name: 'Carla Méndez',
+  is_active: true,
+};
+export const STUDENT_DIEGO = {
+  id: '01900000-0000-7000-8000-00000000e084',
+  display_name: 'Diego Ruiz',
+  is_active: true,
+};
+
+/**
+ * Active: Ana, enrolled at 05:30Z, the evening before in Mexico City
+ * (a foreign host zone would show the next day).
+ */
+export const ENROLLED_ANA: CohortEnrollmentItem = {
+  id: '01900000-0000-7000-8000-00000000e091',
+  student: STUDENT_ANA,
+  enrolled_at: '2030-12-10T05:30:00Z',
+  enrolled_by: STAFF,
+  withdrawn_at: null,
+  withdrawn_by: null,
+  withdrawal_reason: null,
+  overridden: false,
+  version: 1,
+};
+
+/** Active, above the maximum by an override, and an inactive student. */
+export const ENROLLED_BRUNO: CohortEnrollmentItem = {
+  id: '01900000-0000-7000-8000-00000000e092',
+  student: STUDENT_BRUNO,
+  enrolled_at: '2030-12-11T18:00:00Z',
+  enrolled_by: STAFF,
+  withdrawn_at: null,
+  withdrawn_by: null,
+  withdrawal_reason: null,
+  overridden: true,
+  version: 1,
+};
+
+export const WITHDRAWN_CARLA: CohortEnrollmentItem = {
+  id: '01900000-0000-7000-8000-00000000e093',
+  student: STUDENT_CARLA,
+  enrolled_at: '2030-12-01T18:00:00Z',
+  enrolled_by: STAFF,
+  withdrawn_at: '2030-12-20T18:00:00Z',
+  withdrawn_by: STAFF,
+  withdrawal_reason: 'Cambió de horario escolar.',
+  overridden: false,
+  version: 2,
+};
+
+export const WITHDRAWN_DIEGO: CohortEnrollmentItem = {
+  id: '01900000-0000-7000-8000-00000000e094',
+  student: STUDENT_DIEGO,
+  enrolled_at: '2030-12-01T18:00:00Z',
+  enrolled_by: STAFF,
+  withdrawn_at: '2030-12-05T18:00:00Z',
+  withdrawn_by: STAFF,
+  withdrawal_reason: null,
+  overridden: false,
+  version: 2,
+};
+
+/** Upcoming, 2 of 12 enrolled, two withdrawn. */
+export const ROSTER_COHORT: CohortDetail = {
+  ...COHORT,
+  enrolled_count: 2,
+  roster: [ENROLLED_ANA, ENROLLED_BRUNO, WITHDRAWN_DIEGO, WITHDRAWN_CARLA],
+};
+
+/** Upcoming, nobody enrolled. */
+export const EMPTY_ROSTER_COHORT: CohortDetail = {
+  ...COHORT,
+  enrolled_count: 0,
+  roster: [],
+};
+
+/** In progress, the room (8) below the maximum (12), and 8 enrolled: full. */
+export const FULL_COHORT: CohortDetail = {
+  ...TUTORED_COHORT,
+  enrolled_count: 8,
+  roster: [ENROLLED_ANA, ENROLLED_BRUNO],
+};
+
+/** Ended: no "Enroll student". */
+export const ENDED_ROSTER_COHORT: CohortDetail = {
+  ...ENDED_COHORT,
+  enrolled_count: 1,
+  roster: [ENROLLED_ANA],
+};
+
+export const ENROLLED_CARLA: CohortEnrollmentCreated = {
+  ...WITHDRAWN_CARLA,
+  id: '01900000-0000-7000-8000-00000000e095',
+  enrolled_at: '2031-01-02T18:00:00Z',
+  withdrawn_at: null,
+  withdrawn_by: null,
+  withdrawal_reason: null,
+  version: 1,
+  warnings: [],
+};
+
+/** The cohort's maximum (#66: its details name the cohort). */
+export const COHORT_CAPACITY_CONFLICT: SchedulingConflict = {
+  code: 'group_capacity_exceeded',
+  severity: 'soft',
+  details: { cohort_id: COHORT_ID, max_students: 12, enrolled_count: 12 },
+};
+
+/** A soft conflict of one occurrence (the enroll overrides it by code). */
+export const ENROLL_SOFT_OCCURRENCE: SchedulingConflict = {
+  code: 'outside_operating_hours',
+  severity: 'soft',
+  details: { occurrence_start: '2031-01-13T16:00:00Z', date: '2031-01-13' },
+};
+
+/** The room is too small for one occurrence (hard, no date-less shape). */
+export const ENROLL_ROOM_CONFLICT: SchedulingConflict = {
+  code: 'room_capacity_exceeded',
+  severity: 'hard',
+  details: {
+    occurrence_start: '2031-01-06T16:00:00Z',
+    date: '2031-01-06',
+    classroom_id: ROOM_ID,
+    room_capacity: 8,
+  },
+};
+
+export const ENROLL_OVERLAP_CONFLICT: SchedulingConflict = {
+  code: 'student_overlap',
+  severity: 'hard',
+  details: {
+    occurrence_start: '2031-01-08T16:00:00Z',
+    date: '2031-01-08',
+    student_ids: [STUDENT_CARLA.id],
+  },
 };

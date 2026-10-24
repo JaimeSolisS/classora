@@ -34,6 +34,8 @@ export interface SeriesConflictPanelProps {
   noOverrideLabel?: string;
   /** The heading of the conflicts without a date (default: "Other"). */
   noDateHeading?: string;
+  /** The label of a hard conflict (default: "Not allowed"; #245). */
+  hardLabel?: string;
 }
 
 export function SeriesConflictPanel({
@@ -44,6 +46,7 @@ export function SeriesConflictPanel({
   accepts,
   noOverrideLabel,
   noDateHeading,
+  hardLabel,
 }: SeriesConflictPanelProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -65,7 +68,7 @@ export function SeriesConflictPanel({
           >
             <span className="w-fit shrink-0 rounded-sm border border-border px-1.5 text-xs font-medium">
               {conflict.severity === 'hard'
-                ? t('scheduling.severity.hard')
+                ? (hardLabel ?? t('scheduling.severity.hard'))
                 : (accepts ? accepts(conflict) : overridable)
                   ? t('scheduling.severity.soft')
                   : (noOverrideLabel ??

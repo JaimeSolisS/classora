@@ -2,7 +2,10 @@ import type { FieldError } from '@classora/api-client';
 import type { ParseKeys } from 'i18next';
 import type { ErrorMessageKey } from '@/app/errors';
 import type { SchedulingConflict } from '@/features/scheduling/create/api';
-import { FIELD_ERROR_CODES } from '@/features/scheduling/create/rules';
+import {
+  FIELD_ERROR_CODES,
+  type SessionOverride,
+} from '@/features/scheduling/create/rules';
 import {
   SOFT_CODES,
   seriesOverridePairs,
@@ -18,11 +21,14 @@ import { addDays, localDateTimeToInstant } from '@/lib/time';
 import type {
   CohortCreate,
   CohortDetail,
+  CohortEnrollmentCreate,
+  CohortEnrollmentItem,
   CohortListFilters,
   CohortOverride,
   CohortSeries,
   CohortStatusFilter,
   CohortUpdate,
+  CohortWithdrawal,
   TemplateOption,
 } from './api';
 
@@ -32,7 +38,9 @@ import type {
 // (structured fields only: never RRULE text, the duration, `until` or
 // `count`; the server derives the count, #65 E3), where the server's 422s
 // go, which 409 conflicts the create may override, and the edit's PATCH
-// (only changed fields).
+// (only changed fields). Then the enrollment (#245): the capacity line,
+// who may enroll and withdraw, the roster's parts, the request bodies and
+// the edit's below-enrolled message.
 
 /** A message: a `common` key, or an `errors` key prefixed with `errors:`. */
 export type CohortMessage = ParseKeys<'common'> | `errors:${ErrorMessageKey}`;
@@ -273,7 +281,11 @@ export function editServerErrors(error: {
           ? 'courses.cohorts.validation.nameTooLong'
           : 'courses.cohorts.validation.nameRequired';
     } else if (last === 'max_students' && !errors.max) {
-      errors.max = 'courses.cohorts.validation.maxRange';
+      // #245 D1: the count comes from the loaded cohort (the dialog).
+      errors.max =
+        code === 'max_students_below_enrolled'
+          ? 'courses.cohorts.enrollment.belowEnrolled'
+          : 'courses.cohorts.validation.maxRange';
     } else if (code === 'no_changes' && !errors.name) {
       errors.name = 'errors:no_changes';
     }
@@ -582,4 +594,102 @@ export function cohortCreateOverride(
   reason: string,
 ): CohortOverride {
   return { pairs: seriesOverridePairs(conflicts), reason: reason.trim() };
+}
+
+// --- Enrollment (#245) -------------------------------------------------------------
+
+/** The capacity line (A2): enrolled of the maximum, the room's limit, full. */
+export interface CohortCapacity {
+  enrolled: number;
+  max: number;
+  /** The room's capacity when it is below the maximum; else null. */
+  roomLimit: number | null;
+  /** No seat left within the effective capacity ("Full", as text). */
+  full: boolean;
+}
+
+export function cohortCapacity(
+  cohort: Pick<
+    CohortDetail,
+    'enrolled_count' | 'max_students' | 'effective_capacity'
+  >,
+): CohortCapacity {
+  const enrolled = cohort.enrolled_count ?? 0;
+  return {
+    enrolled,
+    max: cohort.max_students,
+    roomLimit: roomLimited(cohort) ? cohort.effective_capacity : null,
+    full: enrolled >= cohort.effective_capacity,
+  };
+}
+
+/** What the Students panel offers (A1, B2, C1). */
+export interface EnrollmentControls {
+  /** "Enroll student": schedule.manage, while the cohort hasn't ended. */
+  enroll: boolean;
+  /** "Withdraw" on each active row: schedule.manage. */
+  withdraw: boolean;
+  /** The started-cohort help line in the enroll dialog. */
+  startedHelp: boolean;
+}
+
+export function enrollmentControls(
+  cohort: Pick<CohortDetail, 'status'>,
+  canManage: boolean,
+): EnrollmentControls {
+  return {
+    enroll: canManage && cohort.status !== 'ended',
+    withdraw: canManage,
+    startedHelp: cohort.status === 'in_progress',
+  };
+}
+
+/** The active rows (as the API lists them: by name), then the withdrawn. */
+export function rosterParts(roster: readonly CohortEnrollmentItem[]): {
+  active: CohortEnrollmentItem[];
+  withdrawn: CohortEnrollmentItem[];
+} {
+  return {
+    active: roster.filter((item) => item.withdrawn_at === null),
+    withdrawn: roster
+      .filter((item) => item.withdrawn_at !== null)
+      .sort((a, b) =>
+        (b.withdrawn_at ?? '').localeCompare(a.withdrawn_at ?? ''),
+      ),
+  };
+}
+
+/** The students enrolled now (the picker disables them, B1). */
+export function enrolledStudentIds(
+  roster: readonly CohortEnrollmentItem[] | null | undefined,
+): Set<string> {
+  return new Set(
+    (roster ?? [])
+      .filter((item) => item.withdrawn_at === null)
+      .map((item) => item.student.id),
+  );
+}
+
+/** "Show withdrawn" lives in the URL as `?withdrawn=1` (A4). */
+export function withdrawnShown(search: URLSearchParams): boolean {
+  return search.get('withdrawn') === '1';
+}
+
+/** The enroll body; an override is `{codes, reason}` (#66 C1), never pairs. */
+export function enrollBody(
+  studentId: string,
+  override?: SessionOverride,
+): CohortEnrollmentCreate {
+  return override
+    ? { student_id: studentId, override }
+    : { student_id: studentId };
+}
+
+/** The withdraw body: the version, and the trimmed reason unless blank. */
+export function cohortWithdrawBody(
+  version: number,
+  reason: string,
+): CohortWithdrawal {
+  const trimmed = reason.trim();
+  return trimmed ? { version, reason: trimmed } : { version };
 }

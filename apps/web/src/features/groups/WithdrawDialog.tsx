@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { Spinner } from '@/components/feedback/Spinner';
@@ -25,6 +26,23 @@ import { REASON_MAX_LENGTH, reasonLength } from './rules';
 // changed since you opened it" with a reload; enrollment_not_active is the
 // errors catalog's message (the page refreshes the roster); a 422 on the
 // reason goes on the field.
+//
+// A cohort withdrawal (#245 C1) reuses it with its own texts (`labels`,
+// including a help line on what happens to the sessions).
+
+/** Texts for another withdrawal than a group's (#245). */
+export interface WithdrawDialogLabels {
+  title: string;
+  /** The question, with the student's name. */
+  description: (name: string) => string;
+  /** A line under it (what happens to the sessions). */
+  help?: string;
+  reason: string;
+  reasonTooLong: string;
+  keep: string;
+  submit: string;
+  submitting: string;
+}
 
 export interface WithdrawDialogProps {
   /** The enrollment to withdraw; null: closed. */
@@ -34,6 +52,8 @@ export interface WithdrawDialogProps {
   onCancel: () => void;
   /** Reads the group again (after a version conflict). */
   onReload: () => void;
+  /** Texts for another withdrawal (#245); default: the group's. */
+  labels?: WithdrawDialogLabels;
   /** Stories. */
   initialReason?: string;
   initialFailure?: unknown;
@@ -44,6 +64,7 @@ export function WithdrawDialog(props: WithdrawDialogProps) {
   const { t } = useTranslation();
   const returnFocus = useReturnFocus();
   const { enrollment } = props;
+  const labels = withdrawLabels(t, props.groupName, props.labels);
   return (
     <Dialog
       open={enrollment !== null}
@@ -60,13 +81,11 @@ export function WithdrawDialog(props: WithdrawDialogProps) {
           className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
         >
           <DialogHeader>
-            <DialogTitle>{t('groups.withdraw.title')}</DialogTitle>
+            <DialogTitle>{labels.title}</DialogTitle>
             <DialogDescription>
-              {t('groups.withdraw.description', {
-                name: enrollment.student.display_name,
-                group: props.groupName,
-              })}
+              {labels.description(enrollment.student.display_name)}
             </DialogDescription>
+            {labels.help ? <p className="text-sm">{labels.help}</p> : null}
           </DialogHeader>
           <WithdrawContent
             {...props}
@@ -79,7 +98,28 @@ export function WithdrawDialog(props: WithdrawDialogProps) {
   );
 }
 
+function withdrawLabels(
+  t: TFunction,
+  groupName: string,
+  custom: WithdrawDialogLabels | undefined,
+): WithdrawDialogLabels {
+  return (
+    custom ?? {
+      title: t('groups.withdraw.title'),
+      description: (name) =>
+        t('groups.withdraw.description', { name, group: groupName }),
+      reason: t('groups.withdraw.reason'),
+      reasonTooLong: t('groups.withdraw.reasonTooLong'),
+      keep: t('groups.withdraw.keep'),
+      submit: t('groups.withdraw.submit'),
+      submitting: t('groups.withdraw.submitting'),
+    }
+  );
+}
+
 function WithdrawContent({
+  groupName,
+  labels: custom,
   onConfirm,
   onCancel,
   onReload,
@@ -88,6 +128,7 @@ function WithdrawContent({
   busyRef,
 }: WithdrawDialogProps & { busyRef: { current: boolean } }) {
   const { t } = useTranslation();
+  const labels = withdrawLabels(t, groupName, custom);
   const id = useId();
   const reasonId = `${id}-reason`;
   const errorId = `${id}-reason-error`;
@@ -96,7 +137,7 @@ function WithdrawContent({
   const [reason, setReason] = useState(initialReason);
   const [reasonError, setReasonError] = useState<string | undefined>(
     reasonLength(initialReason) > REASON_MAX_LENGTH
-      ? t('groups.withdraw.reasonTooLong')
+      ? labels.reasonTooLong
       : undefined,
   );
   const [failure, setFailure] = useState<unknown>(initialFailure);
@@ -106,7 +147,7 @@ function WithdrawContent({
   async function send() {
     setFailure(null);
     if (length > REASON_MAX_LENGTH) {
-      setReasonError(t('groups.withdraw.reasonTooLong'));
+      setReasonError(labels.reasonTooLong);
       textarea.current?.focus();
       return;
     }
@@ -122,7 +163,7 @@ function WithdrawContent({
           ({ path }) => path[path.length - 1] === 'reason',
         );
       if (onReason) {
-        setReasonError(t('groups.withdraw.reasonTooLong'));
+        setReasonError(labels.reasonTooLong);
         textarea.current?.focus();
       } else {
         setFailure(caught);
@@ -149,7 +190,7 @@ function WithdrawContent({
       {failure ? <DialogFailure error={failure} onReload={onReload} /> : null}
       <div className="flex flex-col gap-2">
         <label htmlFor={reasonId} className="text-sm font-medium">
-          {t('groups.withdraw.reason')}
+          {labels.reason}
         </label>
         <textarea
           id={reasonId}
@@ -184,13 +225,13 @@ function WithdrawContent({
           disabled={busy}
           onClick={onCancel}
         >
-          {t('groups.withdraw.keep')}
+          {labels.keep}
         </Button>
         <Button type="submit" variant="destructive" disabled={busy}>
           {busy ? (
-            <Spinner label={t('groups.withdraw.submitting')} showLabel />
+            <Spinner label={labels.submitting} showLabel />
           ) : (
-            t('groups.withdraw.submit')
+            labels.submit
           )}
         </Button>
       </DialogFooter>
