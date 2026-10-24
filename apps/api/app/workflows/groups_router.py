@@ -19,7 +19,9 @@ the workflow (the M6-07 billing hook), the reads through
 - ``GET /api/v1/groups``, ``GET /api/v1/groups/{group_id}`` and ``GET
   /api/v1/groups/{group_id}/sessions``: ``authenticated()`` with the record
   policy of ``scheduling.group_reads`` (staff with ``schedule.view`` see
-  everything, a student only their own groups and sessions, anyone else an
+  everything; a student or a linked guardian (an adult's only with the
+  academic consent, #246 E1) their groups and the family-visible sessions;
+  a tutor the groups they teach and their own sessions; anyone else an
   empty list or ``404 group_not_found``).
 """
 
@@ -157,8 +159,10 @@ async def list_groups(
 ) -> GroupPage:
     """The groups you can see, by name: `active` (still producing
     sessions; the default), `ended` or `all`. Staff with schedule.view see
-    every group; a student only the groups they are enrolled in (without
-    the enrolled count); anyone else an empty list."""
+    every group; a student or their guardian only the groups the student is
+    enrolled in (an adult's guardian only with the student's academic
+    consent), and a tutor the groups whose series they teach or were offered,
+    without the enrolled count; anyone else an empty list."""
     return await scheduling.list_groups(
         uow.session,
         principal,
@@ -178,8 +182,10 @@ async def get_group(
 ) -> GroupDetail:
     """One group: its subject, maximum, effective capacity, current series
     and next sessions; for staff with schedule.view also the roster and the
-    enrolled count. A student sees only a group they are enrolled in, and
-    only their own confirmed sessions."""
+    enrolled count. A student or their guardian sees only a group the
+    student is enrolled in, with the tutor's name only and the student's
+    own sessions; the group's tutor sees `tutor_roster` (the students'
+    names) and the sessions they teach."""
     return await scheduling.get_group(uow.session, principal, group_id)
 
 
@@ -203,8 +209,11 @@ async def list_group_sessions(
     uow: UnitOfWorkDep,
 ) -> GroupSessions:
     """The group's sessions overlapping `[from, to)`, by start. Staff with
-    schedule.view see every state; a student only the sessions they take
-    part in that are `confirmed` or `completed`."""
+    schedule.view see every state; a student or their guardian the
+    sessions their students take part in that are confirmed or completed
+    (or were confirmed before being cancelled or skipped), with `students`
+    (only theirs); the group's tutor the sessions they teach, with
+    `participants`."""
     return await scheduling.list_group_sessions(uow.session, principal, group_id, query)
 
 

@@ -4,10 +4,14 @@ import { i18n } from '@/i18n';
 import { StoryRouter } from '@/test/StoryRouter';
 import {
   ENDED_GROUP,
+  FAMILY_GROUP,
+  FAMILY_SESSIONS,
   GROUP,
   LEAKY_STUDENT_GROUP,
   ROOM_LIMITED_GROUP,
   SESSIONS,
+  TUTOR_GROUP,
+  TUTOR_SESSIONS,
 } from './fixtures';
 import { GroupView, type GroupViewProps } from './GroupView';
 import { MySessionsSection } from './MySessionsSection';
@@ -16,7 +20,10 @@ import { MySessionsSection } from './MySessionsSection';
 // group (no "Enroll student"), a room that holds fewer than the maximum,
 // read-only (a Coordinator: no buttons), and the student view ("My
 // sessions"; never the roster, the count or the next sessions, even when
-// the response carries them). No request; axe runs in light and dark.
+// the response carries them). #246 B6: the group's tutor ("Students" by
+// name, their sessions with the students), a guardian of two children
+// ("For: …", the "My schedule" states, no roster), each at 320 px, and an
+// empty "My sessions". No request; axe runs in light and dark.
 
 const ZONE = 'America/Mexico_City';
 
@@ -153,5 +160,116 @@ export const Student: Story = {
     await expect(
       canvas.queryByRole('heading', { name: i18n.t('groups.next.heading') }),
     ).toBeNull();
+  },
+};
+
+function sessions(items: typeof SESSIONS) {
+  return (
+    <MySessionsSection
+      windowStart="2031-01-01"
+      state={{ status: 'ready', items }}
+      timeZone={ZONE}
+      onPrevious={fn()}
+      onNext={fn()}
+    />
+  );
+}
+
+export const Tutor: Story = {
+  args: {
+    group: TUTOR_GROUP,
+    view: 'student',
+    canManage: false,
+    mySessions: sessions(TUTOR_SESSIONS),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const students = canvas.getByRole('list', {
+      name: i18n.t('groups.tutorRoster.heading'),
+    });
+    await expect(within(students).getAllByRole('listitem')).toHaveLength(2);
+    await expect(
+      canvas.getByText(
+        i18n.t('groups.mySessions.participants', {
+          names: 'Ana López, Bruno Díaz',
+        }),
+      ),
+    ).toBeVisible();
+    // Only the window buttons: read-only.
+    await expect(canvas.getAllByRole('button')).toHaveLength(2);
+  },
+};
+
+export const TutorNarrow: Story = {
+  ...Tutor,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(
+      canvasElement.clientWidth,
+    );
+  },
+};
+
+export const GuardianOfTwo: Story = {
+  args: {
+    group: FAMILY_GROUP,
+    view: 'student',
+    canManage: false,
+    mySessions: sessions(FAMILY_SESSIONS),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(
+        i18n.t('groups.mySessions.forStudents', {
+          names: 'Ana López, Carla Méndez',
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(i18n.t('mySchedule.states.skipped_closure')),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole('heading', {
+        name: i18n.t('groups.tutorRoster.heading'),
+      }),
+    ).toBeNull();
+    const links = canvas.getAllByRole('link');
+    await expect(links[0]).toHaveAttribute(
+      'href',
+      '/my-schedule?date=2031-01-04&view=list',
+    );
+  },
+};
+
+export const GuardianOfTwoNarrow: Story = {
+  ...GuardianOfTwo,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(
+      canvasElement.clientWidth,
+    );
+    for (const link of within(canvasElement).getAllByRole('link')) {
+      const box = link.getBoundingClientRect();
+      await expect(box.height).toBeGreaterThanOrEqual(24);
+    }
+  },
+};
+
+export const NoSessions: Story = {
+  args: {
+    group: { ...TUTOR_GROUP, tutor_roster: [] },
+    view: 'student',
+    canManage: false,
+    mySessions: sessions([]),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('groups.mySessions.none')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(i18n.t('groups.tutorRoster.none')),
+    ).toBeVisible();
   },
 };

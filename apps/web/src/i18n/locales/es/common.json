@@ -45,7 +45,8 @@
     "offers": "Mis ofertas",
     "sessionRequests": "Solicitudes de sesión",
     "mySchedule": "Mi horario",
-    "changeRequests": "Mis solicitudes de cambio"
+    "changeRequests": "Mis solicitudes de cambio",
+    "myCourses": "Mis cursos"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -2386,7 +2387,8 @@
         "classroom": "Aula",
         "exception": "Excepción",
         "noTutor": "Sin tutor",
-        "noClassroom": "Sin aula"
+        "noClassroom": "Sin aula",
+        "students": "Estudiante"
       },
       "tutor": {
         "heading": "Tutor",
@@ -2475,7 +2477,8 @@
           "versionConflict": "Esta inscripción cambió. La lista se volvió a cargar.",
           "notFound": "Esta inscripción ya no existe. La lista se volvió a cargar."
         }
-      }
+      },
+      "myTitle": "Mis cursos"
     }
   },
   "offers": {
@@ -2620,7 +2623,9 @@
       "next": "4 semanas siguientes",
       "none": "No hay sesiones en estas semanas.",
       "tutor": "Tutor: {{name}}",
-      "classroom": "Aula: {{name}}"
+      "classroom": "Aula: {{name}}",
+      "forStudents": "Para: {{names}}",
+      "participants": "Estudiantes: {{names}}"
     },
     "roster": {
       "heading": "Estudiantes",
@@ -2708,6 +2713,10 @@
       "done_one": "Grupo creado: {{count}} sesión próxima.",
       "done_many": "Grupo creado: {{count}} sesiones próximas.",
       "done_other": "Grupo creado: {{count}} sesiones próximas."
+    },
+    "tutorRoster": {
+      "heading": "Estudiantes",
+      "none": "Aún no hay estudiantes inscritos."
     }
   },
   "sessionRequests": {

@@ -43,31 +43,42 @@ the body's ``422`` and the ``override``'s ``403``:
 → group or cohort ``FOR UPDATE`` → series ``FOR UPDATE`` → sessions by id
 → offer.
 
-**Reads** (#65 F, #66 F, G): :func:`get_cohort_detail` (at most nine
-statements, the #66 roster included), :func:`list_cohorts` (at most five
-whatever the page size for ``course.view`` holders) and
-:func:`list_cohort_sessions` (at most seven). The status (B2) comes from
+**Reads** (#65 F, #66 F, G; #246 A6): :func:`get_cohort_detail` (at most
+nine statements for staff, the #66 roster included, ten for anyone else),
+:func:`list_cohorts` (at most five whatever the page size for
+``course.view`` holders, six for anyone else) and
+:func:`list_cohort_sessions` (at most eight). The status (B2) comes from
 the series rule, so it holds beyond the materialization horizon.
 
-**Who reads what (#66 G, E4):** a holder of ``course.view`` (Owner,
+**Who reads what (#66 G; #246 A):** a holder of ``course.view`` (Owner,
 Administrator, Academic Coordinator, Finance) sees every cohort, its roster
 and enrolled count, and every session. Anyone else gets the record policy
-(:func:`cohort_viewer`): their **visible students** are their own student
-profile (``student`` role) and the students linked to their **active**
-guardian profile (``guardian`` role; no academic-consent gate: spec §2
-lists scheduling apart from academic records), the union for both roles.
-They see only the cohorts where a visible student has an **active**
-enrollment (else an empty list, or ``404 cohort_not_found``, never
-``403``), without the roster, the count or the series' assignment and
-offer data, and of the sessions only the ``confirmed`` and ``completed``
-ones a visible student takes part in (ADR-0005 D2), each listing only the
-caller's own students. Tutors (until #67) and unlinked accounts have no
-visible student. The facts are read on every request, so a withdrawal, an
-unlink or a deactivated guardian profile applies at once.
+(:func:`cohort_viewer`, ``scheduling.service.record_viewer``):
+
+- **students and guardians:** their **visible students** are their own
+  student profile (``student`` role) and the students linked to their
+  **active** guardian profile (``guardian`` role) who are minors, or adults
+  who gave that guardian the ``guardian_academic_access`` consent (#246 E1,
+  the #67 E3 rule; this replaces #66 E4's link-only rule), the union for
+  both roles. They see only the cohorts where a visible student has an
+  **active** enrollment, without the roster, the count or the series'
+  assignment and offer data, the tutor's name only (once they accepted),
+  and of the sessions only the family-visible ones (``states.
+  is_family_visible`` with ``first_confirmed_at``, #67 A3) a visible
+  student takes part in, each listing only the caller's own students;
+- **tutors:** the cohorts with a producing series they currently teach
+  (``pending`` or ``accepted``, #246 A2), with ``tutor_roster`` (E2) and
+  without the roster, the count or the assignment; of the sessions the
+  tutor-visible ones whose current tutor they are, with ``participants``.
+
+Anyone else gets an empty list, or ``404 cohort_not_found`` (never
+``403``). With several roles a caller sees the union; a cohort they teach
+is shown in the tutor shape. The facts are read on every request, so a
+withdrawal, an unlink, a revoked consent or a deactivated guardian profile
+applies at once.
 """
 
 import uuid
-from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, Final
 
@@ -94,7 +105,10 @@ from app.modules.scheduling.schemas import (
     CohortSessionsQuery,
     EnrollmentActor,
     EnrollmentStudent,
+    RosterStudent,
     SessionTutor,
+    TutorName,
+    TutorRosterItem,
 )
 from app.workflows.cohort_schemas import (
     CohortCreate,
@@ -273,27 +287,33 @@ def _status(schedule: scheduling.CohortSchedule | None) -> CohortStatus:
 COURSE_VIEW: Final = "course.view"
 
 
-@dataclass(frozen=True)
-class CohortViewer:
-    """Who reads a cohort (#66 G1): staff (``course.view``), or the caller's
-    visible students (their own profile, the students linked to their
-    active guardian profile)."""
+CohortViewer = scheduling.RecordViewer
+"""Who reads a cohort (#66 G1, #246 A1-A3): staff (``course.view``), or the
+caller's visible students and, for a tutor, their user id."""
 
-    staff: bool
-    students: frozenset[uuid.UUID]
-
-
-STAFF_VIEWER: Final = CohortViewer(staff=True, students=frozenset())
+STAFF_VIEWER: Final = scheduling.STAFF_VIEWER
 
 
 async def cohort_viewer(session: AsyncSession, principal: Principal) -> CohortViewer:
-    """The G1 facts of ``principal``: no statement for staff, one otherwise
-    whatever the family roles (``families.service.visible_student_ids``; a
-    tutor has none until #67)."""
-    if principal.has(COURSE_VIEW):
-        return STAFF_VIEWER
-    students = await families.family_schedule_student_ids(session, principal)
-    return CohortViewer(staff=False, students=students)
+    """The record-policy facts of ``principal``: no statement for staff or a
+    tutor, one for a student or a guardian, two when a linked adult's
+    consent is missing (whether they are a minor decides)."""
+    return await scheduling.record_viewer(
+        session, principal, staff_permission=COURSE_VIEW
+    )
+
+
+async def _teaches(
+    session: AsyncSession, viewer: CohortViewer, cohort_id: uuid.UUID
+) -> bool:
+    """Whether a non-staff caller teaches the cohort (#246 A2; one statement
+    for a tutor, none otherwise)."""
+    if viewer.staff or viewer.tutor_id is None:
+        return False
+    taught = await scheduling.taught_cohort_ids(
+        session, viewer.tutor_id, now=clock.now(), cohort_id=cohort_id
+    )
+    return cohort_id in taught
 
 
 def _actor(accounts: dict[uuid.UUID, Any], user_id: uuid.UUID) -> EnrollmentActor:
@@ -369,10 +389,18 @@ async def get_cohort_detail(
     cohort_not_found`` when unknown or hidden from ``viewer``. For staff at
     most nine statements (the cohort with its snapshot; the enrollments;
     their overrides; the series; the next occurrences; the students; the
-    subject; the accounts; the room); for a family caller at most nine with
-    the access facts."""
+    subject; the accounts; the room); for anyone else at most ten with the
+    access facts (#246 A6: the facts, whether they teach it, the cohort with
+    its active students, the series read)."""
     family = None if viewer.staff else viewer.students
-    record = await courses.get_cohort(session, cohort_id, visible_to=family)
+    taught = await _teaches(session, viewer, cohort_id)
+    active_ids: tuple[uuid.UUID, ...] = ()
+    if viewer.staff:
+        record = await courses.get_cohort(session, cohort_id)
+    else:
+        record, active_ids = await courses.get_visible_cohort(
+            session, cohort_id, visible_to=viewer.students, taught=taught
+        )
     rows: list[courses.CohortEnrollmentRow] = []
     overridden: set[uuid.UUID] = set()
     if viewer.staff:
@@ -385,7 +413,8 @@ async def get_cohort_detail(
         cohort_id,
         now=clock.now(),
         family=family,
-        extra_student_ids={row.student_id for row in rows},
+        tutor_id=viewer.tutor_id if taught else None,
+        extra_student_ids={row.student_id for row in rows} | set(active_ids),
         extra_user_ids=_actors(rows),
     )
     if read is not None:
@@ -420,6 +449,18 @@ async def get_cohort_detail(
         )
         roster = active + withdrawn
         enrolled_count = len(active)
+    tutor_roster = None
+    if taught:
+        known = {} if read is None else read.students
+        tutor_roster = [
+            TutorRosterItem(
+                student=RosterStudent(id=ref.id, display_name=ref.display_name)
+            )
+            for ref in sorted(
+                (known[sid] for sid in set(active_ids) if sid in known),
+                key=lambda ref: (ref.display_name.casefold(), str(ref.id)),
+            )
+        ]
     assert record.syllabus is not None  # noqa: S101 - a detail read has it
     detail = CohortDetail(
         id=record.id,
@@ -458,8 +499,11 @@ async def get_cohort_detail(
         syllabus=record.syllabus,
         enrolled_count=enrolled_count,
         roster=roster,
+        tutor_roster=tutor_roster,
     )
-    return detail if viewer.staff else detail.for_family()
+    if viewer.staff:
+        return detail
+    return detail.for_tutor() if taught else detail.for_family()
 
 
 async def list_cohorts(
@@ -485,11 +529,24 @@ async def list_cohorts(
     ``enrolled_count`` and ``assignment_status`` null, the tutor only once
     they accepted, and ``next_starts_at`` from the ``confirmed`` sessions
     their students take part in."""
-    if not viewer.staff and not viewer.students:
+    if viewer.sees_nothing:
         return CohortPage(items=[], next_cursor=None)
     now = clock.now()
     schedules = await scheduling.cohort_schedules(
-        session, None, now=now, family=None if viewer.staff else viewer.students
+        session,
+        None,
+        now=now,
+        family=None if viewer.staff else viewer.students,
+        tutor_id=None if viewer.staff else viewer.tutor_id,
+    )
+    taught = (
+        set()
+        if viewer.staff or viewer.tutor_id is None
+        else {
+            cohort_id
+            for cohort_id, schedule in schedules.items()
+            if viewer.tutor_id in schedule.teaching_tutor_ids
+        }
     )
     ids = None
     if status != "all":
@@ -508,6 +565,7 @@ async def list_cohorts(
         limit=limit,
         cursor=cursor,
         visible_to=None if viewer.staff else viewer.students,
+        taught_ids=taught,
     )
     subjects = await catalog.subject_references(
         session, {record.subject_id for record in records}
@@ -516,7 +574,7 @@ async def list_cohorts(
         schedule.tutor_user_id
         for record in records
         if (schedule := schedules.get(record.id)) is not None
-        and _shown_tutor(schedule, viewer) is not None
+        and _shown_tutor(schedule, viewer, taught=record.id in taught) is not None
         and schedule.tutor_user_id is not None
     }
     accounts = await identity.get_account_references(session, tutors)
@@ -533,6 +591,7 @@ async def list_cohorts(
                 subjects,
                 accounts,
                 viewer=viewer,
+                taught=record.id in taught,
                 enrolled_count=counts.get(record.id, 0) if viewer.staff else None,
             )
             for record in records
@@ -542,11 +601,11 @@ async def list_cohorts(
 
 
 def _shown_tutor(
-    schedule: scheduling.CohortSchedule, viewer: CohortViewer
+    schedule: scheduling.CohortSchedule, viewer: CohortViewer, *, taught: bool
 ) -> uuid.UUID | None:
     """The series' tutor; for a family caller only once they accepted (a
     pending offer is assignment data)."""
-    if viewer.staff or schedule.assignment_status == "accepted":
+    if viewer.staff or taught or schedule.assignment_status == "accepted":
         return schedule.tutor_user_id
     return None
 
@@ -558,18 +617,23 @@ def _list_item(
     accounts: dict[uuid.UUID, identity.AccountReference],
     *,
     viewer: CohortViewer,
+    taught: bool,
     enrolled_count: int | None,
 ) -> CohortListItem:
-    tutor = None
-    tutor_id = None if schedule is None else _shown_tutor(schedule, viewer)
+    tutor: SessionTutor | TutorName | None = None
+    tutor_id = (
+        None if schedule is None else _shown_tutor(schedule, viewer, taught=taught)
+    )
     if tutor_id is not None:
         account = accounts.get(tutor_id)
-        tutor = SessionTutor(
-            id=tutor_id,
-            display_name="" if account is None else account.display_name,
+        name = "" if account is None else account.display_name
+        tutor = (
+            SessionTutor(id=tutor_id, display_name=name)
+            if viewer.staff or taught
+            else TutorName(display_name=name)
         )
-    # For a family caller the schedule's next start is already their
-    # students' confirmed sessions only.
+    # For a family or tutor caller the schedule's next start is already
+    # their students' confirmed sessions or their own taught ones only.
     next_starts_at = None if schedule is None else schedule.next_starts_at
     return CohortListItem(
         id=record.id,
@@ -600,15 +664,22 @@ async def list_cohort_sessions(
     sessions overlapping ``[from, to)`` by start; ``404 cohort_not_found``
     when unknown or hidden. Staff: every state, at most four statements (the
     rows, the tutors, the rooms, and the cohort when no row was found). A
-    family caller: the ``confirmed`` / ``completed`` sessions a visible
-    student takes part in, each with ``students`` (only theirs); at most
-    seven statements with the access facts."""
+    family caller: the family-visible sessions a visible student takes part
+    in, each with ``students`` (only theirs); a tutor of the cohort: the
+    tutor-visible sessions they currently teach, with ``participants``; at
+    most eight statements with the access facts (#246 A6)."""
     if viewer.staff:
         items = await scheduling.list_cohort_sessions(
             session, cohort_id, query.from_, query.to
         )
         if not items and not await courses.cohort_exists(session, cohort_id):
             raise courses.CohortNotFoundError()
+        return CohortSessions(items=items)
+    scheduling.validate_range(query.from_, query.to)
+    if await _teaches(session, viewer, cohort_id):
+        items = await scheduling.list_cohort_sessions(
+            session, cohort_id, query.from_, query.to, tutor_id=viewer.tutor_id
+        )
         return CohortSessions(items=items)
     items = await scheduling.list_cohort_sessions(
         session, cohort_id, query.from_, query.to, family=viewer.students

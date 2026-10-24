@@ -16,6 +16,12 @@ import { STATE_ICONS } from '@/features/calendar/EventContent';
 import { TEXT_LINK_CLASS } from '@/features/students/styles';
 import { useFormatters } from '@/lib/formatters';
 import { addDays, toLocalDate } from '@/lib/time';
+import {
+  myScheduleHref,
+  namesText,
+  sessionStateText,
+  showsStudentNames,
+} from '@/features/groups/nonStaff';
 import type { CohortSessionItem } from './api';
 import { WINDOW_DAYS } from './rules';
 
@@ -27,6 +33,11 @@ import { WINDOW_DAYS } from './rules';
 // as text and an icon, "Exception" (text) for a session moved or edited on
 // its own, the tutor and the room. Presentational: the page passes the
 // window and the query state. The shared Table scrolls when it doesn't fit.
+//
+// For a tutor, student or guardian (#246 B3, B4; `myScheduleLinks`) the date
+// links to that day in "My schedule" (List view), the state uses the "My
+// schedule" wording and, for a guardian with several children in the
+// list, a "Student" column names whose session it is.
 
 export type CohortSessionsState =
   | { status: 'loading' }
@@ -40,6 +51,8 @@ export interface CohortSessionsSectionProps {
   timeZone: string;
   /** Link each date to its session page (schedule.view). */
   linkSessions: boolean;
+  /** Link each date to "My schedule" instead (non-staff, #246 B4). */
+  myScheduleLinks?: boolean;
   onPrevious: () => void;
   onNext: () => void;
 }
@@ -49,6 +62,7 @@ export function CohortSessionsSection({
   state,
   timeZone,
   linkSessions,
+  myScheduleLinks = false,
   onPrevious,
   onNext,
 }: CohortSessionsSectionProps) {
@@ -67,6 +81,7 @@ export function CohortSessionsSection({
   } else if (state.items.length === 0) {
     content = <p className="text-sm">{t('courses.cohorts.sessions.empty')}</p>;
   } else {
+    const named = showsStudentNames(state.items);
     content = (
       // The heading and the window name the table (and its scroll region at
       // 320 px), so it differs from the section landmark (axe landmark-unique).
@@ -76,6 +91,11 @@ export function CohortSessionsSection({
             <TableHead scope="col">
               {t('courses.cohorts.sessions.date')}
             </TableHead>
+            {named ? (
+              <TableHead scope="col">
+                {t('courses.cohorts.sessions.students')}
+              </TableHead>
+            ) : null}
             <TableHead scope="col">
               {t('courses.cohorts.sessions.time')}
             </TableHead>
@@ -100,9 +120,13 @@ export function CohortSessionsSection({
             return (
               <TableRow key={item.id}>
                 <TableCell>
-                  {linkSessions ? (
+                  {linkSessions || myScheduleLinks ? (
                     <Link
-                      to={`/schedule/sessions/${encodeURIComponent(item.id)}`}
+                      to={
+                        linkSessions
+                          ? `/schedule/sessions/${encodeURIComponent(item.id)}`
+                          : myScheduleHref(item.starts_at, timeZone)
+                      }
                       className={TEXT_LINK_CLASS}
                     >
                       {date}
@@ -111,6 +135,9 @@ export function CohortSessionsSection({
                     date
                   )}
                 </TableCell>
+                {named ? (
+                  <TableCell>{namesText(item.students)}</TableCell>
+                ) : null}
                 <TableCell>
                   {t('courses.cohorts.timeRange', {
                     start: formatInstant(item.starts_at, 'time'),
@@ -121,7 +148,7 @@ export function CohortSessionsSection({
                   <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="inline-flex items-center gap-1">
                       <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-                      {t(`scheduling.states.${item.state}`)}
+                      {sessionStateText(item.state, t, !myScheduleLinks)}
                     </span>
                     {item.is_exception ? (
                       <span className="rounded-md border border-border px-1.5 text-xs font-medium">

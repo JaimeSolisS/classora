@@ -3,6 +3,7 @@ import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
+import { MY_COURSES_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 
@@ -53,11 +54,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/families', labelKey: 'nav.families', permission: 'guardian.view' },
   // Tutors see only their own profile (#43 E1).
   { to: '/tutors', labelKey: 'nav.tutors', permission: 'tutor.view' },
-  // Tutoring groups (#234 A2): staff with schedule.view, and students (their
-  // own groups). Tutors and guardians: #67.
+  // Tutoring groups (#234 A2, #246 B1): staff with schedule.view, and
+  // students, guardians and tutors (their own groups).
   { to: '/groups', labelKey: 'nav.groups', ...GROUPS_ACCESS },
   // Course templates (#64 G1): Finance Staff read them.
   { to: '/courses', labelKey: 'nav.courses', permission: 'course.view' },
+  // My courses (#246 B2): the cohorts a tutor teaches or a student or
+  // guardian takes (the staff "Courses" item keeps landing on templates).
+  { to: '/courses/cohorts', labelKey: 'nav.myCourses', ...MY_COURSES_ACCESS },
   // The calendar (#57 D1): every schedule.view holder (Coordinators and
   // Finance too). "Schedule a session" (/schedule/new) is linked from it.
   { to: '/schedule', labelKey: 'nav.schedule', permission: 'schedule.view' },

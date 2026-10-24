@@ -39,13 +39,21 @@ import {
 // 300 ms. A filter change starts the list again from its first page (the
 // cursor is part of the query, not the URL). The template filter lists
 // every template, inactive ones marked. "New cohort" for schedule.manage.
+//
+// "My courses" (#246 B2): a tutor, student or guardian without course.view
+// gets the cohorts they teach or take (the API decides), read-only, with the
+// name and status filters only (the template and subject options need
+// course.view and catalog access).
 
 /** How long typing must pause before the search runs. */
 export const SEARCH_DEBOUNCE_MS = 300;
 
 export function CohortsPage() {
   const { t } = useTranslation();
-  const title = t('courses.cohorts.title');
+  const staff = useCan('course.view');
+  const title = staff
+    ? t('courses.cohorts.title')
+    : t('courses.cohorts.myTitle');
   useDocumentTitle(title);
   const canManage = useCan('schedule.manage');
   const id = useId();
@@ -57,7 +65,10 @@ export function CohortsPage() {
     status: `${id}-status`,
   };
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = listFilters(searchParams);
+  const parsed = listFilters(searchParams);
+  const filters: CohortListFilters = staff
+    ? parsed
+    : { ...parsed, template: '', subject: '' };
   const [text, setText] = useState(filters.q);
   const [shownQ, setShownQ] = useState(filters.q);
   if (filters.q !== shownQ) {
@@ -88,10 +99,12 @@ export function CohortsPage() {
   const templates = useQuery({
     queryKey: templateOptionsKey('all'),
     queryFn: ({ signal }) => fetchTemplateOptions('all', signal),
+    enabled: staff,
   });
   const subjects = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'subjects'],
     queryFn: ({ signal }) => fetchSubjectOptions(signal),
+    enabled: staff,
   });
   const list = useInfiniteQuery({
     queryKey: cohortsListKey(filters),
@@ -178,42 +191,50 @@ export function CohortsPage() {
             onChange={(event) => setText(event.target.value)}
           />
         </div>
-        {select(
-          'template',
-          t('courses.cohorts.list.template'),
-          filters.template,
-          (template) => apply({ ...filters, template }),
-          <>
-            <option value="">{t('courses.cohorts.list.allTemplates')}</option>
-            {(templates.data ?? []).map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.is_active
-                  ? template.name
-                  : t('courses.cohorts.list.inactiveTemplate', {
-                      name: template.name,
-                    })}
-              </option>
-            ))}
-          </>,
-        )}
-        {select(
-          'subject',
-          t('courses.cohorts.list.subject'),
-          filters.subject,
-          (subject) => apply({ ...filters, subject }),
-          <>
-            <option value="">{t('courses.cohorts.list.allSubjects')}</option>
-            {subjectsByLevel(subjects.data ?? []).map(([level, items]) => (
-              <optgroup key={level} label={level}>
-                {items.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.name}
+        {staff
+          ? select(
+              'template',
+              t('courses.cohorts.list.template'),
+              filters.template,
+              (template) => apply({ ...filters, template }),
+              <>
+                <option value="">
+                  {t('courses.cohorts.list.allTemplates')}
+                </option>
+                {(templates.data ?? []).map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.is_active
+                      ? template.name
+                      : t('courses.cohorts.list.inactiveTemplate', {
+                          name: template.name,
+                        })}
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </>,
-        )}
+              </>,
+            )
+          : null}
+        {staff
+          ? select(
+              'subject',
+              t('courses.cohorts.list.subject'),
+              filters.subject,
+              (subject) => apply({ ...filters, subject }),
+              <>
+                <option value="">
+                  {t('courses.cohorts.list.allSubjects')}
+                </option>
+                {subjectsByLevel(subjects.data ?? []).map(([level, items]) => (
+                  <optgroup key={level} label={level}>
+                    {items.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </>,
+            )
+          : null}
         {select(
           'status',
           t('courses.cohorts.list.status'),

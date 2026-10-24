@@ -104,7 +104,8 @@ from app.modules.families.errors import (
     EmergencyContactUnknownError,
 )
 from app.modules.families.facts import (
-    family_schedule_student_ids,
+    FamilyScheduleFacts,
+    family_schedule_facts,
     load_access_facts,
 )
 from app.modules.families.models import (
@@ -142,6 +143,7 @@ from app.modules.identity import service as identity
 
 __all__ = [
     "STUDENT_LOGIN_GATE",
+    "FamilyScheduleFacts",
     "StudentAccessFacts",
     "StudentAgeReference",
     "add_family_guardian",
@@ -149,7 +151,7 @@ __all__ = [
     "create_family",
     "create_guardian",
     "create_student",
-    "family_schedule_student_ids",
+    "family_schedule_facts",
     "get_consents",
     "get_family",
     "get_guardian",

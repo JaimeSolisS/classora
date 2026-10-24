@@ -32,6 +32,7 @@ import {
 } from '@/features/scheduling/session/rules';
 import { useFormatters } from '@/lib/formatters';
 import { todayInZone } from '@/lib/time';
+import { TutorRosterSection } from '@/features/groups/TutorRosterSection';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { CoursesTabs } from '../CoursesTabs';
 import {
@@ -77,6 +78,11 @@ import {
 //
 // The Students section (#245) shows when the detail carries a `roster`
 // (course.view holders, #66 F1); "Show withdrawn" is `?withdrawn=1`.
+//
+// A tutor, student or guardian (#246 B2, no course.view) gets the same page
+// read-only (every control depends on a permission they don't hold): the
+// details, the sessions they may see (linked to "My schedule", B4), the
+// syllabus, and for the cohort's tutor "Students" (`tutor_roster`).
 // schedule.manage holders enroll (the #234 dialog with the cohort's texts:
 // `{student_id, override?: {codes, reason}}`) and withdraw (`{version,
 // reason?}`). An already_enrolled or cohort_ended answer refreshes the
@@ -332,6 +338,7 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
         canManage={canManage}
         linkTemplate={canViewCourses}
         linkSessions={canViewSchedule}
+        myScheduleLinks={!canViewCourses}
         notice={notice}
         focusNotice={noticeFocus}
         onEdit={() => {
@@ -345,9 +352,13 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
           state={sessionsState}
           timeZone={timeZone}
           linkSessions={canViewSchedule}
+          myScheduleLinks={!canViewCourses}
           onPrevious={() => setWindowStart((d) => shiftWindow(d, -1))}
           onNext={() => setWindowStart((d) => shiftWindow(d, 1))}
         />
+        {!roster && detail.tutor_roster ? (
+          <TutorRosterSection roster={detail.tutor_roster} />
+        ) : null}
         {roster ? (
           <RosterPanel
             cohort={detail}

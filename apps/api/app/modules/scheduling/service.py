@@ -217,6 +217,7 @@ from app.modules.scheduling.calendar_read import (
 from app.modules.scheduling.calendar_read import (
     list_tutor_options as list_tutor_options,
 )
+from app.modules.scheduling.calendar_read import validate_range as validate_range
 from app.modules.scheduling.cancellation import (
     CancellationInitiator as CancellationInitiator,
 )
@@ -478,6 +479,8 @@ from app.modules.scheduling.overrides import (
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,
 )
+from app.modules.scheduling.permissions import STAFF_VIEWER as STAFF_VIEWER
+from app.modules.scheduling.permissions import RecordViewer as RecordViewer
 from app.modules.scheduling.reassignment import (
     AVAILABILITY_IMPACT_SOURCE as AVAILABILITY_IMPACT_SOURCE,
 )
@@ -497,6 +500,10 @@ from app.modules.scheduling.reassignment import (
     register_reassignment_notifications as register_reassignment_notifications,
 )
 from app.modules.scheduling.reassignment_rules import is_flag_open as is_flag_open
+from app.modules.scheduling.record_viewer import record_viewer as record_viewer
+from app.modules.scheduling.record_viewer import (
+    taught_cohort_ids as taught_cohort_ids,
+)
 from app.modules.scheduling.request_approval import (
     SESSION_REQUEST_APPROVAL_HANDLER as SESSION_REQUEST_APPROVAL_HANDLER,
 )

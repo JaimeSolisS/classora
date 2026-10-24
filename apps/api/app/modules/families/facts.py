@@ -17,15 +17,18 @@ role) applies on the caller's next request without a new login:
 - ``student``: the profile linked to the caller's login (``own_student_id``,
   #35; one statement, whatever the profile's ``is_active``: suspending the
   login is the access control);
-- the schedule reads of cohorts (#66 G1): :func:`family_schedule_student_ids`, the
-  own profile and the active profile's linked students in one statement.
+- the group and cohort reads (#66 G1, #246 A1): :func:`family_schedule_facts`,
+  the own profile and the active profile's linked students with their
+  birthdates and consents, in one statement.
 
 A staff-only caller never queries links.
 """
 
 import uuid
+from dataclasses import dataclass
+from datetime import date
 
-from sqlalchemy import exists, select, union_all
+from sqlalchemy import exists, false, select, true, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal
@@ -139,24 +142,78 @@ async def load_family_facts(
     return FamilyAccessFacts(own_family_id=own)
 
 
-async def family_schedule_student_ids(
+@dataclass(frozen=True)
+class FamilyScheduleFacts:
+    """The schedule-shaped record facts of a family caller (#246 A1): who
+    they are linked to (:class:`StudentAccessFacts` with ``own_student_id``,
+    ``linked_student_ids`` and ``academic_consent_student_ids``) and the
+    birthdates of their linked students (for the adult rule)."""
+
+    facts: StudentAccessFacts
+    birthdates: dict[uuid.UUID, date]
+
+
+async def family_schedule_facts(
     session: AsyncSession, principal: Principal
-) -> frozenset[uuid.UUID]:
-    """The students a family caller sees in a schedule (#66 G1): their own
-    profile (``student`` role) and the students linked to their **active**
-    guardian profile (``guardian`` role, no consent gate), the union for
-    both roles. Loaded on every request like the other facts, in **one**
+) -> FamilyScheduleFacts:
+    """The facts of the group and cohort reads (#66 G1, #246 A1): the
+    caller's own profile (``student`` role) and the students linked to
+    their **active** guardian profile (``guardian`` role) with each one's
+    birthdate and whether it gave that profile a ``guardian_academic_access``
+    consent. Loaded on every request like the other facts, in **one**
     statement whatever the roles; none without either role."""
+    if not ({STUDENT, GUARDIAN} & principal.roles):
+        return FamilyScheduleFacts(facts=StudentAccessFacts(), birthdates={})
     parts = []
     if STUDENT in principal.roles:
-        parts.append(select(Student.id).where(Student.user_id == principal.user_id))
-    if GUARDIAN in principal.roles:
         parts.append(
-            select(StudentGuardian.student_id)
+            select(
+                Student.id.label("student_id"),
+                true().label("own"),
+                Student.birthdate.label("birthdate"),
+                false().label("consented"),
+            ).where(Student.user_id == principal.user_id)
+        )
+    if GUARDIAN in principal.roles:
+        consented = (
+            exists()
+            .where(
+                ConsentRecord.student_id == StudentGuardian.student_id,
+                ConsentRecord.guardian_id == StudentGuardian.guardian_id,
+                ConsentRecord.scope == GUARDIAN_ACADEMIC_ACCESS,
+                ConsentRecord.revoked_at.is_(None),
+            )
+            .correlate(StudentGuardian)
+        )
+        parts.append(
+            select(
+                StudentGuardian.student_id.label("student_id"),
+                false().label("own"),
+                Student.birthdate.label("birthdate"),
+                consented.label("consented"),
+            )
             .join(Guardian, Guardian.id == StudentGuardian.guardian_id)
+            .join(Student, Student.id == StudentGuardian.student_id)
             .where(Guardian.user_id == principal.user_id, Guardian.is_active.is_(True))
         )
-    if not parts:
-        return frozenset()
     query = parts[0] if len(parts) == 1 else union_all(*parts)
-    return frozenset(await session.scalars(query))
+    own: uuid.UUID | None = None
+    linked: set[uuid.UUID] = set()
+    academic: set[uuid.UUID] = set()
+    birthdates: dict[uuid.UUID, date] = {}
+    for student_id, is_own, birthdate, has_consent in await session.execute(query):
+        if is_own:
+            own = student_id
+            continue
+        linked.add(student_id)
+        birthdates[student_id] = birthdate
+        if has_consent:
+            academic.add(student_id)
+    return FamilyScheduleFacts(
+        facts=StudentAccessFacts(
+            linked_student_ids=frozenset(linked),
+            own_student_id=own,
+            academic_consent_student_ids=frozenset(academic),
+        ),
+        birthdates=birthdates,
+    )

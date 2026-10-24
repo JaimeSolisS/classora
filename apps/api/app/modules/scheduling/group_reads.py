@@ -1,25 +1,31 @@
-"""Reading tutoring groups, with the student record policy (#56 G, H; ADR-0005
-D2 family visibility; spec §1).
+"""Reading tutoring groups, with the record policy (#56 G, H; #246 A;
+ADR-0005 D2 family visibility, D9 record policies; spec §1, §2).
 
-**Who sees what (H, E4):**
+**Who sees what** (:class:`~app.modules.scheduling.permissions.RecordViewer`,
+loaded by :func:`~app.modules.scheduling.record_viewer.record_viewer`):
 
 - a holder of ``schedule.view`` (Owner, Administrator, Academic
   Coordinator, Finance) sees every group, its roster and every session;
-- a **student** (no ``schedule.view``) sees only the groups where their own
-  student profile (``families.service.load_access_facts(...).
-  own_student_id``) has an **active** enrollment, without the roster or the
-  enrolled count (other students are minors' personal data), and of the
-  group's sessions only those where their profile is a participant in
-  ``confirmed`` or ``completed`` (families never see ``unassigned``,
-  ``offered`` or ``conflict``; sessions before their enrollment or after
-  their withdrawal are therefore left out);
-- anyone else (tutors, guardians, a student account without a profile) sees
-  nothing: an empty list, ``404 group_not_found`` for a detail or the
-  sessions (never ``403``). #67 extends this to linked guardians and
-  assigned tutors.
+- a **student or a guardian** sees the groups where a visible student (their
+  own profile; a linked child who is a minor, or an adult who gave that
+  guardian the academic consent, #246 E1) has an **active** enrollment,
+  without the roster or the enrolled count, the tutor's name only (once
+  they accepted), and of the group's sessions only the family-visible ones
+  (``states.is_family_visible`` with ``first_confirmed_at``, #67 A3) where a
+  visible student is a participant, each with ``students`` (only the
+  caller's own);
+- a **tutor** sees the groups with a producing series they currently teach
+  (``pending`` or ``accepted``, #246 A2), with ``tutor_roster`` (the active
+  enrollments' students, E2) instead of the roster, and of the sessions the
+  tutor-visible ones whose current tutor they are, with ``participants``;
+- anyone else sees nothing: an empty list, ``404 group_not_found`` for a
+  detail or the sessions (never ``403``).
 
-A hidden group and an unknown one give the same ``404``. The detail runs at
-most eight statements, the sessions read at most six.
+With several roles a caller sees the union; a group they teach is shown in
+the tutor shape, any other in the family shape. A hidden group and an
+unknown one give the same ``404``. The detail runs at most nine statements,
+the sessions read at most seven (#246 A6: the #56 budgets plus the consent
+facts).
 """
 
 import uuid
@@ -28,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from sqlalchemy import Date, cast, func, literal, or_, select, tuple_
+from sqlalchemy import ColumnElement, false, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -42,6 +48,7 @@ from app.modules.scheduling.calendar_read import validate_range
 from app.modules.scheduling.errors import GroupNotFoundError
 from app.modules.scheduling.groups_rules import AFFECTED_STATES
 from app.modules.scheduling.models import (
+    SERIES_ASSIGNMENT_ACCEPTED,
     ClassGroup,
     ClassSeries,
     ClassSession,
@@ -49,7 +56,19 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
     GroupEnrollment,
 )
+from app.modules.scheduling.permissions import RecordViewer
+from app.modules.scheduling.record_viewer import (
+    NOT_DONE,
+    producing_series,
+    record_viewer,
+    taught_series_condition,
+)
+from app.modules.scheduling.role_schedules import (
+    family_visible_condition,
+    tutor_visible_condition,
+)
 from app.modules.scheduling.schemas import (
+    CohortSessionStudent,
     EnrollmentActor,
     EnrollmentStudent,
     GroupDetail,
@@ -65,95 +84,136 @@ from app.modules.scheduling.schemas import (
     GroupSessionsQuery,
     GroupStatus,
     GroupSubject,
+    RosterStudent,
     SeriesRecurrenceDetail,
     SessionClassroom,
+    SessionParticipantName,
     SessionTutor,
+    TutorName,
+    TutorRosterItem,
 )
 from app.modules.scheduling.states import FAMILY_VISIBLE_STATES, SessionState
 
 SCHEDULE_VIEW: Final = "schedule.view"
-STUDENT_ROLE: Final = "student"
 NEXT_OCCURRENCES: Final = 10
 UPCOMING_STATES: Final = tuple(sorted(AFFECTED_STATES - {SessionState.SKIPPED_CLOSURE}))
 """The upcoming occurrences staff see (not cancelled, skipped or done)."""
 STUDENT_STATES: Final = tuple(sorted(FAMILY_VISIBLE_STATES))
-"""``confirmed`` and ``completed`` (ADR-0005 D2 family visibility)."""
+"""``confirmed`` and ``completed``: the family's next start in a list."""
+TUTOR_NEXT_STATES: Final = (SessionState.CONFIRMED.value, SessionState.OFFERED.value)
+"""The tutor's next start in a list: an offered or confirmed session."""
 
 
-class _NoAssignments:
-    """Group reads never use tutor assignments (#67 adds tutors)."""
-
-    async def student_ids_for_tutor(
-        self, session: AsyncSession, user_id: uuid.UUID
-    ) -> frozenset[uuid.UUID]:
-        return frozenset()
+async def viewer_of(session: AsyncSession, principal: Principal) -> RecordViewer:
+    """The record-policy facts of ``principal`` for groups (see
+    :func:`~app.modules.scheduling.record_viewer.record_viewer`)."""
+    return await record_viewer(session, principal, staff_permission=SCHEDULE_VIEW)
 
 
-_NO_ASSIGNMENTS: Final = _NoAssignments()
-
-
-@dataclass(frozen=True)
-class Viewer:
-    """Who is reading: staff (``schedule.view``), a student with their own
-    profile, or nobody who may see a group."""
-
-    staff: bool
-    student_id: uuid.UUID | None
-
-    @property
-    def sees_nothing(self) -> bool:
-        return not self.staff and self.student_id is None
-
-
-async def viewer_of(session: AsyncSession, principal: Principal) -> Viewer:
-    """The H record-policy facts of ``principal`` (no statement for staff or
-    for a caller without the student role)."""
-    if principal.has(SCHEDULE_VIEW):
-        return Viewer(staff=True, student_id=None)
-    if STUDENT_ROLE not in principal.roles:
-        return Viewer(staff=False, student_id=None)
-    facts = await families.load_access_facts(session, principal, _NO_ASSIGNMENTS)
-    return Viewer(staff=False, student_id=facts.own_student_id)
-
-
-def _enrolled(student_id: uuid.UUID) -> Any:
+def _enrolled(student_ids: frozenset[uuid.UUID]) -> ColumnElement[bool]:
     return (
         select(GroupEnrollment.id)
         .where(
             GroupEnrollment.group_id == ClassGroup.id,
-            GroupEnrollment.student_id == student_id,
+            GroupEnrollment.student_id.in_(student_ids),
             GroupEnrollment.withdrawn_at.is_(None),
         )
         .exists()
     )
 
 
-def _local_today(now: datetime) -> Any:
-    """The series' local today (its ``time_zone`` is the center zone), from
-    the application clock."""
-    return cast(func.timezone(ClassSeries.time_zone, literal(now)), Date)
-
-
-def _producing(now: datetime) -> Any:
-    return or_(
-        ClassSeries.last_occurrence_on.is_(None),
-        ClassSeries.last_occurrence_on >= _local_today(now),
+def _taught(viewer: RecordViewer, now: datetime) -> ColumnElement[bool]:
+    """A2: a producing series of the group taught by the caller."""
+    if viewer.tutor_id is None:
+        return false()
+    return (
+        select(ClassSeries.id)
+        .where(
+            ClassSeries.group_id == ClassGroup.id,
+            taught_series_condition(viewer.tutor_id, now),
+        )
+        .exists()
     )
 
 
+def _visible(viewer: RecordViewer, now: datetime) -> ColumnElement[bool]:
+    """A3 for a caller without ``schedule.view``: a visible student's active
+    enrollment, or a taught producing series."""
+    parts: list[ColumnElement[bool]] = []
+    if viewer.students:
+        parts.append(_enrolled(viewer.students))
+    if viewer.tutor_id is not None:
+        parts.append(_taught(viewer, now))
+    return or_(*parts) if parts else false()
+
+
+def _has_visible_participant(student_ids: frozenset[uuid.UUID]) -> ColumnElement[bool]:
+    return (
+        select(ClassSessionParticipant.class_session_id)
+        .where(
+            ClassSessionParticipant.class_session_id == ClassSession.id,
+            ClassSessionParticipant.student_id.in_(student_ids),
+        )
+        .exists()
+    )
+
+
+def _family_rows(viewer: RecordViewer) -> list[ColumnElement[bool]]:
+    """A5: the family-visible sessions a visible student takes part in."""
+    return [_has_visible_participant(viewer.students), family_visible_condition()]
+
+
+def _tutor_rows(viewer: RecordViewer) -> list[ColumnElement[bool]]:
+    """A5: the tutor-visible sessions whose current tutor is the caller."""
+    return [ClassSession.tutor_user_id == viewer.tutor_id, tutor_visible_condition()]
+
+
+@dataclass(frozen=True)
+class _Visible:
+    group: ClassGroup
+    taught: bool
+    active_student_ids: tuple[uuid.UUID, ...]
+
+
 async def _visible_group(
-    session: AsyncSession, viewer: Viewer, group_id: uuid.UUID
-) -> ClassGroup:
+    session: AsyncSession, viewer: RecordViewer, group_id: uuid.UUID, now: datetime
+) -> _Visible:
+    """The group when ``viewer`` may see it, with whether they teach it and
+    (for a tutor) its active enrollments' students; one statement, none
+    when they see nothing. ``404 group_not_found`` otherwise."""
     if viewer.sees_nothing:
         raise GroupNotFoundError()
-    query = select(ClassGroup).where(ClassGroup.id == group_id)
-    if not viewer.staff:
-        assert viewer.student_id is not None  # noqa: S101 - sees_nothing above
-        query = query.where(_enrolled(viewer.student_id))
-    group = await session.scalar(query)
-    if group is None:
+    if viewer.staff:
+        group = await session.scalar(
+            select(ClassGroup).where(ClassGroup.id == group_id)
+        )
+        if group is None:
+            raise GroupNotFoundError()
+        return _Visible(group=group, taught=False, active_student_ids=())
+    active = (
+        select(func.array_agg(GroupEnrollment.student_id))
+        .where(
+            GroupEnrollment.group_id == ClassGroup.id,
+            GroupEnrollment.withdrawn_at.is_(None),
+        )
+        .correlate(ClassGroup)
+        .scalar_subquery()
+    )
+    row = (
+        await session.execute(
+            select(ClassGroup, _taught(viewer, now).label("taught"), active).where(
+                ClassGroup.id == group_id, _visible(viewer, now)
+            )
+        )
+    ).first()
+    if row is None:
         raise GroupNotFoundError()
-    return group
+    group, taught, students = row
+    return _Visible(
+        group=group,
+        taught=bool(taught),
+        active_student_ids=tuple(students or ()) if taught else (),
+    )
 
 
 def _subject(reference: SubjectReference) -> GroupSubject:
@@ -243,22 +303,24 @@ async def get_group_enrollment(
 async def get_group(
     session: AsyncSession, principal: Principal, group_id: uuid.UUID
 ) -> GroupDetail:
-    """``GET /api/v1/groups/{id}`` (G1, H2); at most eight statements."""
+    """``GET /api/v1/groups/{id}`` (G1, H2; #246 A4); at most eight
+    statements for staff, nine with the family facts."""
     viewer = await viewer_of(session, principal)
-    group = await _visible_group(session, viewer, group_id)
-    return await _detail(session, viewer, group)
+    now = clock.now()
+    visible = await _visible_group(session, viewer, group_id, now)
+    return await _detail(session, viewer, visible, now)
 
 
 async def _detail(
-    session: AsyncSession, viewer: Viewer, group: ClassGroup
+    session: AsyncSession, viewer: RecordViewer, visible: _Visible, now: datetime
 ) -> GroupDetail:
-    now = clock.now()
+    group = visible.group
     subject = (await catalog.subject_references(session, [group.subject_id]))[
         group.subject_id
     ]
     series = await session.scalar(
         select(ClassSeries)
-        .where(ClassSeries.group_id == group.id, _producing(now))
+        .where(ClassSeries.group_id == group.id, producing_series(now))
         .order_by(ClassSeries.starts_on.desc(), ClassSeries.id.desc())
         .limit(1)
     )
@@ -275,15 +337,10 @@ async def _detail(
     )
     if viewer.staff:
         upcoming = upcoming.where(ClassSession.state.in_(UPCOMING_STATES))
+    elif visible.taught:
+        upcoming = upcoming.where(*_tutor_rows(viewer), NOT_DONE)
     else:
-        assert viewer.student_id is not None  # noqa: S101 - checked visible
-        upcoming = upcoming.join(
-            ClassSessionParticipant,
-            ClassSessionParticipant.class_session_id == ClassSession.id,
-        ).where(
-            ClassSessionParticipant.student_id == viewer.student_id,
-            ClassSession.state.in_(STUDENT_STATES),
-        )
+        upcoming = upcoming.where(*_family_rows(viewer), NOT_DONE)
     next_rows = list(await session.scalars(upcoming))
 
     enrollments: list[tuple[GroupEnrollment, bool]] = []
@@ -300,8 +357,21 @@ async def _detail(
         students = await families.student_references(
             session, {enrollment.student_id for enrollment, _ in enrollments}
         )
+    elif visible.active_student_ids:
+        students = await families.student_references(
+            session, visible.active_student_ids
+        )
+    shown_tutor = (
+        series is not None
+        and series.tutor_user_id is not None
+        and (
+            viewer.staff
+            or visible.taught
+            or series.assignment_status == SERIES_ASSIGNMENT_ACCEPTED
+        )
+    )
     user_ids: set[uuid.UUID] = set()
-    if series is not None and series.tutor_user_id is not None:
+    if shown_tutor and series is not None and series.tutor_user_id is not None:
         user_ids.add(series.tutor_user_id)
     for enrollment, _ in enrollments:
         user_ids.add(enrollment.enrolled_by_user_id)
@@ -327,15 +397,32 @@ async def _detail(
         )
         roster = active + withdrawn
         enrolled_count = len(active)
+    tutor_roster = None
+    if visible.taught:
+        tutor_roster = [
+            TutorRosterItem(
+                student=RosterStudent(id=ref.id, display_name=ref.display_name)
+            )
+            for ref in sorted(
+                (
+                    students[sid]
+                    for sid in set(visible.active_student_ids)
+                    if sid in students
+                ),
+                key=lambda ref: (ref.display_name.casefold(), str(ref.id)),
+            )
+        ]
 
     current = None
     if series is not None:
-        tutor = None
-        if series.tutor_user_id is not None:
+        tutor: SessionTutor | TutorName | None = None
+        if shown_tutor and series.tutor_user_id is not None:
             account = accounts.get(series.tutor_user_id)
-            tutor = SessionTutor(
-                id=series.tutor_user_id,
-                display_name="" if account is None else account.display_name,
+            name = "" if account is None else account.display_name
+            tutor = (
+                SessionTutor(id=series.tutor_user_id, display_name=name)
+                if viewer.staff or visible.taught
+                else TutorName(display_name=name)
             )
         current = GroupSeries(
             id=series.id,
@@ -385,6 +472,7 @@ async def _detail(
         created_at=group.created_at,
         updated_at=group.updated_at,
         roster=roster,
+        tutor_roster=tutor_roster,
     )
 
 
@@ -414,10 +502,9 @@ async def list_groups(
         return GroupPage(items=[], next_cursor=None)
     now = clock.now()
     sort_name = func.lower(ClassGroup.name)
-    query = select(ClassGroup)
+    query = select(ClassGroup, _taught(viewer, now).label("taught"))
     if not viewer.staff:
-        assert viewer.student_id is not None  # noqa: S101 - sees_nothing above
-        query = query.where(_enrolled(viewer.student_id))
+        query = query.where(_visible(viewer, now))
     if q:
         query = query.where(sort_name.contains(q.casefold(), autoescape=True))
     if subject_id is not None:
@@ -425,18 +512,20 @@ async def list_groups(
     if status != "all":
         producing = (
             select(ClassSeries.id)
-            .where(ClassSeries.group_id == ClassGroup.id, _producing(now))
+            .where(ClassSeries.group_id == ClassGroup.id, producing_series(now))
             .exists()
         )
         query = query.where(producing if status == "active" else ~producing)
     if cursor is not None:
         name, after_id = _cursor_position(cursor)
         query = query.where(tuple_(sort_name, ClassGroup.id) > tuple_(name, after_id))
-    groups = list(
-        await session.scalars(query.order_by(sort_name, ClassGroup.id).limit(limit + 1))
-    )
-    page, more = groups[:limit], len(groups) > limit
-    items = await _list_items(session, viewer, page, now)
+    rows = (
+        await session.execute(query.order_by(sort_name, ClassGroup.id).limit(limit + 1))
+    ).all()
+    page = [row[0] for row in rows[:limit]]
+    more = len(rows) > limit
+    taught = {row[0].id for row in rows[:limit] if row[1]}
+    items = await _list_items(session, viewer, page, taught, now)
     next_cursor = (
         encode_cursor([page[-1].name.lower(), str(page[-1].id)])
         if more and page
@@ -446,7 +535,11 @@ async def list_groups(
 
 
 async def _list_items(
-    session: AsyncSession, viewer: Viewer, groups: Sequence[ClassGroup], now: datetime
+    session: AsyncSession,
+    viewer: RecordViewer,
+    groups: Sequence[ClassGroup],
+    taught: set[uuid.UUID],
+    now: datetime,
 ) -> list[GroupListItem]:
     if not groups:
         return []
@@ -468,13 +561,24 @@ async def _list_items(
             )
         }
     tutors: dict[uuid.UUID, uuid.UUID | None] = {}
-    for group_id, tutor_id in await session.execute(
-        select(ClassSeries.group_id, ClassSeries.tutor_user_id)
-        .where(ClassSeries.group_id.in_(ids), _producing(now))
+    for group_id, tutor_id, status in await session.execute(
+        select(
+            ClassSeries.group_id,
+            ClassSeries.tutor_user_id,
+            ClassSeries.assignment_status,
+        )
+        .where(ClassSeries.group_id.in_(ids), producing_series(now))
         .order_by(ClassSeries.group_id, ClassSeries.starts_on, ClassSeries.id)
     ):
         if group_id is not None:
-            tutors[group_id] = tutor_id  # the latest start wins
+            # The latest start wins; a family caller sees the tutor only
+            # once they accepted (a pending offer is assignment data).
+            shown = (
+                viewer.staff
+                or group_id in taught
+                or status == SERIES_ASSIGNMENT_ACCEPTED
+            )
+            tutors[group_id] = tutor_id if shown else None
     accounts = await identity.get_account_references(
         session, {tutor for tutor in tutors.values() if tutor is not None}
     )
@@ -486,13 +590,19 @@ async def _list_items(
     if viewer.staff:
         upcoming = upcoming.where(ClassSession.state.in_(UPCOMING_STATES))
     else:
-        upcoming = upcoming.join(
-            ClassSessionParticipant,
-            ClassSessionParticipant.class_session_id == ClassSession.id,
-        ).where(
-            ClassSessionParticipant.student_id == viewer.student_id,
-            ClassSession.state.in_(STUDENT_STATES),
-        )
+        parts: list[ColumnElement[bool]] = []
+        if viewer.students:
+            parts.append(
+                ClassSession.state.in_(STUDENT_STATES)
+                & _has_visible_participant(viewer.students)
+            )
+        if taught:
+            parts.append(
+                ClassSession.group_id.in_(taught)
+                & (ClassSession.tutor_user_id == viewer.tutor_id)
+                & ClassSession.state.in_(TUTOR_NEXT_STATES)
+            )
+        upcoming = upcoming.where(or_(*parts) if parts else false())
     next_starts = {
         group_id: starts_at for group_id, starts_at in await session.execute(upcoming)
     }
@@ -501,6 +611,7 @@ async def _list_items(
         tutor_id = tutors.get(group.id)
         account = None if tutor_id is None else accounts.get(tutor_id)
         starts = next_starts.get(group.id)
+        name = "" if account is None else account.display_name
         items.append(
             GroupListItem(
                 id=group.id,
@@ -511,10 +622,9 @@ async def _list_items(
                 tutor=(
                     None
                     if tutor_id is None
-                    else SessionTutor(
-                        id=tutor_id,
-                        display_name="" if account is None else account.display_name,
-                    )
+                    else SessionTutor(id=tutor_id, display_name=name)
+                    if viewer.staff or group.id in taught
+                    else TutorName(display_name=name)
                 ),
                 next_starts_at=None if starts is None else starts.astimezone(UTC),
             )
@@ -528,29 +638,52 @@ async def list_group_sessions(
     group_id: uuid.UUID,
     query: GroupSessionsQuery,
 ) -> GroupSessions:
-    """``GET /api/v1/groups/{id}/sessions`` (H3): the #57 range rules, then
-    the group's sessions overlapping ``[from, to)`` by start (a student: only
-    their own ``confirmed`` / ``completed`` ones). At most six statements."""
+    """``GET /api/v1/groups/{id}/sessions`` (H3; #246 A5): the #57 range
+    rules, then the group's sessions overlapping ``[from, to)`` by start
+    (see the module docstring for who sees which). At most six statements
+    for staff, seven with the family facts."""
     validate_range(query.from_, query.to)
     viewer = await viewer_of(session, principal)
-    group = await _visible_group(session, viewer, group_id)
-    statement = select(ClassSession).where(
-        ClassSession.group_id == group.id,
+    now = clock.now()
+    visible = await _visible_group(session, viewer, group_id, now)
+    in_range = [
+        ClassSession.group_id == visible.group.id,
         ClassSession.starts_at < query.to,
         ClassSession.ends_at > query.from_,
-    )
-    if not viewer.staff:
-        statement = statement.join(
-            ClassSessionParticipant,
-            ClassSessionParticipant.class_session_id == ClassSession.id,
-        ).where(
-            ClassSessionParticipant.student_id == viewer.student_id,
-            ClassSession.state.in_(STUDENT_STATES),
+    ]
+    takers: dict[uuid.UUID, list[uuid.UUID]] = {}
+    if viewer.staff:
+        rows = list(
+            await session.scalars(
+                select(ClassSession)
+                .where(*in_range)
+                .order_by(ClassSession.starts_at, ClassSession.id)
+            )
         )
-    rows = list(
-        await session.scalars(
-            statement.order_by(ClassSession.starts_at, ClassSession.id)
+    else:
+        scope = (
+            [ClassSessionParticipant.student_id.in_(viewer.students)]
+            if not visible.taught
+            else []
         )
+        students = (
+            select(func.array_agg(ClassSessionParticipant.student_id))
+            .where(ClassSessionParticipant.class_session_id == ClassSession.id, *scope)
+            .correlate(ClassSession)
+            .scalar_subquery()
+        )
+        conditions = _tutor_rows(viewer) if visible.taught else _family_rows(viewer)
+        found = (
+            await session.execute(
+                select(ClassSession, students)
+                .where(*in_range, *conditions)
+                .order_by(ClassSession.starts_at, ClassSession.id)
+            )
+        ).all()
+        rows = [row[0] for row in found]
+        takers = {row[0].id: list(row[1] or ()) for row in found}
+    names = await families.student_references(
+        session, {sid for ids in takers.values() for sid in ids}
     )
     accounts = await identity.get_account_references(
         session, {row.tutor_user_id for row in rows if row.tutor_user_id is not None}
@@ -562,6 +695,12 @@ async def list_group_sessions(
     for row in rows:
         account = None if row.tutor_user_id is None else accounts.get(row.tutor_user_id)
         room = None if row.classroom_id is None else rooms.get(row.classroom_id)
+        name = "" if account is None else account.display_name
+        refs = sorted(
+            (names[sid] for sid in takers.get(row.id, ()) if sid in names),
+            key=lambda ref: (ref.display_name.casefold(), str(ref.id)),
+        )
+        family = not viewer.staff and not visible.taught
         items.append(
             GroupSessionItem(
                 id=row.id,
@@ -571,15 +710,32 @@ async def list_group_sessions(
                 tutor=(
                     None
                     if row.tutor_user_id is None
-                    else SessionTutor(
-                        id=row.tutor_user_id,
-                        display_name="" if account is None else account.display_name,
-                    )
+                    else TutorName(display_name=name)
+                    if family
+                    else SessionTutor(id=row.tutor_user_id, display_name=name)
                 ),
                 classroom=(
                     None
                     if room is None
                     else GroupSessionClassroom(id=room.id, name=room.name)
+                ),
+                students=(
+                    [
+                        CohortSessionStudent(id=r.id, display_name=r.display_name)
+                        for r in refs
+                    ]
+                    if family
+                    else None
+                ),
+                participants=(
+                    [
+                        SessionParticipantName(
+                            student_id=r.id, display_name=r.display_name
+                        )
+                        for r in refs
+                    ]
+                    if visible.taught
+                    else None
                 ),
             )
         )

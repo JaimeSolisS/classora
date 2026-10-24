@@ -417,3 +417,81 @@ export const ENROLL_OVERLAP_CONFLICT: SchedulingConflict = {
     student_ids: [STUDENT_CARLA.id],
   },
 };
+
+// --- Tutors, students and guardians (#246) --------------------------------------
+
+function withoutAssignment(tutor: { display_name: string }) {
+  const series: Record<string, unknown> = { ...TUTORED_COHORT.series!, tutor };
+  delete series.assignment;
+  return series as unknown as CohortDetail['series'];
+}
+
+/** What a student or a guardian reads (#246 A4): no assignment, the
+ * accepted tutor's name only, the snapshot syllabus. */
+export const FAMILY_COHORT: CohortDetail = {
+  ...TUTORED_COHORT,
+  // The response leaves `assignment` out and the tutor's id (#246 A4).
+  series: withoutAssignment({ display_name: TUTOR.display_name }),
+  next_occurrences: [
+    {
+      id: '01900000-0000-7000-8000-00000000f011',
+      state: 'confirmed',
+      starts_at: '2031-01-06T16:00:00Z',
+      ends_at: '2031-01-06T17:30:00Z',
+    },
+  ],
+};
+
+/** What the cohort's tutor reads (#246 A4, E2). */
+export const TUTOR_COHORT: CohortDetail = {
+  ...FAMILY_COHORT,
+  series: withoutAssignment(TUTOR),
+  tutor_roster: [
+    { student: { id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name } },
+    {
+      student: {
+        id: STUDENT_BRUNO.id,
+        display_name: STUDENT_BRUNO.display_name,
+      },
+    },
+  ],
+};
+
+/** A guardian of Ana and Bruno (#246 B3). */
+export const FAMILY_SESSIONS: CohortSessionItem[] = [
+  {
+    id: '01900000-0000-7000-8000-00000000f011',
+    state: 'confirmed',
+    starts_at: '2031-01-06T16:00:00Z',
+    ends_at: '2031-01-06T17:30:00Z',
+    original_start: '2031-01-06T16:00:00Z',
+    is_exception: false,
+    tutor: { display_name: TUTOR.display_name },
+    classroom: null,
+    students: [
+      { id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name },
+      { id: STUDENT_BRUNO.id, display_name: STUDENT_BRUNO.display_name },
+    ],
+  },
+  {
+    id: '01900000-0000-7000-8000-00000000f012',
+    state: 'skipped_closure',
+    starts_at: '2031-01-08T16:00:00Z',
+    ends_at: '2031-01-08T17:30:00Z',
+    original_start: '2031-01-08T16:00:00Z',
+    is_exception: false,
+    tutor: null,
+    classroom: null,
+    students: [{ id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name }],
+  },
+];
+
+/** A student's own list items (#246 A7): no count, no assignment. */
+export const FAMILY_LIST_ITEMS: CohortListItem[] = [
+  {
+    ...LIST_ITEMS[3]!,
+    tutor: { display_name: TUTOR.display_name },
+    assignment_status: null,
+    enrolled_count: null,
+  },
+];

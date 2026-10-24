@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, and_, false, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,8 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
 )
 from app.modules.scheduling.overrides import record_series_overrides
+from app.modules.scheduling.permissions import TAUGHT_ASSIGNMENT_STATUSES, teaches
+from app.modules.scheduling.record_viewer import NOT_DONE
 from app.modules.scheduling.recurrence import (
     InvalidRecurrenceError,
     RecurrenceFields,
@@ -75,6 +77,10 @@ from app.modules.scheduling.recurrence import (
     last_occurrence_on,
     to_instant,
     validate_recurrence,
+)
+from app.modules.scheduling.role_schedules import (
+    family_visible_condition,
+    tutor_visible_condition,
 )
 from app.modules.scheduling.schemas import (
     ClassSeriesSummary,
@@ -86,8 +92,10 @@ from app.modules.scheduling.schemas import (
     SeriesRecurrenceDetail,
     SessionClassroom,
     SessionParticipant,
+    SessionParticipantName,
     SessionSubject,
     SessionTutor,
+    TutorName,
 )
 from app.modules.scheduling.series import (
     MINUTES_PER_DAY,
@@ -99,7 +107,6 @@ from app.modules.scheduling.series_offers import (
     validate_create_respond_by,
 )
 from app.modules.scheduling.states import (
-    FAMILY_VISIBLE_STATES,
     SessionKind,
     SessionState,
 )
@@ -348,6 +355,23 @@ class CohortSchedule:
     last_start: datetime | None
     last_minutes: int
     next_starts_at: datetime | None
+    teaching_tutor_ids: frozenset[uuid.UUID] = frozenset()
+    """The tutors of the cohort's producing series with a ``pending`` or
+    ``accepted`` assignment (#246 A2)."""
+
+
+def _teaching_tutor_ids(series_rows: Sequence[ClassSeries]) -> frozenset[uuid.UUID]:
+    return frozenset(
+        series.tutor_user_id
+        for series in series_rows
+        if series.tutor_user_id is not None
+        and teaches(
+            series.tutor_user_id,
+            series_tutor_id=series.tutor_user_id,
+            assignment_status=series.assignment_status,
+        )
+        and not is_ended(series, clock.today_in(series.time_zone))
+    )
 
 
 def _schedule(
@@ -399,6 +423,7 @@ def _schedule(
             else last_series.duration_minutes
         ),
         next_starts_at=min(nexts).astimezone(UTC) if nexts else None,
+        teaching_tutor_ids=_teaching_tutor_ids([series for series, _ in ordered]),
     )
 
 
@@ -408,31 +433,47 @@ async def cohort_schedules(
     *,
     now: datetime,
     family: Collection[uuid.UUID] | None = None,
+    tutor_id: uuid.UUID | None = None,
 ) -> dict[uuid.UUID, CohortSchedule]:
     """The :class:`CohortSchedule` of these cohorts (``None``: every cohort
     with a series), by cohort id. One statement: the series with each
     one's next upcoming occurrence (``unassigned``, ``offered``,
     ``confirmed`` or ``conflict``, starting after ``now``); with ``family``
-    (#66 G2: a caller's visible students) only the ``confirmed`` ones one
-    of them takes part in."""
+    (#66 G2: a caller without ``course.view``; their visible students)
+    only the ``confirmed`` ones one of them takes part in, and with
+    ``tutor_id`` (#246) also the ``offered`` or ``confirmed`` ones of a
+    series they teach whose current tutor they are."""
     if cohort_ids is not None and not cohort_ids:
         return {}
-    upcoming = [
+    upcoming: list[ColumnElement[bool]] = [
         ClassSession.series_id == ClassSeries.id,
         ClassSession.starts_at > now,
     ]
-    if family is None:
+    if family is None and tutor_id is None:
         upcoming.append(ClassSession.state.in_(UPCOMING_STATES))
     else:
-        upcoming += [
-            ClassSession.state == SessionState.CONFIRMED,
-            select(ClassSessionParticipant.class_session_id)
-            .where(
-                ClassSessionParticipant.class_session_id == ClassSession.id,
-                ClassSessionParticipant.student_id.in_(set(family)),
+        parts: list[ColumnElement[bool]] = []
+        if family:
+            parts.append(
+                and_(
+                    ClassSession.state == SessionState.CONFIRMED,
+                    _has_participant_in(family),
+                )
             )
-            .exists(),
-        ]
+        if tutor_id is not None:
+            parts.append(
+                and_(
+                    ClassSeries.tutor_user_id == tutor_id,
+                    ClassSeries.assignment_status.in_(
+                        sorted(TAUGHT_ASSIGNMENT_STATUSES)
+                    ),
+                    ClassSession.tutor_user_id == tutor_id,
+                    ClassSession.state.in_(
+                        (SessionState.CONFIRMED.value, SessionState.OFFERED.value)
+                    ),
+                )
+            )
+        upcoming.append(or_(*parts) if parts else false())
     next_start = (
         select(func.min(ClassSession.starts_at))
         .where(*upcoming)
@@ -449,6 +490,28 @@ async def cohort_schedules(
     return {
         cohort_id: _schedule(cohort_id, rows) for cohort_id, rows in grouped.items()
     }
+
+
+def _has_participant_in(student_ids: Collection[uuid.UUID]) -> ColumnElement[bool]:
+    return (
+        select(ClassSessionParticipant.class_session_id)
+        .where(
+            ClassSessionParticipant.class_session_id == ClassSession.id,
+            ClassSessionParticipant.student_id.in_(set(student_ids)),
+        )
+        .exists()
+    )
+
+
+def _tutor_rows(tutor_id: uuid.UUID) -> list[ColumnElement[bool]]:
+    """#246 A4, A5: the tutor-visible sessions whose current tutor is
+    ``tutor_id``."""
+    return [ClassSession.tutor_user_id == tutor_id, tutor_visible_condition()]
+
+
+def _family_condition() -> ColumnElement[bool]:
+    """#246 A4, A5: the family-visible states (#67 A3)."""
+    return family_visible_condition()
 
 
 @dataclass(frozen=True)
@@ -483,6 +546,7 @@ async def cohort_series_read(
     *,
     now: datetime,
     family: Collection[uuid.UUID] | None = None,
+    tutor_id: uuid.UUID | None = None,
     extra_student_ids: Collection[uuid.UUID] = (),
     extra_user_ids: Collection[uuid.UUID] = (),
 ) -> CohortSeriesRead | None:
@@ -499,7 +563,14 @@ async def cohort_series_read(
     ``course.view``. The next occurrences are then only the ``confirmed``
     ones where one of them is a participant (ADR-0005 D2), the series'
     participants only them, and the series has no assignment or offer data
-    (no ``assignment``, and the tutor only once they accepted)."""
+    (no ``assignment``, and the tutor only once they accepted). The next
+    occurrences are the family-visible ones (#246 A4,
+    ``states.is_family_visible`` with ``first_confirmed_at``).
+
+    ``tutor_id`` (#246 A4, the caller teaches the cohort; wins over
+    ``family``): the next occurrences are the tutor-visible ones whose
+    current tutor is the caller, the series keeps every participant and its
+    tutor, and has no ``assignment``."""
     next_start = (
         select(func.min(ClassSession.starts_at))
         .where(
@@ -569,19 +640,15 @@ async def cohort_series_read(
         .order_by(ClassSession.starts_at, ClassSession.id)
         .limit(NEXT_OCCURRENCES)
     )
-    if family is None:
+    if tutor_id is not None:
+        upcoming = upcoming.where(*_tutor_rows(tutor_id), NOT_DONE)
+    elif family is None:
         upcoming = upcoming.where(ClassSession.state.in_(UPCOMING_STATES))
     else:
         student_ids = [s for s in student_ids if s in set(family)]
-        visible = (
-            select(ClassSessionParticipant.class_session_id)
-            .where(
-                ClassSessionParticipant.class_session_id == ClassSession.id,
-                ClassSessionParticipant.student_id.in_(set(family)),
-            )
-            .exists()
+        upcoming = upcoming.where(
+            _has_participant_in(family), _family_condition(), NOT_DONE
         )
-        upcoming = upcoming.where(ClassSession.state == SessionState.CONFIRMED, visible)
     next_rows = list(await session.scalars(upcoming))
     student_refs = await families.student_references(
         session, {*student_ids, *extra_student_ids}
@@ -590,7 +657,9 @@ async def cohort_series_read(
         series.subject_id
     ]
     show_tutor = series.tutor_user_id is not None and (
-        family is None or series.assignment_status == SERIES_ASSIGNMENT_ACCEPTED
+        family is None
+        or tutor_id is not None
+        or series.assignment_status == SERIES_ASSIGNMENT_ACCEPTED
     )
     user_ids = set(extra_user_ids)
     if show_tutor and series.tutor_user_id is not None:
@@ -609,7 +678,12 @@ async def cohort_series_read(
             series.classroom_id
         )
     assignment = None
-    if family is None and tutor is not None and series.assignment_status is not None:
+    if (
+        family is None
+        and tutor_id is None
+        and tutor is not None
+        and series.assignment_status is not None
+    ):
         assert series.assignment_from is not None  # noqa: S101 - a CHECK
         offer_id, offer_status, respond_by = current_row[4:7]
         assignment = SeriesAssignment(
@@ -699,6 +773,7 @@ async def list_cohort_sessions(
     end: datetime,
     *,
     family: Collection[uuid.UUID] | None = None,
+    tutor_id: uuid.UUID | None = None,
 ) -> list[CohortSessionItem]:
     """The cohort's sessions overlapping ``[start, end)`` by start (#65 F4).
     The #57 range rules (``422 range_invalid``, ``range_too_long``) are
@@ -709,14 +784,33 @@ async def list_cohort_sessions(
     occurrences where one of them is a participant, in ``confirmed`` or
     ``completed`` (ADR-0005 D2), each with ``students``: only those of them
     who take part. Four statements (the rows with their visible
-    participants, the students, the tutors, the rooms)."""
+    participants, the students, the tutors, the rooms). The states are the
+    family-visible ones (#246 A5, ``states.is_family_visible`` with
+    ``first_confirmed_at``) and the tutor is the name only.
+
+    ``tutor_id`` (#246 A5, the caller teaches the cohort; wins over
+    ``family``): the tutor-visible occurrences whose current tutor is the
+    caller, each with ``participants`` (every student). Four statements."""
     validate_range(start, end)
     query: Any = select(ClassSession).where(
         ClassSession.cohort_id == cohort_id,
         ClassSession.starts_at < end,
         ClassSession.ends_at > start,
     )
-    if family is not None:
+    if tutor_id is not None:
+        everyone = (
+            select(func.array_agg(ClassSessionParticipant.student_id))
+            .where(ClassSessionParticipant.class_session_id == ClassSession.id)
+            .correlate(ClassSession)
+            .scalar_subquery()
+        )
+        query = select(ClassSession, everyone).where(
+            ClassSession.cohort_id == cohort_id,
+            ClassSession.starts_at < end,
+            ClassSession.ends_at > start,
+            *_tutor_rows(tutor_id),
+        )
+    elif family is not None:
         if not family:
             return []
         visible = (
@@ -732,7 +826,7 @@ async def list_cohort_sessions(
             ClassSession.cohort_id == cohort_id,
             ClassSession.starts_at < end,
             ClassSession.ends_at > start,
-            ClassSession.state.in_(sorted(FAMILY_VISIBLE_STATES)),
+            _family_condition(),
             visible.is_not(None),
         )
     found = (
@@ -741,7 +835,7 @@ async def list_cohort_sessions(
     rows: list[ClassSession] = [row[0] for row in found]
     takers: dict[uuid.UUID, list[uuid.UUID]] = {}
     names: dict[uuid.UUID, Any] = {}
-    if family is not None:
+    if family is not None or tutor_id is not None:
         takers = {row[0].id: sorted(row[1] or []) for row in found}
         names = await families.student_references(
             session, {s for ids in takers.values() for s in ids}
@@ -757,8 +851,26 @@ async def list_cohort_sessions(
         account = None if row.tutor_user_id is None else accounts.get(row.tutor_user_id)
         room = None if row.classroom_id is None else rooms.get(row.classroom_id)
         assert row.original_start is not None  # noqa: S101 - every row has a series
+        name = "" if account is None else account.display_name
+        family_item = tutor_id is None and family is not None
+        participants = None
+        if tutor_id is not None:
+            participants = sorted(
+                (
+                    SessionParticipantName(
+                        student_id=student_id,
+                        display_name=(
+                            ""
+                            if names.get(student_id) is None
+                            else names[student_id].display_name
+                        ),
+                    )
+                    for student_id in takers[row.id]
+                ),
+                key=lambda p: (p.display_name.casefold(), str(p.student_id)),
+            )
         students = None
-        if family is not None:
+        if family_item:
             students = sorted(
                 (
                     CohortSessionStudent(
@@ -784,10 +896,9 @@ async def list_cohort_sessions(
                 tutor=(
                     None
                     if row.tutor_user_id is None
-                    else SessionTutor(
-                        id=row.tutor_user_id,
-                        display_name="" if account is None else account.display_name,
-                    )
+                    else TutorName(display_name=name)
+                    if family_item
+                    else SessionTutor(id=row.tutor_user_id, display_name=name)
                 ),
                 classroom=(
                     None
@@ -795,6 +906,7 @@ async def list_cohort_sessions(
                     else GroupSessionClassroom(id=room.id, name=room.name)
                 ),
                 students=students,
+                participants=participants,
             )
         )
     return items

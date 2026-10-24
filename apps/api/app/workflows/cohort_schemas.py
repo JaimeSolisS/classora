@@ -40,6 +40,8 @@ from app.modules.scheduling.schemas import (
     SeriesOverride,
     SessionStateCode,
     SessionTutor,
+    TutorName,
+    TutorRosterItem,
 )
 
 COHORT_NAME_MAX: Final = 120
@@ -201,9 +203,11 @@ class CohortDetail(BaseModel):
     ``enrolled_count`` and ``roster`` are for ``course.view`` holders only:
     for an enrolled student or a linked guardian they are absent, the
     ``series`` has no ``assignment`` (and its tutor only once they
-    accepted), its participants are only the caller's own students, and
-    ``next_occurrences`` are only the ``confirmed`` ones they take part
-    in."""
+    accepted, by name only), its participants are only the caller's own
+    students, and ``next_occurrences`` are only the family-visible ones
+    they take part in. For the cohort's tutor (#246 A4) ``tutor_roster`` is
+    set, the ``series`` has no ``assignment``, and ``next_occurrences`` are
+    the tutor-visible ones they currently teach."""
 
     id: uuid.UUID
     name: str
@@ -256,14 +260,30 @@ class CohortDetail(BaseModel):
             " then the withdrawn ones, latest first."
         ),
     )
+    tutor_roster: list[TutorRosterItem] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "The cohort's tutor only (absent for anyone else): the active"
+            " enrollments' students, by name."
+        ),
+    )
 
     _family: bool = PrivateAttr(default=False)
     """Read by an enrolled student or a linked guardian (#66 G3)."""
+    _tutor: bool = PrivateAttr(default=False)
+    """Read by the cohort's tutor (#246 A4)."""
 
     def for_family(self) -> CohortDetail:
-        """Mark this detail as a family read: ``series.assignment`` is left
-        out of the response."""
+        """Mark this detail as a family read: ``series.assignment`` and the
+        tutor's id are left out of the response (#246 A4: the name only)."""
         self._family = True
+        return self
+
+    def for_tutor(self) -> CohortDetail:
+        """Mark this detail as a tutor read: ``series.assignment`` (the
+        offer data) is left out of the response."""
+        self._tutor = True
         return self
 
     # No return annotation: the field keeps its own schema in OpenAPI.
@@ -272,8 +292,10 @@ class CohortDetail(BaseModel):
         self, value: object, handler: SerializerFunctionWrapHandler
     ):
         data = handler(value)
-        if self._family and isinstance(data, dict):
+        if (self._family or self._tutor) and isinstance(data, dict):
             data.pop("assignment", None)
+            if self._family and isinstance(data.get("tutor"), dict):
+                data["tutor"].pop("id", None)
         return data
 
 
@@ -291,7 +313,12 @@ class CohortListItem(BaseModel):
     template: CohortTemplateName = Field(description="The snapshot's template name.")
     subject: CohortSubject
     max_students: int
-    tutor: SessionTutor | None = Field(description="The current series' tutor.")
+    tutor: SessionTutor | TutorName | None = Field(
+        description=(
+            "The current series' tutor; for a student or a guardian the name"
+            " only, once they accepted."
+        )
+    )
     assignment_status: Literal["pending", "accepted"] | None = Field(
         description="The current series' tutor assignment; null without a tutor."
     )

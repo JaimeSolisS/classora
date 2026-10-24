@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
@@ -7,14 +8,24 @@ import { STATE_ICONS } from '@/features/calendar/EventContent';
 import { useFormatters } from '@/lib/formatters';
 import { addDays, toLocalDate } from '@/lib/time';
 import type { GroupSessionItem } from './api';
+import { LINK_CLASS } from './GroupsTable';
+import {
+  myScheduleHref,
+  namesText,
+  sessionStateText,
+  showsStudentNames,
+} from './nonStaff';
 import { WINDOW_DAYS } from './rules';
 
-// "My sessions" (#234 C4), the student view: the group's sessions in a
-// 4-week window that starts on a local date (today by default), with
-// "Previous 4 weeks" / "Next 4 weeks". The API returns only the confirmed
-// or completed sessions the student takes part in (#56 H3). Each item: the
-// local date and time in the center zone, the state as text and an icon,
-// the tutor and the room. Presentational: the page passes the window and
+// "My sessions" (#234 C4; #246 B3, B4), the view of a student, a guardian
+// or the group's tutor: the group's sessions in a 4-week window that starts
+// on a local date (today by default), with "Previous 4 weeks" / "Next 4
+// weeks". The API returns only what the caller may see (#246 A5). Each
+// item: the local date and time in the center zone (a link to that day in
+// "My schedule", List view), the state as text and an icon (the "My
+// schedule" wording), the tutor (by name) and the room; for a guardian
+// with several children in the list, whose session it is ("For: …"); for
+// the tutor, the students. Presentational: the page passes the window and
 // the query state.
 
 export type MySessionsState =
@@ -51,6 +62,7 @@ export function MySessionsSection({
   } else if (state.items.length === 0) {
     content = <p className="text-sm">{t('groups.mySessions.none')}</p>;
   } else {
+    const named = showsStudentNames(state.items);
     content = (
       <ol aria-labelledby={`${id}-heading`} className="flex flex-col gap-2">
         {state.items.map((item) => {
@@ -61,17 +73,32 @@ export function MySessionsSection({
               className="flex min-w-0 flex-col gap-1 rounded-md border border-border p-3 text-sm"
             >
               <p className="font-medium break-words">
-                {formatLocalDate(toLocalDate(item.starts_at, timeZone), 'long')}{' '}
-                ·{' '}
-                {t('groups.timeRange', {
-                  start: formatInstant(item.starts_at, 'time'),
-                  end: formatInstant(item.ends_at, 'time'),
-                })}
+                <Link
+                  to={myScheduleHref(item.starts_at, timeZone)}
+                  className={LINK_CLASS}
+                >
+                  {formatLocalDate(
+                    toLocalDate(item.starts_at, timeZone),
+                    'long',
+                  )}{' '}
+                  ·{' '}
+                  {t('groups.timeRange', {
+                    start: formatInstant(item.starts_at, 'time'),
+                    end: formatInstant(item.ends_at, 'time'),
+                  })}
+                </Link>
               </p>
+              {named && item.students ? (
+                <p className="break-words">
+                  {t('groups.mySessions.forStudents', {
+                    names: namesText(item.students),
+                  })}
+                </p>
+              ) : null}
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1">
                   <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-                  {t(`scheduling.states.${item.state}`)}
+                  {sessionStateText(item.state, t, false)}
                 </span>
                 <span className="break-words">
                   {t('groups.mySessions.tutor', {
@@ -84,6 +111,13 @@ export function MySessionsSection({
                   })}
                 </span>
               </p>
+              {item.participants ? (
+                <p className="break-words">
+                  {t('groups.mySessions.participants', {
+                    names: namesText(item.participants),
+                  })}
+                </p>
+              ) : null}
             </li>
           );
         })}

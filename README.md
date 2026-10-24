@@ -226,6 +226,10 @@ unless a bullet says otherwise.
   after the course has started (a student who joins late gets only the
   sessions that haven't started). Enrollment respects the cohort's maximum
   and the room's capacity; going over the maximum needs an override.
+- Tutors, students and guardians open the groups and courses they teach or
+  take, read-only (Groups and My courses): tutors see their students' names
+  and the sessions they teach, families only their own children's sessions.
+  A guardian of an adult student sees them only with that student's consent.
 
 **Approvals**
 

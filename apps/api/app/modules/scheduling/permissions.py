@@ -28,14 +28,28 @@ Everyone else (an unknown id, an unlinked student, a sibling asked for by a
 student, a student a tutor only teaches, an inactive guardian profile) gets
 :attr:`ScheduleAccess.HIDDEN`: the ``404`` of an unknown id. With several
 roles, any allowing one wins.
+
+**Groups and cohorts** (#246 A1-A3, :class:`RecordViewer`): the same family
+rule (the adult needs the consent, E1), but these routes are not keyed by a
+student, so what is reachable only through a non-consenting adult is
+hidden (filtered out of lists, ``404`` on details) rather than ``403``; and
+tutors see the groups and cohorts whose producing series they teach.
 """
 
 import uuid
+from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
 from app.core.authz import Principal
+from app.modules.families import service as families
 from app.modules.families.service import StudentAccessFacts
+from app.modules.scheduling.requests_policy import (
+    GUARDIAN as GUARDIAN_ROLE,
+)
+from app.modules.scheduling.requests_policy import (
+    STUDENT as STUDENT_ROLE,
+)
 from app.modules.scheduling.requests_policy import (
     FamilyAccess,
     family_access,
@@ -108,3 +122,87 @@ def student_schedule_access(
     if outcome is FamilyAccess.CONSENT_REQUIRED:
         return ScheduleAccess.CONSENT_REQUIRED
     return ScheduleAccess.HIDDEN
+
+
+# --- #246: the group and cohort record policy ----------------------------------------
+
+TUTOR_ROLE: Final = "tutor"
+TAUGHT_ASSIGNMENT_STATUSES: Final = frozenset({"pending", "accepted"})
+"""A2: a tutor sees the groups and cohorts of the series they were offered
+(``pending``, so they can judge the offer) or accepted."""
+
+
+@dataclass(frozen=True)
+class RecordViewer:
+    """Who reads a group or a cohort (#246 A1-A3).
+
+    ``staff``: the caller holds the read permission (``schedule.view`` for
+    groups, ``course.view`` for cohorts) and sees everything. Otherwise
+    ``students`` are the caller's visible students (A1) and ``tutor_id`` is
+    the caller's user id when they hold the ``tutor`` role (A2); a group or
+    a cohort is visible when a visible student has an active enrollment, or
+    when one of its producing series is taught by ``tutor_id`` (the union
+    for several roles)."""
+
+    staff: bool
+    students: frozenset[uuid.UUID] = frozenset()
+    tutor_id: uuid.UUID | None = None
+
+    @property
+    def sees_nothing(self) -> bool:
+        return not self.staff and not self.students and self.tutor_id is None
+
+
+STAFF_VIEWER: Final = RecordViewer(staff=True)
+
+
+def ages_needed(
+    principal: Principal, facts: StudentAccessFacts
+) -> frozenset[uuid.UUID]:
+    """The linked students whose age decides A1: those without the
+    caller's academic consent (none without the ``guardian`` role)."""
+    if GUARDIAN_ROLE not in principal.roles:
+        return frozenset()
+    return facts.linked_student_ids - facts.academic_consent_student_ids
+
+
+def visible_family_students(
+    principal: Principal,
+    facts: StudentAccessFacts,
+    *,
+    minors: frozenset[uuid.UUID],
+) -> frozenset[uuid.UUID]:
+    """A1 (E1): the caller's own profile (``student`` role) and the students
+    linked to their active guardian profile that are minors (``minors``,
+    today in the center zone) or adults who gave this guardian a
+    ``guardian_academic_access`` consent (the #67 E3 rule)."""
+    ids: set[uuid.UUID] = set()
+    if STUDENT_ROLE in principal.roles and facts.own_student_id is not None:
+        ids.add(facts.own_student_id)
+    for student_id in facts.linked_student_ids:
+        if families.guardian_has_academic_access(
+            principal, student_id, is_minor=student_id in minors, facts=facts
+        ):
+            ids.add(student_id)
+    return frozenset(ids)
+
+
+def teaching_tutor_id(principal: Principal) -> uuid.UUID | None:
+    """The caller's user id when they hold the ``tutor`` role (A2)."""
+    return principal.user_id if TUTOR_ROLE in principal.roles else None
+
+
+def teaches(
+    tutor_id: uuid.UUID | None,
+    *,
+    series_tutor_id: uuid.UUID | None,
+    assignment_status: str | None,
+) -> bool:
+    """A2: the series' **current** tutor is the caller and the assignment is
+    ``pending`` or ``accepted`` (a substitute on one occurrence never
+    teaches the series)."""
+    return (
+        tutor_id is not None
+        and series_tutor_id == tutor_id
+        and assignment_status in TAUGHT_ASSIGNMENT_STATUSES
+    )
