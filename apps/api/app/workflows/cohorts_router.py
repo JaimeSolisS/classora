@@ -11,10 +11,19 @@ a module's router may not import ``app.workflows``.
   ``app.workflows.cohorts``.
 - ``PATCH /api/v1/cohorts/{cohort_id}``: ``require("schedule.manage")``;
   name and maximum.
+- ``POST /api/v1/cohorts/{cohort_id}/enrollments`` and
+  ``…/enrollments/{enrollment_id}/withdraw`` (#66):
+  ``require("schedule.manage")`` (ADR-0005 D9 "enroll in and withdraw from
+  groups and cohorts"); an enrollment ``override`` needs
+  ``schedule.override``. They call ``app.workflows.cohort_enrollment``.
 - ``GET /api/v1/cohorts``, ``GET /api/v1/cohorts/{cohort_id}`` and ``GET
-  /api/v1/cohorts/{cohort_id}/sessions``: ``require("course.view")`` (Owners,
-  Administrators, Academic Coordinators, Finance Staff). #66 opens them to
-  enrolled students and their guardians, #67 to tutors.
+  /api/v1/cohorts/{cohort_id}/sessions``: ``authenticated()`` with the #66
+  record policy (``app.workflows.cohorts.cohort_viewer``): ``course.view``
+  holders (Owners, Administrators, Academic Coordinators, Finance Staff)
+  see everything; an enrolled student and the guardians linked to them see
+  only their cohorts and their students' confirmed and completed sessions;
+  anyone else an empty list or ``404 cohort_not_found``. #67 adds
+  tutors.
 
 The tutor of a cohort is offered through its series:
 ``POST /api/v1/class-series/{class_series_id}/offers`` (#233,
@@ -29,6 +38,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.authz import (
     PERMISSION_RESPONSES,
     Principal,
+    authenticated,
     ensure_permission,
     require,
 )
@@ -38,22 +48,27 @@ from app.core.pagination import CursorPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.courses.schemas import CohortStatusFilter, CohortUpdate
 from app.modules.scheduling.schemas import CohortSessionsQuery
-from app.workflows import cohorts
+from app.workflows import cohort_enrollment, cohorts
 from app.workflows.cohort_schemas import (
     CohortCreate,
     CohortCreated,
     CohortDetail,
+    CohortEnrollmentCreate,
+    CohortEnrollmentCreated,
+    CohortEnrollmentItem,
     CohortPage,
     CohortSessions,
+    CohortWithdrawal,
 )
 
 SCHEDULE_MANAGE: Final = "schedule.manage"
 SCHEDULE_OVERRIDE: Final = "schedule.override"
-COURSE_VIEW: Final = "course.view"
 
 router = APIRouter(prefix="/api/v1/cohorts", tags=["cohorts"])
 
-_NOT_FOUND = problem_response_doc("No such cohort (cohort_not_found).")
+_NOT_FOUND = problem_response_doc(
+    "No such cohort, or one you can't see (cohort_not_found)."
+)
 
 
 @router.post(
@@ -131,7 +146,7 @@ async def create_cohort(
     },
 )
 async def list_cohorts(
-    principal: Annotated[Principal, require(COURSE_VIEW)],
+    principal: Annotated[Principal, authenticated()],
     page: CursorPagination,
     uow: UnitOfWorkDep,
     q: Annotated[
@@ -149,10 +164,14 @@ async def list_cohorts(
         ),
     ] = "current",
 ) -> CohortPage:
-    """The cohorts by name, with their template, subject, tutor and dates
-    (cursor pagination)."""
+    """The cohorts you can see by name, with their template, subject, tutor
+    and dates (cursor pagination). Staff with course.view see every cohort
+    and its enrolled count; an enrolled student or their guardian only the
+    cohorts the student is enrolled in (without the count or the tutor
+    assignment); anyone else an empty list."""
     return await cohorts.list_cohorts(
         uow.session,
+        viewer=await cohorts.cohort_viewer(uow.session, principal),
         q=q,
         template_id=template_id,
         subject_id=subject_id,
@@ -164,14 +183,18 @@ async def list_cohorts(
 
 @router.get("/{cohort_id}", responses={**PERMISSION_RESPONSES, 404: _NOT_FOUND})
 async def get_cohort(
-    principal: Annotated[Principal, require(COURSE_VIEW)],
+    principal: Annotated[Principal, authenticated()],
     cohort_id: uuid.UUID,
     uow: UnitOfWorkDep,
 ) -> CohortDetail:
     """One cohort: its template (as frozen), subject, maximum and effective
     capacity, status and dates, current series and next sessions, and its
-    syllabus from the snapshot."""
-    return await cohorts.get_cohort_detail(uow.session, cohort_id)
+    syllabus from the snapshot; for staff with course.view also the roster
+    and the enrolled count. An enrolled student or their guardian sees only
+    a cohort the student is enrolled in, without the roster, the count or
+    the tutor assignment, and only the student's confirmed sessions."""
+    viewer = await cohorts.cohort_viewer(uow.session, principal)
+    return await cohorts.get_cohort_detail(uow.session, cohort_id, viewer)
 
 
 @router.get(
@@ -188,14 +211,17 @@ async def get_cohort(
     },
 )
 async def list_cohort_sessions(
-    principal: Annotated[Principal, require(COURSE_VIEW)],
+    principal: Annotated[Principal, authenticated()],
     cohort_id: uuid.UUID,
     query: Annotated[CohortSessionsQuery, Query()],
     uow: UnitOfWorkDep,
 ) -> CohortSessions:
-    """The cohort's sessions overlapping `[from, to)`, by start, in every
-    state."""
-    return await cohorts.list_cohort_sessions(uow.session, cohort_id, query)
+    """The cohort's sessions overlapping `[from, to)`, by start. Staff with
+    course.view see every state; an enrolled student or their guardian only
+    the `confirmed` and `completed` sessions their students take part in,
+    each with `students` (only theirs)."""
+    viewer = await cohorts.cohort_viewer(uow.session, principal)
+    return await cohorts.list_cohort_sessions(uow.session, cohort_id, query, viewer)
 
 
 @router.patch(
@@ -209,8 +235,9 @@ async def list_cohort_sessions(
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): nothing to change"
-            " (no_changes), the name (name_required, name_too_long) or"
-            " `max_students` outside 1-500."
+            " (no_changes), the name (name_required, name_too_long),"
+            " `max_students` outside 1-500, or below the active enrollments"
+            " (max_students_below_enrolled)."
         ),
     },
 )
@@ -220,9 +247,96 @@ async def update_cohort(
     body: CohortUpdate,
     uow: UnitOfWorkDep,
 ) -> CohortDetail:
-    """Rename a cohort or change its maximum; above the room's capacity the
-    room still limits the sessions. The template, the subject and the
+    """Rename a cohort or change its maximum. The maximum can't go below the
+    enrolled students; above the room's capacity the room still limits the
+    sessions. The template, the subject and the
     snapshot never change; the dates, room and tutor change through the
     series."""
     await cohorts.update_cohort(uow.session, cohort_id, body)
     return await cohorts.get_cohort_detail(uow.session, cohort_id)
+
+
+@router.post(
+    "/{cohort_id}/enrollments",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): no schedule.manage, or an"
+            " `override` without schedule.override."
+        ),
+        404: problem_response_doc("No such cohort (cohort_not_found)."),
+        409: problem_response_doc(
+            "The cohort has no series still producing sessions (cohort_ended);"
+            " the student is already enrolled (already_enrolled,"
+            " details.enrollment_id); or the enrollment breaks scheduling rules"
+            " (scheduling_conflict): `group_capacity_exceeded` (soft, can be"
+            " overridden; `details.cohort_id`) first, then each future"
+            " session's `student_overlap` and `room_capacity_exceeded` (hard),"
+            " with `details.occurrence_start` and `details.date`."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field; the `override` (as for a session); or the student"
+            " (student_unknown, student_inactive)."
+        ),
+    },
+)
+async def enroll_in_cohort(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    cohort_id: uuid.UUID,
+    body: CohortEnrollmentCreate,
+    uow: UnitOfWorkDep,
+) -> CohortEnrollmentCreated:
+    """Enroll a student now, also after the course has started: they join
+    every future session of the cohort that hasn't begun (not completed or
+    cancelled ones) and the later ones the schedule creates. Above
+    `max_students` it needs an `override`; above a room's capacity, or
+    overlapping another session of the student, it is refused."""
+    if body.override is not None:
+        ensure_permission(principal, SCHEDULE_OVERRIDE)
+    change = await cohort_enrollment.enroll_in_cohort(
+        uow, cohort_id, body, actor_id=principal.user_id
+    )
+    item = await cohorts.get_cohort_enrollment(
+        uow.session, change.cohort_id, change.enrollment_id
+    )
+    return CohortEnrollmentCreated(**item.model_dump(), warnings=[])
+
+
+@router.post(
+    "/{cohort_id}/enrollments/{enrollment_id}/withdraw",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc(
+            "No such cohort (cohort_not_found), or no such enrollment in it"
+            " (enrollment_not_found)."
+        ),
+        409: problem_response_doc(
+            "The enrollment changed since it was read (version_conflict), or"
+            " it was already withdrawn (enrollment_not_active)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, or the reason (reason_required for a blank one,"
+            " reason_too_long)."
+        ),
+    },
+)
+async def withdraw_from_cohort(
+    principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
+    cohort_id: uuid.UUID,
+    enrollment_id: uuid.UUID,
+    body: CohortWithdrawal,
+    uow: UnitOfWorkDep,
+) -> CohortEnrollmentItem:
+    """Withdraw a student now, with an optional reason, also after the
+    course has ended: they leave every future session of the cohort that
+    hasn't begun and the later ones; past, begun, completed and cancelled
+    sessions keep them. The enrollment period is kept (for billing)."""
+    change = await cohort_enrollment.withdraw_from_cohort(
+        uow, cohort_id, enrollment_id, body, actor_id=principal.user_id
+    )
+    return await cohorts.get_cohort_enrollment(
+        uow.session, change.cohort_id, change.enrollment_id
+    )

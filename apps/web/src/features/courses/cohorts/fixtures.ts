@@ -164,6 +164,7 @@ export const LIST_ITEMS: CohortListItem[] = [
     last_session_on: '2031-02-05',
     next_starts_at: '2031-01-06T16:00:00Z',
     status: 'upcoming',
+    enrolled_count: 0,
   },
   {
     id: '01900000-0000-7000-8000-00000000e002',
@@ -177,6 +178,7 @@ export const LIST_ITEMS: CohortListItem[] = [
     last_session_on: '2031-03-05',
     next_starts_at: '2031-02-03T16:00:00Z',
     status: 'upcoming',
+    enrolled_count: 0,
   },
   {
     id: '01900000-0000-7000-8000-00000000e003',
@@ -190,6 +192,7 @@ export const LIST_ITEMS: CohortListItem[] = [
     last_session_on: '2030-10-30',
     next_starts_at: null,
     status: 'ended',
+    enrolled_count: 0,
   },
   {
     id: '01900000-0000-7000-8000-00000000e004',
@@ -203,6 +206,7 @@ export const LIST_ITEMS: CohortListItem[] = [
     last_session_on: '2031-01-15',
     next_starts_at: '2031-01-06T16:00:00Z',
     status: 'in_progress',
+    enrolled_count: 0,
   },
 ];
 

@@ -2508,8 +2508,11 @@ export interface paths {
         };
         /**
          * List Cohorts
-         * @description The cohorts by name, with their template, subject, tutor and dates
-         *     (cursor pagination).
+         * @description The cohorts you can see by name, with their template, subject, tutor
+         *     and dates (cursor pagination). Staff with course.view see every cohort
+         *     and its enrolled count; an enrolled student or their guardian only the
+         *     cohorts the student is enrolled in (without the count or the tutor
+         *     assignment); anyone else an empty list.
          */
         get: operations["list_cohorts_api_v1_cohorts_get"];
         put?: never;
@@ -2541,7 +2544,10 @@ export interface paths {
          * Get Cohort
          * @description One cohort: its template (as frozen), subject, maximum and effective
          *     capacity, status and dates, current series and next sessions, and its
-         *     syllabus from the snapshot.
+         *     syllabus from the snapshot; for staff with course.view also the roster
+         *     and the enrolled count. An enrolled student or their guardian sees only
+         *     a cohort the student is enrolled in, without the roster, the count or
+         *     the tutor assignment, and only the student's confirmed sessions.
          */
         get: operations["get_cohort_api_v1_cohorts__cohort_id__get"];
         put?: never;
@@ -2551,8 +2557,9 @@ export interface paths {
         head?: never;
         /**
          * Update Cohort
-         * @description Rename a cohort or change its maximum; above the room's capacity the
-         *     room still limits the sessions. The template, the subject and the
+         * @description Rename a cohort or change its maximum. The maximum can't go below the
+         *     enrolled students; above the room's capacity the room still limits the
+         *     sessions. The template, the subject and the
          *     snapshot never change; the dates, room and tutor change through the
          *     series.
          */
@@ -2568,12 +2575,61 @@ export interface paths {
         };
         /**
          * List Cohort Sessions
-         * @description The cohort's sessions overlapping `[from, to)`, by start, in every
-         *     state.
+         * @description The cohort's sessions overlapping `[from, to)`, by start. Staff with
+         *     course.view see every state; an enrolled student or their guardian only
+         *     the `confirmed` and `completed` sessions their students take part in,
+         *     each with `students` (only theirs).
          */
         get: operations["list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cohorts/{cohort_id}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll In Cohort
+         * @description Enroll a student now, also after the course has started: they join
+         *     every future session of the cohort that hasn't begun (not completed or
+         *     cancelled ones) and the later ones the schedule creates. Above
+         *     `max_students` it needs an `override`; above a room's capacity, or
+         *     overlapping another session of the student, it is refused.
+         */
+        post: operations["enroll_in_cohort_api_v1_cohorts__cohort_id__enrollments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw From Cohort
+         * @description Withdraw a student now, with an optional reason, also after the
+         *     course has ended: they leave every future session of the cohort that
+         *     hasn't begun and the later ones; past, begun, completed and cancelled
+         *     sessions keep them. The enrollment period is kept (for billing).
+         */
+        post: operations["withdraw_from_cohort_api_v1_cohorts__cohort_id__enrollments__enrollment_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5309,6 +5365,16 @@ export interface components {
             next_occurrences: components["schemas"]["CohortOccurrenceItem"][];
             syllabus: components["schemas"]["CohortSyllabus"];
             /**
+             * Enrolled Count
+             * @description course.view holders only: the active enrollments.
+             */
+            enrolled_count?: number | null;
+            /**
+             * Roster
+             * @description course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first.
+             */
+            roster?: components["schemas"]["CohortEnrollmentItem"][] | null;
+            /**
              * Warnings
              * @description Always empty for now.
              */
@@ -5316,9 +5382,15 @@ export interface components {
         };
         /**
          * CohortDetail
-         * @description One cohort (``GET /api/v1/cohorts/{id}``, #65 F1). The syllabus comes
-         *     from the snapshot, never from the live template. No enrollment data
-         *     yet (#66 adds it).
+         * @description One cohort (``GET /api/v1/cohorts/{id}``, #65 F1, #66 F1, G3). The
+         *     syllabus comes from the snapshot, never from the live template.
+         *
+         *     ``enrolled_count`` and ``roster`` are for ``course.view`` holders only:
+         *     for an enrolled student or a linked guardian they are absent, the
+         *     ``series`` has no ``assignment`` (and its tutor only once they
+         *     accepted), its participants are only the caller's own students, and
+         *     ``next_occurrences`` are only the ``confirmed`` ones they take part
+         *     in.
          */
         CohortDetail: {
             /**
@@ -5385,6 +5457,97 @@ export interface components {
              */
             next_occurrences: components["schemas"]["CohortOccurrenceItem"][];
             syllabus: components["schemas"]["CohortSyllabus"];
+            /**
+             * Enrolled Count
+             * @description course.view holders only: the active enrollments.
+             */
+            enrolled_count?: number | null;
+            /**
+             * Roster
+             * @description course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first.
+             */
+            roster?: components["schemas"]["CohortEnrollmentItem"][] | null;
+        };
+        /**
+         * CohortEnrollmentCreate
+         * @description Enroll a student in a cohort (``POST
+         *     /api/v1/cohorts/{id}/enrollments``, #66 C1): the #56 body. ``override``
+         *     (the #49 shape, for ``group_capacity_exceeded``) needs
+         *     ``schedule.override``.
+         */
+        CohortEnrollmentCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** @description Override `group_capacity_exceeded` with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
+        };
+        /**
+         * CohortEnrollmentCreated
+         * @description The new enrollment.
+         */
+        CohortEnrollmentCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["EnrollmentStudent"];
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            enrolled_by: components["schemas"]["EnrollmentActor"];
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            withdrawn_by: components["schemas"]["EnrollmentActor"] | null;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /**
+             * Overridden
+             * @description Whether the enrollment went above the maximum by an override.
+             */
+            overridden: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Warnings
+             * @description Always empty for now.
+             */
+            warnings: components["schemas"]["SchedulingWarning"][];
+        };
+        /**
+         * CohortEnrollmentItem
+         * @description One enrollment period of a cohort (#66 F2).
+         */
+        CohortEnrollmentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["EnrollmentStudent"];
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            enrolled_by: components["schemas"]["EnrollmentActor"];
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            withdrawn_by: components["schemas"]["EnrollmentActor"] | null;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /**
+             * Overridden
+             * @description Whether the enrollment went above the maximum by an override.
+             */
+            overridden: boolean;
+            /** Version */
+            version: number;
         };
         /**
          * CohortLevel
@@ -5430,6 +5593,11 @@ export interface components {
             /** Next Starts At */
             next_starts_at: string | null;
             status: components["schemas"]["CohortStatus"];
+            /**
+             * Enrolled Count
+             * @description The active enrollments; null for a caller without course.view (#66 F3).
+             */
+            enrolled_count: number | null;
         };
         /**
          * CohortOccurrenceItem
@@ -5487,7 +5655,10 @@ export interface components {
         };
         /**
          * CohortSessionItem
-         * @description One session of a cohort (#65 F4), in any state (staff only).
+         * @description One session of a cohort (#65 F4; #66 G4). Staff see every state;
+         *     an enrolled student or a linked guardian only the ``confirmed`` and
+         *     ``completed`` sessions one of their students takes part in, with
+         *     ``students``.
          */
         CohortSessionItem: {
             /**
@@ -5519,6 +5690,24 @@ export interface components {
             is_exception: boolean;
             tutor: components["schemas"]["SessionTutor"] | null;
             classroom: components["schemas"]["GroupSessionClassroom"] | null;
+            /**
+             * Students
+             * @description Students and guardians only (absent for staff): the caller's own students among the participants, by name.
+             */
+            students?: components["schemas"]["CohortSessionStudent"][] | null;
+        };
+        /**
+         * CohortSessionStudent
+         * @description One of the caller's own students taking part in a session (#66 G4).
+         */
+        CohortSessionStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * CohortSessions
@@ -5612,6 +5801,25 @@ export interface components {
              * @description The cohort maximum, 1-500.
              */
             max_students?: number | null;
+        };
+        /**
+         * CohortWithdrawal
+         * @description Withdraw a student from a cohort (``POST
+         *     /api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):
+         *     the enrollment's ``version`` and an optional reason (trimmed, 1-1000:
+         *     ``reason_required`` for a blank one, ``reason_too_long``).
+         */
+        CohortWithdrawal: {
+            /**
+             * Version
+             * @description The enrollment's version, as read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Optional: 1-1000 characters, trimmed.
+             */
+            reason?: string | null;
         };
         /**
          * ConflictOverrideCreate
@@ -17957,7 +18165,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description No such cohort (cohort_not_found). */
+            /** @description No such cohort, or one you can't see (cohort_not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -18019,7 +18227,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description No such cohort (cohort_not_found). */
+            /** @description No such cohort, or one you can't see (cohort_not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -18091,8 +18299,151 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+            /** @description No such cohort, or one you can't see (cohort_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    enroll_in_cohort_api_v1_cohorts__cohort_id__enrollments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortEnrollmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortEnrollmentCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description No such cohort (cohort_not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The cohort has no series still producing sessions (cohort_ended); the student is already enrolled (already_enrolled, details.enrollment_id); or the enrollment breaks scheduling rules (scheduling_conflict): `group_capacity_exceeded` (soft, can be overridden; `details.cohort_id`) first, then each future session's `student_overlap` and `room_capacity_exceeded` (hard), with `details.occurrence_start` and `details.date`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    withdraw_from_cohort_api_v1_cohorts__cohort_id__enrollments__enrollment_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+                enrollment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CohortWithdrawal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortEnrollmentItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such cohort (cohort_not_found), or no such enrollment in it (enrollment_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

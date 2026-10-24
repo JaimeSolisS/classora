@@ -1824,8 +1824,18 @@ class GroupSessionItem(BaseModel):
     classroom: GroupSessionClassroom | None
 
 
+class CohortSessionStudent(BaseModel):
+    """One of the caller's own students taking part in a session (#66 G4)."""
+
+    id: uuid.UUID
+    display_name: str
+
+
 class CohortSessionItem(BaseModel):
-    """One session of a cohort (#65 F4), in any state (staff only)."""
+    """One session of a cohort (#65 F4; #66 G4). Staff see every state;
+    an enrolled student or a linked guardian only the ``confirmed`` and
+    ``completed`` sessions one of their students takes part in, with
+    ``students``."""
 
     id: uuid.UUID
     state: SessionStateCode
@@ -1835,6 +1845,14 @@ class CohortSessionItem(BaseModel):
     is_exception: bool = Field(description="Moved or edited on its own (#54).")
     tutor: SessionTutor | None
     classroom: GroupSessionClassroom | None
+    students: list[CohortSessionStudent] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Students and guardians only (absent for staff): the caller's own"
+            " students among the participants, by name."
+        ),
+    )
 
 
 class CohortSessionsQuery(BaseModel):

@@ -110,6 +110,7 @@ const API_CODES = [
   'template_inactive',
   'subject_not_in_template',
   'too_many_occurrences',
+  'cohort_ended',
   'student_consent_required',
   'slot_unavailable',
   'session_request_overlap',
@@ -139,6 +140,30 @@ const ALL_CODES = [...API_CODES, ...STATUS_CODES, ...CLIENT_CODES];
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+// #66 I3: cohort enrollment reuses the #56/#49 codes; each is listed once
+// (the repeated-key check of the locale files is i18n/check.test.ts).
+describe('cohort enrollment codes (#66 I3)', () => {
+  it.each([
+    'already_enrolled',
+    'enrollment_not_found',
+    'enrollment_not_active',
+    'cohort_ended',
+  ])('the API code %s is listed once', (code) => {
+    expect(API_CODES.filter((c) => c === code)).toHaveLength(1);
+    expect(MAPPED_ERROR_CODES.filter((c) => c === code)).toHaveLength(1);
+  });
+
+  it.each(['max_students_below_enrolled', 'reason_too_long'])(
+    'the field code %s has one message and is no API code',
+    (code) => {
+      expect(API_CODES).not.toContain(code);
+      for (const language of LANGUAGES) {
+        expect(i18n.exists(code, { lng: language, ns: 'errors' })).toBe(true);
+      }
+    },
+  );
 });
 
 describe('errorMessageKey', () => {

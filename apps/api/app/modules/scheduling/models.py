@@ -225,6 +225,10 @@ OVERRIDES_IMMUTABLE_TRIGGER: Final = "class_session_overrides_immutable"
 GROUP_ENROLLMENTS_WRITE_ONCE_TRIGGER: Final = "group_enrollments_write_once"
 GROUP_NAME_UNIQUE: Final = "uq_class_groups_name"
 GROUP_ENROLLMENT_ACTIVE_UNIQUE: Final = "uq_group_enrollments_active"
+OVERRIDE_COHORT_ENROLLMENT_FK: Final = "fk_class_session_overrides_cohort_enrollment_id"
+"""The foreign key of ``class_session_overrides.cohort_enrollment_id`` (#66
+A3), named explicitly: the convention's name would pass PostgreSQL's
+63-character limit."""
 GROUP_NAME_MAX_LENGTH: Final = 120
 SESSION_REQUEST_PENDING_OVERLAP_CONSTRAINT: Final = (
     "ex_session_requests_student_pending_overlap"
@@ -448,8 +452,10 @@ class ClassSessionOverride(Model):
     trigger rejects ``UPDATE`` and ``DELETE``); not audited, the
     ``scheduling.session_override`` / ``scheduling.series_override`` /
     ``scheduling.enrollment_override`` event is its record. Its **subject**
-    is exactly one of ``class_session_id`` and ``group_enrollment_id`` (#56
-    A6: a group enrollment's ``group_capacity_exceeded``).
+    is exactly one of ``class_session_id``, ``group_enrollment_id`` (#56
+    A6: a group enrollment's ``group_capacity_exceeded``) and
+    ``cohort_enrollment_id`` (#66 A3: a cohort enrollment's, the ``courses``
+    row; ADR-0002 allows the cross-module key, the model isn't imported).
     ``class_series_id`` (#236 D1) is **context**, not a subject: the series
     a series write (or a ``conflict``-row override) targeted; ``NULL`` for a
     one-off session's or an enrollment's override."""
@@ -467,7 +473,8 @@ class ClassSessionOverride(Model):
             name="reason_length",
         ),
         CheckConstraint(
-            "num_nonnulls(class_session_id, group_enrollment_id) = 1",
+            "num_nonnulls(class_session_id, group_enrollment_id,"
+            " cohort_enrollment_id) = 1",
             name="one_subject",
         ),
     )
@@ -481,6 +488,18 @@ class ClassSessionOverride(Model):
     group_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("group_enrollments.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    cohort_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        # An explicit name: the convention's would pass PostgreSQL's
+        # 63-character limit.
+        ForeignKey(
+            "cohort_enrollments.id",
+            ondelete="RESTRICT",
+            name=OVERRIDE_COHORT_ENROLLMENT_FK,
+        ),
         nullable=True,
         index=True,
     )

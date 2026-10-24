@@ -136,6 +136,7 @@
   "template_inactive": "This course template is inactive. Choose an active one.",
   "subject_not_in_template": "Choose one of the course template's subjects.",
   "too_many_occurrences": "The schedule can't fit the course's sessions within the maximum number of dates, counting the closures. Choose more weekdays or another start.",
+  "cohort_ended": "This cohort has ended: no student can join it.",
   "max_students_below_enrolled": "The maximum can't be lower than the students enrolled.",
   "student_ids_duplicate": "Each student can be added only once.",
   "no_changes": "Change the name or the maximum first.",

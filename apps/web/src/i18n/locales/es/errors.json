@@ -136,6 +136,7 @@
   "template_inactive": "Esta plantilla de curso está inactiva. Elige una activa.",
   "subject_not_in_template": "Elige una de las materias de la plantilla de curso.",
   "too_many_occurrences": "El horario no alcanza para las sesiones del curso dentro del máximo de fechas, contando los cierres. Elige más días o otro inicio.",
+  "cohort_ended": "Esta cohorte terminó: ningún estudiante puede unirse.",
   "max_students_below_enrolled": "El máximo no puede ser menor que los estudiantes inscritos.",
   "student_ids_duplicate": "Cada estudiante se puede agregar una sola vez.",
   "no_changes": "Primero cambia el nombre o el máximo.",

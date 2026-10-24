@@ -121,6 +121,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['template_inactive', 'template_inactive'],
   ['subject_not_in_template', 'subject_not_in_template'],
   ['too_many_occurrences', 'too_many_occurrences'],
+  // Cohort enrollment (#66; the other enrollment codes are the #56 ones).
+  ['cohort_ended', 'cohort_ended'],
   // Session requests by families (#59).
   ['student_consent_required', 'student_consent_required'],
   ['slot_unavailable', 'slot_unavailable'],

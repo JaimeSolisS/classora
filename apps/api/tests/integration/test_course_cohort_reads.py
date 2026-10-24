@@ -123,8 +123,11 @@ def test_the_detail_has_every_field(module_seeded_url, client):
         "series",
         "next_occurrences",
         "syllabus",
+        "enrolled_count",  # #66 F1
+        "roster",
         "warnings",
     }
+    assert (cohort["enrolled_count"], cohort["roster"]) == (0, [])
     assert cohort["version"] == 1
     assert cohort["subject"]["id"] == str(subject)
     assert set(cohort["subject"]["level"]) == {"id", "name"}
@@ -255,7 +258,9 @@ def test_the_list_filters_and_pages(module_seeded_url, client):
         "last_session_on",
         "next_starts_at",
         "status",
+        "enrolled_count",  # #66 F3
     }
+    assert item["enrolled_count"] == 0
     assert item["template"] == {"id": template["id"], "name": template["name"]}
     assert item["status"] == "upcoming"
     assert item["first_session_on"] == tl.monday.isoformat()
@@ -421,7 +426,9 @@ def test_the_sessions_take_at_most_six_statements(module_seeded_url, client):
 # --- F5: who reads -------------------------------------------------------------------
 
 
-def test_staff_roles_read_and_a_tutor_is_refused(module_seeded_url, client):
+def test_staff_roles_read_and_a_tutor_sees_nothing(module_seeded_url, client):
+    # #66 G: the reads are authenticated with a record policy; a tutor has no
+    # visible student until #67 (404 and an empty list, never 403).
     url = module_seeded_url
     tl = timeline()
     cohort, *_ = make(url, client, tl)
@@ -438,8 +445,7 @@ def test_staff_roles_read_and_a_tutor_is_refused(module_seeded_url, client):
     assert outcomes[ADMINISTRATOR] == (OK, OK)
     assert outcomes[ACADEMIC_COORDINATOR] == (OK, OK)
     assert outcomes[FINANCE_STAFF] == (OK, OK)
-    denied = (403, "permission_denied")
-    assert outcomes[TUTOR] == (denied, denied)
+    assert outcomes[TUTOR] == ((404, "cohort_not_found"), OK)
 
 
 # --- E1: PATCH -----------------------------------------------------------------------

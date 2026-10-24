@@ -251,6 +251,7 @@ def _override_row(
     actor_id: uuid.UUID,
     class_series_id: uuid.UUID | None,
     group_enrollment_id: uuid.UUID | None = None,
+    cohort_enrollment_id: uuid.UUID | None = None,
 ) -> ClassSessionOverride:
     if not conflicts or any(c.severity != "soft" for c in conflicts):
         raise ValueError("only soft conflicts are overridden")
@@ -259,6 +260,7 @@ def _override_row(
         class_session_id=class_session_id,
         class_series_id=class_series_id,
         group_enrollment_id=group_enrollment_id,
+        cohort_enrollment_id=cohort_enrollment_id,
         codes=overridden_codes(conflicts),
         conflicts=[{"code": c.code, "details": c.details} for c in conflicts],
         reason=reason,
@@ -339,16 +341,21 @@ async def record_series_overrides(
 async def record_enrollment_override(
     session: AsyncSession,
     *,
-    group_enrollment_id: uuid.UUID,
+    group_enrollment_id: uuid.UUID | None = None,
+    cohort_enrollment_id: uuid.UUID | None = None,
     conflicts: Sequence[Conflict],
     reason: str,
     actor_id: uuid.UUID,
 ) -> ClassSessionOverride:
-    """Store the override of a group enrollment's soft conflicts (#56 E1 step
-    12; ``group_capacity_exceeded``) and write the named event
-    ``scheduling.enrollment_override`` (``override_id``,
-    ``group_enrollment_id``, ``codes``, ``conflicts``, ``reason``), in the
-    caller's transaction, after the enrollment row is flushed."""
+    """Store the override of an enrollment's soft conflicts
+    (``group_capacity_exceeded``) and write the named event
+    ``scheduling.enrollment_override`` (``override_id``, the enrollment id,
+    ``codes``, ``conflicts``, ``reason``), in the caller's transaction, after
+    the enrollment row is flushed. The enrollment is a group's (#56 E1 step
+    12: ``group_enrollment_id``) or a cohort's (#66 C1 step 12:
+    ``cohort_enrollment_id``, the ``courses`` row): exactly one of them."""
+    if (group_enrollment_id is None) == (cohort_enrollment_id is None):
+        raise ValueError("give exactly one enrollment id")
     row = _override_row(
         None,
         conflicts,
@@ -356,21 +363,51 @@ async def record_enrollment_override(
         actor_id=actor_id,
         class_series_id=None,
         group_enrollment_id=group_enrollment_id,
+        cohort_enrollment_id=cohort_enrollment_id,
     )
     codes, wire = row.codes, row.conflicts
     session.add(row)
     await session.flush()
+    if group_enrollment_id is not None:
+        record_type, key, record_id = (
+            "group_enrollments",
+            "group_enrollment_id",
+            group_enrollment_id,
+        )
+    else:
+        assert cohort_enrollment_id is not None  # noqa: S101 - checked above
+        record_type, key, record_id = (
+            "cohort_enrollments",
+            "cohort_enrollment_id",
+            cohort_enrollment_id,
+        )
     record_audit_event(
         session,
         action=ENROLLMENT_OVERRIDE_EVENT,
-        record_type="group_enrollments",
-        record_id=group_enrollment_id,
+        record_type=record_type,
+        record_id=record_id,
         details={
             "override_id": row.id,
-            "group_enrollment_id": group_enrollment_id,
+            key: record_id,
             "codes": codes,
             "conflicts": wire,
             "reason": reason,
         },
     )
     return row
+
+
+async def overridden_cohort_enrollment_ids(
+    session: AsyncSession, enrollment_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The cohort enrollments (#66 F2 ``overridden``) among
+    ``enrollment_ids`` that have an override row (one statement, none for
+    an empty collection)."""
+    if not enrollment_ids:
+        return set()
+    rows = await session.scalars(
+        select(ClassSessionOverride.cohort_enrollment_id)
+        .where(ClassSessionOverride.cohort_enrollment_id.in_(set(enrollment_ids)))
+        .distinct()
+    )
+    return {row for row in rows if row is not None}

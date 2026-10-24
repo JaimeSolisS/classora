@@ -119,12 +119,13 @@ Codes in use today:
 | `series_not_offerable` | 409 | `POST /api/v1/class-series/{class_series_id}/offers` for a series that already has a tutor (`details.reason = "assigned"`) or with no occurrence still to come from `from_date` (`"ended"`); also a series created with a tutor that has no occurrence still to come (see Assignment offers, "Series offers"). |
 | `session_not_editable` | 409 | `PATCH /api/v1/class-sessions/{class_session_id}` on a session that has begun (`details.reason = "started"`) or is `completed`, `cancelled` or `skipped_closure` (`details.state`); see Class sessions, "Moving a session". |
 | `group_not_found` | 404 | A tutoring group that doesn't exist or that the caller can't see (M4-11; never `403`); see Tutoring groups. |
-| `enrollment_not_found` | 404 | Withdrawing an enrollment that doesn't exist or belongs to another group (see Tutoring groups). |
+| `enrollment_not_found` | 404 | Withdrawing an enrollment that doesn't exist or belongs to another group or cohort (see Tutoring groups, Course cohorts). |
 | `group_name_taken` | 409 | Creating or renaming a tutoring group to a name another group has, ignoring case (see Tutoring groups). |
 | `group_ended` | 409 | Enrolling in a group that has no series still producing sessions (see Tutoring groups). |
-| `already_enrolled` | 409 | Enrolling a student who already has an active enrollment in the group (`details.enrollment_id`; see Tutoring groups). |
-| `enrollment_not_active` | 409 | Withdrawing an enrollment that was already withdrawn (see Tutoring groups). |
-| `cohort_not_found` | 404 | A course cohort that doesn't exist (M4-20; see Course cohorts). |
+| `already_enrolled` | 409 | Enrolling a student who already has an active enrollment in the group or cohort (`details.enrollment_id`; see Tutoring groups, Course cohorts). |
+| `enrollment_not_active` | 409 | Withdrawing an enrollment that was already withdrawn (see Tutoring groups, Course cohorts). |
+| `cohort_not_found` | 404 | A course cohort that doesn't exist, or that the caller can't see (M4-20, M4-21; never `403`); see Course cohorts. |
+| `cohort_ended` | 409 | Enrolling in a cohort that has no series still producing sessions: its last session has started or passed (M4-21; see Course cohorts). |
 | `cohort_name_taken` | 409 | Creating or renaming a cohort to a name another cohort has, ignoring case (see Course cohorts). |
 | `template_unknown` / `template_inactive` | 422 | `POST /api/v1/cohorts` with an unknown or an inactive course template; on `["body","template_id"]` (see Course cohorts). |
 | `subject_not_in_template` | 422 | `POST /api/v1/cohorts` with a subject that isn't one of the template snapshot's subjects; on `["body","subject_id"]`. |
@@ -3373,6 +3374,13 @@ checks (their approve and restore re-check every participant). Every change
 bumps the `version` of the series and occurrences whose participants it
 changes.
 
+**Shared mechanics (M4-21):** the series and occurrence participant
+changes of an enrollment and a withdrawal (the mid-term rule, the capacity
+and overlap checks, the version bumps) are kind-neutral
+`scheduling.service` helpers (`plan_series_participant_add`,
+`add_series_participant`, `remove_series_participant`) that cohort
+enrollment uses too; group behaviour is unchanged.
+
 **Lock order** (every writer that changes a group occurrence's
 participants or room): students → zone → **group `FOR UPDATE`** → series →
 sessions → offers. The nightly job takes it too and, for a group series,
@@ -3427,22 +3435,24 @@ to every occurrence), which keeps the tutor, the room and the timing. The
 routes live in `app/workflows/cohorts_router.py` and call
 `app/workflows/cohorts.py`, which composes `courses.service` and
 `scheduling.service` in one Unit of Work; `courses` never imports
-`scheduling`. Enrollment is M4-21 (#66): a cohort created here has no
-students. The web pages are M4-20b (#243).
+`scheduling`. Enrollment (M4-21, #66; below) is API only: the roster UI is
+M4-21b (#245). The web pages are M4-20b (#243).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `POST /api/v1/cohorts` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below; `201` with `CohortDetail` plus `warnings` (`[]`). |
 | `PATCH /api/v1/cohorts/{cohort_id}` | `require("schedule.manage")` | `{version, name?, max_students?}` (at least one: `422 no_changes`); `200` with `CohortDetail`. |
-| `GET /api/v1/cohorts` | `require("course.view")` (Owner, Administrator, Academic Coordinator, Finance Staff) | `?q` (the name contains it, ignoring case; at most 120), `?template_id`, `?subject_id`, `?status=upcoming\|in_progress\|ended\|current\|all` (default `current`: upcoming and in progress); cursor pagination (`limit` 1-100, default 25, `cursor`; `{items, next_cursor}`; an invalid cursor is `400 invalid_cursor`) by name (ignoring case), then id, like Groups. At most 5 statements whatever the page size. |
-| `GET /api/v1/cohorts/{cohort_id}` | `require("course.view")` | `CohortDetail`; unknown is `404 cohort_not_found`. At most 8 statements. |
-| `GET /api/v1/cohorts/{cohort_id}/sessions?from=…&to=…` | `require("course.view")` | The cohort's sessions overlapping `[from, to)` by start, in every state, with the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days); unknown is `404 cohort_not_found`. At most 6 statements. |
+| `POST /api/v1/cohorts/{cohort_id}/enrollments` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{student_id, override?: {codes, reason}}`; `201` with `CohortEnrollmentItem` plus `warnings` (`[]`). M4-21. |
+| `POST /api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw` | `require("schedule.manage")` | `{version, reason?}`; `200` with `CohortEnrollmentItem`. M4-21. |
+| `GET /api/v1/cohorts` | `authenticated()` + the record policy (below) | `?q` (the name contains it, ignoring case; at most 120), `?template_id`, `?subject_id`, `?status=upcoming\|in_progress\|ended\|current\|all` (default `current`: upcoming and in progress); cursor pagination (`limit` 1-100, default 25, `cursor`; `{items, next_cursor}`; an invalid cursor is `400 invalid_cursor`) by name (ignoring case), then id, like Groups. At most 5 statements whatever the page size for `course.view` holders. |
+| `GET /api/v1/cohorts/{cohort_id}` | `authenticated()` + the record policy | `CohortDetail`; unknown or hidden is `404 cohort_not_found`. At most 9 statements. |
+| `GET /api/v1/cohorts/{cohort_id}/sessions?from=…&to=…` | `authenticated()` + the record policy | The cohort's sessions overlapping `[from, to)` by start, with the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days): every state for `course.view` holders, the family view below otherwise; unknown or hidden is `404 cohort_not_found`. At most 7 statements. |
 | `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` (Assignment offers, unchanged) | Also offers a cohort's series to a tutor, under the cohort lock. |
 
-In M4-20 every cohort read is staff only (Tutor, Student and Guardian get
-`403`); M4-21 opens them to enrolled students and their guardians (a
-record policy), M4-22 to tutors. Tutors already see their offers and
-sessions.
+Since M4-21 the cohort reads have a record policy ("Who sees what",
+below): `course.view` holders see everything, enrolled students and their
+linked guardians their own cohorts; M4-22 adds tutors, who already see
+their offers and sessions.
 
 **The create body** (unknown fields `422`): `{name, template_id,
 subject_id, max_students, tutor_user_id?, respond_by?, classroom_id?,
@@ -3535,29 +3545,136 @@ horizon. `planned_session_count` and `session_minutes` are the snapshot's.
 `ClassSeriesDetail` fields but its occurrences (`assignment` and
 `cohort_id` included). `next_occurrences` are up to 10 upcoming `{id,
 state, starts_at, ends_at}`. `syllabus {modules, assessments, completion}`
-comes from the snapshot, never from the live template.
+comes from the snapshot, never from the live template. For `course.view`
+holders (M4-21) it also has `enrolled_count` (the active enrollments) and
+`roster`: the active enrollments by student name, then the withdrawn ones,
+latest first, as `CohortEnrollmentItem`s. For anyone else both members are
+**absent** (see "Who sees what").
 
 **List items:** `{id, name, template {id, name}, subject, max_students,
 tutor {id, display_name} | null, assignment_status | null,
-first_session_on, last_session_on, next_starts_at | null, status}`.
+first_session_on, last_session_on, next_starts_at | null, status,
+enrolled_count | null}`. `enrolled_count` (M4-21) is `null` for a caller
+without `course.view`.
 
 **Session items:** `{id, state, starts_at, ends_at, original_start,
 is_exception, tutor {id, display_name} | null, classroom {id, name} |
-null}`.
+null}`, plus `students [{id, display_name}]` for a family caller only
+(absent for staff).
 
 **`PATCH`:** `403` → `422` → the cohort `FOR UPDATE` → `404
-cohort_not_found` → `409 version_conflict` → `409 cohort_name_taken`. A
-no-op answers `200` with no version change and no audit. The template, the
-subject and the snapshot never change. M4-21 adds `422
-max_students_below_enrolled`.
+cohort_not_found` → `409 version_conflict` → `422
+max_students_below_enrolled` (on `max_students`: the new maximum is below
+the active enrollments; M4-21) → `409 cohort_name_taken`. Raising the
+maximum above the room's capacity is allowed. A no-op answers `200` with no
+version change and no audit. The template, the subject and the snapshot
+never change.
 
 **Lock order (G1):** students → zone → template `FOR SHARE` (only in the
 cohort create) → group **or cohort** `FOR UPDATE` → series `FOR UPDATE` →
-sessions by id → offer. The nightly extension of a cohort's series and a
-series offer on it take the cohort row (`courses.service.lock_cohort`)
-where a group series takes the group row; M4-21 enrollment takes it after
-the students and the zone. The `courses` module never takes a scheduling
-lock.
+sessions by id → offer. The nightly extension of a cohort's series, a
+series offer on it, a series edit (`/edits`, `/cancellations`) or a `PATCH`
+of one of its occurrences, and every enrollment and withdrawal (M4-21) take
+the cohort row (`courses.service.lock_cohort`) where a group series takes
+the group row, after the students and the zone. The cohort row serializes
+a cohort's enrollments (the last seat) and the `PATCH` of its maximum. The
+`courses` module never takes a scheduling lock.
+
+#### Enrollment and withdrawal (M4-21)
+
+Owners and Administrators (ADR-0005 D9) enroll students and withdraw them
+at any time, also after the first session (spec §3). The enrollment
+**period** lives in `courses` (`cohort_enrollments`, the `group_enrollments`
+shape: `enrolled_at`/`_by`, then a write-once `withdrawn_at`/`_by`/
+`withdrawal_reason`; a trigger refuses deletes and any other change,
+SQLSTATE 42501; re-enrolling makes a new period); the participants stay in
+`scheduling`. The routes call `app/workflows/cohort_enrollment.py`.
+
+**Capacity** (ADR-0005 D7): the cohort maximum counts the **active**
+enrollments and is soft (`group_capacity_exceeded`, `details {cohort_id,
+max_students, enrolled_count}`, overridable with `schedule.override`); each
+future occupying occurrence's room is hard (`room_capacity_exceeded`, the
+occurrence's own room; none without a room). A withdrawal frees a seat. The
+nightly job never re-checks the maximum; a room it can't hold becomes a
+`conflict` occurrence with an inbox item.
+
+**Enroll:** `401`/`403` (Coordinator, Finance, Tutor, Student and Guardian:
+`403 permission_denied`) → `422` schema → `403` override without
+`schedule.override` → the student lock → the zone `FOR SHARE` → the cohort
+`FOR UPDATE` (`404 cohort_not_found`) → the cohort's producing series `FOR
+UPDATE` (none: `409 cohort_ended`; its last session has started or
+passed) → `422 student_unknown` / `student_inactive` on `student_id` →
+`409 already_enrolled` (`details.enrollment_id`) → the conflicts, all
+listed: `group_capacity_exceeded` first, then each future occupying
+occurrence's `student_overlap` and `room_capacity_exceeded`, with
+`details.occurrence_start` and `details.date`, by start → `409
+scheduling_conflict` unless an `override` lists every soft one (a hard one
+never) → the period, the series participants and the occurrences'
+participants → with an override, one `class_session_overrides` row whose
+subject is the enrollment (`cohort_enrollment_id`) and the event
+`scheduling.enrollment_override` (`override_id`, `cohort_enrollment_id`,
+`codes`, `conflicts`, `reason`). Nothing is written on a `4xx`.
+
+**Withdraw:** `422` (reason trimmed, 1–1000 when sent: `reason_required`
+for a blank one, `reason_too_long`) → the student lock → the zone → the
+cohort `FOR UPDATE` (`404 cohort_not_found`) → the producing series → `404
+enrollment_not_found` (unknown, or of another cohort) → `409
+version_conflict` → `409 enrollment_not_active` → the period is closed and
+the student leaves the series and the occurrences (audited `delete`
+events). A withdrawal never fails a check and changes no session state,
+even when a future occurrence is left without participants (cancel it
+through the series or `POST /api/v1/class-sessions/{id}/cancel`). After the
+cohort has ended it is still allowed and only closes the period.
+
+**Mid-course rule:** an enrollment or a withdrawal takes effect at the
+request instant (no future-dated changes). It changes the cohort's
+occurrences that start **after** now in `unassigned`, `offered`,
+`confirmed`, `conflict` or `skipped_closure`, and the participants of every
+producing series, so later materializations include (or leave out) the
+student. Past, started, `completed` and `cancelled` occurrences keep their
+participants (attendance and closeout history). Only `unassigned`,
+`offered` and `confirmed` occurrences are checked. **The horizon:**
+occurrences beyond the 12-week horizon don't exist yet; the nightly run
+checks the student when it creates them, and a clash there becomes a
+`conflict` occurrence with an inbox item, not a refusal at enrollment. How
+completion counts attendance for a late enrollee is M5-18's (it gets
+`enrolled_at` / `withdrawn_at`).
+
+**`CohortEnrollmentItem`:** `{id, student {id, display_name, is_active},
+enrolled_at, enrolled_by {id, display_name}, withdrawn_at, withdrawn_by,
+withdrawal_reason, overridden, version}`.
+
+**Who sees what (the record policy):** `course.view` holders (Owner,
+Administrator, Academic Coordinator, Finance) see every cohort, its roster
+and every session. For anyone else the **visible students** are their own
+student profile (`student` role) and the students linked to their
+**active** guardian profile (`guardian` role; no academic-consent gate:
+spec §2 lists scheduling apart from academic records), the union for both
+roles. They see only the cohorts where a visible student has an **active**
+enrollment (a list filters, a detail or sessions read is `404
+cohort_not_found`, never `403`), without `roster`, `enrolled_count`, the
+series' `assignment` or the list's `assignment_status`, the tutor only once
+they accepted the series, the series' participants only among their own
+students, `next_occurrences` and the list's `next_starts_at` only from
+their students' `confirmed` sessions, and of the sessions only the
+`confirmed` and `completed` ones a visible student takes part in, each
+with `students` (only theirs). So sessions before an enrollment or after a
+withdrawal are left out, a withdrawn student loses the cohort, and a
+removed link or a deactivated guardian profile applies on the next
+request. Tutors (until M4-22) and accounts without a profile get an empty
+list and `404`.
+
+**The billing hook (M6-07, M6-16):** `enroll_in_cohort(uow, …)` and
+`withdraw_from_cohort(uow, …)` return a frozen `CohortEnrollmentChange
+{enrollment_id, cohort_id, student_id, change: enrolled | withdrawn,
+effective_at, actor_user_id}` and never commit. M6-07 adds its charge step
+inside them (`apply_cohort_enrollment_change`), in the same Unit of Work;
+its sweeper reads `courses.service.list_cohort_enrollment_periods(
+changed_since, limit)`. M6-16 calls `withdraw_from_cohort` from its own
+withdrawal workflow, in the same transaction as the refund or credit.
+Course prices are not prorated for closures (ADR-0005 D6); proration for a
+late enrollment is M6-07's rule. No job is enqueued and there is no event
+bus.
 
 **Price (E6).** A cohort has no price yet: M6-04 / M6-07 add the
 `course_cohorts` price link (a nullable foreign key to the price catalog)

@@ -17,6 +17,9 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
+    SerializerFunctionWrapHandler,
+    field_serializer,
     field_validator,
 )
 from pydantic_core import PydanticCustomError
@@ -30,6 +33,9 @@ from app.modules.courses.schemas import (
 from app.modules.scheduling.schemas import (
     ClassSeriesSummary,
     CohortSessionItem,
+    GroupEnrollmentCreate,
+    GroupEnrollmentItem,
+    GroupWithdrawal,
     SchedulingWarning,
     SeriesOverride,
     SessionStateCode,
@@ -160,10 +166,44 @@ class CohortOccurrenceItem(BaseModel):
     ends_at: datetime
 
 
+class CohortEnrollmentCreate(GroupEnrollmentCreate):
+    """Enroll a student in a cohort (``POST
+    /api/v1/cohorts/{id}/enrollments``, #66 C1): the #56 body. ``override``
+    (the #49 shape, for ``group_capacity_exceeded``) needs
+    ``schedule.override``."""
+
+
+class CohortWithdrawal(GroupWithdrawal):
+    """Withdraw a student from a cohort (``POST
+    /api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):
+    the enrollment's ``version`` and an optional reason (trimmed, 1-1000:
+    ``reason_required`` for a blank one, ``reason_too_long``)."""
+
+
+class CohortEnrollmentItem(GroupEnrollmentItem):
+    """One enrollment period of a cohort (#66 F2)."""
+
+
+class CohortEnrollmentCreated(CohortEnrollmentItem):
+    """The new enrollment."""
+
+    warnings: list[SchedulingWarning] = Field(description="Always empty for now.")
+
+
+def _absent_when_none(value: object) -> bool:
+    return value is None
+
+
 class CohortDetail(BaseModel):
-    """One cohort (``GET /api/v1/cohorts/{id}``, #65 F1). The syllabus comes
-    from the snapshot, never from the live template. No enrollment data
-    yet (#66 adds it)."""
+    """One cohort (``GET /api/v1/cohorts/{id}``, #65 F1, #66 F1, G3). The
+    syllabus comes from the snapshot, never from the live template.
+
+    ``enrolled_count`` and ``roster`` are for ``course.view`` holders only:
+    for an enrolled student or a linked guardian they are absent, the
+    ``series`` has no ``assignment`` (and its tutor only once they
+    accepted), its participants are only the caller's own students, and
+    ``next_occurrences`` are only the ``confirmed`` ones they take part
+    in."""
 
     id: uuid.UUID
     name: str
@@ -203,6 +243,38 @@ class CohortDetail(BaseModel):
         description="Up to 10 upcoming occurrences, by start."
     )
     syllabus: CohortSyllabus
+    enrolled_count: int | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description="course.view holders only: the active enrollments.",
+    )
+    roster: list[CohortEnrollmentItem] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "course.view holders only: the active enrollments by student name,"
+            " then the withdrawn ones, latest first."
+        ),
+    )
+
+    _family: bool = PrivateAttr(default=False)
+    """Read by an enrolled student or a linked guardian (#66 G3)."""
+
+    def for_family(self) -> CohortDetail:
+        """Mark this detail as a family read: ``series.assignment`` is left
+        out of the response."""
+        self._family = True
+        return self
+
+    # No return annotation: the field keeps its own schema in OpenAPI.
+    @field_serializer("series", mode="wrap")
+    def _series_without_assignment(  # type: ignore[no-untyped-def]
+        self, value: object, handler: SerializerFunctionWrapHandler
+    ):
+        data = handler(value)
+        if self._family and isinstance(data, dict):
+            data.pop("assignment", None)
+        return data
 
 
 class CohortCreated(CohortDetail):
@@ -227,6 +299,11 @@ class CohortListItem(BaseModel):
     last_session_on: date | None
     next_starts_at: datetime | None
     status: CohortStatus
+    enrolled_count: int | None = Field(
+        description=(
+            "The active enrollments; null for a caller without course.view (#66 F3)."
+        )
+    )
 
 
 class CohortPage(BaseModel):

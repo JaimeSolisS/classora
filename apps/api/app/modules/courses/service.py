@@ -45,6 +45,15 @@ calls :func:`lock_cohort` (the cohort row ``FOR UPDATE``, after the
 students and the zone, before the series) and :func:`cohort_names`. This
 module never imports ``scheduling``.
 
+**Cohort enrollment** (#66, :mod:`~app.modules.courses.enrollment`): the
+write-once period rows (:func:`insert_cohort_enrollment`,
+:func:`lock_cohort_enrollment`, :func:`withdraw_cohort_enrollment`), the
+active counts, the record-policy filters (``visible_to`` on
+:func:`get_cohort` and :func:`list_cohorts`, :func:`cohort_visible_to`) and
+:func:`list_cohort_enrollment_periods` for the M6-07 sweeper;
+``app.workflows.cohort_enrollment`` composes them with
+``scheduling.service``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -80,6 +89,52 @@ from app.modules.courses.cohorts import (
     derive_occurrence_count as derive_occurrence_count,
 )
 from app.modules.courses.cohorts import snapshot_subject_ids, syllabus_of
+from app.modules.courses.enrollment import (
+    CohortEnrollmentPeriod as CohortEnrollmentPeriod,
+)
+from app.modules.courses.enrollment import (
+    CohortEnrollmentRow as CohortEnrollmentRow,
+)
+from app.modules.courses.enrollment import (
+    active_cohort_enrollment_count,
+    has_active_enrollment,
+)
+from app.modules.courses.enrollment import (
+    active_cohort_enrollment_counts as active_cohort_enrollment_counts,
+)
+from app.modules.courses.enrollment import (
+    active_cohort_enrollments as active_cohort_enrollments,
+)
+from app.modules.courses.enrollment import (
+    cohort_enrollment_rows as cohort_enrollment_rows,
+)
+from app.modules.courses.enrollment import (
+    cohort_visible_to as cohort_visible_to,
+)
+from app.modules.courses.enrollment import (
+    find_cohort_enrollment as find_cohort_enrollment,
+)
+from app.modules.courses.enrollment import (
+    insert_cohort_enrollment as insert_cohort_enrollment,
+)
+from app.modules.courses.enrollment import (
+    list_cohort_enrollment_periods as list_cohort_enrollment_periods,
+)
+from app.modules.courses.enrollment import (
+    lock_cohort_enrollment as lock_cohort_enrollment,
+)
+from app.modules.courses.enrollment import (
+    withdraw_cohort_enrollment as withdraw_cohort_enrollment,
+)
+from app.modules.courses.errors import (
+    CohortEndedError as CohortEndedError,
+)
+from app.modules.courses.errors import (
+    CohortEnrollmentActiveExists as CohortEnrollmentActiveExists,
+)
+from app.modules.courses.errors import (
+    CohortEnrollmentNotActive as CohortEnrollmentNotActive,
+)
 from app.modules.courses.errors import (
     CohortNameTakenError as CohortNameTakenError,
 )
@@ -876,12 +931,18 @@ async def lock_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortLock
     """The cohort row ``FOR UPDATE`` (re-read), or ``None`` when unknown
     (#65 C3, G1; ADR-0005 D1 "the group or cohort row").
 
-    **Lock order:** every writer takes it after ``lock_students`` and the
-    center zone ``FOR SHARE``, and before the series row: the extension of a
-    cohort's series (``scheduling`` materialization), a series offer on it,
-    the cohort ``PATCH``, and next **#66 enrollment**, which must take it
-    after ``lock_students`` and the zone too. The courses module never takes
-    a scheduling lock. One statement."""
+    **Lock order** (students → zone → cohort → series → sessions; the
+    complete order is in ``scheduling.locks``): every writer takes it after
+    ``lock_students`` and the center zone ``FOR SHARE``, and before the
+    series row: the extension of a cohort's series (``scheduling``
+    materialization), a series offer on it, the #54 series edits and
+    ``PATCH`` of a course series or occurrence (#66), the cohort ``PATCH``,
+    and the **#66 enrollment and withdrawal**
+    (``app.workflows.cohort_enrollment``), which take it after
+    ``scheduling.service.lock_students`` and the zone. The cohort row
+    serializes a cohort's enrollments (the last seat) and its ``PATCH`` of
+    the maximum. The courses module never takes a scheduling lock. One
+    statement."""
     cohort: CourseCohort | None = await session.scalar(
         select(CourseCohort)
         .where(CourseCohort.id == cohort_id)
@@ -959,12 +1020,13 @@ async def insert_cohort(
 async def update_cohort(
     session: AsyncSession, cohort_id: uuid.UUID, body: CohortUpdate
 ) -> None:
-    """``PATCH /api/v1/cohorts/{id}`` (#65 E1): cohort ``FOR UPDATE`` →
-    ``404 cohort_not_found`` → ``409 version_conflict`` → ``409
-    cohort_name_taken``. A maximum above the room's capacity is allowed
-    (the effective capacity stays the room's, D7). A no-op writes nothing
-    (no version change, no audit). #66 adds ``422
-    max_students_below_enrolled``."""
+    """``PATCH /api/v1/cohorts/{id}`` (#65 E1, #66 E2): cohort ``FOR
+    UPDATE`` → ``404 cohort_not_found`` → ``409 version_conflict`` → ``422
+    max_students_below_enrolled`` (the new maximum below the active
+    enrollments) → ``409 cohort_name_taken``. A maximum above the room's
+    capacity is allowed (the effective capacity stays the room's, D7). A
+    no-op writes nothing (no version change, no audit). The cohort row lock
+    serializes it with the enrollments (#66 H2)."""
     cohort: CourseCohort | None = await session.scalar(
         select(CourseCohort)
         .where(CourseCohort.id == cohort_id)
@@ -974,30 +1036,57 @@ async def update_cohort(
     if cohort is None:
         raise CohortNotFoundError()
     ensure_version(cohort, body.version)
+    new_maximum = (
+        body.max_students
+        if body.max_students is not None and body.max_students != cohort.max_students
+        else None
+    )
+    if new_maximum is not None:
+        active = await active_cohort_enrollment_count(session, cohort.id)
+        if new_maximum < active:
+            raise CohortValidationError(
+                [
+                    _field_error(
+                        ["max_students"],
+                        "max_students_below_enrolled",
+                        f"The cohort has {active} enrolled students.",
+                    )
+                ]
+            )
     new_name = body.name if body.name != cohort.name else None
     if new_name is not None and new_name.lower() != cohort.name.lower():
         # Before any change: the check's query would flush it (one version
         # bump per write).
         await ensure_cohort_name_free(session, new_name, except_id=cohort.id)
-    if body.max_students is not None and body.max_students != cohort.max_students:
-        cohort.max_students = body.max_students
+    if new_maximum is not None:
+        cohort.max_students = new_maximum
     if new_name is not None:
         cohort.name = new_name
     await _flush_cohort(session)
 
 
-async def get_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortRecord:
+async def get_cohort(
+    session: AsyncSession,
+    cohort_id: uuid.UUID,
+    *,
+    visible_to: Collection[uuid.UUID] | None = None,
+) -> CohortRecord:
     """One cohort with its snapshot's template name and version, planned
     sessions, session length, subjects and syllabus (never the live
-    template). One statement; ``404 cohort_not_found`` when unknown."""
-    row = (
-        await session.execute(
-            select(CourseCohort, SnapshotRow)
-            .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
-            .where(CourseCohort.id == cohort_id)
-            .execution_options(populate_existing=True)
-        )
-    ).first()
+    template). One statement; ``404 cohort_not_found`` when unknown, and,
+    with ``visible_to`` (#66 G3, a caller without ``course.view``), when
+    none of these students has an active enrollment in it."""
+    query = (
+        select(CourseCohort, SnapshotRow)
+        .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+        .where(CourseCohort.id == cohort_id)
+        .execution_options(populate_existing=True)
+    )
+    if visible_to is not None:
+        if not visible_to:
+            raise CohortNotFoundError()
+        query = query.where(has_active_enrollment(visible_to))
+    row = (await session.execute(query)).first()
     if row is None:
         raise CohortNotFoundError()
     cohort, snapshot = row
@@ -1021,12 +1110,15 @@ async def list_cohorts(
     ids: Collection[uuid.UUID] | None,
     limit: int,
     cursor: str | None,
+    visible_to: Collection[uuid.UUID] | None = None,
 ) -> tuple[list[CohortRecord], str | None]:
     """A cursor page of cohorts by ``lower(name)`` then id (the #56 groups
     keyset), without their syllabus, and the next cursor (``None`` on the
     last page): ``q`` (the name contains it, ignoring case),
-    ``template_id``, ``subject_id`` and ``ids`` (only these; ``None``: any).
-    One statement. A malformed cursor is ``400 invalid_cursor``."""
+    ``template_id``, ``subject_id`` and ``ids`` (only these; ``None``: any);
+    ``visible_to`` (#66 G2): only the cohorts where one of these students
+    has an active enrollment (an empty collection: none). One statement. A
+    malformed cursor is ``400 invalid_cursor``."""
     position = _cohort_cursor_position(cursor) if cursor is not None else None
     conditions: list[ColumnElement[bool]] = []
     sort_name = func.lower(CourseCohort.name)
@@ -1040,6 +1132,10 @@ async def list_cohorts(
         if not ids:
             return [], None
         conditions.append(CourseCohort.id.in_(set(ids)))
+    if visible_to is not None:
+        if not visible_to:
+            return [], None
+        conditions.append(has_active_enrollment(visible_to))
     if position is not None:
         conditions.append(tuple_(sort_name, CourseCohort.id) > tuple_(*position))
     rows = (
