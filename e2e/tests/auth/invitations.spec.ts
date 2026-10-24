@@ -8,6 +8,7 @@ import {
 } from '../support/auth';
 import { common, errors, signedInAs } from '../support/catalog';
 import { demoOwner } from '../support/credentials';
+import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 
 // Invite to login (#29 L1): the demo Owner invites an Academic coordinator,
 // confirms the password in the reauthentication dialog (the first E2E of the
@@ -36,7 +37,11 @@ const EXPECTED_RESOURCE_ERROR =
 
 // Three browsers, two logins, a dialog and four page loads: more than the
 // default 30 s under machine load (the a11y spec has the same allowance).
+// Every context is fresh, so the first element after each page load or
+// navigation waits up to FIRST_RENDER_TIMEOUT_MS (#252); later assertions
+// keep the default 5 s.
 const TEST_TIMEOUT_MS = 90_000;
+const firstRender = { timeout: FIRST_RENDER_TIMEOUT_MS };
 
 async function freshPage(browser: Browser) {
   const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
@@ -75,18 +80,18 @@ test('an invited person sets a password with the one-time link and signs in', as
   await signIn(owner.page, demoOwner.username, demoOwner.password);
   await expect(
     owner.page.getByRole('banner').getByText(signedInAs(common, 'Demo Owner')),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
 
   // 2. Invitations → invite an Academic coordinator.
   await owner.page
     .getByRole('banner')
     .getByRole('link', { name: common.nav.invitations })
     .click();
-  await expect(owner.page).toHaveURL('/invitations');
+  await expect(owner.page).toHaveURL('/invitations', firstRender);
   const main = owner.page.getByRole('main');
   await expect(
     main.getByRole('heading', { level: 1, name: common.invitations.title }),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   await main
     .getByLabel(common.invitations.form.username, { exact: true })
     .fill(USERNAME);
@@ -128,10 +133,10 @@ test('an invited person sets a password with the one-time link and signs in', as
   const invitedMain = invited.page.getByRole('main');
   await expect(
     invitedMain.getByRole('heading', { level: 1, name: common.invite.title }),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   await expect(
     invitedMain.getByLabel(common.invite.username, { exact: true }),
-  ).toHaveValue(USERNAME);
+  ).toHaveValue(USERNAME, firstRender);
   expect(new URL(invited.page.url()).hash).toBe('');
   expect(invited.page.url()).not.toContain('token');
 
@@ -144,10 +149,10 @@ test('an invited person sets a password with the one-time link and signs in', as
     .getByLabel(common.invite.confirmPassword, { exact: true })
     .fill(NEW_PASSWORD);
   await invitedMain.getByRole('button', { name: common.invite.submit }).click();
-  await expect(invited.page).toHaveURL('/login');
+  await expect(invited.page).toHaveURL('/login', firstRender);
   await expect(
     invitedMain.getByText(common.auth.login.invitationRedeemed),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   const username = invitedMain.getByLabel(common.auth.login.username, {
     exact: true,
   });
@@ -165,7 +170,7 @@ test('an invited person sets a password with the one-time link and signs in', as
     invited.page
       .getByRole('banner')
       .getByText(signedInAs(common, DISPLAY_NAME)),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   // A new user lands on the privacy notice first (#174).
   await acceptPrivacyNoticeIfShown(invited.page);
   const me = await api(invited.page, '/api/v1/auth/me');
@@ -181,7 +186,9 @@ test('an invited person sets a password with the one-time link and signs in', as
   const late = await freshPage(browser);
   await late.page.goto(link);
   const lateMain = late.page.getByRole('main');
-  await expect(lateMain.getByText(errors.token_invalid)).toBeVisible();
+  await expect(lateMain.getByText(errors.token_invalid)).toBeVisible(
+    firstRender,
+  );
   await expect(lateMain.locator('form')).toHaveCount(0);
   expect(await cspViolations(late.page)).toEqual([]);
   expect(late.consoleErrors).toEqual([]);

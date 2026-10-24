@@ -7,6 +7,7 @@ import {
 } from '../support/auth';
 import { common, errors, signedInAs } from '../support/catalog';
 import { demoOwner } from '../support/credentials';
+import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 import { createActiveUser } from '../support/users';
 
 // Password reset and change (#30 M2, M3).
@@ -41,8 +42,11 @@ const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of (401|403|410)/;
 
 // Several browsers, logins and a dialog per test: more than the default 30 s
-// under machine load (as in invitations.spec.ts).
+// under machine load (as in invitations.spec.ts). Every context is fresh, so
+// the first element after each page load or navigation waits up to
+// FIRST_RENDER_TIMEOUT_MS (#252); later assertions keep the default 5 s.
 const TEST_TIMEOUT_MS = 90_000;
+const firstRender = { timeout: FIRST_RENDER_TIMEOUT_MS };
 
 interface FreshPage {
   page: Page;
@@ -86,10 +90,11 @@ async function signIn(page: Page, username: string, password: string) {
   await page.getByRole('button', { name: common.auth.login.submit }).click();
 }
 
-async function expectSignedInAs(page: Page, name: string) {
+/** `afterLogin`: the banner is the first element after a login (#252). */
+async function expectSignedInAs(page: Page, name: string, afterLogin = true) {
   await expect(
     page.getByRole('banner').getByText(signedInAs(common, name)),
-  ).toBeVisible();
+  ).toBeVisible(afterLogin ? firstRender : undefined);
   // A new user lands on the privacy notice first (#174).
   await acceptPrivacyNoticeIfShown(page);
 }
@@ -121,11 +126,11 @@ test('staff issue a reset link; the person sets a new password and the old sessi
     .getByRole('banner')
     .getByRole('link', { name: common.nav.passwordResets })
     .click();
-  await expect(owner.page).toHaveURL('/password-resets');
+  await expect(owner.page).toHaveURL('/password-resets', firstRender);
   const main = owner.page.getByRole('main');
   await expect(
     main.getByRole('heading', { level: 1, name: common.passwordResets.title }),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   const usernameField = main.getByLabel(common.passwordResets.form.username, {
     exact: true,
   });
@@ -175,10 +180,10 @@ test('staff issue a reset link; the person sets a new password and the old sessi
   const resetMain = resetter.page.getByRole('main');
   await expect(
     resetMain.getByRole('heading', { level: 1, name: common.reset.title }),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   await expect(
     resetMain.getByLabel(common.invite.username, { exact: true }),
-  ).toHaveValue(TUTOR);
+  ).toHaveValue(TUTOR, firstRender);
   expect(new URL(resetter.page.url()).hash).toBe('');
   expect(resetter.page.url()).not.toContain('token');
   await resetMain
@@ -188,10 +193,10 @@ test('staff issue a reset link; the person sets a new password and the old sessi
     .getByLabel(common.invite.confirmPassword, { exact: true })
     .fill(SECOND_PASSWORD);
   await resetMain.getByRole('button', { name: common.invite.submit }).click();
-  await expect(resetter.page).toHaveURL('/login');
+  await expect(resetter.page).toHaveURL('/login', firstRender);
   await expect(
     resetMain.getByText(common.auth.login.passwordReset),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   await expect(
     resetMain.getByLabel(common.auth.login.username, { exact: true }),
   ).toHaveValue(TUTOR);
@@ -207,7 +212,7 @@ test('staff issue a reset link; the person sets a new password and the old sessi
 
   // 4. Context B's session was revoked: the next navigation lands on /login.
   await tutorBefore.page.goto('/');
-  await expect(tutorBefore.page).toHaveURL(/\/login/);
+  await expect(tutorBefore.page).toHaveURL(/\/login/, firstRender);
   await tutorBefore.expectClean();
   await tutorBefore.close();
 
@@ -215,7 +220,9 @@ test('staff issue a reset link; the person sets a new password and the old sessi
   const late = await freshPage(browser);
   await late.page.goto(link);
   const lateMain = late.page.getByRole('main');
-  await expect(lateMain.getByText(errors.token_invalid)).toBeVisible();
+  await expect(lateMain.getByText(errors.token_invalid)).toBeVisible(
+    firstRender,
+  );
   await expect(lateMain.locator('form')).toHaveCount(0);
   await late.expectClean();
   await late.close();
@@ -247,14 +254,14 @@ test('a signed-in user changes their password; other sessions end', async ({
     .getByRole('banner')
     .getByRole('link', { name: common.account.password.link })
     .click();
-  await expect(a.page).toHaveURL('/account/password');
+  await expect(a.page).toHaveURL('/account/password', firstRender);
   const main = a.page.getByRole('main');
   await expect(
     main.getByRole('heading', {
       level: 1,
       name: common.account.password.title,
     }),
-  ).toBeVisible();
+  ).toBeVisible(firstRender);
   const current = main.getByLabel(common.account.password.current, {
     exact: true,
   });
@@ -281,21 +288,22 @@ test('a signed-in user changes their password; other sessions end', async ({
   await submit.click();
   await expect(main.getByText(common.account.password.done)).toBeVisible();
   await expect(a.page).toHaveURL('/account/password');
-  await expectSignedInAs(a.page, GUARDIAN_NAME);
+  // The same page, already rendered: the default wait.
+  await expectSignedInAs(a.page, GUARDIAN_NAME, false);
 
   // Sign out works: it needs the rotated CSRF token.
   await a.page
     .getByRole('banner')
     .getByRole('button', { name: common.auth.userMenu.signOut })
     .click();
-  await expect(a.page).toHaveURL('/login');
+  await expect(a.page).toHaveURL('/login', firstRender);
   await a.expectClean();
   await a.close();
 
   // B's session ended: the next navigation lands on /login; P2 signs in
   // (login 8).
   await b.page.goto('/');
-  await expect(b.page).toHaveURL(/\/login/);
+  await expect(b.page).toHaveURL(/\/login/, firstRender);
   await signIn(b.page, GUARDIAN, SECOND_PASSWORD);
   await expectSignedInAs(b.page, GUARDIAN_NAME);
   await b.expectClean();
