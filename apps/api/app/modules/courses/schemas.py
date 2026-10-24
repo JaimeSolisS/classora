@@ -15,10 +15,21 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 from app.modules.courses.models import (
     ASSESSMENTS_MAX,
+    COHORT_MAX_STUDENTS_MAX,
+    COHORT_NAME_MAX_LENGTH,
     MODULES_MAX,
     NAME_MAX_LENGTH,
     PERCENT_MAX,
@@ -232,3 +243,110 @@ class CourseTemplateSnapshot(BaseModel):
     template_id: uuid.UUID
     template_version: int
     content: dict[str, Any]
+
+
+# --- Cohorts (#65) -------------------------------------------------------------------
+
+# The cohort status (#65 B2): computed from its series' rule, never stored.
+type CohortStatus = Literal["upcoming", "in_progress", "ended"]
+# The status filter of the cohort list (#65 F2): ``current`` (the default) is
+# ``upcoming`` plus ``in_progress``.
+type CohortStatusFilter = Literal["upcoming", "in_progress", "ended", "current", "all"]
+
+
+def _check_cohort_name(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    name = value.strip()
+    if not name:
+        raise PydanticCustomError("name_required", "Give the cohort a name.")
+    if len(name) > COHORT_NAME_MAX_LENGTH:
+        raise PydanticCustomError(
+            "name_too_long", "A cohort name is at most 120 characters."
+        )
+    return name
+
+
+class CohortUpdate(_Body):
+    """Rename a cohort or change its maximum (``PATCH
+    /api/v1/cohorts/{cohort_id}``, #65 E1). At least one of ``name`` and
+    ``max_students`` (``no_changes`` on the body). The template, the subject
+    and the snapshot never change; the dates, the room and the tutor change
+    through the cohort's series."""
+
+    version: int = Field(description="The cohort's version, as read.")
+    name: str | None = Field(
+        default=None, description="1-120 characters, trimmed; unique (any case)."
+    )
+    max_students: int | None = Field(
+        default=None,
+        ge=1,
+        le=COHORT_MAX_STUDENTS_MAX,
+        description="The cohort maximum, 1-500.",
+    )
+
+    _name = field_validator("name", mode="before")(_check_cohort_name)
+
+    @model_validator(mode="after")
+    def _something_changes(self) -> CohortUpdate:
+        if self.name is None and self.max_students is None:
+            raise PydanticCustomError("no_changes", "Change the name or the maximum.")
+        return self
+
+
+class CohortTemplate(BaseModel):
+    """The template a cohort was created from, as its snapshot froze it: the
+    template's id, and its name and version at snapshot time."""
+
+    id: uuid.UUID
+    name: str
+    version: int
+
+
+class CohortTemplateName(BaseModel):
+    """The template of a cohort in the list (the snapshot's name)."""
+
+    id: uuid.UUID
+    name: str
+
+
+class CohortSyllabus(BaseModel):
+    """A cohort's syllabus, read from its template snapshot (never from the
+    live template): the modules and assessments in position order and the
+    completion criteria."""
+
+    modules: list[CourseTemplateModule]
+    assessments: list[CourseTemplateAssessment]
+    completion: CourseCompletion
+
+
+class CohortRecord(BaseModel):
+    """A cohort row with what its snapshot says (the courses half of a
+    cohort read; ``app.workflows.cohorts`` adds the schedule)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    name: str
+    template: CohortTemplate
+    template_snapshot_id: uuid.UUID
+    subject_id: uuid.UUID
+    max_students: int
+    session_count: int = Field(description="The snapshot's planned sessions.")
+    session_minutes: int = Field(description="The snapshot's session length.")
+    snapshot_subject_ids: tuple[uuid.UUID, ...]
+    syllabus: CohortSyllabus | None = Field(
+        description="The syllabus (detail reads only; null in a list)."
+    )
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CohortLock(BaseModel):
+    """What a holder of the cohort row lock needs (#65 C3, G1)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    max_students: int

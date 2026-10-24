@@ -35,6 +35,16 @@ snapshot id; :func:`get_course_template_snapshot` reads one back. A snapshot
 is never updated or deleted (a database trigger), so later template edits
 never change existing cohorts.
 
+**Cohorts** (#65; the rules in :mod:`~app.modules.courses.cohorts`): the
+cohort routes live in ``app.workflows.cohorts_router`` and call
+``app.workflows.cohorts``, which uses :func:`insert_cohort`,
+:func:`ensure_cohort_name_free`, :func:`update_cohort`, :func:`get_cohort`,
+:func:`list_cohorts` and :func:`cohort_exists`, and the pure
+:func:`derive_occurrence_count` and :func:`cohort_status`. ``scheduling``
+calls :func:`lock_cohort` (the cohort row ``FOR UPDATE``, after the
+students and the zone, before the series) and :func:`cohort_names`. This
+module never imports ``scheduling``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -43,26 +53,58 @@ from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.errors import FieldError
 from app.core.models import ensure_version
-from app.core.pagination import OffsetPage, OffsetParams
+from app.core.pagination import (
+    InvalidCursorError,
+    OffsetPage,
+    OffsetParams,
+    decode_cursor,
+    encode_cursor,
+)
 from app.modules.catalog import service as catalog_service
 from app.modules.catalog.schemas import SubjectReference
+from app.modules.courses.cohorts import (
+    OCCURRENCES_MAX as OCCURRENCES_MAX,
+)
+from app.modules.courses.cohorts import (
+    TooManyOccurrencesError as TooManyOccurrencesError,
+)
+from app.modules.courses.cohorts import cohort_status as cohort_status
+from app.modules.courses.cohorts import (
+    derive_occurrence_count as derive_occurrence_count,
+)
+from app.modules.courses.cohorts import snapshot_subject_ids, syllabus_of
 from app.modules.courses.errors import (
-    CourseTemplateInactive,
+    CohortNameTakenError as CohortNameTakenError,
+)
+from app.modules.courses.errors import (
+    CohortNotFoundError as CohortNotFoundError,
+)
+from app.modules.courses.errors import (
+    CohortValidationError as CohortValidationError,
+)
+from app.modules.courses.errors import (
+    CourseTemplateInactive as CourseTemplateInactive,
+)
+from app.modules.courses.errors import (
     CourseTemplateInvalidError,
     CourseTemplateNameTakenError,
-    CourseTemplateNotFound,
+)
+from app.modules.courses.errors import (
+    CourseTemplateNotFound as CourseTemplateNotFound,
 )
 from app.modules.courses.models import (
+    COHORT_NAME_INDEX,
     SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_VERSION_UNIQUE,
     TEMPLATE_NAME_INDEX,
+    CourseCohort,
     CourseTemplate,
     CourseTemplateAssessment,
     CourseTemplateModule,
@@ -72,9 +114,10 @@ from app.modules.courses.models import (
     CourseTemplateSnapshot as SnapshotRow,
 )
 from app.modules.courses.schemas import (
-    CourseTemplateAssessment as AssessmentItem,
-)
-from app.modules.courses.schemas import (
+    CohortLock,
+    CohortRecord,
+    CohortTemplate,
+    CohortUpdate,
     CourseTemplateDetail,
     CourseTemplateReplace,
     CourseTemplateSnapshot,
@@ -82,6 +125,9 @@ from app.modules.courses.schemas import (
     CourseTemplateStatusUpdate,
     CourseTemplateSummary,
     CourseTemplateWrite,
+)
+from app.modules.courses.schemas import (
+    CourseTemplateAssessment as AssessmentItem,
 )
 from app.modules.courses.schemas import (
     CourseTemplateModule as ModuleItem,
@@ -792,3 +838,234 @@ async def get_course_template_snapshot(
     """One snapshot by id, or ``None`` when unknown."""
     row = await session.get(SnapshotRow, snapshot_id)
     return None if row is None else _snapshot(row)
+
+
+# --- Cohorts (#65) -------------------------------------------------------------------
+
+
+def _cohort_record(
+    cohort: CourseCohort, snapshot: SnapshotRow, *, with_syllabus: bool
+) -> CohortRecord:
+    content = snapshot.content
+    return CohortRecord(
+        id=cohort.id,
+        name=cohort.name,
+        template=CohortTemplate(
+            id=snapshot.template_id,
+            name=content["name"],
+            version=snapshot.template_version,
+        ),
+        template_snapshot_id=snapshot.id,
+        subject_id=cohort.subject_id,
+        max_students=cohort.max_students,
+        session_count=content["session_count"],
+        session_minutes=content["session_minutes"],
+        snapshot_subject_ids=snapshot_subject_ids(content),
+        syllabus=(
+            syllabus_of(content, schema_version=snapshot.schema_version)
+            if with_syllabus
+            else None
+        ),
+        version=cohort.version,
+        created_at=cohort.created_at,
+        updated_at=cohort.updated_at,
+    )
+
+
+async def lock_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortLock | None:
+    """The cohort row ``FOR UPDATE`` (re-read), or ``None`` when unknown
+    (#65 C3, G1; ADR-0005 D1 "the group or cohort row").
+
+    **Lock order:** every writer takes it after ``lock_students`` and the
+    center zone ``FOR SHARE``, and before the series row: the extension of a
+    cohort's series (``scheduling`` materialization), a series offer on it,
+    the cohort ``PATCH``, and next **#66 enrollment**, which must take it
+    after ``lock_students`` and the zone too. The courses module never takes
+    a scheduling lock. One statement."""
+    cohort: CourseCohort | None = await session.scalar(
+        select(CourseCohort)
+        .where(CourseCohort.id == cohort_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if cohort is None:
+        return None
+    return CohortLock(id=cohort.id, max_students=cohort.max_students)
+
+
+async def cohort_names(
+    session: AsyncSession, cohort_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """The names of these cohorts, by id (unknown ids are left out). One
+    statement, none for an empty collection."""
+    if not cohort_ids:
+        return {}
+    rows = await session.execute(
+        select(CourseCohort.id, CourseCohort.name).where(
+            CourseCohort.id.in_(set(cohort_ids))
+        )
+    )
+    return {cohort_id: name for cohort_id, name in rows}
+
+
+async def ensure_cohort_name_free(
+    session: AsyncSession, name: str, *, except_id: uuid.UUID | None = None
+) -> None:
+    """``409 cohort_name_taken`` when another cohort has ``name`` in any
+    case."""
+    query = select(CourseCohort.id).where(
+        func.lower(CourseCohort.name) == func.lower(name)
+    )
+    if except_id is not None:
+        query = query.where(CourseCohort.id != except_id)
+    if await session.scalar(query.limit(1)) is not None:
+        raise CohortNameTakenError()
+
+
+async def _flush_cohort(session: AsyncSession) -> None:
+    """Flush; a concurrent request that took the name after the pre-check
+    gives ``409 cohort_name_taken``."""
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if COHORT_NAME_INDEX in str(exc.orig):
+            raise CohortNameTakenError() from None
+        raise
+
+
+async def insert_cohort(
+    session: AsyncSession,
+    *,
+    name: str,
+    snapshot: CourseTemplateSnapshot,
+    subject_id: uuid.UUID,
+    max_students: int,
+) -> uuid.UUID:
+    """Insert the cohort row of a create (#65 D2 step 8; flush, audited);
+    ``template_id`` is the snapshot's. Returns its id."""
+    cohort = CourseCohort(
+        id=uuid.uuid7(),
+        name=name,
+        template_id=snapshot.template_id,
+        template_snapshot_id=snapshot.id,
+        subject_id=subject_id,
+        max_students=max_students,
+    )
+    session.add(cohort)
+    await _flush_cohort(session)
+    return cohort.id
+
+
+async def update_cohort(
+    session: AsyncSession, cohort_id: uuid.UUID, body: CohortUpdate
+) -> None:
+    """``PATCH /api/v1/cohorts/{id}`` (#65 E1): cohort ``FOR UPDATE`` →
+    ``404 cohort_not_found`` → ``409 version_conflict`` → ``409
+    cohort_name_taken``. A maximum above the room's capacity is allowed
+    (the effective capacity stays the room's, D7). A no-op writes nothing
+    (no version change, no audit). #66 adds ``422
+    max_students_below_enrolled``."""
+    cohort: CourseCohort | None = await session.scalar(
+        select(CourseCohort)
+        .where(CourseCohort.id == cohort_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if cohort is None:
+        raise CohortNotFoundError()
+    ensure_version(cohort, body.version)
+    new_name = body.name if body.name != cohort.name else None
+    if new_name is not None and new_name.lower() != cohort.name.lower():
+        # Before any change: the check's query would flush it (one version
+        # bump per write).
+        await ensure_cohort_name_free(session, new_name, except_id=cohort.id)
+    if body.max_students is not None and body.max_students != cohort.max_students:
+        cohort.max_students = body.max_students
+    if new_name is not None:
+        cohort.name = new_name
+    await _flush_cohort(session)
+
+
+async def get_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortRecord:
+    """One cohort with its snapshot's template name and version, planned
+    sessions, session length, subjects and syllabus (never the live
+    template). One statement; ``404 cohort_not_found`` when unknown."""
+    row = (
+        await session.execute(
+            select(CourseCohort, SnapshotRow)
+            .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+            .where(CourseCohort.id == cohort_id)
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if row is None:
+        raise CohortNotFoundError()
+    cohort, snapshot = row
+    return _cohort_record(cohort, snapshot, with_syllabus=True)
+
+
+def _cohort_cursor_position(cursor: str) -> tuple[str, uuid.UUID]:
+    name, cohort_id = decode_cursor(cursor, types=(str, str))
+    try:
+        return str(name), uuid.UUID(str(cohort_id))
+    except ValueError:
+        raise InvalidCursorError() from None
+
+
+async def list_cohorts(
+    session: AsyncSession,
+    *,
+    q: str | None,
+    template_id: uuid.UUID | None,
+    subject_id: uuid.UUID | None,
+    ids: Collection[uuid.UUID] | None,
+    limit: int,
+    cursor: str | None,
+) -> tuple[list[CohortRecord], str | None]:
+    """A cursor page of cohorts by ``lower(name)`` then id (the #56 groups
+    keyset), without their syllabus, and the next cursor (``None`` on the
+    last page): ``q`` (the name contains it, ignoring case),
+    ``template_id``, ``subject_id`` and ``ids`` (only these; ``None``: any).
+    One statement. A malformed cursor is ``400 invalid_cursor``."""
+    position = _cohort_cursor_position(cursor) if cursor is not None else None
+    conditions: list[ColumnElement[bool]] = []
+    sort_name = func.lower(CourseCohort.name)
+    if q:
+        conditions.append(sort_name.contains(q.casefold(), autoescape=True))
+    if template_id is not None:
+        conditions.append(CourseCohort.template_id == template_id)
+    if subject_id is not None:
+        conditions.append(CourseCohort.subject_id == subject_id)
+    if ids is not None:
+        if not ids:
+            return [], None
+        conditions.append(CourseCohort.id.in_(set(ids)))
+    if position is not None:
+        conditions.append(tuple_(sort_name, CourseCohort.id) > tuple_(*position))
+    rows = (
+        await session.execute(
+            select(CourseCohort, SnapshotRow)
+            .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+            .where(*conditions)
+            .order_by(sort_name, CourseCohort.id)
+            .limit(limit + 1)
+        )
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    next_cursor = (
+        encode_cursor([page[-1][0].name.lower(), str(page[-1][0].id)])
+        if more and page
+        else None
+    )
+    return [
+        _cohort_record(cohort, snapshot, with_syllabus=False)
+        for cohort, snapshot in page
+    ], next_cursor
+
+
+async def cohort_exists(session: AsyncSession, cohort_id: uuid.UUID) -> bool:
+    """Whether the cohort exists (one statement)."""
+    found = await session.scalar(
+        select(CourseCohort.id).where(CourseCohort.id == cohort_id)
+    )
+    return found is not None

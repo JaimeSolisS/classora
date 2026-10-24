@@ -7,7 +7,9 @@ zone ``FOR SHARE``, and before the series row** (the enrollments and
 withdrawals, the group materialization and closure reconcile, #54's series
 edits and ``PATCH``; #55 and #58 follow it for any such change). The full
 order is **students → zone → group → series → sessions → offers**, so no
-two writers wait on each other in a cycle.
+two writers wait on each other in a cycle; a course series takes its
+cohort row in the group's place (the complete order, with the cohort and
+the template, is in :mod:`.locks`).
 
 A writer that read a group series' participants before its locks re-reads
 them once it holds the series row (an enrollment may have committed in

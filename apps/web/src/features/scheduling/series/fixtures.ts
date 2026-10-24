@@ -72,6 +72,7 @@ export const SERIES_DETAIL: ClassSeriesDetail = {
   split_into_series_ids: [],
   assignment: null,
   group_id: null,
+  cohort_id: null,
   version: 4,
   created_at: '2026-10-21T12:00:00Z',
   updated_at: '2026-10-21T12:00:00Z',
@@ -201,6 +202,7 @@ export const OCCURRENCE_SESSION: ClassSessionDetail = {
   pending_substitution: null,
   cancellation: null,
   group_id: null,
+  cohort_id: null,
   pending_change_request_id: null,
   reassignment: null,
 };

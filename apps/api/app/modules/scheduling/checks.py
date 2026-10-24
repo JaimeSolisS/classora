@@ -77,12 +77,13 @@ class SlotCandidate:
     starts_at: datetime
     ends_at: datetime
     group_max: int | None = None
-    """For ``kind = 'group'`` (#56 C1): the group maximum the participants
-    are checked against (``group_capacity_exceeded``, soft); ``None``
-    leaves it out. The group create checks the maximum once for the whole
-    group (it is the same for every occurrence) and the nightly job never
-    re-checks it, so both pass ``None``; the room capacity is always
-    checked."""
+    """For ``kind = 'group'`` (#56 C1) or ``'course'`` (#65 C1, the cohort
+    maximum): the maximum the participants are checked against
+    (``group_capacity_exceeded``, soft); ``None`` leaves it out. The group
+    create checks the maximum once for the whole group (it is the same for
+    every occurrence) and the nightly job never re-checks it, so both pass
+    ``None``; the room capacity is always checked. The course create passes
+    the cohort maximum."""
 
 
 def _overlapping(slot: LocalSlot) -> Any:

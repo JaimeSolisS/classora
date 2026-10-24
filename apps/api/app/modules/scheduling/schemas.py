@@ -410,6 +410,9 @@ class ClassSessionDetail(BaseModel):
     group_id: uuid.UUID | None = Field(
         description="The tutoring group of a `group` session (#56); null otherwise."
     )
+    cohort_id: uuid.UUID | None = Field(
+        description="The cohort of a `course` session (#65); null otherwise."
+    )
     pending_change_request_id: uuid.UUID | None = Field(
         description=(
             "The pending cancellation or reschedule request of a family or the"
@@ -817,12 +820,23 @@ class OfferSession(BaseModel):
     )
 
 
+class OfferCohort(BaseModel):
+    """The cohort of a course series offer (#65 C6): the tutor sees the
+    offer is for a course."""
+
+    id: uuid.UUID
+    name: str
+
+
 class OfferSeries(BaseModel):
     """The series a series offer is for (#233 F1): its rule and the local
     date the offer covers from. Times are local in ``time_zone``."""
 
     id: uuid.UUID
     kind: SessionKindCode
+    cohort: OfferCohort | None = Field(
+        description="The cohort of a `course` series (#65); null otherwise."
+    )
     subject: OfferSessionSubject
     weekdays: list[int] = Field(description="ISO weekdays (1 = Monday).")
     interval: int
@@ -1064,9 +1078,10 @@ class SeriesAssignment(BaseModel):
     respond_by: datetime | None
 
 
-class ClassSeriesDetail(BaseModel):
-    """One class series (``GET /api/v1/class-series/{id}``). The web app
-    never parses ``rrule``: it reads ``recurrence``."""
+class ClassSeriesSummary(BaseModel):
+    """One class series without its occurrence rows (a cohort's current
+    series, #65 F1). The web app never parses ``rrule``: it reads
+    ``recurrence``."""
 
     id: uuid.UUID
     kind: SessionKindCode
@@ -1112,9 +1127,19 @@ class ClassSeriesDetail(BaseModel):
     group_id: uuid.UUID | None = Field(
         description="The tutoring group of a `group` series (#56); null otherwise."
     )
+    cohort_id: uuid.UUID | None = Field(
+        description="The cohort of a `course` series (#65); null otherwise."
+    )
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class ClassSeriesDetail(ClassSeriesSummary):
+    """One class series (``GET /api/v1/class-series/{id}``) with its
+    occurrence rows. The web app never parses ``rrule``: it reads
+    ``recurrence``."""
+
     occurrences: list[SeriesOccurrence] = Field(
         description=(
             "The occurrence rows starting now or later, by start (rows are"
@@ -1797,6 +1822,36 @@ class GroupSessionItem(BaseModel):
     ends_at: datetime
     tutor: SessionTutor | None
     classroom: GroupSessionClassroom | None
+
+
+class CohortSessionItem(BaseModel):
+    """One session of a cohort (#65 F4), in any state (staff only)."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    original_start: datetime = Field(description="The rule's instant.")
+    is_exception: bool = Field(description="Moved or edited on its own (#54).")
+    tutor: SessionTutor | None
+    classroom: GroupSessionClassroom | None
+
+
+class CohortSessionsQuery(BaseModel):
+    """The query of ``GET /api/v1/cohorts/{id}/sessions`` (#65 F4; the #57
+    range rules)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_: datetime = Field(
+        alias="from", description="An instant with an offset (RFC 3339)."
+    )
+    to: datetime = Field(
+        description=(
+            "An instant with an offset (RFC 3339), after `from` and at most"
+            " 45 days later."
+        )
+    )
 
 
 class GroupSessions(BaseModel):

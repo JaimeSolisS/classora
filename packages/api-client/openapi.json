@@ -11420,6 +11420,496 @@
         }
       }
     },
+    "/api/v1/cohorts": {
+      "post": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Create Cohort",
+        "description": "Create a cohort of a course template. The template is frozen as its\ncurrent version's snapshot. The sessions are the occurrences of a\nweekly `course` series with the template's session length, as many as\nthe template's sessions outside the closures known now; they are\ncreated up to the rolling horizon and checked like a series. With a\ntutor the occurrences are `offered` to them, without one\n`unassigned`.",
+        "operationId": "create_cohort_api_v1_cohorts_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override. The privacy notice must be accepted first (privacy_notice_required); a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another cohort has the name, in any case (cohort_name_taken); or an occurrence in the horizon breaks scheduling rules (scheduling_conflict): `conflicts` lists every conflict of every occurrence (with `details.occurrence_start` and `details.date`), e.g. `room_overlap`, `tutor_not_qualified`; a hard conflict, or a soft one the `override` doesn't list, refuses. With a tutor, a series with no occurrence still to come can't be offered (series_not_offerable). Nothing is created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "List Cohorts",
+        "description": "The cohorts by name, with their template, subject, tutor and dates\n(cursor pagination).",
+        "operationId": "list_cohorts_api_v1_cohorts_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The name contains it.",
+              "title": "Q"
+            },
+            "description": "The name contains it."
+          },
+          {
+            "name": "template_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CohortStatusFilter",
+              "description": "upcoming, in_progress, ended, current (upcoming and in progress; the default) or all.",
+              "default": "current"
+            },
+            "description": "upcoming, in_progress, ended, current (upcoming and in progress; the default) or all."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor is not valid (invalid_cursor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cohorts/{cohort_id}": {
+      "get": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Get Cohort",
+        "description": "One cohort: its template (as frozen), subject, maximum and effective\ncapacity, status and dates, current series and next sessions, and its\nsyllabus from the snapshot.",
+        "operationId": "get_cohort_api_v1_cohorts__cohort_id__get",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such cohort (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Update Cohort",
+        "description": "Rename a cohort or change its maximum; above the room's capacity the\nroom still limits the sessions. The template, the subject and the\nsnapshot never change; the dates, room and tutor change through the\nseries.",
+        "operationId": "update_cohort_api_v1_cohorts__cohort_id__patch",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such cohort (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The cohort changed since it was read (version_conflict), or another cohort has the name (cohort_name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cohorts/{cohort_id}/sessions": {
+      "get": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "List Cohort Sessions",
+        "description": "The cohort's sessions overlapping `[from, to)`, by start, in every\nstate.",
+        "operationId": "list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "From"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later.",
+              "title": "To"
+            },
+            "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortSessions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such cohort (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -15741,6 +16231,19 @@
             "title": "Group Id",
             "description": "The tutoring group of a `group` series (#56); null otherwise."
           },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` series (#65); null otherwise."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -15792,6 +16295,7 @@
           "split_into_series_ids",
           "assignment",
           "group_id",
+          "cohort_id",
           "version",
           "created_at",
           "updated_at",
@@ -15933,6 +16437,19 @@
             "title": "Group Id",
             "description": "The tutoring group of a `group` series (#56); null otherwise."
           },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` series (#65); null otherwise."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -15976,13 +16493,14 @@
           "split_into_series_ids",
           "assignment",
           "group_id",
+          "cohort_id",
           "version",
           "created_at",
           "updated_at",
           "occurrences"
         ],
         "title": "ClassSeriesDetail",
-        "description": "One class series (``GET /api/v1/class-series/{id}``). The web app\nnever parses ``rrule``: it reads ``recurrence``."
+        "description": "One class series (``GET /api/v1/class-series/{id}``) with its\noccurrence rows. The web app never parses ``rrule``: it reads\n``recurrence``."
       },
       "ClassSeriesEdit": {
         "properties": {
@@ -16155,6 +16673,194 @@
         ],
         "title": "ClassSeriesOfferCreate",
         "description": "Offer a series without a tutor to one\n(``POST /api/v1/class-series/{id}/offers``, #233 C2). No ``override``\n(M4-09c): any conflict refuses the offer."
+      },
+      "ClassSeriesSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/SessionParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "start_time": {
+            "type": "string",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "title": "Duration Minutes"
+          },
+          "time_zone": {
+            "type": "string",
+            "title": "Time Zone",
+            "description": "The center zone the series was created in."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/SeriesRecurrenceDetail"
+          },
+          "rrule": {
+            "type": "string",
+            "title": "Rrule",
+            "description": "The normalized RFC 5545 rule (derived)."
+          },
+          "last_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Occurrence On",
+            "description": "No occurrence after this local date; null: open-ended. A series cancelled before its first remaining occurrence ends the day before the cancellation date, which can be before `starts_on`."
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "description": "Whether the series is over: `last_occurrence_on` is set and before the center's local today (#54)."
+          },
+          "split_from_series_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split From Series Id",
+            "description": "The series a 'this and following' edit split this one from (#54); null: none."
+          },
+          "split_into_series_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Split Into Series Ids",
+            "description": "The series split from this one by later edits, oldest first (#54)."
+          },
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesAssignment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tutor assignment; null when the series has no tutor."
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id",
+            "description": "The tutoring group of a `group` series (#56); null otherwise."
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` series (#65); null otherwise."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "tutor",
+          "classroom",
+          "participants",
+          "starts_on",
+          "start_time",
+          "duration_minutes",
+          "time_zone",
+          "recurrence",
+          "rrule",
+          "last_occurrence_on",
+          "ended",
+          "split_from_series_id",
+          "split_into_series_ids",
+          "assignment",
+          "group_id",
+          "cohort_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClassSeriesSummary",
+        "description": "One class series without its occurrence rows (a cohort's current\nseries, #65 F1). The web app never parses ``rrule``: it reads\n``recurrence``."
       },
       "ClassSessionCalendar": {
         "properties": {
@@ -16554,6 +17260,19 @@
             "title": "Group Id",
             "description": "The tutoring group of a `group` session (#56); null otherwise."
           },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` session (#65); null otherwise."
+          },
           "pending_change_request_id": {
             "anyOf": [
               {
@@ -16611,6 +17330,7 @@
           "pending_substitution",
           "cancellation",
           "group_id",
+          "cohort_id",
           "pending_change_request_id",
           "reassignment",
           "warnings"
@@ -16783,6 +17503,19 @@
             "title": "Group Id",
             "description": "The tutoring group of a `group` session (#56); null otherwise."
           },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` session (#65); null otherwise."
+          },
           "pending_change_request_id": {
             "anyOf": [
               {
@@ -16832,6 +17565,7 @@
           "pending_substitution",
           "cancellation",
           "group_id",
+          "cohort_id",
           "pending_change_request_id",
           "reassignment"
         ],
@@ -17091,6 +17825,19 @@
             "title": "Group Id",
             "description": "The tutoring group of a `group` session (#56); null otherwise."
           },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id",
+            "description": "The cohort of a `course` session (#65); null otherwise."
+          },
           "pending_change_request_id": {
             "anyOf": [
               {
@@ -17148,6 +17895,7 @@
           "pending_substitution",
           "cancellation",
           "group_id",
+          "cohort_id",
           "pending_change_request_id",
           "reassignment",
           "warnings"
@@ -17541,6 +18289,839 @@
         ],
         "title": "ClosureUpdate",
         "description": "A change to a closure with the ``version`` the caller loaded. Fields\nnot sent stay unchanged."
+      },
+      "CohortCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "1-120 characters, trimmed; unique (any case)."
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Template Id",
+            "description": "An active course template."
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id",
+            "description": "One of the template's subjects: every session has it."
+          },
+          "max_students": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Students",
+            "description": "The cohort maximum, 1-500."
+          },
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the series to; null: unassigned."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "With a tutor: an earlier deadline for the series offer, after now and no later than the default; truncated to whole minutes."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "The local date the rule starts on (not before today)."
+          },
+          "start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Start Time",
+            "description": "The local start time, HH:MM (whole minutes, no seconds)."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/CohortRecurrence"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts, occurrence by occurrence, with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "template_id",
+          "subject_id",
+          "max_students",
+          "starts_on",
+          "start_time",
+          "recurrence"
+        ],
+        "title": "CohortCreate",
+        "description": "A cohort of a course template (``POST /api/v1/cohorts``, #65 D1).\n\nThe template is frozen as its current version's snapshot; the session\nlength is the snapshot's (no ``duration_minutes``); the number of\nsessions is the snapshot's, with ``COUNT`` derived around the known\nclosures (no ``until`` / ``count``); no ``rrule`` text and no students\n(enrollment is #66). ``override`` (the #236 pairs) needs\n``schedule.override``."
+      },
+      "CohortCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "template": {
+            "$ref": "#/components/schemas/CohortTemplate",
+            "description": "The template, with its name and version at snapshot time."
+          },
+          "template_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Template Snapshot Id"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/CohortSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "effective_capacity": {
+            "type": "integer",
+            "title": "Effective Capacity",
+            "description": "min(max_students, the current series' room capacity); max_students without a room."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CohortStatus",
+            "description": "upcoming before the first session starts, ended once the last one has ended, in_progress in between (from the series rule)."
+          },
+          "planned_session_count": {
+            "type": "integer",
+            "title": "Planned Session Count",
+            "description": "The snapshot's session count."
+          },
+          "session_minutes": {
+            "type": "integer",
+            "title": "Session Minutes",
+            "description": "The snapshot's session length."
+          },
+          "first_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Session On",
+            "description": "The local date of the first session (from the rule)."
+          },
+          "last_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Session On",
+            "description": "The local date of the last session (from the rule)."
+          },
+          "series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassSeriesSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current series (the latest start), without occurrences."
+          },
+          "next_occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/CohortOccurrenceItem"
+            },
+            "type": "array",
+            "title": "Next Occurrences",
+            "description": "Up to 10 upcoming occurrences, by start."
+          },
+          "syllabus": {
+            "$ref": "#/components/schemas/CohortSyllabus"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "created_at",
+          "updated_at",
+          "template",
+          "template_snapshot_id",
+          "subject",
+          "max_students",
+          "effective_capacity",
+          "status",
+          "planned_session_count",
+          "session_minutes",
+          "first_session_on",
+          "last_session_on",
+          "series",
+          "next_occurrences",
+          "syllabus",
+          "warnings"
+        ],
+        "title": "CohortCreated",
+        "description": "The created cohort."
+      },
+      "CohortDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "template": {
+            "$ref": "#/components/schemas/CohortTemplate",
+            "description": "The template, with its name and version at snapshot time."
+          },
+          "template_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Template Snapshot Id"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/CohortSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "effective_capacity": {
+            "type": "integer",
+            "title": "Effective Capacity",
+            "description": "min(max_students, the current series' room capacity); max_students without a room."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CohortStatus",
+            "description": "upcoming before the first session starts, ended once the last one has ended, in_progress in between (from the series rule)."
+          },
+          "planned_session_count": {
+            "type": "integer",
+            "title": "Planned Session Count",
+            "description": "The snapshot's session count."
+          },
+          "session_minutes": {
+            "type": "integer",
+            "title": "Session Minutes",
+            "description": "The snapshot's session length."
+          },
+          "first_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Session On",
+            "description": "The local date of the first session (from the rule)."
+          },
+          "last_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Session On",
+            "description": "The local date of the last session (from the rule)."
+          },
+          "series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassSeriesSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current series (the latest start), without occurrences."
+          },
+          "next_occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/CohortOccurrenceItem"
+            },
+            "type": "array",
+            "title": "Next Occurrences",
+            "description": "Up to 10 upcoming occurrences, by start."
+          },
+          "syllabus": {
+            "$ref": "#/components/schemas/CohortSyllabus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "created_at",
+          "updated_at",
+          "template",
+          "template_snapshot_id",
+          "subject",
+          "max_students",
+          "effective_capacity",
+          "status",
+          "planned_session_count",
+          "session_minutes",
+          "first_session_on",
+          "last_session_on",
+          "series",
+          "next_occurrences",
+          "syllabus"
+        ],
+        "title": "CohortDetail",
+        "description": "One cohort (``GET /api/v1/cohorts/{id}``, #65 F1). The syllabus comes\nfrom the snapshot, never from the live template. No enrollment data\nyet (#66 adds it)."
+      },
+      "CohortLevel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CohortLevel",
+        "description": "The subject's education level."
+      },
+      "CohortListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "template": {
+            "$ref": "#/components/schemas/CohortTemplateName",
+            "description": "The snapshot's template name."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/CohortSubject"
+          },
+          "max_students": {
+            "type": "integer",
+            "title": "Max Students"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current series' tutor."
+          },
+          "assignment_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "accepted"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignment Status",
+            "description": "The current series' tutor assignment; null without a tutor."
+          },
+          "first_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Session On"
+          },
+          "last_session_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Session On"
+          },
+          "next_starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Starts At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CohortStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "template",
+          "subject",
+          "max_students",
+          "tutor",
+          "assignment_status",
+          "first_session_on",
+          "last_session_on",
+          "next_starts_at",
+          "status"
+        ],
+        "title": "CohortListItem",
+        "description": "A cohort in the list (#65 F2)."
+      },
+      "CohortOccurrenceItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "CohortOccurrenceItem",
+        "description": "An upcoming occurrence of the cohort."
+      },
+      "CohortPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CohortListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CohortPage",
+        "description": "A page of cohorts (cursor pagination)."
+      },
+      "CohortRecurrence": {
+        "properties": {
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "description": "ISO weekdays (1 = Monday … 7 = Sunday), at least one, no duplicates."
+          },
+          "interval": {
+            "type": "integer",
+            "title": "Interval",
+            "description": "Every 1-4 weeks (default 1).",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "weekdays"
+        ],
+        "title": "CohortRecurrence",
+        "description": "The cohort's weekly rule (#65 D1, E3): the weekdays and the interval\nonly. There is no ``until`` or ``count``: the server derives ``COUNT``\nso that the template's sessions fall outside the closures known now.\nThe ranges are checked after the locks, as ``422`` on\n``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,\n``weekdays_duplicate``, ``interval_out_of_range``)."
+      },
+      "CohortSessionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "original_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Original Start",
+            "description": "The rule's instant."
+          },
+          "is_exception": {
+            "type": "boolean",
+            "title": "Is Exception",
+            "description": "Moved or edited on its own (#54)."
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupSessionClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "starts_at",
+          "ends_at",
+          "original_start",
+          "is_exception",
+          "tutor",
+          "classroom"
+        ],
+        "title": "CohortSessionItem",
+        "description": "One session of a cohort (#65 F4), in any state (staff only)."
+      },
+      "CohortSessions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CohortSessionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CohortSessions",
+        "description": "The cohort's sessions overlapping the range, by start (#65 F4)."
+      },
+      "CohortStatus": {
+        "type": "string",
+        "enum": [
+          "upcoming",
+          "in_progress",
+          "ended"
+        ]
+      },
+      "CohortStatusFilter": {
+        "type": "string",
+        "enum": [
+          "upcoming",
+          "in_progress",
+          "ended",
+          "current",
+          "all"
+        ]
+      },
+      "CohortSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "level": {
+            "$ref": "#/components/schemas/CohortLevel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "level"
+        ],
+        "title": "CohortSubject",
+        "description": "The cohort's one subject (#65 E4) and its level."
+      },
+      "CohortSyllabus": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateModule"
+            },
+            "type": "array",
+            "title": "Modules"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/CourseTemplateAssessment"
+            },
+            "type": "array",
+            "title": "Assessments"
+          },
+          "completion": {
+            "$ref": "#/components/schemas/CourseCompletion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "modules",
+          "assessments",
+          "completion"
+        ],
+        "title": "CohortSyllabus",
+        "description": "A cohort's syllabus, read from its template snapshot (never from the\nlive template): the modules and assessments in position order and the\ncompletion criteria."
+      },
+      "CohortTemplate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version"
+        ],
+        "title": "CohortTemplate",
+        "description": "The template a cohort was created from, as its snapshot froze it: the\ntemplate's id, and its name and version at snapshot time."
+      },
+      "CohortTemplateName": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CohortTemplateName",
+        "description": "The template of a cohort in the list (the snapshot's name)."
+      },
+      "CohortUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The cohort's version, as read."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "1-120 characters, trimmed; unique (any case)."
+          },
+          "max_students": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Students",
+            "description": "The cohort maximum, 1-500."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "CohortUpdate",
+        "description": "Rename a cohort or change its maximum (``PATCH\n/api/v1/cohorts/{cohort_id}``, #65 E1). At least one of ``name`` and\n``max_students`` (``no_changes`` on the body). The template, the subject\nand the snapshot never change; the dates, the room and the tutor change\nthrough the cohort's series."
       },
       "ConflictOverrideCreate": {
         "properties": {
@@ -20926,6 +22507,26 @@
         ],
         "title": "NotificationUnreadCount"
       },
+      "OfferCohort": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "OfferCohort",
+        "description": "The cohort of a course series offer (#65 C6): the tutor sees the\noffer is for a course."
+      },
       "OfferKindCode": {
         "type": "string",
         "enum": [
@@ -20969,6 +22570,17 @@
           },
           "kind": {
             "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferCohort"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort of a `course` series (#65); null otherwise."
           },
           "subject": {
             "$ref": "#/components/schemas/OfferSessionSubject"
@@ -21044,6 +22656,7 @@
         "required": [
           "id",
           "kind",
+          "cohort",
           "subject",
           "weekdays",
           "interval",

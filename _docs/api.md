@@ -124,6 +124,11 @@ Codes in use today:
 | `group_ended` | 409 | Enrolling in a group that has no series still producing sessions (see Tutoring groups). |
 | `already_enrolled` | 409 | Enrolling a student who already has an active enrollment in the group (`details.enrollment_id`; see Tutoring groups). |
 | `enrollment_not_active` | 409 | Withdrawing an enrollment that was already withdrawn (see Tutoring groups). |
+| `cohort_not_found` | 404 | A course cohort that doesn't exist (M4-20; see Course cohorts). |
+| `cohort_name_taken` | 409 | Creating or renaming a cohort to a name another cohort has, ignoring case (see Course cohorts). |
+| `template_unknown` / `template_inactive` | 422 | `POST /api/v1/cohorts` with an unknown or an inactive course template; on `["body","template_id"]` (see Course cohorts). |
+| `subject_not_in_template` | 422 | `POST /api/v1/cohorts` with a subject that isn't one of the template snapshot's subjects; on `["body","subject_id"]`. |
+| `too_many_occurrences` | 422 | `POST /api/v1/cohorts` whose weekly rule can't fit the template's sessions in 200 occurrences around the known closures; on `["body","recurrence"]`. |
 | `class_session_not_substitutable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/substitutions` on a session that is not `confirmed` (`details.reason = "state"`, `details.state`), has begun (`started`) or already has a pending substitution (`substitution_pending`, `details.substitution_id`); see Substitutions. |
 | `substitution_no_longer_valid` | 409 | The substitute accepts a substitution whose session is no longer `confirmed` with the original tutor at the offered times; nothing is written (see Substitutions). |
 | `class_session_not_cancellable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/cancel` on a session that is `completed`, `cancelled` or `skipped_closure` (`details.reason = "state"`, `details.state`) or has begun (`started`); see Class sessions, "Cancelling a session". |
@@ -2059,7 +2064,8 @@ session; `is_exception` marks an occurrence edited apart from its series
 (M4-09); `conflict_codes` lists the codes that put a generated occurrence in
 `conflict` (informational, kept after it leaves `conflict`; `[]` otherwise).
 `group_id` is the tutoring group of a `group` session (M4-11), `null`
-otherwise.
+otherwise; `cohort_id` the course cohort of a `course` session (M4-20),
+`null` otherwise.
 
 **Order of the create:**
 
@@ -2573,9 +2579,11 @@ offered_at, offered_by {id, display_name}, respond_by, responded_at,
 decline_note, series, session_count, sessions [{id, state, starts_at,
 ends_at, subject {name, education_level_name}, classroom {name} | null,
 participants [{display_name}]}], sessions_truncated}`. `series` is `null`
-for a session offer, else `{id, kind, subject {name,
-education_level_name}, weekdays, interval, start_time (HH:MM, local),
-duration_minutes, time_zone, from_date, until, count, last_occurrence_on}`;
+for a session offer, else `{id, kind, cohort {id, name} | null, subject
+{name, education_level_name}, weekdays, interval, start_time (HH:MM,
+local), duration_minutes, time_zone, from_date, until, count,
+last_occurrence_on}` (`cohort` names the course cohort of a `course`
+series, M4-20, so the tutor sees the offer is for a course);
 `session_count` is the number of covered sessions; a series offer lists
 its first 10 by start (`sessions_truncated` when there are more).
 
@@ -2837,8 +2845,9 @@ inbox item; `series_edit.py`: editing and cancelling, M4-09). `POST
 `individual` is `422`); a tutoring group's `group` series is created by
 `POST /api/v1/groups` (M4-11, Tutoring groups below) and has `group_id` set
 in `ClassSeriesDetail` (`null` otherwise). A series edit keeps a group
-series' `group_id` on the series a split creates. Courses (M4-20) come
-later.
+series' `group_id` on the series a split creates. A course cohort's
+`course` series is created by `POST /api/v1/cohorts` (M4-20, Course cohorts
+below) and has `cohort_id` set (`null` otherwise); a split keeps it too.
 Series overrides: M4-09c (#236; `overrides.py`, `conflict_override.py`),
 "Series overrides" below.
 
@@ -3405,6 +3414,154 @@ student_id, change: enrolled | withdrawn, effective_at, actor_user_id}` in
 the same Unit of Work; M6-07 adds its charge step there, and its sweeper
 reads `scheduling.service.list_group_enrollment_periods(changed_since,
 limit)`. No job is enqueued and there is no event bus.
+
+### Course cohorts
+
+M4-20 (#65; spec §3 "each cohort has its own dates, tutors, enrolled
+students, pricing and attendance"; ADR-0005 D1-D4, D6, D7, D9). A cohort is
+one run of a course template. The cohort row (`course_cohorts`: a name
+unique ignoring case, the template **snapshot**, one subject, a maximum of
+1-500) lives in the `courses` module; its sessions are the occurrences of
+one weekly `course` series in `scheduling` (`class_series.cohort_id`, copied
+to every occurrence), which keeps the tutor, the room and the timing. The
+routes live in `app/workflows/cohorts_router.py` and call
+`app/workflows/cohorts.py`, which composes `courses.service` and
+`scheduling.service` in one Unit of Work; `courses` never imports
+`scheduling`. Enrollment is M4-21 (#66): a cohort created here has no
+students. The web pages are M4-20b (#243).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/cohorts` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below; `201` with `CohortDetail` plus `warnings` (`[]`). |
+| `PATCH /api/v1/cohorts/{cohort_id}` | `require("schedule.manage")` | `{version, name?, max_students?}` (at least one: `422 no_changes`); `200` with `CohortDetail`. |
+| `GET /api/v1/cohorts` | `require("course.view")` (Owner, Administrator, Academic Coordinator, Finance Staff) | `?q` (the name contains it, ignoring case; at most 120), `?template_id`, `?subject_id`, `?status=upcoming\|in_progress\|ended\|current\|all` (default `current`: upcoming and in progress); cursor pagination (`limit` 1-100, default 25, `cursor`; `{items, next_cursor}`; an invalid cursor is `400 invalid_cursor`) by name (ignoring case), then id, like Groups. At most 5 statements whatever the page size. |
+| `GET /api/v1/cohorts/{cohort_id}` | `require("course.view")` | `CohortDetail`; unknown is `404 cohort_not_found`. At most 8 statements. |
+| `GET /api/v1/cohorts/{cohort_id}/sessions?from=…&to=…` | `require("course.view")` | The cohort's sessions overlapping `[from, to)` by start, in every state, with the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days); unknown is `404 cohort_not_found`. At most 6 statements. |
+| `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` (Assignment offers, unchanged) | Also offers a cohort's series to a tutor, under the cohort lock. |
+
+In M4-20 every cohort read is staff only (Tutor, Student and Guardian get
+`403`); M4-21 opens them to enrolled students and their guardians (a
+record policy), M4-22 to tutors. Tutors already see their offers and
+sessions.
+
+**The create body** (unknown fields `422`): `{name, template_id,
+subject_id, max_students, tutor_user_id?, respond_by?, classroom_id?,
+starts_on, start_time (HH:MM), recurrence {weekdays, interval}, override?}`.
+There is no `duration_minutes` (it is the snapshot's `session_minutes`), no
+`recurrence.until` or `recurrence.count` (the count is derived, below), no
+`rrule` and no `student_ids`. `respond_by` follows the series create
+(`respond_by_requires_tutor`, `respond_by_invalid`); `override` is the
+series `override` (`{pairs, reason}`, M4-09c).
+
+**Order of the create:**
+
+1. `401`/`403` (Coordinator, Finance, Tutor, Student, Guardian: `403
+   permission_denied`), `422` for the schema, then `403` for an `override`
+   without `schedule.override`;
+2. the center zone `FOR SHARE` (no student lock: there are no students);
+3. the template snapshot (`courses.service.snapshot_course_template`): the
+   template `FOR SHARE` and the snapshot of its current version, reused or
+   inserted; `422 template_unknown` / `template_inactive` on `template_id`;
+4. every remaining `422` in one response: `subject_not_in_template`,
+   `subject_inactive`, the recurrence (`weekdays_empty`,
+   `weekday_out_of_range`, `weekdays_duplicate`, `interval_out_of_range`),
+   `starts_on_in_past`, `crosses_local_date` on `start_time` (`start_time`
+   plus the session length after 24:00), `respond_by_requires_tutor`, the
+   tutor (`tutor_unknown`, `tutor_inactive`) and the classroom
+   (`classroom_unknown`, `classroom_inactive`);
+5. `409 cohort_name_taken`;
+6. the derived `COUNT` (below; `422 too_many_occurrences`);
+7. the cohort row, then the `course` series and its occurrences in the
+   horizon, as a series create (Class series): closure dates are
+   `skipped_closure`, every other occurrence passes the #48 checks
+   (`tutor_not_qualified` against the cohort's subject), and any conflict
+   the `override` doesn't cover is `409 scheduling_conflict` per
+   occurrence (`details.occurrence_start`, `details.date`). **Nothing is
+   written** on a `409` or `422`: the cohort and a new snapshot roll back
+   with the series;
+8. with a tutor, the pending series offer over the `offered` rows and the
+   tutor's notification (Assignment offers, "Series offers"); without one
+   the rows are `unassigned`.
+
+Audit: the automatic `create` events of the cohort, a new snapshot, the
+series, its sessions and the offer, plus `scheduling.series_override` when
+something was overridden. A `403`/`409`/`422` writes nothing.
+
+**The snapshot (the template is frozen for the cohort).** The cohort keeps
+`template_snapshot_id` forever: editing, reordering or deactivating the
+template later changes neither the cohort's snapshot nor its syllabus. A
+second cohort on the same template version reuses the same snapshot; a
+cohort created after an edit gets the new one. Re-snapshotting an existing
+cohort is not supported. An inactive template can't start a cohort;
+deactivating it later doesn't affect existing ones.
+
+**The dates: a derived `COUNT` (E3).** The series has the template's
+`session_count` sessions **outside the closures known at creation** (the
+center's calendar is known when a course is sold, ADR-0005 D6): the server
+expands the rule to its first 200 dates, reads the closures over them in
+one `closures_between` call, and takes the smallest `COUNT` whose dates
+hold exactly `session_count` open ones (`422 too_many_occurrences` when 200
+are not enough, D4). A closure added **later** skips its session (no
+automatic makeup, D6); a closure removed later restores it (#232). The
+12-week horizon and the nightly job are unchanged.
+
+**One subject (E4).** Every session of a cohort has the cohort's
+`subject_id`, one of the snapshot's subjects; the tutor's qualification is
+checked against it. Several subjects per cohort or per session are not
+supported.
+
+**The tutor (E5)** is assigned per cohort through the series offer: give
+`tutor_user_id` on create (a pending series offer in the same
+transaction), or later `POST /api/v1/class-series/{id}/offers` on the
+cohort's series. Accepting, declining, expiry and later occurrences behave
+as for an individual series. One tutor per cohort series; changing the
+tutor of one session is a substitution (M4-10). The dates, the room and the
+tutor change through the series (Class series, "Editing and cancelling";
+Substitutions), never through `PATCH /api/v1/cohorts/{id}`.
+
+**`CohortDetail`:** `{id, name, version, created_at, updated_at, template
+{id, name, version} (as the snapshot froze them), template_snapshot_id,
+subject {id, name, level {id, name}}, max_students, effective_capacity,
+status, planned_session_count, session_minutes, first_session_on,
+last_session_on, series, next_occurrences, syllabus}`.
+`effective_capacity` is `min(max_students, the current series' room
+capacity)`, or `max_students` without a room (ADR-0005 D7: raising
+`max_students` above the room keeps the room's limit). `status` is
+`upcoming` before the first session starts, `ended` once the last one has
+ended, `in_progress` in between; it and `first_session_on` /
+`last_session_on` come from the series rule, so they hold beyond the
+horizon. `planned_session_count` and `session_minutes` are the snapshot's.
+`series` is the current series (the latest `starts_on`) with the
+`ClassSeriesDetail` fields but its occurrences (`assignment` and
+`cohort_id` included). `next_occurrences` are up to 10 upcoming `{id,
+state, starts_at, ends_at}`. `syllabus {modules, assessments, completion}`
+comes from the snapshot, never from the live template.
+
+**List items:** `{id, name, template {id, name}, subject, max_students,
+tutor {id, display_name} | null, assignment_status | null,
+first_session_on, last_session_on, next_starts_at | null, status}`.
+
+**Session items:** `{id, state, starts_at, ends_at, original_start,
+is_exception, tutor {id, display_name} | null, classroom {id, name} |
+null}`.
+
+**`PATCH`:** `403` → `422` → the cohort `FOR UPDATE` → `404
+cohort_not_found` → `409 version_conflict` → `409 cohort_name_taken`. A
+no-op answers `200` with no version change and no audit. The template, the
+subject and the snapshot never change. M4-21 adds `422
+max_students_below_enrolled`.
+
+**Lock order (G1):** students → zone → template `FOR SHARE` (only in the
+cohort create) → group **or cohort** `FOR UPDATE` → series `FOR UPDATE` →
+sessions by id → offer. The nightly extension of a cohort's series and a
+series offer on it take the cohort row (`courses.service.lock_cohort`)
+where a group series takes the group row; M4-21 enrollment takes it after
+the students and the zone. The `courses` module never takes a scheduling
+lock.
+
+**Price (E6).** A cohort has no price yet: M6-04 / M6-07 add the
+`course_cohorts` price link (a nullable foreign key to the price catalog)
+when the catalog exists.
 
 ### Session requests
 

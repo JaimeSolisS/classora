@@ -22,7 +22,9 @@ route's ``401``/``403`` (``schedule.assign``) and the body's ``422`` (an
 
 1. the series (no lock): ``404 not_found``;
 2. the locks (#233 B3): ``lock_students`` (the series' participants), the
-   zone ``FOR SHARE``, the series row ``FOR UPDATE`` (re-read);
+   zone ``FOR SHARE``, for a cohort's ``course`` series the cohort row
+   ``FOR UPDATE`` (``courses.service.lock_cohort``, #65 C5, G1), the series
+   row ``FOR UPDATE`` (re-read);
 3. ``409 version_conflict`` on the series ``version``;
 4. ``409 series_not_offerable``: ``details.reason = "assigned"`` when the
    series has a tutor (pending or accepted), ``"ended"`` when ``from_date``
@@ -68,6 +70,7 @@ from app.core.errors import FieldError, SchedulingConflict
 from app.core.models import ensure_version
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
+from app.modules.courses import service as courses
 from app.modules.identity import service as identity
 from app.modules.scheduling.booking import respond_by_error
 from app.modules.scheduling.checks import find_offer_conflicts
@@ -360,6 +363,9 @@ async def offer_class_series(
         raise RecordNotFoundError()
     await lock_students(session, await series_participant_ids(session, found.id))
     zone = await administration.get_center_time_zone(session, for_share=True)
+    if found.cohort_id is not None:
+        # #65 C5, G1: a cohort's series is offered under the cohort lock.
+        await courses.lock_cohort(session, found.cohort_id)
     series = await lock_series(session, found.id)
     ensure_version(series, body.version)
     if series.tutor_user_id is not None:

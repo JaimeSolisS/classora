@@ -30,6 +30,7 @@ from app.modules.scheduling.service import (
     SessionState,
 )
 from tests.factories.base import persist
+from tests.factories.courses import persist_course_cohort
 from tests.factories.families import persist_student
 from tests.factories.scheduling import (
     ClassSessionFactory,
@@ -107,6 +108,13 @@ def columns(refs: Refs, **overrides: Any) -> dict[str, Any]:
 def new_group(url: str, refs: Refs) -> uuid.UUID:
     async def _make(session: AsyncSession) -> uuid.UUID:
         return (await persist_class_group(session, subject_id=refs.subject)).id
+
+    return in_uow(url, _make)
+
+
+def new_cohort(url: str, refs: Refs) -> uuid.UUID:
+    async def _make(session: AsyncSession) -> uuid.UUID:
+        return (await persist_course_cohort(session, subject_id=refs.subject)).id
 
     return in_uow(url, _make)
 
@@ -260,6 +268,9 @@ def test_valid_rows_are_stored(module_seeded_url, refs, overrides):
     if overrides.get("kind") == "group":
         # #56 A4: a group session belongs to a group.
         overrides = {**overrides, "group_id": new_group(module_seeded_url, refs)}
+    if overrides.get("kind") == "course":
+        # #65 A4: a course session belongs to a cohort.
+        overrides = {**overrides, "cohort_id": new_cohort(module_seeded_url, refs)}
     session_id = insert_raw(module_seeded_url, columns(refs, **overrides))
 
     [row] = run_sql(

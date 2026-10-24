@@ -89,6 +89,7 @@ export const CREATED: ClassSessionCreated = {
   pending_substitution: null,
   cancellation: null,
   group_id: null,
+  cohort_id: null,
   pending_change_request_id: null,
   reassignment: null,
   warnings: [],

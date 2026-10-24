@@ -111,6 +111,7 @@ export const SERIES: ClassSeriesDetail = {
   split_into_series_ids: [],
   assignment: null,
   group_id: null,
+  cohort_id: null,
   version: 5,
   created_at: '2026-10-21T12:00:00Z',
   updated_at: '2026-10-21T12:00:00Z',
@@ -146,6 +147,7 @@ export const NEW_SERIES_OFFER: AssignmentOfferCreated = {
     series: {
       id: SERIES_ID,
       kind: 'individual',
+      cohort: null,
       subject: { name: 'Álgebra', education_level_name: 'Secundaria' },
       weekdays: [1, 3],
       interval: 1,

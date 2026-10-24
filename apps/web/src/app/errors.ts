@@ -114,6 +114,13 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['group_ended', 'group_ended'],
   ['already_enrolled', 'already_enrolled'],
   ['enrollment_not_active', 'enrollment_not_active'],
+  // Course cohorts (#65).
+  ['cohort_not_found', 'cohort_not_found'],
+  ['cohort_name_taken', 'cohort_name_taken'],
+  ['template_unknown', 'template_unknown'],
+  ['template_inactive', 'template_inactive'],
+  ['subject_not_in_template', 'subject_not_in_template'],
+  ['too_many_occurrences', 'too_many_occurrences'],
   // Session requests by families (#59).
   ['student_consent_required', 'student_consent_required'],
   ['slot_unavailable', 'slot_unavailable'],

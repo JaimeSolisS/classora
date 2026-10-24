@@ -432,6 +432,7 @@ async def get_class_series(
         split_into_series_ids=split_into,
         assignment=assignment,
         group_id=series.group_id,
+        cohort_id=series.cohort_id,
         version=series.version,
         created_at=series.created_at,
         updated_at=series.updated_at,
