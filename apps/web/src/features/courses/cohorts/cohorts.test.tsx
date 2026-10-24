@@ -659,10 +659,16 @@ describe('/courses/cohorts/new (C)', () => {
       start_time: '10:00',
       recurrence: { weekdays: [1], interval: 1 },
     });
-    for (let i = 0; i < 20 && !app.location().endsWith(COHORT_ID); i += 1) {
-      await settle();
-    }
-    expect(app.location()).toBe(`/courses/cohorts/${COHORT_ID}`);
+    // QA O1: the lazy detail route can take longer under parallel load;
+    // wait for it instead of a fixed number of turns.
+    await vi.waitFor(
+      async () => {
+        await settle();
+        expect(app!.location()).toBe(`/courses/cohorts/${COHORT_ID}`);
+        expect(main().querySelector('h1')?.textContent).toBe('Álgebra enero');
+      },
+      { timeout: 5000, interval: 20 },
+    );
     expect(main().querySelector('[role="status"]')?.textContent).toBe(
       'Cohort created.',
     );

@@ -211,7 +211,10 @@ test('an Owner creates a cohort whose syllabus stays frozen', async ({
   await expect(
     main.getByRole('heading', { level: 1, name: cohortName }),
   ).toBeVisible();
-  await expect(main.getByRole('status')).toContainText(cohorts.create.done);
+  // QA D1: the offer panel has its own (empty) live region; match the notice.
+  await expect(
+    main.getByRole('status').filter({ hasText: cohorts.create.done }),
+  ).toBeVisible();
   await expect(
     main.getByRole('heading', { name: cohorts.syllabus.heading }),
   ).toBeVisible();
