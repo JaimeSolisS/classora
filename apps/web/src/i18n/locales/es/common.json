@@ -2132,6 +2132,11 @@
     }
   },
   "courses": {
+    "tabs": {
+      "label": "Secciones de cursos",
+      "templates": "Plantillas",
+      "cohorts": "Cohortes"
+    },
     "templates": {
       "title": "Plantillas de curso",
       "new": "Nueva plantilla",
@@ -2265,6 +2270,145 @@
         "nameTaken": "Otra plantilla de curso ya tiene este nombre, quizá una inactiva."
       },
       "assessmentRequired": "Obligatoria"
+    },
+    "cohorts": {
+      "title": "Cohortes",
+      "new": "Nueva cohorte",
+      "back": "Volver a cohortes",
+      "subjectLevel": "{{subject}} ({{level}})",
+      "timeRange": "{{start}}–{{end}}",
+      "status": {
+        "upcoming": "Próxima",
+        "in_progress": "En curso",
+        "ended": "Terminada"
+      },
+      "list": {
+        "search": "Buscar por nombre",
+        "template": "Plantilla",
+        "allTemplates": "Todas las plantillas",
+        "inactiveTemplate": "{{name}} (inactiva)",
+        "subject": "Materia",
+        "allSubjects": "Todas las materias",
+        "status": "Estado",
+        "statusOptions": {
+          "current": "Próximas y en curso",
+          "upcoming": "Próximas",
+          "in_progress": "En curso",
+          "ended": "Terminadas",
+          "all": "Todas"
+        },
+        "name": "Nombre",
+        "tutor": "Tutor",
+        "first": "Primera sesión",
+        "last": "Última sesión",
+        "noDate": "Sin programar",
+        "empty": "Ninguna cohorte coincide con estos filtros.",
+        "clearFilters": "Quitar filtros",
+        "loadMore": "Cargar más"
+      },
+      "assignment": {
+        "noTutor": "Sin tutor aún",
+        "offerPending": "Oferta pendiente",
+        "pendingTutor": "{{name}}: oferta pendiente",
+        "respondsBy": "{{name}}: oferta pendiente, responde a más tardar el {{date}}"
+      },
+      "fields": {
+        "name": "Nombre",
+        "template": "Plantilla de curso",
+        "max": "Máximo de estudiantes"
+      },
+      "create": {
+        "title": "Nueva cohorte",
+        "chooseTemplate": "Elige una plantilla",
+        "chooseTemplateFirst": "Primero elige una plantilla",
+        "noTemplates": "No hay plantillas de curso activas. Crea o reactiva una primero.",
+        "templateSessions_one": "{{count}} sesión de {{minutes}} min",
+        "templateSessions_many": "{{count}} sesiones de {{minutes}} min",
+        "templateSessions_other": "{{count}} sesiones de {{minutes}} min",
+        "roomOption": "{{name}} (capacidad {{capacity}})",
+        "tutorHelp": "El tutor recibe una oferta por todo el curso.",
+        "respondBy": "Responder a más tardar (opcional)",
+        "schedule": "Horario semanal",
+        "help": "El horario agrega sesiones para saltar los cierres conocidos. Una cohorte conserva el temario de la versión de la plantilla con la que se creó.",
+        "summary": "Resumen",
+        "submit": "Crear cohorte",
+        "submitting": "Creando…",
+        "done": "Cohorte creada.",
+        "conflictsHeading_one": "No se puede crear la cohorte: {{count}} conflicto",
+        "conflictsHeading_many": "No se puede crear la cohorte: {{count}} conflictos",
+        "conflictsHeading_other": "No se puede crear la cohorte: {{count}} conflictos",
+        "overrideAction": "Hacer excepción y crear",
+        "overrideDescription": "La cohorte se crea a pesar de estas reglas. El motivo queda en el registro de auditoría.",
+        "wholeCohort": "Toda la cohorte",
+        "notYetLabel": "Aún no se puede hacer excepción en cohortes",
+        "notYet": "Aún no se puede hacer excepción de algunos de estos conflictos en cohortes. Cambia el horario, el aula o el tutor."
+      },
+      "page": {
+        "title": "Cohorte",
+        "details": "Detalles",
+        "template": "Plantilla",
+        "templateValue": "{{name}}, versión {{version}}",
+        "subject": "Materia",
+        "max": "Máximo de estudiantes",
+        "capacity": "Capacidad efectiva",
+        "roomLimited": "{{capacity}}, limitada por el aula",
+        "status": "Estado",
+        "planned": "Sesiones planeadas",
+        "first": "Primera sesión",
+        "last": "Última sesión",
+        "schedule": "Horario",
+        "time": "Hora",
+        "timeValue": "{{start}}–{{end}} ({{zone}})",
+        "classroom": "Aula",
+        "edit": "Editar"
+      },
+      "syllabus": {
+        "heading": "Temario",
+        "help": "El temario de la versión de la plantilla con la que se creó esta cohorte. Los cambios posteriores a la plantilla no lo modifican."
+      },
+      "next": {
+        "heading": "Próximas sesiones",
+        "none": "No hay sesiones próximas."
+      },
+      "sessions": {
+        "heading": "Sesiones",
+        "range": "Del {{from}} al {{to}}",
+        "previous": "4 semanas anteriores",
+        "next": "4 semanas siguientes",
+        "empty": "No hay sesiones en estas 4 semanas.",
+        "date": "Fecha",
+        "time": "Hora",
+        "state": "Estado",
+        "tutor": "Tutor",
+        "classroom": "Aula",
+        "exception": "Excepción",
+        "noTutor": "Sin tutor",
+        "noClassroom": "Sin aula"
+      },
+      "tutor": {
+        "heading": "Tutor",
+        "offerHelp": "Ofrece todo el curso desde el {{date}}: cada sesión sin asignar a partir de entonces y las que se agreguen después. Una oferta de serie no puede omitir reglas.",
+        "noOverride": "Una oferta de serie no puede omitir reglas. Elige otro tutor o cambia primero las sesiones en conflicto.",
+        "offered": "Oferta enviada. El tutor responde en Mis ofertas.",
+        "submit": "Ofrecer el curso"
+      },
+      "edit": {
+        "title": "Editar cohorte",
+        "description": "Cambia el nombre o el máximo de la cohorte. La plantilla, la materia, el horario, el aula y el tutor no cambian aquí.",
+        "submit": "Guardar",
+        "submitting": "Guardando…",
+        "cancel": "Cancelar",
+        "done": "Cohorte guardada.",
+        "versionConflict": "Esta cohorte cambió. Recarga para ver lo más reciente.",
+        "reload": "Recargar",
+        "roomLimit": "El aula tiene capacidad para {{capacity}}, así que asisten como máximo {{capacity}}."
+      },
+      "validation": {
+        "nameRequired": "Escribe un nombre.",
+        "nameTooLong": "El nombre puede tener como máximo 120 caracteres.",
+        "maxRange": "Escribe un número entero del 1 al 500.",
+        "templateRequired": "Elige una plantilla de curso."
+      }
     }
   },
   "offers": {

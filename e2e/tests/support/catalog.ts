@@ -561,6 +561,16 @@ type Common = {
     };
   };
   courses: {
+    // #243: the Courses tab bar and the cohort pages.
+    tabs: Record<'label' | 'templates' | 'cohorts', string>;
+    cohorts: Record<'title' | 'new', string> & {
+      fields: Record<'name' | 'template' | 'max', string>;
+      create: Record<'title' | 'submit' | 'done', string>;
+      syllabus: Record<'heading', string>;
+      next: Record<'heading', string>;
+      tutor: Record<'heading', string>;
+      assignment: Record<'noTutor', string>;
+    };
     templates: Record<
       | 'title'
       | 'new'
@@ -570,6 +580,7 @@ type Common = {
       | 'sessionMinutes'
       | 'subjectOption'
       | 'moduleTitleLabel'
+      | 'moduleHeading'
       | 'plannedSessionsLabel'
       | 'addModule'
       | 'moveModuleUpLabel'

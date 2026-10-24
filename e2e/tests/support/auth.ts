@@ -45,8 +45,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * (`demo.tutor`, a #195 demo account, #52; and the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55) = 48 attempts, 2 failures for
- * `demo.owner`. Keep the total well under both limits; never add a setting
- * that disables the limits.
+ * `demo.owner`. Specs on the shared session add none (for example
+ * courses/cohorts.spec.ts, #243). Keep the total well under both limits;
+ * never add a setting that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20
  * lookups and redemptions per 15 minutes for the run's one IP, invitations

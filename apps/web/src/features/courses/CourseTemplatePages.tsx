@@ -25,6 +25,7 @@ import {
   CourseTemplateForm,
   type SubjectOptionsState,
 } from './CourseTemplateForm';
+import { CoursesTabs } from './CoursesTabs';
 import { CourseTemplateView } from './CourseTemplateView';
 
 // /courses/templates/new (#64 G1, G3; course.manage): the editor for a new
@@ -71,6 +72,7 @@ export function NewCourseTemplatePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <CoursesTabs />
       <BackLink />
       <h1 className="text-2xl font-semibold">
         {t('courses.templates.newTitle')}
@@ -127,6 +129,7 @@ export function CourseTemplateEditPage() {
   if (notFound) {
     return (
       <div className="flex flex-col gap-6">
+        <CoursesTabs />
         <BackLink />
         <h1 className="text-2xl font-semibold">
           {t('courses.templates.notFound')}
@@ -137,6 +140,7 @@ export function CourseTemplateEditPage() {
   if (detail.isError) {
     return (
       <div className="flex flex-col gap-6">
+        <CoursesTabs />
         <BackLink />
         <ErrorAlert
           error={detail.error}
@@ -147,10 +151,16 @@ export function CourseTemplateEditPage() {
   }
   const template = detail.data;
   if (!template) {
-    return <LoadingState layout="page" />;
+    return (
+      <div className="flex flex-col gap-6">
+        <CoursesTabs />
+        <LoadingState layout="page" />
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-6">
+      <CoursesTabs />
       <BackLink />
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold break-words">{template.name}</h1>

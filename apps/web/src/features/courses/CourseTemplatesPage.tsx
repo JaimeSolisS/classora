@@ -15,6 +15,7 @@ import {
   CourseTemplatesTable,
   type CourseTemplatesTableState,
 } from './CourseTemplatesTable';
+import { CoursesTabs } from './CoursesTabs';
 
 // /courses (#64 G2): the course templates for holders of course.view, with
 // a status filter (active by default) and pagination, both in the URL
@@ -80,6 +81,7 @@ export function CourseTemplatesPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <CoursesTabs />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 id={ids.title} className="text-2xl font-semibold">
           {t('courses.templates.title')}

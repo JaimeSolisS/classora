@@ -2101,6 +2101,11 @@
     }
   },
   "courses": {
+    "tabs": {
+      "label": "Courses sections",
+      "templates": "Templates",
+      "cohorts": "Cohorts"
+    },
     "templates": {
       "title": "Course templates",
       "new": "New template",
@@ -2232,6 +2237,143 @@
         "nameTaken": "Another course template already has this name, possibly an inactive one."
       },
       "assessmentRequired": "Required"
+    },
+    "cohorts": {
+      "title": "Cohorts",
+      "new": "New cohort",
+      "back": "Back to cohorts",
+      "subjectLevel": "{{subject}} ({{level}})",
+      "timeRange": "{{start}}–{{end}}",
+      "status": {
+        "upcoming": "Upcoming",
+        "in_progress": "In progress",
+        "ended": "Ended"
+      },
+      "list": {
+        "search": "Search by name",
+        "template": "Template",
+        "allTemplates": "All templates",
+        "inactiveTemplate": "{{name}} (inactive)",
+        "subject": "Subject",
+        "allSubjects": "All subjects",
+        "status": "Status",
+        "statusOptions": {
+          "current": "Upcoming and in progress",
+          "upcoming": "Upcoming",
+          "in_progress": "In progress",
+          "ended": "Ended",
+          "all": "All"
+        },
+        "name": "Name",
+        "tutor": "Tutor",
+        "first": "First session",
+        "last": "Last session",
+        "noDate": "Not scheduled",
+        "empty": "No cohorts match these filters.",
+        "clearFilters": "Clear filters",
+        "loadMore": "Load more"
+      },
+      "assignment": {
+        "noTutor": "No tutor yet",
+        "offerPending": "Offer pending",
+        "pendingTutor": "{{name}}: offer pending",
+        "respondsBy": "{{name}}: offer pending, responds by {{date}}"
+      },
+      "fields": {
+        "name": "Name",
+        "template": "Course template",
+        "max": "Maximum students"
+      },
+      "create": {
+        "title": "New cohort",
+        "chooseTemplate": "Choose a template",
+        "chooseTemplateFirst": "Choose a template first",
+        "noTemplates": "There are no active course templates. Create or reactivate one first.",
+        "templateSessions_one": "{{count}} session of {{minutes}} min",
+        "templateSessions_other": "{{count}} sessions of {{minutes}} min",
+        "roomOption": "{{name}} (holds {{capacity}})",
+        "tutorHelp": "The tutor receives an offer for the whole course.",
+        "respondBy": "Respond by (optional)",
+        "schedule": "Weekly schedule",
+        "help": "The schedule adds sessions to skip known closures. A cohort keeps the syllabus of the template version it was created from.",
+        "summary": "Summary",
+        "submit": "Create cohort",
+        "submitting": "Creating…",
+        "done": "Cohort created.",
+        "conflictsHeading_one": "The cohort can't be created: {{count}} conflict",
+        "conflictsHeading_other": "The cohort can't be created: {{count}} conflicts",
+        "overrideAction": "Override and create",
+        "overrideDescription": "The cohort is created despite these rules. The reason is saved in the audit log.",
+        "wholeCohort": "Whole cohort",
+        "notYetLabel": "Can't be overridden for cohorts yet",
+        "notYet": "Some of these conflicts can't be overridden for cohorts yet. Change the schedule, the room or the tutor."
+      },
+      "page": {
+        "title": "Cohort",
+        "details": "Details",
+        "template": "Template",
+        "templateValue": "{{name}}, version {{version}}",
+        "subject": "Subject",
+        "max": "Maximum students",
+        "capacity": "Effective capacity",
+        "roomLimited": "{{capacity}}, limited by the room",
+        "status": "Status",
+        "planned": "Planned sessions",
+        "first": "First session",
+        "last": "Last session",
+        "schedule": "Schedule",
+        "time": "Time",
+        "timeValue": "{{start}}–{{end}} ({{zone}})",
+        "classroom": "Classroom",
+        "edit": "Edit"
+      },
+      "syllabus": {
+        "heading": "Syllabus",
+        "help": "The syllabus of the template version this cohort was created from. Later changes to the template don't change it."
+      },
+      "next": {
+        "heading": "Next sessions",
+        "none": "No upcoming sessions."
+      },
+      "sessions": {
+        "heading": "Sessions",
+        "range": "{{from}} to {{to}}",
+        "previous": "Previous 4 weeks",
+        "next": "Next 4 weeks",
+        "empty": "No sessions in these 4 weeks.",
+        "date": "Date",
+        "time": "Time",
+        "state": "State",
+        "tutor": "Tutor",
+        "classroom": "Classroom",
+        "exception": "Exception",
+        "noTutor": "No tutor",
+        "noClassroom": "No classroom"
+      },
+      "tutor": {
+        "heading": "Tutor",
+        "offerHelp": "Offers the whole course from {{date}}: every unassigned session from then on, and the sessions added later. A series offer can't override rules.",
+        "noOverride": "A series offer can't override rules. Choose another tutor or change the conflicting sessions first.",
+        "offered": "Offer sent. The tutor answers in My offers.",
+        "submit": "Offer the course"
+      },
+      "edit": {
+        "title": "Edit cohort",
+        "description": "Rename the cohort or change its maximum. The template, subject, schedule, room and tutor don't change here.",
+        "submit": "Save",
+        "submitting": "Saving…",
+        "cancel": "Cancel",
+        "done": "Cohort saved.",
+        "versionConflict": "This cohort changed. Reload to see the latest.",
+        "reload": "Reload",
+        "roomLimit": "The room holds {{capacity}}, so at most {{capacity}} can attend."
+      },
+      "validation": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "The name can have at most 120 characters.",
+        "maxRange": "Enter a whole number from 1 to 500.",
+        "templateRequired": "Choose a course template."
+      }
     }
   },
   "offers": {
