@@ -27,8 +27,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import {
   ACTIVE_ANA,
@@ -218,12 +219,7 @@ function invalid(errors: { path: unknown[]; code: string }[]): Response {
 /** The lazy routes need a few more turns to load and render. */
 async function open(path: string): Promise<RenderedApp> {
   const rendered = await renderApp(path);
-  for (let i = 0; i < 40; i += 1) {
-    if (rendered.container.querySelector('main h1')) {
-      break;
-    }
-    await settle();
-  }
+  await settleUntil(() => rendered.container.querySelector('main h1'));
   await settle();
   return rendered;
 }
@@ -1132,9 +1128,7 @@ describe('/groups/new (E)', () => {
     expect(second!.override).toEqual(
       groupCreateOverride(CREATE_SOFT_CONFLICTS, 'Grupo de repaso'),
     );
-    for (let i = 0; i < 20 && !app.location().startsWith('/groups/0'); i += 1) {
-      await settle();
-    }
+    await settleUntil(() => app!.location().startsWith('/groups/0'));
     expect(app.location()).toBe(`/groups/${GROUP_ID}`);
     expect(main().textContent).toContain('Group created: 2 upcoming sessions.');
   });

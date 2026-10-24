@@ -29,8 +29,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import type { ChangeRequestItem } from './api';
 import { ChangeRequestsPage } from './ChangeRequestsPage';
@@ -828,9 +829,7 @@ describe('My change requests (B)', () => {
 
   async function openList(path = '/change-requests'): Promise<void> {
     app = await renderApp(path, ROUTES);
-    for (let i = 0; i < 20 && !app.container.querySelector('main h1'); i += 1) {
-      await settle();
-    }
+    await settleUntil(() => app!.container.querySelector('main h1'));
     await settle();
   }
 

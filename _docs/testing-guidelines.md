@@ -21,7 +21,8 @@ does not run the Storybook story tests or E2E.
 
 The web `unit` project allows 15 s per test and 20 s per hook (#260), so a
 starved CPU does not fail a full-app render; tests wait on conditions
-(`findBy*`, `waitFor`), never on time.
+(`findBy*`, `waitFor`, or `settleUntil(() => …)` from `src/test/render-app.ts`
+for a code-split route), never on time or a tick count.
 
 In CI the API layers run as parallel jobs, and each API test runs in exactly
 one of them: `api-unit`, `api-migrations`, and `api-integration` in four
