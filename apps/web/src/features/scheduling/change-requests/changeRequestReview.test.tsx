@@ -585,9 +585,12 @@ describe('the inbox, the session page and notifications (G2, F3)', () => {
     );
     expect(rejected).toContain('Your request to move the class on');
     expect(rejected).toContain('was rejected');
-    // No family page yet (#62b): they only become read.
+    // #62b C1: they open My change requests (features/change-requests).
     expect(
-      NOTIFICATION_LINKS['scheduling.change_request_approved'],
-    ).toBeUndefined();
+      NOTIFICATION_LINKS['scheduling.change_request_approved']?.(
+        {},
+        { userId: TEST_USER.id },
+      ),
+    ).toBe('/change-requests?status=approved');
   });
 });

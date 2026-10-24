@@ -7,6 +7,7 @@ import {
   recordCspViolations,
   SIGNED_OUT_STATE,
 } from '../support/auth';
+import { switchColorScheme } from '../support/a11y';
 import { common, errors, fill, signedInAs } from '../support/catalog';
 import { createApprovedAccount } from '../support/consent';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
@@ -54,6 +55,16 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // call for the unlinked student is 404. Axe on both pages. The confirmed
 // session doesn't block the revocation that follows (#198 E1).
 //
+// #62b E1: the guardian opens that session's details, chooses "Request a
+// change" → "Cancel this class", sees the policy preview and sends it: the
+// details say "Change requested — pending". The Owner follows "Review" from
+// the approval inbox and approves it as an exception with a reason. The
+// guardian's bell has the approval and its link opens My change requests:
+// Approved, the exception outcome with its makeup date and the reason, and
+// no tutor name on the page. Axe on the dialog and on My change requests
+// (light and dark). The cancelled session doesn't block the revocation
+// either.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
 // guardian), 0 redemptions and 2 self-registrations (createApprovedTutor and
@@ -75,6 +86,8 @@ const REJECT_REASON = 'Ese día solo hay una tutora disponible.';
 const CENTER_ZONE = 'America/Mexico_City';
 // #67 G8: the phone viewport of the My schedule checks.
 const PHONE = { width: 390, height: 844 };
+// #62b E1: the reason the Owner gives for the exception.
+const EXCEPTION_REASON = 'La familia avisó de una emergencia médica.';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // A seeded level (#32) that no spec deactivates.
 const LEVEL = 'Secundaria';
@@ -87,7 +100,8 @@ const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of (401|404|409)/;
 
 // Three browsers, two logins, two decisions, two session requests and their
-// review, and a revocation: more than the default 30 s under machine load.
+// review, a change request and its review, and a revocation: more than the
+// default 30 s under machine load.
 const TEST_TIMEOUT_MS = 300_000;
 
 function watchConsole(page: Page): string[] {
@@ -739,6 +753,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
 
       // The guardian, on a phone: chooses the child; Confirmed with the
       // tutor's display name. The rejected 11:00 request has no session.
+      const parentViewport = parent.page.viewportSize();
       await openMySchedule(parent.page);
       await parent.page.goto(`/my-schedule?date=${day.date}`);
       const whose = parent.page
@@ -761,6 +776,122 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         ),
       );
       expect(await axeViolations(parent.page)).toEqual([]);
+
+      // #62b E1: the guardian asks to cancel that session (on the phone).
+      await classes.click();
+      const details = parent.page.getByRole('dialog', { name: physics });
+      await details
+        .getByRole('button', { name: common.changeRequests.action.request })
+        .click();
+      const requestDialog = parent.page.getByRole('dialog', {
+        name: common.changeRequests.dialog.title,
+      });
+      await requestDialog
+        .getByRole('radio', { name: common.changeRequests.dialog.cancel })
+        .check();
+      await requestDialog
+        .getByRole('button', { name: common.changeRequests.dialog.next })
+        .click();
+      await expect(
+        requestDialog.getByText(common.changeRequests.preview.heading),
+      ).toBeVisible();
+      await expect(requestDialog).toContainText(
+        common.changeRequests.preview.estimate,
+      );
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await requestDialog
+        .getByRole('button', { name: common.changeRequests.dialog.send })
+        .click();
+      await expect(requestDialog).toBeHidden();
+      await expect(details).toContainText(common.changeRequests.action.sent);
+      await expect(details).toContainText(common.changeRequests.action.pending);
+      await parent.page.keyboard.press('Escape');
+      await expect(details).toBeHidden();
+      const changeRequests = await api(parent.page, '/api/v1/change-requests');
+      expect(changeRequests.status).toBe(200);
+      const [changeRequest] = (
+        changeRequests.body as { items: { id: string; status: string }[] }
+      ).items;
+      expect(changeRequest?.status).toBe('pending');
+
+      // The Owner follows "Review" from the inbox and approves it as an
+      // exception with a reason.
+      await page.goto('/approvals?type=scheduling.change_request');
+      await main
+        .locator(`a[href="/schedule/change-requests/${changeRequest!.id}"]`)
+        .click();
+      await expect(page).toHaveURL(
+        `/schedule/change-requests/${changeRequest!.id}`,
+      );
+      await expect(
+        main.getByRole('heading', {
+          level: 1,
+          name: common.scheduling.changeRequest.title,
+        }),
+      ).toBeVisible();
+      await main
+        .getByRole('button', {
+          name: common.scheduling.changeRequest.decide.exception,
+          exact: true,
+        })
+        .click();
+      const exceptionDialog = page.getByRole('dialog');
+      await exceptionDialog
+        .getByLabel(common.scheduling.changeRequest.reason, { exact: true })
+        .fill(EXCEPTION_REASON);
+      await exceptionDialog
+        .getByRole('button', {
+          name: common.scheduling.changeRequest.exception.submit,
+          exact: true,
+        })
+        .click();
+      await expect(exceptionDialog).toBeHidden();
+      await expect(main).toContainText(
+        common.scheduling.changeRequest.approvedExceptionText,
+      );
+      expect(ownerErrors).toEqual([]);
+
+      // The guardian (desktop width, the bell is in the header): the
+      // approval notification opens My change requests.
+      if (parentViewport) {
+        await parent.page.setViewportSize(parentViewport);
+      }
+      await parent.page.reload();
+      const approvedMessage =
+        common.notifications.types
+          .scheduling_change_request_approved_cancellation_makeup;
+      await parentBell.click();
+      await parentPanel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escapeText(approvedMessage.split('{{starts_at}}')[0]!)}`,
+          ),
+        })
+        .click();
+      await expect(parent.page).toHaveURL('/change-requests?status=approved');
+      const decidedCard = parent.page
+        .getByRole('main')
+        .getByRole('listitem')
+        .filter({ hasText: physics });
+      await expect(decidedCard).toHaveCount(1);
+      await expect(decidedCard).toContainText(
+        fill(common.changeRequests.list.statusText, {
+          status: common.scheduling.changeRequest.statuses.approved,
+        }),
+      );
+      await expect(decidedCard).toContainText(
+        common.changeRequests.list.approvedException.split('{{makeup}}')[0]!,
+      );
+      await expect(decidedCard).toContainText(
+        common.scheduling.changeRequest.makeupUntil.split('{{date}}')[0]!,
+      );
+      await expect(decidedCard).toContainText(EXCEPTION_REASON);
+      await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await switchColorScheme(parent.page, 'dark');
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await switchColorScheme(parent.page, 'light');
+
       // Another student's schedule: the same 404 as an unknown id.
       const from = `${day.date}T00:00:00Z`;
       const to = `${plusDays(day.date, 7).date}T00:00:00Z`;

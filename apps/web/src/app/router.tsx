@@ -51,6 +51,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
+import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
@@ -409,6 +410,17 @@ export const routes: RouteObject[] = [
                 .MySchedulePage,
             }),
             handle: MY_SCHEDULE_ACCESS,
+          },
+          // #62b B1: My change requests (code-split): guardians, students
+          // and tutors; the API's record policy decides.
+          {
+            path: 'change-requests',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/change-requests/ChangeRequestsPage')
+              ).ChangeRequestsPage,
+            }),
+            handle: CHANGE_REQUESTS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

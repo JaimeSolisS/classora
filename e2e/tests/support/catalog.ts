@@ -32,6 +32,16 @@ type Common = {
     // #67 G8: the phone menu and My schedule.
     toggle: string;
     mySchedule: string;
+    // #62b E1: My change requests.
+    changeRequests: string;
+  };
+  // #62b E1: the request dialog and My change requests.
+  changeRequests: {
+    title: string;
+    action: Record<'request' | 'pending' | 'sent', string>;
+    dialog: Record<'title' | 'cancel' | 'next' | 'send', string>;
+    preview: Record<'heading' | 'estimate', string>;
+    list: Record<'statusText' | 'approvedException', string>;
   };
   mySchedule: {
     title: string;
@@ -99,6 +109,19 @@ type Common = {
       Record<string, string>;
     // #51: suggested tutors (#60 uses them on the review page).
     tutorSuggestions: { button: string; chooseTutor: string };
+    // #62 G1 (used by #62b E1): the staff review of a change request.
+    changeRequest: {
+      title: string;
+      statuses: Record<
+        'pending' | 'approved' | 'rejected' | 'withdrawn',
+        string
+      >;
+      reason: string;
+      makeupUntil: string;
+      approvedExceptionText: string;
+      decide: { exception: string };
+      exception: { submit: string };
+    };
     // #60: the staff review of a session request.
     requestReview: {
       title: string;
@@ -575,6 +598,8 @@ type Common = {
       scheduling_session_cancelled: string;
       scheduling_session_request_confirmed: string;
       scheduling_session_request_rejected: string;
+      // #62b E1: the requester's approval.
+      scheduling_change_request_approved_cancellation_makeup: string;
     };
   };
   courses: {

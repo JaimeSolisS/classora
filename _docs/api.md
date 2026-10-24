@@ -811,7 +811,8 @@ requester only; never the reason).
 new_starts_at, makeup_until, exception}` and
 `scheduling.change_request_rejected` `{change_request_id, kind, starts_at}`
 (#62, see Change requests; to the requester only; never the reason, a
-tutor, a room or the classification; no link until #62b).
+tutor, a room or the classification; link: `/change-requests?status=approved`
+/ `?status=rejected`, #62b).
 `staff.availability_change_approved` and `_rejected` `{change_request_id,
 kind, affected_count}` (M4-18, to the tutor; never the reason; link: the
 tutor's page) and `scheduling.reassignment_needed` `{tutor_user_id,
@@ -3935,8 +3936,9 @@ the record policy; `change_request_outcome.py`: the outcome rules;
 the family and tutor routes), the workflow
 `app/workflows/change_request_decision.py` and its routes in
 `app/workflows/change_requests_router.py`. The staff page is
-`/schedule/change-requests/:id`; the family and tutor pages are #62b
-(M4-17b).
+`/schedule/change-requests/:id`; families and tutors request a change from
+the My schedule details dialog and follow their requests on
+`/change-requests` (#62b, M4-17b; `apps/web/src/features/change-requests/`).
 
 A guardian, a student or the tutor asks to **cancel** or **reschedule** one
 upcoming **confirmed individual** session. The scheduling policy's outcome
