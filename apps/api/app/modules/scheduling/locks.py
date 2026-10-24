@@ -10,8 +10,8 @@ hashtext(student_id::text))``, released when the transaction ends
 **Rule: every writer that adds a participant to a session, or moves a
 session in time, takes this lock for each of the session's students first,
 before it reads anything** (#48 create; #56 groups, #58 reschedule, #62
-cancel-and-restore, #65 courses). Locks are taken in ascending
-``student_id`` order, so two writers never deadlock. Two students whose ids
+cancel-and-restore, #65 courses, #66 cohort enrollment). Locks are taken
+in ascending ``student_id`` order, so two writers never deadlock. Two students whose ids
 hash alike only serialize more; an overlap never gets through.
 
 **Tutor lock** (:func:`lock_tutor`, M4-18 #63 D5): ``pg_advisory_xact_lock(
@@ -37,9 +37,11 @@ sessions or participants (#56; #65 G1, also in ``_docs/api.md``):
 
 A group series takes its group row (:mod:`.group_lock`); a course series
 takes its cohort row instead (``courses.service.lock_cohort``: the nightly
-extension, the #233 series offer, and #66 enrollment after the students
-and the zone). The ``courses`` module never takes a scheduling lock. Any
-step a writer does not need is skipped, never reordered.
+extension, the #233 series offer, the #54 series edits and ``PATCH`` of a
+course series or occurrence, and the #66 enrollment and withdrawal in
+``app.workflows.cohort_enrollment``, each after the students and the zone).
+The ``courses`` module never takes a scheduling lock. Any step a writer
+does not need is skipped, never reordered.
 """
 
 import uuid

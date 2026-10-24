@@ -219,6 +219,9 @@ def test_the_model_check_matches_the_migration():
         if str(constraint.name).startswith(prefix)
     }
 
-    # #56 A6: revision 0041 adds the "exactly one subject" CHECK.
+    # #56 A6: revision 0041 adds the "exactly one subject" CHECK; #66 A3:
+    # revision 0047 adds cohort enrollments to it.
     groups = _revision("scheduling_groups")
-    assert model_checks == {**revision.CHECKS, "one_subject": groups.ONE_SUBJECT}
+    cohorts = _revision("courses_cohort_enrollments")
+    assert cohorts.ONE_SUBJECT_0041 == groups.ONE_SUBJECT
+    assert model_checks == {**revision.CHECKS, "one_subject": cohorts.ONE_SUBJECT}

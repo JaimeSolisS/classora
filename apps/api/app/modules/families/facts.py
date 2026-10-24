@@ -16,14 +16,16 @@ role) applies on the caller's next request without a new login:
   active profile (``own_family_id``, one statement);
 - ``student``: the profile linked to the caller's login (``own_student_id``,
   #35; one statement, whatever the profile's ``is_active``: suspending the
-  login is the access control).
+  login is the access control);
+- the schedule reads of cohorts (#66 G1): :func:`family_schedule_student_ids`, the
+  own profile and the active profile's linked students in one statement.
 
 A staff-only caller never queries links.
 """
 
 import uuid
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal
@@ -135,3 +137,26 @@ async def load_family_facts(
         .where(Guardian.user_id == principal.user_id, Guardian.is_active.is_(True))
     )
     return FamilyAccessFacts(own_family_id=own)
+
+
+async def family_schedule_student_ids(
+    session: AsyncSession, principal: Principal
+) -> frozenset[uuid.UUID]:
+    """The students a family caller sees in a schedule (#66 G1): their own
+    profile (``student`` role) and the students linked to their **active**
+    guardian profile (``guardian`` role, no consent gate), the union for
+    both roles. Loaded on every request like the other facts, in **one**
+    statement whatever the roles; none without either role."""
+    parts = []
+    if STUDENT in principal.roles:
+        parts.append(select(Student.id).where(Student.user_id == principal.user_id))
+    if GUARDIAN in principal.roles:
+        parts.append(
+            select(StudentGuardian.student_id)
+            .join(Guardian, Guardian.id == StudentGuardian.guardian_id)
+            .where(Guardian.user_id == principal.user_id, Guardian.is_active.is_(True))
+        )
+    if not parts:
+        return frozenset()
+    query = parts[0] if len(parts) == 1 else union_all(*parts)
+    return frozenset(await session.scalars(query))

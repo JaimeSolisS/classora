@@ -11496,7 +11496,7 @@
           "cohorts"
         ],
         "summary": "List Cohorts",
-        "description": "The cohorts by name, with their template, subject, tutor and dates\n(cursor pagination).",
+        "description": "The cohorts you can see by name, with their template, subject, tutor\nand dates (cursor pagination). Staff with course.view see every cohort\nand its enrolled count; an enrolled student or their guardian only the\ncohorts the student is enrolled in (without the count or the tutor\nassignment); anyone else an empty list.",
         "operationId": "list_cohorts_api_v1_cohorts_get",
         "parameters": [
           {
@@ -11652,7 +11652,7 @@
           "cohorts"
         ],
         "summary": "Get Cohort",
-        "description": "One cohort: its template (as frozen), subject, maximum and effective\ncapacity, status and dates, current series and next sessions, and its\nsyllabus from the snapshot.",
+        "description": "One cohort: its template (as frozen), subject, maximum and effective\ncapacity, status and dates, current series and next sessions, and its\nsyllabus from the snapshot; for staff with course.view also the roster\nand the enrolled count. An enrolled student or their guardian sees only\na cohort the student is enrolled in, without the roster, the count or\nthe tutor assignment, and only the student's confirmed sessions.",
         "operationId": "get_cohort_api_v1_cohorts__cohort_id__get",
         "parameters": [
           {
@@ -11698,7 +11698,7 @@
             }
           },
           "404": {
-            "description": "No such cohort (cohort_not_found).",
+            "description": "No such cohort, or one you can't see (cohort_not_found).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -11724,7 +11724,7 @@
           "cohorts"
         ],
         "summary": "Update Cohort",
-        "description": "Rename a cohort or change its maximum; above the room's capacity the\nroom still limits the sessions. The template, the subject and the\nsnapshot never change; the dates, room and tutor change through the\nseries.",
+        "description": "Rename a cohort or change its maximum. The maximum can't go below the\nenrolled students; above the room's capacity the room still limits the\nsessions. The template, the subject and the\nsnapshot never change; the dates, room and tutor change through the\nseries.",
         "operationId": "update_cohort_api_v1_cohorts__cohort_id__patch",
         "parameters": [
           {
@@ -11780,7 +11780,7 @@
             }
           },
           "404": {
-            "description": "No such cohort (cohort_not_found).",
+            "description": "No such cohort, or one you can't see (cohort_not_found).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -11818,7 +11818,7 @@
           "cohorts"
         ],
         "summary": "List Cohort Sessions",
-        "description": "The cohort's sessions overlapping `[from, to)`, by start, in every\nstate.",
+        "description": "The cohort's sessions overlapping `[from, to)`, by start. Staff with\ncourse.view see every state; an enrolled student or their guardian only\nthe `confirmed` and `completed` sessions their students take part in,\neach with `students` (only theirs).",
         "operationId": "list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get",
         "parameters": [
           {
@@ -11888,7 +11888,205 @@
             }
           },
           "404": {
+            "description": "No such cohort, or one you can't see (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cohorts/{cohort_id}/enrollments": {
+      "post": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Enroll In Cohort",
+        "description": "Enroll a student now, also after the course has started: they join\nevery future session of the cohort that hasn't begun (not completed or\ncancelled ones) and the later ones the schedule creates. Above\n`max_students` it needs an `override`; above a room's capacity, or\noverlapping another session of the student, it is refused.",
+        "operationId": "enroll_in_cohort_api_v1_cohorts__cohort_id__enrollments_post",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortEnrollmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortEnrollmentCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): no schedule.manage, or an `override` without schedule.override.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
             "description": "No such cohort (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The cohort has no series still producing sessions (cohort_ended); the student is already enrolled (already_enrolled, details.enrollment_id); or the enrollment breaks scheduling rules (scheduling_conflict): `group_capacity_exceeded` (soft, can be overridden; `details.cohort_id`) first, then each future session's `student_overlap` and `room_capacity_exceeded` (hard), with `details.occurrence_start` and `details.date`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw": {
+      "post": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Withdraw From Cohort",
+        "description": "Withdraw a student now, with an optional reason, also after the\ncourse has ended: they leave every future session of the cohort that\nhasn't begun and the later ones; past, begun, completed and cancelled\nsessions keep them. The enrollment period is kept (for billing).",
+        "operationId": "withdraw_from_cohort_api_v1_cohorts__cohort_id__enrollments__enrollment_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortWithdrawal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortEnrollmentItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such cohort (cohort_not_found), or no such enrollment in it (enrollment_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -18504,6 +18702,33 @@
           "syllabus": {
             "$ref": "#/components/schemas/CohortSyllabus"
           },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "course.view holders only: the active enrollments."
+          },
+          "roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CohortEnrollmentItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roster",
+            "description": "course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -18645,6 +18870,33 @@
           },
           "syllabus": {
             "$ref": "#/components/schemas/CohortSyllabus"
+          },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "course.view holders only: the active enrollments."
+          },
+          "roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CohortEnrollmentItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roster",
+            "description": "course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first."
           }
         },
         "type": "object",
@@ -18669,7 +18921,195 @@
           "syllabus"
         ],
         "title": "CohortDetail",
-        "description": "One cohort (``GET /api/v1/cohorts/{id}``, #65 F1). The syllabus comes\nfrom the snapshot, never from the live template. No enrollment data\nyet (#66 adds it)."
+        "description": "One cohort (``GET /api/v1/cohorts/{id}``, #65 F1, #66 F1, G3). The\nsyllabus comes from the snapshot, never from the live template.\n\n``enrolled_count`` and ``roster`` are for ``course.view`` holders only:\nfor an enrolled student or a linked guardian they are absent, the\n``series`` has no ``assignment`` (and its tutor only once they\naccepted), its participants are only the caller's own students, and\n``next_occurrences`` are only the ``confirmed`` ones they take part\nin."
+      },
+      "CohortEnrollmentCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override `group_capacity_exceeded` with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id"
+        ],
+        "title": "CohortEnrollmentCreate",
+        "description": "Enroll a student in a cohort (``POST\n/api/v1/cohorts/{id}/enrollments``, #66 C1): the #56 body. ``override``\n(the #49 shape, for ``group_capacity_exceeded``) needs\n``schedule.override``."
+      },
+      "CohortEnrollmentCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/EnrollmentStudent"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "enrolled_by": {
+            "$ref": "#/components/schemas/EnrollmentActor"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          },
+          "withdrawn_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrollmentActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withdrawal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawal Reason"
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "description": "Whether the enrollment went above the maximum by an override."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulingWarning"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Always empty for now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "enrolled_at",
+          "enrolled_by",
+          "withdrawn_at",
+          "withdrawn_by",
+          "withdrawal_reason",
+          "overridden",
+          "version",
+          "warnings"
+        ],
+        "title": "CohortEnrollmentCreated",
+        "description": "The new enrollment."
+      },
+      "CohortEnrollmentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/EnrollmentStudent"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "enrolled_by": {
+            "$ref": "#/components/schemas/EnrollmentActor"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          },
+          "withdrawn_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrollmentActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withdrawal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawal Reason"
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "description": "Whether the enrollment went above the maximum by an override."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "enrolled_at",
+          "enrolled_by",
+          "withdrawn_at",
+          "withdrawn_by",
+          "withdrawal_reason",
+          "overridden",
+          "version"
+        ],
+        "title": "CohortEnrollmentItem",
+        "description": "One enrollment period of a cohort (#66 F2)."
       },
       "CohortLevel": {
         "properties": {
@@ -18778,6 +19218,18 @@
           },
           "status": {
             "$ref": "#/components/schemas/CohortStatus"
+          },
+          "enrolled_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled Count",
+            "description": "The active enrollments; null for a caller without course.view (#66 F3)."
           }
         },
         "type": "object",
@@ -18792,7 +19244,8 @@
           "first_session_on",
           "last_session_on",
           "next_starts_at",
-          "status"
+          "status",
+          "enrolled_count"
         ],
         "title": "CohortListItem",
         "description": "A cohort in the list (#65 F2)."
@@ -18932,6 +19385,21 @@
                 "type": "null"
               }
             ]
+          },
+          "students": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CohortSessionStudent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Students",
+            "description": "Students and guardians only (absent for staff): the caller's own students among the participants, by name."
           }
         },
         "type": "object",
@@ -18946,7 +19414,27 @@
           "classroom"
         ],
         "title": "CohortSessionItem",
-        "description": "One session of a cohort (#65 F4), in any state (staff only)."
+        "description": "One session of a cohort (#65 F4; #66 G4). Staff see every state;\nan enrolled student or a linked guardian only the ``confirmed`` and\n``completed`` sessions one of their students takes part in, with\n``students``."
+      },
+      "CohortSessionStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "CohortSessionStudent",
+        "description": "One of the caller's own students taking part in a session (#66 G4)."
       },
       "CohortSessions": {
         "properties": {
@@ -19122,6 +19610,34 @@
         ],
         "title": "CohortUpdate",
         "description": "Rename a cohort or change its maximum (``PATCH\n/api/v1/cohorts/{cohort_id}``, #65 E1). At least one of ``name`` and\n``max_students`` (``no_changes`` on the body). The template, the subject\nand the snapshot never change; the dates, the room and the tutor change\nthrough the cohort's series."
+      },
+      "CohortWithdrawal": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The enrollment's version, as read."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Optional: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "CohortWithdrawal",
+        "description": "Withdraw a student from a cohort (``POST\n/api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):\nthe enrollment's ``version`` and an optional reason (trimmed, 1-1000:\n``reason_required`` for a blank one, ``reason_too_long``)."
       },
       "ConflictOverrideCreate": {
         "properties": {

@@ -125,6 +125,14 @@ The group row lock (:func:`lock_group`, :mod:`~app.modules.scheduling.
 group_lock`) comes after the students and the zone for every writer that
 changes a group occurrence's participants or room.
 
+Enrollment mechanics shared by groups and cohorts (#66 B1,
+:mod:`~app.modules.scheduling.series_participants`): :class:`SeriesOwner`,
+:func:`lock_producing_series`, :func:`plan_series_participant_add`,
+:func:`add_series_participant` and :func:`remove_series_participant` (the
+#56 B3 rule), with :func:`record_enrollment_override` (a group or a cohort
+enrollment) and :func:`overridden_cohort_enrollment_ids`;
+``app.workflows.cohort_enrollment`` composes them with ``courses.service``.
+
 Course cohorts (#65, :mod:`~app.modules.scheduling.course_series`; the
 cohort itself lives in ``courses``): ``app.workflows.cohorts`` derives the
 series ``COUNT`` from :func:`course_rule_dates` and :func:`closed_dates`,
@@ -316,10 +324,19 @@ from app.modules.scheduling.course_series import (
     list_cohort_sessions as list_cohort_sessions,
 )
 from app.modules.scheduling.errors import (
+    AlreadyEnrolledError as AlreadyEnrolledError,
+)
+from app.modules.scheduling.errors import (
     ClassSessionNotAssignableError as ClassSessionNotAssignableError,
 )
 from app.modules.scheduling.errors import (
     ClassSessionNotOfferableError as ClassSessionNotOfferableError,
+)
+from app.modules.scheduling.errors import (
+    EnrollmentNotActiveError as EnrollmentNotActiveError,
+)
+from app.modules.scheduling.errors import (
+    EnrollmentNotFoundError as EnrollmentNotFoundError,
 )
 from app.modules.scheduling.errors import (
     InvalidSessionTimesError as InvalidSessionTimesError,
@@ -443,6 +460,12 @@ from app.modules.scheduling.overrides import (
     evaluate_series_override as evaluate_series_override,
 )
 from app.modules.scheduling.overrides import (
+    overridden_cohort_enrollment_ids as overridden_cohort_enrollment_ids,
+)
+from app.modules.scheduling.overrides import (
+    record_enrollment_override as record_enrollment_override,
+)
+from app.modules.scheduling.overrides import (
     record_series_overrides as record_series_overrides,
 )
 from app.modules.scheduling.overrides import (
@@ -535,6 +558,19 @@ from app.modules.scheduling.series_edit import (
 )
 from app.modules.scheduling.series_offers import (
     offer_class_series as offer_class_series,
+)
+from app.modules.scheduling.series_participants import SeriesOwner as SeriesOwner
+from app.modules.scheduling.series_participants import (
+    add_series_participant as add_series_participant,
+)
+from app.modules.scheduling.series_participants import (
+    lock_producing_series as lock_producing_series,
+)
+from app.modules.scheduling.series_participants import (
+    plan_series_participant_add as plan_series_participant_add,
+)
+from app.modules.scheduling.series_participants import (
+    remove_series_participant as remove_series_participant,
 )
 from app.modules.scheduling.session_edit import (
     update_class_session as update_class_session,

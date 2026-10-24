@@ -62,7 +62,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # class_session_reassignment_flags and, in staff,
     # tutor_availability_change_requests, M4-18), then
     # courses (course_templates, _subjects, _modules, _assessments and
-    # _snapshots, M4-19; course_cohorts, M4-20);
+    # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) are shared infrastructure.
@@ -127,6 +127,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "course_template_assessments",
         "course_template_snapshots",
         "course_cohorts",
+        "cohort_enrollments",
     }
 
 

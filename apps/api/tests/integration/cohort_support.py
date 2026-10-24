@@ -165,3 +165,90 @@ def table_counts(url: str) -> tuple[int, int, int, int, int]:
         " (SELECT count(*) FROM assignment_offers) AS e",
     )
     return (int(row.a), int(row.b), int(row.c), int(row.d), int(row.e))
+
+
+# --- Enrollments (#66) ---------------------------------------------------------------
+
+
+def enroll(
+    client: TestClient, cookie: Any, cohort_id: Any, student_id: Any, **extra: Any
+) -> Response:
+    return post(
+        client,
+        cookie,
+        f"{COHORTS}/{cohort_id}/enrollments",
+        {"student_id": str(student_id), **extra},
+    )
+
+
+def withdraw(
+    client: TestClient,
+    cookie: Any,
+    cohort_id: Any,
+    enrollment_id: Any,
+    version: int = 1,
+    **extra: Any,
+) -> Response:
+    return post(
+        client,
+        cookie,
+        f"{COHORTS}/{cohort_id}/enrollments/{enrollment_id}/withdraw",
+        {"version": version, **extra},
+    )
+
+
+def enrollment_rows(url: str, cohort_id: Any) -> list[Any]:
+    """The cohort's enrollment periods, oldest first."""
+    return run_sql(
+        url,
+        "SELECT id, student_id, enrolled_at, enrolled_by_user_id, withdrawn_at,"
+        " withdrawn_by_user_id, withdrawal_reason, version"
+        " FROM cohort_enrollments WHERE cohort_id = :id ORDER BY enrolled_at, id",
+        {"id": str(cohort_id)},
+    )
+
+
+def enrollment_overrides(url: str, enrollment_id: Any) -> list[Any]:
+    return run_sql(
+        url,
+        "SELECT id, class_session_id, class_series_id, group_enrollment_id, codes,"
+        " reason FROM class_session_overrides WHERE cohort_enrollment_id = :id",
+        {"id": str(enrollment_id)},
+    )
+
+
+def participants(url: str, session_id: Any) -> set[str]:
+    return {
+        str(row.student_id)
+        for row in run_sql(
+            url,
+            "SELECT student_id FROM class_session_participants"
+            " WHERE class_session_id = :id",
+            {"id": str(session_id)},
+        )
+    }
+
+
+def series_students(url: str, series_id: Any) -> set[str]:
+    return {
+        str(row.student_id)
+        for row in run_sql(
+            url,
+            "SELECT student_id FROM class_series_participants"
+            " WHERE class_series_id = :id",
+            {"id": str(series_id)},
+        )
+    }
+
+
+def write_counts(url: str) -> tuple[int, int, int, int]:
+    """``(enrollments, series participants, session participants,
+    overrides)``."""
+    [row] = run_sql(
+        url,
+        "SELECT (SELECT count(*) FROM cohort_enrollments) AS a,"
+        " (SELECT count(*) FROM class_series_participants) AS b,"
+        " (SELECT count(*) FROM class_session_participants) AS c,"
+        " (SELECT count(*) FROM class_session_overrides) AS d",
+    )
+    return (int(row.a), int(row.b), int(row.c), int(row.d))

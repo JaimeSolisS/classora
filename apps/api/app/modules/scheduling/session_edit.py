@@ -14,7 +14,8 @@ conflict):
 1. ``404`` for an unknown id;
 2. the locks (:mod:`~app.modules.scheduling.series_edit` order):
    ``lock_students`` (the session's students), the zone ``FOR SHARE``, for a
-   group occurrence the group row ``FOR UPDATE`` (#56 F1), for an
+   group occurrence the group row ``FOR UPDATE`` (#56 F1), for a course
+   occurrence the cohort row ``FOR UPDATE`` (#66), for an
    occurrence its series row ``FOR SHARE`` (its version is not bumped), then
    the row ``FOR UPDATE``;
 3. ``409 version_conflict`` on the session ``version``;
@@ -68,6 +69,7 @@ from app.core.authz import RecordNotFoundError
 from app.core.errors import FieldError
 from app.core.models import ensure_version
 from app.modules.administration import service as administration
+from app.modules.courses import service as courses
 from app.modules.scheduling.booking import get_class_session, validate_bounds
 from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
 from app.modules.scheduling.conflicts import ROOM_OVERLAP, TUTOR_OVERLAP, Conflict
@@ -157,6 +159,9 @@ async def update_class_session(
     if found.group_id is not None:
         # #56 F1: a group occurrence's room changes under the group lock.
         await lock_group(session, found.group_id)
+    elif found.cohort_id is not None:
+        # #66: a course occurrence takes the cohort row in the group's place.
+        await courses.lock_cohort(session, found.cohort_id)
     series = None
     if found.series_id is not None:
         series = await session.scalar(

@@ -7,8 +7,9 @@ serialize on the series row and can't deadlock:
 
 1. ``lock_students`` for the series' participants (ascending ids);
 2. the center zone ``FOR SHARE``;
-   (a ``group`` series: the group row ``FOR UPDATE``, #56 F1; a split's new
-   series keeps the ``group_id``);
+   (a ``group`` series: the group row ``FOR UPDATE``, #56 F1; a ``course``
+   series: the cohort row ``FOR UPDATE``, ``courses.service.lock_cohort``,
+   #66; a split's new series keeps the ``group_id`` / ``cohort_id``);
 3. the **series row ``FOR UPDATE``** (re-read);
 4. the series' rows on or after the edit date ``FOR UPDATE``, by id
    (re-read);
@@ -125,6 +126,7 @@ from app.core.errors import FieldError
 from app.core.models import ensure_version
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
+from app.modules.courses import service as courses
 from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
 from app.modules.scheduling.conflicts import ROOM_OVERLAP, TUTOR_OVERLAP, Conflict
 from app.modules.scheduling.errors import (
@@ -340,6 +342,10 @@ async def _lock(
         # the group row lock; an enrollment since the client's read bumped
         # the series version, so the check below refuses it.
         await lock_group(session, found.group_id)
+    elif found.cohort_id is not None:
+        # #66 (the #65 D6 follow-up): a course series' participants change
+        # only under the cohort row lock, in the group's place.
+        await courses.lock_cohort(session, found.cohort_id)
     series = await lock_series(session, found.id)
     ensure_version(series, version)
     rows = list(

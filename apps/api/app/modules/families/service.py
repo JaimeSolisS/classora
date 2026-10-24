@@ -100,7 +100,10 @@ from app.modules.families.errors import (
     EducationLevelUnavailableError,
     EmergencyContactUnknownError,
 )
-from app.modules.families.facts import load_access_facts
+from app.modules.families.facts import (
+    family_schedule_student_ids,
+    load_access_facts,
+)
 from app.modules.families.models import (
     Guardian,
     Student,
@@ -143,6 +146,7 @@ __all__ = [
     "create_family",
     "create_guardian",
     "create_student",
+    "family_schedule_student_ids",
     "get_consents",
     "get_family",
     "get_guardian",

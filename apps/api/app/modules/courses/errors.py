@@ -89,3 +89,29 @@ class CohortValidationError(AppError):
 
     def __init__(self, errors: Sequence[FieldError]) -> None:
         super().__init__(errors=errors)
+
+
+# --- Cohort enrollments (#66) --------------------------------------------------------
+
+
+class CohortEndedError(AppError):
+    """The cohort has no series still producing sessions: its last session
+    has started or passed, so no student can join it (#66 C1 step 6)."""
+
+    status = 409
+    code = "cohort_ended"
+    detail = "The cohort has ended: no student can join it."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CohortEnrollmentActiveExists(Exception):  # noqa: N818 (a plain outcome)
+    """A concurrent request inserted the student's active enrollment first
+    (``uq_cohort_enrollments_active``): the workflow answers ``409
+    already_enrolled`` (the #56 code)."""
+
+
+class CohortEnrollmentNotActive(Exception):  # noqa: N818 (a plain outcome)
+    """The enrollment was already withdrawn: the workflow answers ``409
+    enrollment_not_active`` (the #56 code)."""

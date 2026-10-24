@@ -22,9 +22,10 @@ and has validated the fields (:func:`check_course_series`).
 cohort's series facts and next start, one statement),
 :func:`cohort_series_read` (the detail: the current series as
 :class:`~app.modules.scheduling.schemas.ClassSeriesSummary`, the room
-capacity and the next occurrences; five statements, six with
-participants) and :func:`list_cohort_sessions` (the range read; three
-statements).
+capacity and the next occurrences; at most six statements) and
+:func:`list_cohort_sessions` (the range read; three statements, four for
+a family caller). The ``family`` arguments (#66 G) narrow a read to an
+enrolled student's or a linked guardian's own students.
 
 **Lock order (#65 G1):** students → zone → template ``FOR SHARE`` (only in
 the cohort create) → group or cohort ``FOR UPDATE`` → series ``FOR UPDATE``
@@ -37,6 +38,7 @@ import uuid
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
@@ -56,11 +58,13 @@ from app.modules.scheduling.models import (
     OFFER_ACCEPTED,
     OFFER_PENDING,
     OFFER_SCOPE_SERIES,
+    SERIES_ASSIGNMENT_ACCEPTED,
     SERIES_ASSIGNMENT_PENDING,
     AssignmentOffer,
     ClassSeries,
     ClassSeriesParticipant,
     ClassSession,
+    ClassSessionParticipant,
 )
 from app.modules.scheduling.overrides import record_series_overrides
 from app.modules.scheduling.recurrence import (
@@ -75,6 +79,7 @@ from app.modules.scheduling.recurrence import (
 from app.modules.scheduling.schemas import (
     ClassSeriesSummary,
     CohortSessionItem,
+    CohortSessionStudent,
     GroupSessionClassroom,
     SeriesAssignment,
     SeriesOverride,
@@ -93,7 +98,11 @@ from app.modules.scheduling.series_offers import (
     offer_new_series,
     validate_create_respond_by,
 )
-from app.modules.scheduling.states import SessionKind, SessionState
+from app.modules.scheduling.states import (
+    FAMILY_VISIBLE_STATES,
+    SessionKind,
+    SessionState,
+)
 
 TUTOR_ROLE = "tutor"
 ACTIVE = "active"
@@ -394,21 +403,39 @@ def _schedule(
 
 
 async def cohort_schedules(
-    session: AsyncSession, cohort_ids: Collection[uuid.UUID] | None, *, now: datetime
+    session: AsyncSession,
+    cohort_ids: Collection[uuid.UUID] | None,
+    *,
+    now: datetime,
+    family: Collection[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, CohortSchedule]:
     """The :class:`CohortSchedule` of these cohorts (``None``: every cohort
     with a series), by cohort id. One statement: the series with each
     one's next upcoming occurrence (``unassigned``, ``offered``,
-    ``confirmed`` or ``conflict``, starting after ``now``)."""
+    ``confirmed`` or ``conflict``, starting after ``now``); with ``family``
+    (#66 G2: a caller's visible students) only the ``confirmed`` ones one
+    of them takes part in."""
     if cohort_ids is not None and not cohort_ids:
         return {}
+    upcoming = [
+        ClassSession.series_id == ClassSeries.id,
+        ClassSession.starts_at > now,
+    ]
+    if family is None:
+        upcoming.append(ClassSession.state.in_(UPCOMING_STATES))
+    else:
+        upcoming += [
+            ClassSession.state == SessionState.CONFIRMED,
+            select(ClassSessionParticipant.class_session_id)
+            .where(
+                ClassSessionParticipant.class_session_id == ClassSession.id,
+                ClassSessionParticipant.student_id.in_(set(family)),
+            )
+            .exists(),
+        ]
     next_start = (
         select(func.min(ClassSession.starts_at))
-        .where(
-            ClassSession.series_id == ClassSeries.id,
-            ClassSession.starts_at > now,
-            ClassSession.state.in_(UPCOMING_STATES),
-        )
+        .where(*upcoming)
         .correlate(ClassSeries)
         .scalar_subquery()
     )
@@ -436,24 +463,43 @@ class CohortOccurrence:
 
 @dataclass(frozen=True)
 class CohortSeriesRead:
-    """The scheduling half of a cohort detail (#65 F1)."""
+    """The scheduling half of a cohort detail (#65 F1). ``students`` and
+    ``accounts`` are the references read with it (the series participants
+    and ``extra_student_ids``; the tutor and ``extra_user_ids``), for the
+    #66 roster."""
 
     schedule: CohortSchedule
     series: ClassSeriesSummary
     subject: SubjectReference
     room: ClassroomCapacity | None
     next_occurrences: list[CohortOccurrence]
+    students: dict[uuid.UUID, Any]
+    accounts: dict[uuid.UUID, Any]
 
 
 async def cohort_series_read(
-    session: AsyncSession, cohort_id: uuid.UUID, *, now: datetime
+    session: AsyncSession,
+    cohort_id: uuid.UUID,
+    *,
+    now: datetime,
+    family: Collection[uuid.UUID] | None = None,
+    extra_student_ids: Collection[uuid.UUID] = (),
+    extra_user_ids: Collection[uuid.UUID] = (),
 ) -> CohortSeriesRead | None:
     """The cohort's current series (all the ``ClassSeriesDetail`` fields but
     its occurrences, with ``assignment`` and ``cohort_id``), its room with
     the capacity, its dates and its next 10 upcoming occurrences. ``None``
-    when the cohort has no series. Five statements (the series with their
-    participants, lineage, offer and next start; the next occurrences; the
-    subject; the tutor account; the room), six with participants (#66)."""
+    when the cohort has no series. At most six statements (the series with
+    their participants, lineage, offer and next start; the next
+    occurrences; the students; the subject; the accounts; the room); the
+    #66 roster's students and actors (``extra_student_ids``,
+    ``extra_user_ids``) are read with them.
+
+    ``family`` (#66 G3): the caller's visible students when they don't hold
+    ``course.view``. The next occurrences are then only the ``confirmed``
+    ones where one of them is a participant (ADR-0005 D2), the series'
+    participants only them, and the series has no assignment or offer data
+    (no ``assignment``, and the tutor only once they accepted)."""
     next_start = (
         select(func.min(ClassSession.starts_at))
         .where(
@@ -517,27 +563,42 @@ async def cohort_series_read(
     series: ClassSeries = current_row[0]
     student_ids: list[uuid.UUID] = list(current_row[2] or [])
     split_ids: list[uuid.UUID] = list(current_row[3] or [])
-    next_rows = list(
-        await session.scalars(
-            select(ClassSession)
-            .where(
-                ClassSession.cohort_id == cohort_id,
-                ClassSession.starts_at > now,
-                ClassSession.state.in_(UPCOMING_STATES),
-            )
-            .order_by(ClassSession.starts_at, ClassSession.id)
-            .limit(NEXT_OCCURRENCES)
-        )
+    upcoming = (
+        select(ClassSession)
+        .where(ClassSession.cohort_id == cohort_id, ClassSession.starts_at > now)
+        .order_by(ClassSession.starts_at, ClassSession.id)
+        .limit(NEXT_OCCURRENCES)
     )
-    student_refs = await families.student_references(session, student_ids)
+    if family is None:
+        upcoming = upcoming.where(ClassSession.state.in_(UPCOMING_STATES))
+    else:
+        student_ids = [s for s in student_ids if s in set(family)]
+        visible = (
+            select(ClassSessionParticipant.class_session_id)
+            .where(
+                ClassSessionParticipant.class_session_id == ClassSession.id,
+                ClassSessionParticipant.student_id.in_(set(family)),
+            )
+            .exists()
+        )
+        upcoming = upcoming.where(ClassSession.state == SessionState.CONFIRMED, visible)
+    next_rows = list(await session.scalars(upcoming))
+    student_refs = await families.student_references(
+        session, {*student_ids, *extra_student_ids}
+    )
     subject = (await catalog.subject_references(session, [series.subject_id]))[
         series.subject_id
     ]
+    show_tutor = series.tutor_user_id is not None and (
+        family is None or series.assignment_status == SERIES_ASSIGNMENT_ACCEPTED
+    )
+    user_ids = set(extra_user_ids)
+    if show_tutor and series.tutor_user_id is not None:
+        user_ids.add(series.tutor_user_id)
+    accounts = await identity.get_account_references(session, user_ids)
     tutor = None
-    if series.tutor_user_id is not None:
-        account = (
-            await identity.get_account_references(session, [series.tutor_user_id])
-        ).get(series.tutor_user_id)
+    if show_tutor and series.tutor_user_id is not None:
+        account = accounts.get(series.tutor_user_id)
         tutor = SessionTutor(
             id=series.tutor_user_id,
             display_name="" if account is None else account.display_name,
@@ -548,7 +609,7 @@ async def cohort_series_read(
             series.classroom_id
         )
     assignment = None
-    if tutor is not None and series.assignment_status is not None:
+    if family is None and tutor is not None and series.assignment_status is not None:
         assert series.assignment_from is not None  # noqa: S101 - a CHECK
         offer_id, offer_status, respond_by = current_row[4:7]
         assignment = SeriesAssignment(
@@ -570,6 +631,7 @@ async def cohort_series_read(
                 is_active=student.is_active,
             )
             for student in student_refs.values()
+            if student.id in set(student_ids)
         ),
         key=lambda p: (p.display_name.casefold(), str(p.student_id)),
     )
@@ -625,28 +687,65 @@ async def cohort_series_read(
             )
             for row in next_rows
         ],
+        students=student_refs,
+        accounts=accounts,
     )
 
 
 async def list_cohort_sessions(
-    session: AsyncSession, cohort_id: uuid.UUID, start: datetime, end: datetime
+    session: AsyncSession,
+    cohort_id: uuid.UUID,
+    start: datetime,
+    end: datetime,
+    *,
+    family: Collection[uuid.UUID] | None = None,
 ) -> list[CohortSessionItem]:
-    """The cohort's sessions overlapping ``[start, end)`` by start, in every
-    state (#65 F4, staff). The #57 range rules (``422 range_invalid``,
-    ``range_too_long``) are checked first. Three statements (the rows, the
-    tutors, the rooms)."""
+    """The cohort's sessions overlapping ``[start, end)`` by start (#65 F4).
+    The #57 range rules (``422 range_invalid``, ``range_too_long``) are
+    checked first. Staff (``family`` ``None``): every state, no
+    ``students``; three statements (the rows, the tutors, the rooms).
+
+    ``family`` (#66 G4): the caller's visible students. Only the
+    occurrences where one of them is a participant, in ``confirmed`` or
+    ``completed`` (ADR-0005 D2), each with ``students``: only those of them
+    who take part. Four statements (the rows with their visible
+    participants, the students, the tutors, the rooms)."""
     validate_range(start, end)
-    rows = list(
-        await session.scalars(
-            select(ClassSession)
-            .where(
-                ClassSession.cohort_id == cohort_id,
-                ClassSession.starts_at < end,
-                ClassSession.ends_at > start,
-            )
-            .order_by(ClassSession.starts_at, ClassSession.id)
-        )
+    query: Any = select(ClassSession).where(
+        ClassSession.cohort_id == cohort_id,
+        ClassSession.starts_at < end,
+        ClassSession.ends_at > start,
     )
+    if family is not None:
+        if not family:
+            return []
+        visible = (
+            select(func.array_agg(ClassSessionParticipant.student_id))
+            .where(
+                ClassSessionParticipant.class_session_id == ClassSession.id,
+                ClassSessionParticipant.student_id.in_(set(family)),
+            )
+            .correlate(ClassSession)
+            .scalar_subquery()
+        )
+        query = select(ClassSession, visible).where(
+            ClassSession.cohort_id == cohort_id,
+            ClassSession.starts_at < end,
+            ClassSession.ends_at > start,
+            ClassSession.state.in_(sorted(FAMILY_VISIBLE_STATES)),
+            visible.is_not(None),
+        )
+    found = (
+        await session.execute(query.order_by(ClassSession.starts_at, ClassSession.id))
+    ).all()
+    rows: list[ClassSession] = [row[0] for row in found]
+    takers: dict[uuid.UUID, list[uuid.UUID]] = {}
+    names: dict[uuid.UUID, Any] = {}
+    if family is not None:
+        takers = {row[0].id: sorted(row[1] or []) for row in found}
+        names = await families.student_references(
+            session, {s for ids in takers.values() for s in ids}
+        )
     accounts = await identity.get_account_references(
         session, {row.tutor_user_id for row in rows if row.tutor_user_id is not None}
     )
@@ -658,6 +757,22 @@ async def list_cohort_sessions(
         account = None if row.tutor_user_id is None else accounts.get(row.tutor_user_id)
         room = None if row.classroom_id is None else rooms.get(row.classroom_id)
         assert row.original_start is not None  # noqa: S101 - every row has a series
+        students = None
+        if family is not None:
+            students = sorted(
+                (
+                    CohortSessionStudent(
+                        id=student_id,
+                        display_name=(
+                            ""
+                            if names.get(student_id) is None
+                            else names[student_id].display_name
+                        ),
+                    )
+                    for student_id in takers[row.id]
+                ),
+                key=lambda s: (s.display_name.casefold(), str(s.id)),
+            )
         items.append(
             CohortSessionItem(
                 id=row.id,
@@ -679,6 +794,7 @@ async def list_cohort_sessions(
                     if room is None
                     else GroupSessionClassroom(id=room.id, name=room.name)
                 ),
+                students=students,
             )
         )
     return items

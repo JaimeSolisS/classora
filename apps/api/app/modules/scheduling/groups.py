@@ -26,7 +26,10 @@ materializations include (or leave out) the student. Past, started,
 ``completed`` and ``cancelled`` occurrences keep their participants. Only
 the occupying ones (``unassigned``, ``offered``, ``confirmed``) are checked
 (student overlap, room capacity). A withdrawal never fails a check and
-changes no session state, even when an occurrence is left empty.
+changes no session state, even when an occurrence is left empty. The
+participant changes and the checks are the kind-neutral helpers of
+:mod:`~app.modules.scheduling.series_participants` (#66 B1), shared with
+cohort enrollment.
 
 **Lock order (F1)**, every writer: ``lock_students`` → the zone ``FOR
 SHARE`` → **the group row ``FOR UPDATE``** → the producing series ``FOR
@@ -51,11 +54,11 @@ Every function runs in the caller's Unit of Work and never commits.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from typing import Final, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,8 +70,6 @@ from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.identity import service as identity
 from app.modules.scheduling.booking import REFERENCE_MESSAGES
-from app.modules.scheduling.checks import student_overlap_ids
-from app.modules.scheduling.conflicts import STUDENT_OVERLAP, Conflict, sort_conflicts
 from app.modules.scheduling.errors import (
     AlreadyEnrolledError,
     EnrollmentNotActiveError,
@@ -80,14 +81,7 @@ from app.modules.scheduling.errors import (
     SessionValidationError,
 )
 from app.modules.scheduling.group_lock import lock_group
-from app.modules.scheduling.groups_rules import (
-    AFFECTED_STATES,
-    GroupOccurrence,
-    affected_occurrences,
-    group_capacity_conflicts,
-    is_checked,
-    room_capacity_conflicts,
-)
+from app.modules.scheduling.groups_rules import group_capacity_conflicts
 from app.modules.scheduling.locks import lock_students
 from app.modules.scheduling.materialize import materialize_series
 from app.modules.scheduling.models import (
@@ -97,8 +91,6 @@ from app.modules.scheduling.models import (
     ClassGroup,
     ClassSeries,
     ClassSeriesParticipant,
-    ClassSession,
-    ClassSessionParticipant,
     GroupEnrollment,
 )
 from app.modules.scheduling.overrides import (
@@ -117,6 +109,13 @@ from app.modules.scheduling.series import check_series_rule
 from app.modules.scheduling.series_offers import (
     offer_new_series,
     validate_create_respond_by,
+)
+from app.modules.scheduling.series_participants import (
+    SeriesOwner,
+    add_series_participant,
+    lock_producing_series,
+    plan_series_participant_add,
+    remove_series_participant,
 )
 from app.modules.scheduling.states import SessionKind
 
@@ -252,91 +251,6 @@ async def lock_group_or_404(session: AsyncSession, group_id: uuid.UUID) -> Class
     return group
 
 
-def producing_condition(today: date) -> ColumnElement[bool]:
-    """A series that may still produce occurrences on or after ``today``."""
-    return or_(
-        ClassSeries.last_occurrence_on.is_(None),
-        ClassSeries.last_occurrence_on >= today,
-    )
-
-
-async def _lock_producing_series(
-    session: AsyncSession, group_id: uuid.UUID, today: date
-) -> list[ClassSeries]:
-    return list(
-        await session.scalars(
-            select(ClassSeries)
-            .where(ClassSeries.group_id == group_id, producing_condition(today))
-            .order_by(ClassSeries.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-    )
-
-
-async def _lock_affected_rows(
-    session: AsyncSession, group_id: uuid.UUID, now: datetime
-) -> list[ClassSession]:
-    """The group's B3 occurrences ``FOR UPDATE``, by id (then ordered by
-    start)."""
-    candidates = list(
-        await session.scalars(
-            select(ClassSession)
-            .where(
-                ClassSession.group_id == group_id,
-                ClassSession.starts_at > now,
-                ClassSession.state.in_(sorted(AFFECTED_STATES)),
-            )
-            .order_by(ClassSession.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-    )
-    rows = [row for row in candidates if row.starts_at > now]
-    kept = {o.class_session_id for o in affected_occurrences(_facts(rows), now)}
-    return sorted(
-        (row for row in rows if row.id in kept), key=lambda r: (r.starts_at, r.id)
-    )
-
-
-def _facts(
-    rows: Sequence[ClassSession],
-    zone: str = "UTC",
-    capacities: dict[uuid.UUID, int] | None = None,
-) -> list[GroupOccurrence]:
-    tz = ZoneInfo(zone)
-    caps = capacities or {}
-    return [
-        GroupOccurrence(
-            class_session_id=row.id,
-            state=row.state,
-            starts_at=row.starts_at,
-            local_date=row.starts_at.astimezone(tz).date(),
-            classroom_id=row.classroom_id,
-            room_capacity=(
-                None if row.classroom_id is None else caps.get(row.classroom_id)
-            ),
-        )
-        for row in rows
-    ]
-
-
-async def _participants_of(
-    session: AsyncSession, row_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, set[uuid.UUID]]:
-    found: dict[uuid.UUID, set[uuid.UUID]] = {row_id: set() for row_id in row_ids}
-    if not row_ids:
-        return found
-    for session_id, student_id in await session.execute(
-        select(
-            ClassSessionParticipant.class_session_id,
-            ClassSessionParticipant.student_id,
-        ).where(ClassSessionParticipant.class_session_id.in_(row_ids))
-    ):
-        found[session_id].add(student_id)
-    return found
-
-
 async def _active_enrollments(
     session: AsyncSession, group_id: uuid.UUID
 ) -> list[GroupEnrollment]:
@@ -348,21 +262,6 @@ async def _active_enrollments(
             )
         )
     )
-
-
-async def _bump(session: AsyncSession, records: Sequence[object]) -> None:
-    """One versioned ``UPDATE`` per record (only ``updated_at`` and
-    ``version`` change, which the audit leaves out): their version covers
-    their participants."""
-    for record in records:
-        record.updated_at = func.now()  # type: ignore[attr-defined]
-    await session.flush()
-    for record in records:
-        await session.refresh(record, ["updated_at"])
-
-
-def _iso_z(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")
 
 
 # --- D. Create -----------------------------------------------------------------------
@@ -536,73 +435,6 @@ async def update_group(
 # --- E1. Enroll ----------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _Plan:
-    rows: list[ClassSession]
-    facts: dict[uuid.UUID, GroupOccurrence]
-    participants: dict[uuid.UUID, set[uuid.UUID]]
-
-
-async def _plan(
-    session: AsyncSession, group_id: uuid.UUID, now: datetime, zone: str
-) -> _Plan:
-    rows = await _lock_affected_rows(session, group_id, now)
-    rooms = {row.classroom_id for row in rows if row.classroom_id is not None}
-    capacities = {
-        room_id: room.capacity
-        for room_id, room in (
-            await catalog.classroom_capacities(session, rooms)
-        ).items()
-    }
-    facts = {fact.class_session_id: fact for fact in _facts(rows, zone, capacities)}
-    participants = await _participants_of(session, [row.id for row in rows])
-    return _Plan(rows=rows, facts=facts, participants=participants)
-
-
-async def _enrollment_conflicts(
-    session: AsyncSession,
-    group: ClassGroup,
-    plan: _Plan,
-    *,
-    student_id: uuid.UUID,
-    active_count: int,
-    zone: str,
-) -> list[Conflict]:
-    """E1 step 9: the group-level conflict first, then each checked
-    occurrence's (by start, then the rule order)."""
-    conflicts = group_capacity_conflicts(
-        active_count + 1, max_students=group.max_students, group_id=group.id
-    )
-    for row in plan.rows:
-        if not is_checked(row.state) or student_id in plan.participants[row.id]:
-            continue
-        fact = plan.facts[row.id]
-        found: list[Conflict] = []
-        overlapping = await student_overlap_ids(
-            session,
-            student_id,
-            row.starts_at,
-            row.ends_at,
-            zone=zone,
-            exclude_session_ids=frozenset({row.id}),
-        )
-        if overlapping:
-            found.append(
-                Conflict(
-                    STUDENT_OVERLAP,
-                    {
-                        "student_id": str(student_id),
-                        "class_session_ids": overlapping,
-                        "occurrence_start": _iso_z(row.starts_at),
-                        "date": fact.local_date.isoformat(),
-                    },
-                )
-            )
-        found += room_capacity_conflicts([(fact, len(plan.participants[row.id]) + 1)])
-        conflicts += sort_conflicts(found)
-    return conflicts
-
-
 async def _check_enrolled_student(session: AsyncSession, student_id: uuid.UUID) -> None:
     errors = await _check_students(session, [student_id], ["body", "student_id"])
     if errors:
@@ -625,12 +457,13 @@ async def enroll_in_group(
     series participants and the B3 occurrences' participants → the
     override row and ``scheduling.enrollment_override``."""
     student_id = body.student_id
+    owner = SeriesOwner.group(group_id)
     await lock_students(session, [student_id])
     zone = await administration.get_center_time_zone(session, for_share=True)
     group = await lock_group_or_404(session, group_id)
     now = clock.now()
-    producing = await _lock_producing_series(
-        session, group.id, now.astimezone(ZoneInfo(zone)).date()
+    producing = await lock_producing_series(
+        session, owner, now.astimezone(ZoneInfo(zone)).date()
     )
     if not producing:
         raise GroupEndedError()
@@ -640,9 +473,14 @@ async def enroll_in_group(
     if current is not None:
         raise AlreadyEnrolledError(str(current.id))
 
-    plan = await _plan(session, group.id, now, zone)
-    conflicts = await _enrollment_conflicts(
-        session, group, plan, student_id=student_id, active_count=len(active), zone=zone
+    series_ids = [series.id for series in producing]
+    conflicts = await plan_series_participant_add(
+        session,
+        series_ids=series_ids,
+        student_id=student_id,
+        max_students=group.max_students,
+        active_count=len(active),
+        now=now,
     )
     decision = evaluate_override(conflicts, body.override)
     if not decision.allowed:
@@ -662,17 +500,9 @@ async def enroll_in_group(
         if GROUP_ENROLLMENT_ACTIVE_UNIQUE in str(exc.orig):
             raise AlreadyEnrolledError(None) from None
         raise
-    session.add_all(
-        ClassSeriesParticipant(class_series_id=series.id, student_id=student_id)
-        for series in producing
+    await add_series_participant(
+        session, series_ids=series_ids, student_id=student_id, now=now, owner=owner
     )
-    joined = [row for row in plan.rows if student_id not in plan.participants[row.id]]
-    session.add_all(
-        ClassSessionParticipant(class_session_id=row.id, student_id=student_id)
-        for row in joined
-    )
-    await session.flush()
-    await _bump(session, [*producing, *joined])
     if decision.overridden:
         assert body.override is not None  # noqa: S101 - overridden needs one
         await record_enrollment_override(
@@ -714,11 +544,12 @@ async def withdraw_from_group(
     found = await session.get(GroupEnrollment, enrollment_id)
     if found is not None and found.group_id == group_id:
         await lock_students(session, [found.student_id])
+    owner = SeriesOwner.group(group_id)
     zone = await administration.get_center_time_zone(session, for_share=True)
     group = await lock_group_or_404(session, group_id)
     now = clock.now()
-    producing = await _lock_producing_series(
-        session, group.id, now.astimezone(ZoneInfo(zone)).date()
+    producing = await lock_producing_series(
+        session, owner, now.astimezone(ZoneInfo(zone)).date()
     )
     enrollment = await session.scalar(
         select(GroupEnrollment)
@@ -737,38 +568,13 @@ async def withdraw_from_group(
     enrollment.withdrawal_reason = body.reason
     await session.flush()
 
-    series_ids = [series.id for series in producing]
-    left_series: list[ClassSeries] = []
-    if series_ids:
-        members = list(
-            await session.scalars(
-                select(ClassSeriesParticipant).where(
-                    ClassSeriesParticipant.class_series_id.in_(series_ids),
-                    ClassSeriesParticipant.student_id == student_id,
-                )
-            )
-        )
-        by_id = {series.id: series for series in producing}
-        left_series = [by_id[member.class_series_id] for member in members]
-        for member in members:
-            await session.delete(member)
-    rows = await _lock_affected_rows(session, group.id, now)
-    left_rows: list[ClassSession] = []
-    if rows:
-        by_row = {row.id: row for row in rows}
-        participants = list(
-            await session.scalars(
-                select(ClassSessionParticipant).where(
-                    ClassSessionParticipant.class_session_id.in_(list(by_row)),
-                    ClassSessionParticipant.student_id == student_id,
-                )
-            )
-        )
-        left_rows = [by_row[p.class_session_id] for p in participants]
-        for participant in participants:
-            await session.delete(participant)
-    await session.flush()
-    await _bump(session, [*left_series, *left_rows])
+    await remove_series_participant(
+        session,
+        series_ids=[series.id for series in producing],
+        student_id=student_id,
+        now=now,
+        owner=owner,
+    )
     return GroupEnrollmentChange(
         enrollment_id=enrollment.id,
         group_id=group.id,

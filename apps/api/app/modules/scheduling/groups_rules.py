@@ -75,10 +75,23 @@ class GroupOccurrence:
 
 
 def group_capacity_conflicts(
-    active_count_after: int, *, max_students: int, group_id: uuid.UUID
+    active_count_after: int,
+    *,
+    max_students: int,
+    group_id: uuid.UUID | None = None,
+    cohort_id: uuid.UUID | None = None,
 ) -> list[Conflict]:
     """One soft ``group_capacity_exceeded`` when ``active_count_after`` is
-    above ``max_students`` (B1), else nothing."""
+    above ``max_students`` (B1), else nothing. Its ``details`` name the
+    group (``group_id``) or, for a cohort enrollment (#66), the cohort
+    (``cohort_id``): exactly one of them."""
+    if (group_id is None) == (cohort_id is None):
+        raise ValueError("give exactly one of group_id and cohort_id")
+    owner = (
+        {"group_id": str(group_id)}
+        if group_id is not None
+        else {"cohort_id": str(cohort_id)}
+    )
     codes = capacity_violations(
         SessionKind.GROUP,
         active_count_after,
@@ -91,7 +104,7 @@ def group_capacity_conflicts(
         Conflict(
             GROUP_CAPACITY_EXCEEDED,
             {
-                "group_id": str(group_id),
+                **owner,
                 "max_students": max_students,
                 "enrolled_count": active_count_after,
             },

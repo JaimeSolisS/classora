@@ -23,6 +23,16 @@
   and a maximum size. Its sessions are the occurrences of a ``course``
   series in the scheduling module (``class_series.cohort_id``), which keeps
   the tutor, the room and the timing.
+- ``cohort_enrollments`` (#66 A2): one row per enrollment **period** of a
+  student in a cohort (the #56 ``group_enrollments`` shape): who enrolled
+  them and when; once, who withdrew them, when and why. Re-enrolling after
+  a withdrawal is a new row, so M6-07 bills each period. The partial unique
+  index ``uq_cohort_enrollments_active`` allows one active period per
+  cohort and student. The trigger ``cohort_enrollments_write_once``
+  (created by the migration) rejects every ``DELETE`` and every ``UPDATE``
+  but the one-time withdrawal (SQLSTATE 42501). The participant rows stay
+  in ``scheduling`` (``class_series_participants``,
+  ``class_session_participants``).
 
 Every table is :class:`~app.core.audit.Audited`; the snapshot's ``content``
 is left out of its audit event (the row itself is the immutable record).
@@ -31,11 +41,13 @@ the snapshot); every foreign key is ``ON DELETE RESTRICT``.
 """
 
 import uuid
+from datetime import datetime
 from typing import Any, ClassVar
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -79,6 +91,9 @@ COHORT_MAX_STUDENTS_MAX = 500
 """The #39 / #56 range: a cohort has 1 to 500 students at most."""
 COHORT_NAME_INDEX = "uq_course_cohorts_name_ci"
 COHORT_SNAPSHOT_FK = "fk_course_cohorts_template_snapshot_id_snapshots"
+COHORT_ENROLLMENT_ACTIVE_UNIQUE = "uq_cohort_enrollments_active"
+COHORT_ENROLLMENTS_WRITE_ONCE_TRIGGER = "cohort_enrollments_write_once"
+WITHDRAWAL_REASON_MAX_LENGTH = 1000
 
 
 def _text_checks(column: str) -> tuple[CheckConstraint, CheckConstraint]:
@@ -281,3 +296,58 @@ class CourseCohort(Audited, VersionedMixin, Model):
         UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), index=True
     )
     max_students: Mapped[int] = mapped_column(SmallInteger)
+
+
+class CohortEnrollment(Audited, VersionedMixin, Model):
+    """One enrollment period of a student in a cohort (#66 A2; spec §12
+    ``CohortEnrollment``). See the module docstring; the write-once trigger
+    is created by the migration."""
+
+    __tablename__ = "cohort_enrollments"
+    __table_args__ = (
+        CheckConstraint(
+            "withdrawn_at IS NULL OR withdrawn_at >= enrolled_at",
+            name="withdrawn_after_enrolled",
+        ),
+        CheckConstraint(
+            "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL)",
+            name="withdrawn_together",
+        ),
+        CheckConstraint(
+            "withdrawal_reason IS NULL OR (withdrawn_at IS NOT NULL"
+            " AND withdrawal_reason = btrim(withdrawal_reason)"
+            " AND withdrawal_reason <> '')",
+            name="withdrawal_reason_valid",
+        ),
+        Index(
+            COHORT_ENROLLMENT_ACTIVE_UNIQUE,
+            "cohort_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text("withdrawn_at IS NULL"),
+        ),
+    )
+
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_cohorts.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    enrolled_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    withdrawn_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    withdrawn_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    withdrawal_reason: Mapped[str | None] = mapped_column(
+        String(WITHDRAWAL_REASON_MAX_LENGTH), nullable=True
+    )

@@ -603,11 +603,10 @@ json = {}
 [[route]]
 method = "GET"
 path = "/api/v1/cohorts"
-access = "permission"
-permission = "course.view"
-allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
-# #65 F5/H2: staff only in #65 (#66 adds enrolled students and guardians,
-# #67 tutors).
+access = "authenticated"
+# #66 G2/I2: record policy; course.view holders see every cohort, an
+# enrolled student and their linked guardians only their cohorts (no
+# enrolled count), anyone else an empty list (200). #67 adds tutors.
 
 [[route]]
 method = "POST"
@@ -623,11 +622,10 @@ json = { name = "Matriz 65", template_id = "00000000-0000-4000-8000-000000000065
 [[route]]
 method = "GET"
 path = "/api/v1/cohorts/{cohort_id}"
-access = "permission"
-permission = "course.view"
-allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
-# #65 H2: the placeholder id is no cohort: 404 (cohort_not_found) for the
-# allowed roles.
+access = "authenticated"
+# #66 G3/I2: the placeholder id is no cohort: 404 (cohort_not_found) for
+# every role. The record policy (404 for a hidden cohort) is tested in
+# tests/integration/test_cohort_reads_family.py.
 
 [[route]]
 method = "PATCH"
@@ -640,13 +638,33 @@ allow = ["owner", "administrator"]
 json = { version = 1, max_students = 8 }
 
 [[route]]
+method = "POST"
+path = "/api/v1/cohorts/{cohort_id}/enrollments"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #66 I2: a valid body; the placeholder id is no cohort: 404 for every
+# allowed role ("not denied"). The other cases are tested in
+# tests/integration/test_cohort_enrollment.py.
+json = { student_id = "00000000-0000-4000-8000-000000000066" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #66 I2: a valid body; the placeholder ids are no cohort: 404 for every
+# allowed role ("not denied").
+json = { version = 1 }
+
+[[route]]
 method = "GET"
 path = "/api/v1/cohorts/{cohort_id}/sessions"
-access = "permission"
-permission = "course.view"
-allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
-# #65 H2: the matrix sends no query parameters: the missing from/to gets 422
-# for the allowed roles.
+access = "authenticated"
+# #66 G4/I2: the matrix sends no query parameters: the missing from/to gets
+# 422 for every role. The record policy is tested in
+# tests/integration/test_cohort_reads_family.py.
 
 # Course templates (#64, owner decision E3 (a)).
 [[route]]
