@@ -25,8 +25,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import { SessionDialog } from '@/features/calendar/SessionDialog';
 import { item } from '@/features/calendar/fixtures';
@@ -265,12 +266,8 @@ async function fillSeriesForm() {
 /** The lazy route needs a few more turns to load and render. */
 async function renderSeries(): Promise<RenderedApp> {
   const rendered = await renderApp(`/schedule/series/${SERIES_ID}`);
-  for (let i = 0; i < 40; i += 1) {
-    if (rendered.container.querySelector('main h1')) {
-      break;
-    }
-    await settle();
-  }
+  // The route is code-split: wait for its heading (#260).
+  await settleUntil(() => rendered.container.querySelector('main h1'));
   await settle();
   return rendered;
 }

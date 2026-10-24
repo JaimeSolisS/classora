@@ -26,8 +26,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import { ALGEBRA, PHYSICS_LAB, summaryOf } from '../fixtures';
 import {
@@ -176,12 +177,7 @@ function invalid(errors: { path: unknown[]; code: string }[]): Response {
 /** The lazy routes need a few more turns to load and render. */
 async function open(path: string): Promise<RenderedApp> {
   const rendered = await renderApp(path);
-  for (let i = 0; i < 40; i += 1) {
-    if (rendered.container.querySelector('main h1')) {
-      break;
-    }
-    await settle();
-  }
+  await settleUntil(() => rendered.container.querySelector('main h1'));
   await settle();
   return rendered;
 }

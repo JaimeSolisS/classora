@@ -26,8 +26,9 @@ import { alerts, click, openDialog } from '@/test/dom';
 import {
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import { CLASSROOMS, SOFT_CONFLICTS } from '../create/fixtures';
 import {
@@ -147,19 +148,16 @@ const buttonByText = (root: ParentNode, text: string) =>
 /** The lazy route needs a few more turns to load, then its queries. */
 async function open(path: string): Promise<RenderedApp> {
   const rendered = await renderApp(path);
-  for (let i = 0; i < 60; i += 1) {
+  await settleUntil(() => {
     const page = rendered.container.querySelector('main');
-    const ready =
+    return (
       page?.querySelector('h1') &&
       !page.querySelector('[aria-busy="true"]') &&
       (page.textContent?.includes('Decide') ||
         page.textContent?.includes('Decision') ||
-        page.querySelector('table'));
-    if (ready) {
-      break;
-    }
-    await settle();
-  }
+        page.querySelector('table'))
+    );
+  });
   await settle();
   return rendered;
 }

@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, type RouteObject } from 'react-router';
+import { expect, vi } from 'vitest';
 import App from '@/App';
 import { createQueryClient } from '@/app/queryClient';
 import { routes } from '@/app/router';
@@ -70,6 +71,24 @@ export async function settle(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   }
+}
+
+/**
+ * Settles until `ready()` is truthy, for at most `timeout` ms (#260): a
+ * code-split route or a chain of queries needs a varying number of turns,
+ * so tests wait on the condition, never on a tick count.
+ */
+export async function settleUntil(
+  ready: () => unknown,
+  timeout = 10_000,
+): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      await settle();
+      expect(Boolean(ready()), 'settleUntil: condition not met').toBe(true);
+    },
+    { timeout },
+  );
 }
 
 /** Mounts the app at `path` and lets it settle. */

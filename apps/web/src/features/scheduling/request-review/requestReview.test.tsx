@@ -28,8 +28,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import {
   CLASSROOMS,
@@ -169,21 +170,18 @@ const tutorSelect = () =>
  * request, then the tutors and classrooms of the confirm panel). */
 async function open(path: string): Promise<RenderedApp> {
   const rendered = await renderApp(path);
-  for (let i = 0; i < 60; i += 1) {
+  await settleUntil(() => {
     const page = rendered.container.querySelector('main');
-    const ready =
+    return (
       page?.querySelector('h1') &&
       !page.querySelector('[aria-busy="true"]') &&
       (page.querySelector('form select') ||
         page.textContent?.includes('Decision') ||
         page.textContent?.includes('can no longer be confirmed') ||
         page.querySelector('table') ||
-        page.querySelector('ul'));
-    if (ready) {
-      break;
-    }
-    await settle();
-  }
+        page.querySelector('ul'))
+    );
+  });
   await settle();
   return rendered;
 }

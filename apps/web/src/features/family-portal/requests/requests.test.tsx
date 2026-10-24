@@ -15,8 +15,9 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
-  settle,
   type RenderedApp,
+  settle,
+  settleUntil,
 } from '@/test/render-app';
 import {
   CONFIRMED_REQUEST,
@@ -96,16 +97,12 @@ function stub(routes: Record<string, Responder | Responder[]> = {}): ApiStub {
 /** The lazy routes need a few more turns to load, then their queries. */
 async function open(path: string): Promise<RenderedApp> {
   const rendered = await renderApp(path);
-  for (let i = 0; i < 40; i += 1) {
+  await settleUntil(() => {
     const page = rendered.container.querySelector('main');
-    if (
-      page?.querySelector('h1') &&
-      !page.querySelector('[aria-busy="true"]')
-    ) {
-      break;
-    }
-    await settle();
-  }
+    return (
+      page?.querySelector('h1') && !page.querySelector('[aria-busy="true"]')
+    );
+  });
   await settle();
   return rendered;
 }
