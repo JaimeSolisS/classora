@@ -265,12 +265,15 @@ async function fillSeriesForm() {
 /** The lazy route needs a few more turns to load and render. */
 async function renderSeries(): Promise<RenderedApp> {
   const rendered = await renderApp(`/schedule/series/${SERIES_ID}`);
-  for (let i = 0; i < 40; i += 1) {
-    if (rendered.container.querySelector('main h1')) {
-      break;
-    }
-    await settle();
-  }
+  // The route is code-split: wait for its heading, not for a tick count
+  // (a cold import on a loaded CPU outlasted 40 settles, #260).
+  await vi.waitFor(
+    async () => {
+      await settle();
+      expect(rendered.container.querySelector('main h1')).not.toBeNull();
+    },
+    { timeout: 10_000 },
+  );
   await settle();
   return rendered;
 }
