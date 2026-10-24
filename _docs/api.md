@@ -3298,8 +3298,8 @@ enrolled student as a participant.
 | `POST /api/v1/groups/{group_id}/enrollments` | `require("schedule.manage")`; an `override` also needs `schedule.override` | `{student_id, override?: {codes, reason}}`; `201` with `GroupEnrollmentItem` plus `warnings` (`[]`). |
 | `POST /api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw` | `require("schedule.manage")` | `{version, reason?}`; `200` with `GroupEnrollmentItem`. |
 | `GET /api/v1/groups` | `authenticated()` + record policy | `?q` (name contains, ignoring case), `?subject_id`, `?status=active\|ended\|all` (default `active`: a series still producing sessions), cursor pagination (`limit` 1–100, default 25; by name, then id). |
-| `GET /api/v1/groups/{group_id}` | `authenticated()` + record policy | `GroupDetail`; hidden or unknown is `404 group_not_found`. At most 8 statements. |
-| `GET /api/v1/groups/{group_id}/sessions?from=…&to=…` | `authenticated()` + record policy | The group's sessions overlapping `[from, to)` by start, the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days). At most 6 statements. |
+| `GET /api/v1/groups/{group_id}` | `authenticated()` + record policy | `GroupDetail`; hidden or unknown is `404 group_not_found`. At most 8 statements for `schedule.view` holders, 9 for anyone else (the family facts, M4-22b). |
+| `GET /api/v1/groups/{group_id}/sessions?from=…&to=…` | `authenticated()` + record policy | The group's sessions overlapping `[from, to)` by start, the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days). At most 6 statements for `schedule.view` holders, 7 for anyone else. |
 
 **Create body** (unknown fields are `422`, `rrule` included):
 
@@ -3419,9 +3419,11 @@ coordinator, Finance) see every group, its roster and every session. A
 enrollment, with `enrolled_count` and `roster` `null`, and only the
 sessions where their profile is a participant in `confirmed` or
 `completed` (so nothing before their enrollment or after their withdrawal;
-`next_occurrences` likewise). Anyone else (tutors, guardians, a student
-account without a profile) gets an empty list and `404 group_not_found`.
-M4-22 extends this to linked guardians and assigned tutors.
+`next_occurrences` likewise). Since M4-22b (#246) the same record policy
+as cohorts' covers students, guardians and tutors: see **Groups and cohorts
+for tutors, students and guardians** under Course cohorts. Anyone else (a
+student account without a profile, an unlinked guardian) gets an empty
+list and `404 group_not_found`.
 
 **The billing hook (M6-07):** `group_enrollments` keeps one row per
 enrollment period (`enrolled_at`/`_by`, then a write-once
@@ -3462,8 +3464,10 @@ M4-21b (#245). The web pages are M4-20b (#243).
 
 Since M4-21 the cohort reads have a record policy ("Who sees what",
 below): `course.view` holders see everything, enrolled students and their
-linked guardians their own cohorts; M4-22 adds tutors, who already see
-their offers and sessions.
+linked guardians their own cohorts; M4-22b (#246) adds tutors and the
+adult-consent rule for guardians. The detail takes at most 9 statements for
+`course.view` holders and 10 for anyone else, the list at most 5 and 6, the
+sessions read at most 8 (the family facts, M4-22b A6).
 
 **The create body** (unknown fields `422`): `{name, template_id,
 subject_id, max_students, tutor_user_id?, respond_by?, classroom_id?,
@@ -3659,21 +3663,23 @@ withdrawal_reason, overridden, version}`.
 Administrator, Academic Coordinator, Finance) see every cohort, its roster
 and every session. For anyone else the **visible students** are their own
 student profile (`student` role) and the students linked to their
-**active** guardian profile (`guardian` role; no academic-consent gate:
-spec §2 lists scheduling apart from academic records), the union for both
-roles. They see only the cohorts where a visible student has an **active**
-enrollment (a list filters, a detail or sessions read is `404
+**active** guardian profile (`guardian` role) who are minors, or adults who
+gave that guardian the `guardian_academic_access` consent (M4-22b E1, the
+M4-22 rule of the schedules; until M4-22b the link alone was enough), the
+union for both roles. They see only the cohorts where a visible student has
+an **active** enrollment (a list filters, a detail or sessions read is `404
 cohort_not_found`, never `403`), without `roster`, `enrolled_count`, the
 series' `assignment` or the list's `assignment_status`, the tutor only once
-they accepted the series, the series' participants only among their own
-students, `next_occurrences` and the list's `next_starts_at` only from
-their students' `confirmed` sessions, and of the sessions only the
-`confirmed` and `completed` ones a visible student takes part in, each
-with `students` (only theirs). So sessions before an enrollment or after a
-withdrawal are left out, a withdrawn student loses the cohort, and a
-removed link or a deactivated guardian profile applies on the next
-request. Tutors (until M4-22) and accounts without a profile get an empty
-list and `404`.
+they accepted the series and by `display_name` only, the series'
+participants only among their own students, `next_occurrences` only from
+their students' family-visible sessions (never a completed one) and the
+list's `next_starts_at` from their `confirmed` ones, and of the sessions
+only the family-visible ones a visible student takes part in, each with
+`students` (only theirs) and the tutor `{display_name}`. So sessions before
+an enrollment or after a withdrawal are left out, a withdrawn student loses
+the cohort, and a removed link, a revoked consent or a deactivated guardian
+profile applies on the next request. Tutors: see below. Accounts without a
+profile get an empty list and `404`.
 
 **The billing hook (M6-07, M6-16):** `enroll_in_cohort(uow, …)` and
 `withdraw_from_cohort(uow, …)` return a frozen `CohortEnrollmentChange
@@ -3690,6 +3696,55 @@ bus.
 **Price (E6).** A cohort has no price yet: M6-04 / M6-07 add the
 `course_cohorts` price link (a nullable foreign key to the price catalog)
 when the catalog exists.
+
+#### Groups and cohorts for tutors, students and guardians
+
+Implemented by M4-22b (#246; spec §2, §15 W1.4; ADR-0005 D2, D9; ADR-0007
+D17) in `apps/api/app/modules/scheduling/` (`permissions.py`: the pure A1
+and A2 rules and `RecordViewer`; `record_viewer.py`: the facts and the SQL
+of "taught"; `group_reads.py`; `course_series.py`) and
+`app/workflows/cohorts.py`. No permission changes: the reads stay
+`authenticated()` with a record policy.
+
+- **Visible students** (students and guardians): the caller's own profile
+  and the linked students of their active guardian profile that are minors
+  today in the center zone or adults with a `guardian_academic_access`
+  consent for that guardian. The facts (one statement for both roles, plus
+  the center zone only when a linked student lacks the consent) are read
+  on every request. These routes are not keyed by a student, so what is
+  reachable only through a non-consenting adult is **hidden** (filtered out
+  of the lists, `404` on a detail or sessions read), never `403
+  student_consent_required` (that stays on `GET
+  /api/v1/students/{student_id}/schedule`).
+- **Taught** (tutors): a producing `group` or `course` series (no last
+  occurrence, or one on or after its local today) whose **current**
+  `tutor_user_id` is the caller with a `pending` or `accepted` assignment.
+  A pending offer is enough (the tutor can judge it); a decline or a
+  withdrawal hides the record again. A substitute on one occurrence
+  doesn't get the group or cohort (they see that session on My schedule).
+- A group or cohort is visible when a visible student has an **active**
+  enrollment or it is taught by the caller; several roles see the union. A
+  record the caller teaches is shown in the tutor shape, any other in the
+  family shape.
+- **Family shape:** as above for cohorts; for groups `roster` and
+  `enrolled_count` are `null`, the series' and the list's `tutor` is
+  `{display_name}` once they accepted (else `null`), `next_occurrences` are
+  the family-visible ones (no completed) a visible student takes part in,
+  and the session items carry `students` (only the caller's) and `tutor
+  {display_name}`.
+- **Tutor shape:** no staff `roster` or `enrolled_count` (`null` for
+  groups, absent for cohorts), a closed `tutor_roster: [{student {id,
+  display_name}}]` with the **active** enrollments by name (never who
+  enrolled them or a withdrawal), the series without `assignment` (the
+  offer is on `/api/v1/assignment-offers`), `next_occurrences` the
+  tutor-visible ones whose current tutor is the caller (no completed), the
+  syllabus for cohorts, list items without `assignment_status`, and the
+  session items whose current tutor is the caller in tutor-visible states,
+  each with `participants: [{student_id, display_name}]`.
+- The states follow the schedules' rule (M4-22 A3): families see
+  `confirmed`, `completed`, and `cancelled` / `skipped_closure` only when
+  the session was once confirmed (`first_confirmed_at`); tutors also
+  `offered`.
 
 ### Session requests
 

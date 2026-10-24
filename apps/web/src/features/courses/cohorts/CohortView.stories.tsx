@@ -7,11 +7,15 @@ import { StoryRouter } from '@/test/StoryRouter';
 import { CohortSessionsSection } from './CohortSessionsSection';
 import { CohortView, type CohortViewProps } from './CohortView';
 import { EditCohortDialog } from './EditCohortDialog';
+import { TutorRosterSection } from '@/features/groups/TutorRosterSection';
 import {
   COHORT,
   ENDED_COHORT,
+  FAMILY_COHORT,
+  FAMILY_SESSIONS,
   PENDING_COHORT,
   SESSIONS,
+  TUTOR_COHORT,
   TUTORED_COHORT,
 } from './fixtures';
 import { ApiError } from '@/app/api';
@@ -19,7 +23,10 @@ import { ApiError } from '@/app/api';
 // The cohort page (#243 E3): with a tutor (a room that limits the
 // capacity), with a pending offer, without a tutor and the offer panel
 // open (also at 320 px), an ended cohort, and the edit dialog after a
-// version conflict. No request; axe runs in light and dark.
+// version conflict. #246 B6: a student (the syllabus, sessions linked to
+// "My schedule"), a guardian of two (the "Student" column), the cohort's
+// tutor ("Students" by name), at 320 px, and no sessions. No request; axe
+// runs in light and dark.
 
 const ZONE = 'America/Mexico_City';
 
@@ -177,5 +184,111 @@ export const EditVersionConflict: Story = {
     await expect(
       dialog.getByText(i18n.t('courses.cohorts.edit.versionConflict')),
     ).toBeVisible();
+  },
+};
+
+function familySessions(items: typeof FAMILY_SESSIONS) {
+  return (
+    <CohortSessionsSection
+      windowStart="2031-01-04"
+      state={{ status: 'ready', items }}
+      timeZone={ZONE}
+      linkSessions={false}
+      myScheduleLinks
+      onPrevious={fn()}
+      onNext={fn()}
+    />
+  );
+}
+
+const ONE_CHILD = FAMILY_SESSIONS.map((item) => ({
+  ...item,
+  students: item.students!.slice(0, 1),
+}));
+
+export const Student: Story = {
+  args: {
+    cohort: FAMILY_COHORT,
+    canManage: false,
+    linkTemplate: false,
+    linkSessions: false,
+    myScheduleLinks: true,
+    children: familySessions(ONE_CHILD),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('heading', {
+        name: i18n.t('courses.cohorts.syllabus.heading'),
+      }),
+    ).toBeVisible();
+    await expect(canvas.queryAllByRole('button')).toHaveLength(2);
+    await expect(
+      canvas.queryByRole('columnheader', {
+        name: i18n.t('courses.cohorts.sessions.students'),
+      }),
+    ).toBeNull();
+    await expect(
+      canvas.getAllByText(i18n.t('mySchedule.states.skipped_closure'))[0],
+    ).toBeVisible();
+  },
+};
+
+export const StudentNarrow: Story = {
+  ...Student,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(
+      canvasElement.clientWidth,
+    );
+  },
+};
+
+export const GuardianOfTwo: Story = {
+  args: {
+    ...Student.args,
+    children: familySessions(FAMILY_SESSIONS),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('columnheader', {
+        name: i18n.t('courses.cohorts.sessions.students'),
+      }),
+    ).toBeVisible();
+    await expect(canvas.getByText('Ana López, Bruno Díaz')).toBeVisible();
+  },
+};
+
+export const Tutor: Story = {
+  args: {
+    ...Student.args,
+    cohort: TUTOR_COHORT,
+    children: (
+      <>
+        {familySessions([])}
+        <TutorRosterSection roster={TUTOR_COHORT.tutor_roster ?? []} />
+      </>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const students = canvas.getByRole('list', {
+      name: i18n.t('groups.tutorRoster.heading'),
+    });
+    await expect(within(students).getAllByRole('listitem')).toHaveLength(2);
+    await expect(
+      canvas.getByText(i18n.t('courses.cohorts.sessions.empty')),
+    ).toBeVisible();
+  },
+};
+
+export const TutorNarrow: Story = {
+  ...Tutor,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(
+      canvasElement.clientWidth,
+    );
   },
 };

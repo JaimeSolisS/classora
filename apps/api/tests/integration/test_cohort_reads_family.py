@@ -8,6 +8,8 @@ week 4 on, L (own login); W (own login) enrolled and withdrew. Cohort B has
 T (own login). The guardians: GM of M, GA of AD, G2 of M and K, G3 of M and
 N (N not enrolled), GR of M (the link is removed), GD of M (the profile is
 deactivated). A tutor and a student account without a profile see nothing.
+GA sees nothing either since #246 E1 (an adult's guardian needs the
+consent).
 
 A's rows: 0 completed, 1 confirmed, 2 offered, 3 cancelled, 4 conflict, 5
 skipped_closure, 6 unassigned, 7-9 confirmed.
@@ -15,7 +17,7 @@ skipped_closure, 6 unassigned, 7-9 confirmed.
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -89,10 +91,13 @@ def client(module_seeded_url: str) -> Any:
         yield test_client
 
 
-def _student(url: str, *, adult: bool = False) -> uuid.UUID:
+def _student(url: str, *, minor_on: date, adult: bool = False) -> uuid.UUID:
+    """A student; a minor on ``minor_on`` (the timeline's year, #246 E1 asks
+    for the age) unless ``adult``."""
+
     async def _make(session: Any) -> uuid.UUID:
-        values = {"birthdate": ADULT_BIRTHDATE} if adult else {}
-        return (await persist_student(session, contacts=0, **values)).id
+        birthdate = ADULT_BIRTHDATE if adult else date(minor_on.year - 10, 1, 1)
+        return (await persist_student(session, contacts=0, birthdate=birthdate)).id
 
     return in_uow(url, _make)
 
@@ -126,10 +131,10 @@ def world(module_seeded_url: str, client: Any) -> World:
     for name in ("S", "T", "W", "L"):
         users[name] = create_user(url, roles=(STUDENT,))
         students[name] = adult_profile_for(url, users[name].id)
-    students["M"] = _student(url)
-    students["AD"] = _student(url, adult=True)
-    students["K"] = _student(url)
-    students["N"] = _student(url)
+    students["M"] = _student(url, minor_on=tl.monday)
+    students["AD"] = _student(url, minor_on=tl.monday, adult=True)
+    students["K"] = _student(url, minor_on=tl.monday)
+    students["N"] = _student(url, minor_on=tl.monday)
     for name, linked in (
         ("GM", ["M"]),
         ("GA", ["AD"]),
@@ -330,19 +335,27 @@ def test_a_late_enrollee_sees_only_the_sessions_after_their_enrollment(client, w
     assert found.json()["items"]
 
 
-@pytest.mark.parametrize(("name", "child"), [("GM", "M"), ("GA", "AD")])
-def test_the_guardian_of_a_minor_and_of_an_adult_without_consent(
-    client, world, name, child
-):
-    listed, detail, found = reads(client, world, name)
+def test_the_guardian_of_a_minor(client, world):
+    listed, detail, found = reads(client, world, "GM")
 
     assert [i["id"] for i in listed.json()["items"]] == [world.a["id"]]
-    _assert_family_view(world, listed, detail, found, sees=[child])
+    _assert_family_view(world, listed, detail, found, sees=["M"])
     items = found.json()["items"]
     assert [i["id"] for i in items] == family_rows(world)
     assert all(
-        [s["id"] for s in i["students"]] == [str(world.students[child])] for i in items
+        [s["id"] for s in i["students"]] == [str(world.students["M"])] for i in items
     )
+
+
+def test_the_guardian_of_an_adult_without_consent_sees_nothing(client, world):
+    """Changed by #246 E1 (was visible under #66 E4): a guardian of an adult
+    needs the adult's academic consent (the #67 E3 rule); the cohort is
+    hidden, as an unknown one."""
+    listed, detail, found = reads(client, world, "GA")
+
+    assert listed.json() == {"items": [], "next_cursor": None}
+    assert code_of(detail) == NOT_FOUND
+    assert code_of(found) == NOT_FOUND
 
 
 def test_a_guardian_with_two_children_in_the_cohort_sees_both(client, world):

@@ -14,6 +14,7 @@ import { toLocalDate } from '@/lib/time';
 import type { GroupDetail, GroupEnrollmentItem } from './api';
 import { EndedBadge, LINK_CLASS } from './GroupsTable';
 import { RosterSection } from './RosterSection';
+import { TutorRosterSection } from './TutorRosterSection';
 import {
   groupActions,
   isGroupEnded,
@@ -29,9 +30,11 @@ import {
 // M seats taken", and the room note when the room holds fewer), the next
 // sessions (state as text and an icon; a link to the session page), the
 // roster, and for schedule.manage holders "Enroll student" (not once
-// ended), "Withdraw" and "Edit". The student view never renders the
-// roster, the count or `next_occurrences`, even if a response carried them
-// (defence in depth): the page passes "My sessions" instead.
+// ended), "Withdraw" and "Edit". The student view (students, guardians and
+// tutors, #246 B1) never renders the roster, the count, `next_occurrences`
+// or any control, even if a response carried them (defence in depth): the
+// page passes "My sessions" instead, and the group's tutor also gets
+// "Students" (`tutor_roster`, names only); families get no roster at all.
 
 export interface GroupViewProps {
   group: GroupDetail;
@@ -75,6 +78,7 @@ export function GroupView({
   const series = group.current_series;
   const ended = isGroupEnded(group);
   const actions = groupActions(group, staff && canManage);
+  const tutorRoster = staff ? null : (group.tutor_roster ?? null);
 
   return (
     <div className="flex w-full max-w-4xl min-w-0 flex-col gap-8">
@@ -227,7 +231,10 @@ export function GroupView({
           />
         </>
       ) : (
-        mySessions
+        <>
+          {tutorRoster ? <TutorRosterSection roster={tutorRoster} /> : null}
+          {mySessions}
+        </>
       )}
     </div>
   );

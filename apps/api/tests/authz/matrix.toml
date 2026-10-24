@@ -606,8 +606,10 @@ method = "GET"
 path = "/api/v1/cohorts"
 access = "authenticated"
 # #66 G2/I2: record policy; course.view holders see every cohort, an
-# enrolled student and their linked guardians only their cohorts (no
-# enrolled count), anyone else an empty list (200). #67 adds tutors.
+# enrolled student and their linked guardians (an adult's only with the
+# consent, #246 E1) only their cohorts (no enrolled count), the tutor of a
+# producing series their cohorts (#246 A2), anyone else an empty list (200).
+# Tested in tests/integration/test_group_cohort_family_tutor_reads.py.
 
 [[route]]
 method = "POST"
@@ -626,7 +628,8 @@ path = "/api/v1/cohorts/{cohort_id}"
 access = "authenticated"
 # #66 G3/I2: the placeholder id is no cohort: 404 (cohort_not_found) for
 # every role. The record policy (404 for a hidden cohort) is tested in
-# tests/integration/test_cohort_reads_family.py.
+# tests/integration/test_cohort_reads_family.py and, for tutors and the
+# #246 consent rule, test_group_cohort_family_tutor_reads.py.
 
 [[route]]
 method = "PATCH"
@@ -665,7 +668,8 @@ path = "/api/v1/cohorts/{cohort_id}/sessions"
 access = "authenticated"
 # #66 G4/I2: the matrix sends no query parameters: the missing from/to gets
 # 422 for every role. The record policy is tested in
-# tests/integration/test_cohort_reads_family.py.
+# tests/integration/test_cohort_reads_family.py and
+# test_group_cohort_family_tutor_reads.py (#246).
 
 # Course templates (#64, owner decision E3 (a)).
 [[route]]
@@ -835,7 +839,9 @@ method = "GET"
 path = "/api/v1/groups"
 access = "authenticated"
 # #56 H1/I2: record policy; schedule.view holders see every group, a student
-# only their own (no enrolled count), anyone else an empty list (200).
+# or a linked guardian (an adult's only with the consent) only their own and
+# the tutor of a producing series theirs (#246; no enrolled count), anyone
+# else an empty list (200).
 
 [[route]]
 method = "POST"
@@ -853,7 +859,8 @@ method = "GET"
 path = "/api/v1/groups/{group_id}"
 access = "authenticated"
 # #56 H2/I2: record policy; the placeholder id is no group: 404
-# (group_not_found) for every role, never 403.
+# (group_not_found) for every role, never 403. Tutors and guardians: #246,
+# tests/integration/test_group_cohort_family_tutor_reads.py.
 
 [[route]]
 method = "PATCH"

@@ -600,8 +600,9 @@ describe('navigation and access (A2, A3)', () => {
     ['academic_coordinator', COORDINATOR, true],
     ['finance_staff', FINANCE, true],
     ['student', STUDENT, true],
-    ['tutor', TUTOR, false],
-    ['guardian', GUARDIAN, false],
+    // #246 B1: tutors and guardians too.
+    ['tutor', TUTOR, true],
+    ['guardian', GUARDIAN, true],
   ] as const)('shows "Groups" to a %s: %s', async (_role, as, shown) => {
     stub(as);
     app = await renderApp('/');
@@ -609,8 +610,8 @@ describe('navigation and access (A2, A3)', () => {
   });
 
   it.each([
-    ['tutor', TUTOR, `/groups`],
-    ['guardian', GUARDIAN, `/groups/${GROUP_ID}`],
+    ['tutor', TUTOR, '/groups/new'],
+    ['guardian', GUARDIAN, '/groups/new'],
     ['academic_coordinator', COORDINATOR, '/groups/new'],
     ['finance_staff', FINANCE, '/groups/new'],
     ['student', STUDENT, '/groups/new'],

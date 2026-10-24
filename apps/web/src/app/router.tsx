@@ -54,6 +54,7 @@ import { AppLayout } from './layout/AppLayout';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
+import { COHORTS_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 
@@ -317,8 +318,9 @@ export const routes: RouteObject[] = [
             element: <CourseTemplateEditPage />,
             handle: { permission: 'course.view' },
           },
-          // Course cohorts (#243 A2, code-split): course.view holders browse
-          // them; the create form needs schedule.manage.
+          // Course cohorts (#243 A2, #246 B2, code-split): course.view
+          // holders browse them, tutors, students and guardians their own
+          // (the API decides); the create form needs schedule.manage.
           {
             path: 'courses/cohorts',
             lazy: async () => ({
@@ -326,7 +328,7 @@ export const routes: RouteObject[] = [
                 await import('@/features/courses/cohorts/CohortsPage')
               ).CohortsPage,
             }),
-            handle: { permission: 'course.view' },
+            handle: COHORTS_ACCESS,
           },
           {
             path: 'courses/cohorts/new',
@@ -343,7 +345,7 @@ export const routes: RouteObject[] = [
               Component: (await import('@/features/courses/cohorts/CohortPage'))
                 .CohortPage,
             }),
-            handle: { permission: 'course.view' },
+            handle: COHORTS_ACCESS,
           },
           {
             path: 'settings',
@@ -355,9 +357,9 @@ export const routes: RouteObject[] = [
             element: <SchedulingPoliciesPage />,
             handle: { permission: 'settings.manage' },
           },
-          // Tutoring groups (#234 A3, code-split): staff with schedule.view,
-          // or students (their own groups; the API decides). The create form
-          // needs schedule.manage.
+          // Tutoring groups (#234 A3, #246 B1, code-split): staff with
+          // schedule.view, or students, guardians and tutors (their own
+          // groups; the API decides). The create form needs schedule.manage.
           {
             path: 'groups',
             lazy: async () => ({

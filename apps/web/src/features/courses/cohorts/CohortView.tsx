@@ -12,6 +12,7 @@ import {
 import { toLanguage } from '@/i18n/language';
 import { useFormatters } from '@/lib/formatters';
 import { toLocalDate } from '@/lib/time';
+import { myScheduleHref, sessionStateText } from '@/features/groups/nonStaff';
 import { CourseSyllabus } from '../CourseSyllabus';
 import type { CohortDetail } from './api';
 import { assignmentOf, cohortRule, roomLimited } from './rules';
@@ -26,6 +27,10 @@ import { assignmentOf, cohortRule, roomLimited } from './rules';
 // schedule.view holders), then `children` (the page's "Sessions" range
 // list and the #245 Students panel) and the syllabus from
 // the cohort's snapshot, never the live template.
+//
+// For a tutor, student or guardian (#246 B2, B4) the page passes
+// `myScheduleLinks`: each next session links to its day in "My schedule"
+// (List view) and its state uses the "My schedule" wording.
 
 export interface CohortViewProps {
   cohort: CohortDetail;
@@ -34,6 +39,8 @@ export interface CohortViewProps {
   /** Link the template (course.view) and the sessions (schedule.view). */
   linkTemplate: boolean;
   linkSessions: boolean;
+  /** Link the next sessions to "My schedule" instead (non-staff, B4). */
+  myScheduleLinks?: boolean;
   /** A just-made change, announced at the top. */
   notice?: string | null;
   /** Move the focus to the notice. */
@@ -51,6 +58,7 @@ export function CohortView({
   canManage,
   linkTemplate,
   linkSessions,
+  myScheduleLinks = false,
   notice,
   focusNotice = false,
   onEdit,
@@ -232,9 +240,13 @@ export function CohortView({
                   key={occurrence.id}
                   className="flex min-w-0 flex-col gap-1 rounded-md border border-border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
                 >
-                  {linkSessions ? (
+                  {linkSessions || myScheduleLinks ? (
                     <Link
-                      to={`/schedule/sessions/${encodeURIComponent(occurrence.id)}`}
+                      to={
+                        linkSessions
+                          ? `/schedule/sessions/${encodeURIComponent(occurrence.id)}`
+                          : myScheduleHref(occurrence.starts_at, timeZone)
+                      }
                       className={TEXT_LINK_CLASS}
                     >
                       {when}
@@ -244,7 +256,7 @@ export function CohortView({
                   )}
                   <span className="inline-flex items-center gap-1">
                     <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-                    {t(`scheduling.states.${occurrence.state}`)}
+                    {sessionStateText(occurrence.state, t, !myScheduleLinks)}
                   </span>
                 </li>
               );

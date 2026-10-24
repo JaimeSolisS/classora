@@ -62,7 +62,7 @@ from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select, tuple_
+from sqlalchemy import ColumnElement, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -159,6 +159,7 @@ from app.modules.courses.models import (
     SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_VERSION_UNIQUE,
     TEMPLATE_NAME_INDEX,
+    CohortEnrollment,
     CourseCohort,
     CourseTemplate,
     CourseTemplateAssessment,
@@ -1093,6 +1094,47 @@ async def get_cohort(
     return _cohort_record(cohort, snapshot, with_syllabus=True)
 
 
+async def get_visible_cohort(
+    session: AsyncSession,
+    cohort_id: uuid.UUID,
+    *,
+    visible_to: Collection[uuid.UUID],
+    taught: bool,
+) -> tuple[CohortRecord, tuple[uuid.UUID, ...]]:
+    """:func:`get_cohort` for a caller without ``course.view`` (#246 A3):
+    ``404 cohort_not_found`` unless ``taught`` (the caller teaches it) or
+    one of ``visible_to`` has an active enrollment in it. With ``taught``,
+    also the students of its active enrollments (the tutor's roster, E2).
+    One statement (none when neither can hold)."""
+    if not taught and not visible_to:
+        raise CohortNotFoundError()
+    active = (
+        select(func.array_agg(CohortEnrollment.student_id))
+        .where(
+            CohortEnrollment.cohort_id == CourseCohort.id,
+            CohortEnrollment.withdrawn_at.is_(None),
+        )
+        .correlate(CourseCohort)
+        .scalar_subquery()
+    )
+    query = (
+        select(CourseCohort, SnapshotRow, active)
+        .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+        .where(CourseCohort.id == cohort_id)
+        .execution_options(populate_existing=True)
+    )
+    if not taught:
+        query = query.where(has_active_enrollment(visible_to))
+    row = (await session.execute(query)).first()
+    if row is None:
+        raise CohortNotFoundError()
+    cohort, snapshot, students = row
+    return (
+        _cohort_record(cohort, snapshot, with_syllabus=True),
+        tuple(students or ()) if taught else (),
+    )
+
+
 def _cohort_cursor_position(cursor: str) -> tuple[str, uuid.UUID]:
     name, cohort_id = decode_cursor(cursor, types=(str, str))
     try:
@@ -1111,13 +1153,15 @@ async def list_cohorts(
     limit: int,
     cursor: str | None,
     visible_to: Collection[uuid.UUID] | None = None,
+    taught_ids: Collection[uuid.UUID] = (),
 ) -> tuple[list[CohortRecord], str | None]:
     """A cursor page of cohorts by ``lower(name)`` then id (the #56 groups
     keyset), without their syllabus, and the next cursor (``None`` on the
     last page): ``q`` (the name contains it, ignoring case),
     ``template_id``, ``subject_id`` and ``ids`` (only these; ``None``: any);
     ``visible_to`` (#66 G2): only the cohorts where one of these students
-    has an active enrollment (an empty collection: none). One statement. A
+    has an active enrollment (an empty collection: none), or (#246 A3) one
+    of ``taught_ids``, the cohorts the caller teaches. One statement. A
     malformed cursor is ``400 invalid_cursor``."""
     position = _cohort_cursor_position(cursor) if cursor is not None else None
     conditions: list[ColumnElement[bool]] = []
@@ -1133,9 +1177,14 @@ async def list_cohorts(
             return [], None
         conditions.append(CourseCohort.id.in_(set(ids)))
     if visible_to is not None:
-        if not visible_to:
+        if not visible_to and not taught_ids:
             return [], None
-        conditions.append(has_active_enrollment(visible_to))
+        shown: list[ColumnElement[bool]] = []
+        if visible_to:
+            shown.append(has_active_enrollment(visible_to))
+        if taught_ids:
+            shown.append(CourseCohort.id.in_(set(taught_ids)))
+        conditions.append(or_(*shown))
     if position is not None:
         conditions.append(tuple_(sort_name, CourseCohort.id) > tuple_(*position))
     rows = (

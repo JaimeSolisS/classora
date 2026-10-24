@@ -11061,7 +11061,7 @@
           "groups"
         ],
         "summary": "List Groups",
-        "description": "The groups you can see, by name: `active` (still producing\nsessions; the default), `ended` or `all`. Staff with schedule.view see\nevery group; a student only the groups they are enrolled in (without\nthe enrolled count); anyone else an empty list.",
+        "description": "The groups you can see, by name: `active` (still producing\nsessions; the default), `ended` or `all`. Staff with schedule.view see\nevery group; a student or their guardian only the groups the student is\nenrolled in (an adult's guardian only with the student's academic\nconsent), and a tutor the groups whose series they teach or were offered,\nwithout the enrolled count; anyone else an empty list.",
         "operationId": "list_groups_api_v1_groups_get",
         "parameters": [
           {
@@ -11202,7 +11202,7 @@
           "groups"
         ],
         "summary": "Get Group",
-        "description": "One group: its subject, maximum, effective capacity, current series\nand next sessions; for staff with schedule.view also the roster and the\nenrolled count. A student sees only a group they are enrolled in, and\nonly their own confirmed sessions.",
+        "description": "One group: its subject, maximum, effective capacity, current series\nand next sessions; for staff with schedule.view also the roster and the\nenrolled count. A student or their guardian sees only a group the\nstudent is enrolled in, with the tutor's name only and the student's\nown sessions; the group's tutor sees `tutor_roster` (the students'\nnames) and the sessions they teach.",
         "operationId": "get_group_api_v1_groups__group_id__get",
         "parameters": [
           {
@@ -11368,7 +11368,7 @@
           "groups"
         ],
         "summary": "List Group Sessions",
-        "description": "The group's sessions overlapping `[from, to)`, by start. Staff with\nschedule.view see every state; a student only the sessions they take\npart in that are `confirmed` or `completed`.",
+        "description": "The group's sessions overlapping `[from, to)`, by start. Staff with\nschedule.view see every state; a student or their guardian the\nsessions their students take part in that are confirmed or completed\n(or were confirmed before being cancelled or skipped), with `students`\n(only theirs); the group's tutor the sessions they teach, with\n`participants`.",
         "operationId": "list_group_sessions_api_v1_groups__group_id__sessions_get",
         "parameters": [
           {
@@ -11734,7 +11734,7 @@
           "cohorts"
         ],
         "summary": "List Cohorts",
-        "description": "The cohorts you can see by name, with their template, subject, tutor\nand dates (cursor pagination). Staff with course.view see every cohort\nand its enrolled count; an enrolled student or their guardian only the\ncohorts the student is enrolled in (without the count or the tutor\nassignment); anyone else an empty list.",
+        "description": "The cohorts you can see by name, with their template, subject, tutor\nand dates (cursor pagination). Staff with course.view see every cohort\nand its enrolled count; an enrolled student or their guardian only the\ncohorts the student is enrolled in (an adult's guardian only with the\nstudent's academic consent), and a tutor the cohorts whose series they\nteach or were offered, without the count or the tutor assignment;\nanyone else an empty list.",
         "operationId": "list_cohorts_api_v1_cohorts_get",
         "parameters": [
           {
@@ -11890,7 +11890,7 @@
           "cohorts"
         ],
         "summary": "Get Cohort",
-        "description": "One cohort: its template (as frozen), subject, maximum and effective\ncapacity, status and dates, current series and next sessions, and its\nsyllabus from the snapshot; for staff with course.view also the roster\nand the enrolled count. An enrolled student or their guardian sees only\na cohort the student is enrolled in, without the roster, the count or\nthe tutor assignment, and only the student's confirmed sessions.",
+        "description": "One cohort: its template (as frozen), subject, maximum and effective\ncapacity, status and dates, current series and next sessions, and its\nsyllabus from the snapshot; for staff with course.view also the roster\nand the enrolled count. An enrolled student or their guardian sees only\na cohort the student is enrolled in, without the roster, the count or\nthe tutor assignment (the tutor's name only), and only the student's\nsessions; the cohort's tutor sees `tutor_roster` (the students' names)\nand the sessions they teach.",
         "operationId": "get_cohort_api_v1_cohorts__cohort_id__get",
         "parameters": [
           {
@@ -12056,7 +12056,7 @@
           "cohorts"
         ],
         "summary": "List Cohort Sessions",
-        "description": "The cohort's sessions overlapping `[from, to)`, by start. Staff with\ncourse.view see every state; an enrolled student or their guardian only\nthe `confirmed` and `completed` sessions their students take part in,\neach with `students` (only theirs).",
+        "description": "The cohort's sessions overlapping `[from, to)`, by start. Staff with\ncourse.view see every state; an enrolled student or their guardian the\nsessions their students take part in that are confirmed or completed\n(or were confirmed before being cancelled or skipped), each with\n`students` (only theirs); the cohort's tutor the sessions they teach,\nwith `participants`.",
         "operationId": "list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get",
         "parameters": [
           {
@@ -18967,6 +18967,21 @@
             "title": "Roster",
             "description": "course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first."
           },
+          "tutor_roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TutorRosterItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Roster",
+            "description": "The cohort's tutor only (absent for anyone else): the active enrollments' students, by name."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -19135,6 +19150,21 @@
             ],
             "title": "Roster",
             "description": "course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first."
+          },
+          "tutor_roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TutorRosterItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Roster",
+            "description": "The cohort's tutor only (absent for anyone else): the active enrollments' students, by name."
           }
         },
         "type": "object",
@@ -19159,7 +19189,7 @@
           "syllabus"
         ],
         "title": "CohortDetail",
-        "description": "One cohort (``GET /api/v1/cohorts/{id}``, #65 F1, #66 F1, G3). The\nsyllabus comes from the snapshot, never from the live template.\n\n``enrolled_count`` and ``roster`` are for ``course.view`` holders only:\nfor an enrolled student or a linked guardian they are absent, the\n``series`` has no ``assignment`` (and its tutor only once they\naccepted), its participants are only the caller's own students, and\n``next_occurrences`` are only the ``confirmed`` ones they take part\nin."
+        "description": "One cohort (``GET /api/v1/cohorts/{id}``, #65 F1, #66 F1, G3). The\nsyllabus comes from the snapshot, never from the live template.\n\n``enrolled_count`` and ``roster`` are for ``course.view`` holders only:\nfor an enrolled student or a linked guardian they are absent, the\n``series`` has no ``assignment`` (and its tutor only once they\naccepted, by name only), its participants are only the caller's own\nstudents, and ``next_occurrences`` are only the family-visible ones\nthey take part in. For the cohort's tutor (#246 A4) ``tutor_roster`` is\nset, the ``series`` has no ``assignment``, and ``next_occurrences`` are\nthe tutor-visible ones they currently teach."
       },
       "CohortEnrollmentCreate": {
         "properties": {
@@ -19397,10 +19427,14 @@
                 "$ref": "#/components/schemas/SessionTutor"
               },
               {
+                "$ref": "#/components/schemas/TutorName"
+              },
+              {
                 "type": "null"
               }
             ],
-            "description": "The current series' tutor."
+            "title": "Tutor",
+            "description": "The current series' tutor; for a student or a guardian the name only, once they accepted."
           },
           "assignment_status": {
             "anyOf": [
@@ -19610,9 +19644,13 @@
                 "$ref": "#/components/schemas/SessionTutor"
               },
               {
+                "$ref": "#/components/schemas/TutorName"
+              },
+              {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Tutor"
           },
           "classroom": {
             "anyOf": [
@@ -19638,6 +19676,21 @@
             ],
             "title": "Students",
             "description": "Students and guardians only (absent for staff): the caller's own students among the participants, by name."
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SessionParticipantName"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participants",
+            "description": "The session's tutor only (absent otherwise): every student, by name."
           }
         },
         "type": "object",
@@ -19652,7 +19705,7 @@
           "classroom"
         ],
         "title": "CohortSessionItem",
-        "description": "One session of a cohort (#65 F4; #66 G4). Staff see every state;\nan enrolled student or a linked guardian only the ``confirmed`` and\n``completed`` sessions one of their students takes part in, with\n``students``."
+        "description": "One session of a cohort (#65 F4; #66 G4; #246 A5). Staff see every\nstate; a student or a guardian the family-visible sessions a visible\nstudent takes part in, with ``students`` and the tutor's name only; the\ncohort's tutor the tutor-visible sessions they currently teach, with\n``participants``."
       },
       "CohortSessionStudent": {
         "properties": {
@@ -19672,7 +19725,7 @@
           "display_name"
         ],
         "title": "CohortSessionStudent",
-        "description": "One of the caller's own students taking part in a session (#66 G4)."
+        "description": "One of the caller's own students taking part in a session (#66 G4;\ngroups too, #246 A5)."
       },
       "CohortSessions": {
         "properties": {
@@ -21877,7 +21930,7 @@
               }
             ],
             "title": "Enrolled Count",
-            "description": "Active enrollments; null for a student."
+            "description": "Active enrollments; null without schedule.view."
           },
           "effective_capacity": {
             "type": "integer",
@@ -21930,7 +21983,22 @@
               }
             ],
             "title": "Roster",
-            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student."
+            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for anyone else."
+          },
+          "tutor_roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TutorRosterItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Roster",
+            "description": "The group's tutor only (absent for anyone else): the active enrollments' students, by name."
           },
           "warnings": {
             "items": {
@@ -21988,7 +22056,7 @@
               }
             ],
             "title": "Enrolled Count",
-            "description": "Active enrollments; null for a student."
+            "description": "Active enrollments; null without schedule.view."
           },
           "effective_capacity": {
             "type": "integer",
@@ -22041,7 +22109,22 @@
               }
             ],
             "title": "Roster",
-            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student."
+            "description": "schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for anyone else."
+          },
+          "tutor_roster": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TutorRosterItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Roster",
+            "description": "The group's tutor only (absent for anyone else): the active enrollments' students, by name."
           }
         },
         "type": "object",
@@ -22060,7 +22143,7 @@
           "roster"
         ],
         "title": "GroupDetail",
-        "description": "One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student\n``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are\nonly their own confirmed sessions."
+        "description": "One tutoring group (``GET /api/v1/groups/{id}``, #56 G1; #246 A4).\nWithout ``schedule.view``, ``enrolled_count`` and ``roster`` are null;\nfor a student or a guardian ``next_occurrences`` are the family-visible\nones a visible student takes part in; for the group's tutor\n``tutor_roster`` is set and ``next_occurrences`` are the tutor-visible\nones they currently teach."
       },
       "GroupEnrollmentCreate": {
         "properties": {
@@ -22298,7 +22381,7 @@
               }
             ],
             "title": "Enrolled Count",
-            "description": "Null for a student."
+            "description": "Null without schedule.view."
           },
           "tutor": {
             "anyOf": [
@@ -22306,10 +22389,14 @@
                 "$ref": "#/components/schemas/SessionTutor"
               },
               {
+                "$ref": "#/components/schemas/TutorName"
+              },
+              {
                 "type": "null"
               }
             ],
-            "description": "The current series' tutor."
+            "title": "Tutor",
+            "description": "The current series' tutor; for a student or a guardian the name only, once they accepted."
           },
           "next_starts_at": {
             "anyOf": [
@@ -22443,9 +22530,13 @@
                 "$ref": "#/components/schemas/SessionTutor"
               },
               {
+                "$ref": "#/components/schemas/TutorName"
+              },
+              {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Tutor"
           },
           "classroom": {
             "anyOf": [
@@ -22509,7 +22600,7 @@
           "version"
         ],
         "title": "GroupSeries",
-        "description": "The group's current series (#56 G1): the producing series with the\nlatest start; its rule, tutor and room (the participants are the\nroster)."
+        "description": "The group's current series (#56 G1): the producing series with the\nlatest start; its rule, tutor and room (the participants are the\nroster). For a student or a guardian the tutor is the name only, once\nthey accepted."
       },
       "GroupSessionClassroom": {
         "properties": {
@@ -22557,9 +22648,13 @@
                 "$ref": "#/components/schemas/SessionTutor"
               },
               {
+                "$ref": "#/components/schemas/TutorName"
+              },
+              {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Tutor"
           },
           "classroom": {
             "anyOf": [
@@ -22570,6 +22665,36 @@
                 "type": "null"
               }
             ]
+          },
+          "students": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CohortSessionStudent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Students",
+            "description": "Students and guardians only (absent otherwise): the caller's own students among the participants, by name."
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SessionParticipantName"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participants",
+            "description": "The session's tutor only (absent otherwise): every student, by name."
           }
         },
         "type": "object",
@@ -22582,7 +22707,7 @@
           "classroom"
         ],
         "title": "GroupSessionItem",
-        "description": "One session of the group."
+        "description": "One session of the group (#56 H3; #246 A5). Staff see every state;\na student or a guardian the family-visible sessions a visible student\ntakes part in, with ``students`` and the tutor's name only; the\ngroup's tutor the tutor-visible sessions they currently teach, with\n``participants``."
       },
       "GroupSessions": {
         "properties": {
@@ -24947,6 +25072,27 @@
           "tutor"
         ]
       },
+      "RosterStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "RosterStudent",
+        "description": "A student of a tutor's group or cohort (#246 E2: the `limited`\nlevel)."
+      },
       "ScheduleAccessCode": {
         "type": "string",
         "enum": [
@@ -25674,6 +25820,27 @@
         ],
         "title": "SessionParticipant",
         "description": "A student of the session."
+      },
+      "SessionParticipantName": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name"
+        ],
+        "title": "SessionParticipantName",
+        "description": "A student of a session the caller teaches (#246 A5; #67 B4)."
       },
       "SessionReassignment": {
         "properties": {
@@ -27853,6 +28020,21 @@
         "title": "TutorListItem",
         "description": "One tutor: a user holding the ``tutor`` role, with the account's\ncontact fields."
       },
+      "TutorName": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "TutorName",
+        "description": "Who teaches, for a student or a guardian: the display name only\n(#246 A5; #67 E4), and only once the tutor accepted."
+      },
       "TutorOption": {
         "properties": {
           "id": {
@@ -27902,6 +28084,20 @@
         ],
         "title": "TutorOptions",
         "description": "The matching tutors, in the user list order."
+      },
+      "TutorRosterItem": {
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/RosterStudent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student"
+        ],
+        "title": "TutorRosterItem",
+        "description": "An active enrollment of a group or cohort the caller teaches (#246\nE2): the student only, never who enrolled them or a withdrawal."
       },
       "TutorSchedule": {
         "properties": {

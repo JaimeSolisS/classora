@@ -2453,8 +2453,10 @@ export interface paths {
          * List Groups
          * @description The groups you can see, by name: `active` (still producing
          *     sessions; the default), `ended` or `all`. Staff with schedule.view see
-         *     every group; a student only the groups they are enrolled in (without
-         *     the enrolled count); anyone else an empty list.
+         *     every group; a student or their guardian only the groups the student is
+         *     enrolled in (an adult's guardian only with the student's academic
+         *     consent), and a tutor the groups whose series they teach or were offered,
+         *     without the enrolled count; anyone else an empty list.
          */
         get: operations["list_groups_api_v1_groups_get"];
         put?: never;
@@ -2487,8 +2489,10 @@ export interface paths {
          * Get Group
          * @description One group: its subject, maximum, effective capacity, current series
          *     and next sessions; for staff with schedule.view also the roster and the
-         *     enrolled count. A student sees only a group they are enrolled in, and
-         *     only their own confirmed sessions.
+         *     enrolled count. A student or their guardian sees only a group the
+         *     student is enrolled in, with the tutor's name only and the student's
+         *     own sessions; the group's tutor sees `tutor_roster` (the students'
+         *     names) and the sessions they teach.
          */
         get: operations["get_group_api_v1_groups__group_id__get"];
         put?: never;
@@ -2515,8 +2519,11 @@ export interface paths {
         /**
          * List Group Sessions
          * @description The group's sessions overlapping `[from, to)`, by start. Staff with
-         *     schedule.view see every state; a student only the sessions they take
-         *     part in that are `confirmed` or `completed`.
+         *     schedule.view see every state; a student or their guardian the
+         *     sessions their students take part in that are confirmed or completed
+         *     (or were confirmed before being cancelled or skipped), with `students`
+         *     (only theirs); the group's tutor the sessions they teach, with
+         *     `participants`.
          */
         get: operations["list_group_sessions_api_v1_groups__group_id__sessions_get"];
         put?: never;
@@ -2586,8 +2593,10 @@ export interface paths {
          * @description The cohorts you can see by name, with their template, subject, tutor
          *     and dates (cursor pagination). Staff with course.view see every cohort
          *     and its enrolled count; an enrolled student or their guardian only the
-         *     cohorts the student is enrolled in (without the count or the tutor
-         *     assignment); anyone else an empty list.
+         *     cohorts the student is enrolled in (an adult's guardian only with the
+         *     student's academic consent), and a tutor the cohorts whose series they
+         *     teach or were offered, without the count or the tutor assignment;
+         *     anyone else an empty list.
          */
         get: operations["list_cohorts_api_v1_cohorts_get"];
         put?: never;
@@ -2622,7 +2631,9 @@ export interface paths {
          *     syllabus from the snapshot; for staff with course.view also the roster
          *     and the enrolled count. An enrolled student or their guardian sees only
          *     a cohort the student is enrolled in, without the roster, the count or
-         *     the tutor assignment, and only the student's confirmed sessions.
+         *     the tutor assignment (the tutor's name only), and only the student's
+         *     sessions; the cohort's tutor sees `tutor_roster` (the students' names)
+         *     and the sessions they teach.
          */
         get: operations["get_cohort_api_v1_cohorts__cohort_id__get"];
         put?: never;
@@ -2651,9 +2662,11 @@ export interface paths {
         /**
          * List Cohort Sessions
          * @description The cohort's sessions overlapping `[from, to)`, by start. Staff with
-         *     course.view see every state; an enrolled student or their guardian only
-         *     the `confirmed` and `completed` sessions their students take part in,
-         *     each with `students` (only theirs).
+         *     course.view see every state; an enrolled student or their guardian the
+         *     sessions their students take part in that are confirmed or completed
+         *     (or were confirmed before being cancelled or skipped), each with
+         *     `students` (only theirs); the cohort's tutor the sessions they teach,
+         *     with `participants`.
          */
         get: operations["list_cohort_sessions_api_v1_cohorts__cohort_id__sessions_get"];
         put?: never;
@@ -5450,6 +5463,11 @@ export interface components {
              */
             roster?: components["schemas"]["CohortEnrollmentItem"][] | null;
             /**
+             * Tutor Roster
+             * @description The cohort's tutor only (absent for anyone else): the active enrollments' students, by name.
+             */
+            tutor_roster?: components["schemas"]["TutorRosterItem"][] | null;
+            /**
              * Warnings
              * @description Always empty for now.
              */
@@ -5463,9 +5481,11 @@ export interface components {
          *     ``enrolled_count`` and ``roster`` are for ``course.view`` holders only:
          *     for an enrolled student or a linked guardian they are absent, the
          *     ``series`` has no ``assignment`` (and its tutor only once they
-         *     accepted), its participants are only the caller's own students, and
-         *     ``next_occurrences`` are only the ``confirmed`` ones they take part
-         *     in.
+         *     accepted, by name only), its participants are only the caller's own
+         *     students, and ``next_occurrences`` are only the family-visible ones
+         *     they take part in. For the cohort's tutor (#246 A4) ``tutor_roster`` is
+         *     set, the ``series`` has no ``assignment``, and ``next_occurrences`` are
+         *     the tutor-visible ones they currently teach.
          */
         CohortDetail: {
             /**
@@ -5542,6 +5562,11 @@ export interface components {
              * @description course.view holders only: the active enrollments by student name, then the withdrawn ones, latest first.
              */
             roster?: components["schemas"]["CohortEnrollmentItem"][] | null;
+            /**
+             * Tutor Roster
+             * @description The cohort's tutor only (absent for anyone else): the active enrollments' students, by name.
+             */
+            tutor_roster?: components["schemas"]["TutorRosterItem"][] | null;
         };
         /**
          * CohortEnrollmentCreate
@@ -5654,8 +5679,11 @@ export interface components {
             subject: components["schemas"]["CohortSubject"];
             /** Max Students */
             max_students: number;
-            /** @description The current series' tutor. */
-            tutor: components["schemas"]["SessionTutor"] | null;
+            /**
+             * Tutor
+             * @description The current series' tutor; for a student or a guardian the name only, once they accepted.
+             */
+            tutor: components["schemas"]["SessionTutor"] | components["schemas"]["TutorName"] | null;
             /**
              * Assignment Status
              * @description The current series' tutor assignment; null without a tutor.
@@ -5730,10 +5758,11 @@ export interface components {
         };
         /**
          * CohortSessionItem
-         * @description One session of a cohort (#65 F4; #66 G4). Staff see every state;
-         *     an enrolled student or a linked guardian only the ``confirmed`` and
-         *     ``completed`` sessions one of their students takes part in, with
-         *     ``students``.
+         * @description One session of a cohort (#65 F4; #66 G4; #246 A5). Staff see every
+         *     state; a student or a guardian the family-visible sessions a visible
+         *     student takes part in, with ``students`` and the tutor's name only; the
+         *     cohort's tutor the tutor-visible sessions they currently teach, with
+         *     ``participants``.
          */
         CohortSessionItem: {
             /**
@@ -5763,17 +5792,24 @@ export interface components {
              * @description Moved or edited on its own (#54).
              */
             is_exception: boolean;
-            tutor: components["schemas"]["SessionTutor"] | null;
+            /** Tutor */
+            tutor: components["schemas"]["SessionTutor"] | components["schemas"]["TutorName"] | null;
             classroom: components["schemas"]["GroupSessionClassroom"] | null;
             /**
              * Students
              * @description Students and guardians only (absent for staff): the caller's own students among the participants, by name.
              */
             students?: components["schemas"]["CohortSessionStudent"][] | null;
+            /**
+             * Participants
+             * @description The session's tutor only (absent otherwise): every student, by name.
+             */
+            participants?: components["schemas"]["SessionParticipantName"][] | null;
         };
         /**
          * CohortSessionStudent
-         * @description One of the caller's own students taking part in a session (#66 G4).
+         * @description One of the caller's own students taking part in a session (#66 G4;
+         *     groups too, #246 A5).
          */
         CohortSessionStudent: {
             /**
@@ -6812,7 +6848,7 @@ export interface components {
             max_students: number;
             /**
              * Enrolled Count
-             * @description Active enrollments; null for a student.
+             * @description Active enrollments; null without schedule.view.
              */
             enrolled_count: number | null;
             /**
@@ -6841,9 +6877,14 @@ export interface components {
             updated_at: string;
             /**
              * Roster
-             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student.
+             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for anyone else.
              */
             roster: components["schemas"]["GroupEnrollmentItem"][] | null;
+            /**
+             * Tutor Roster
+             * @description The group's tutor only (absent for anyone else): the active enrollments' students, by name.
+             */
+            tutor_roster?: components["schemas"]["TutorRosterItem"][] | null;
             /**
              * Warnings
              * @description Always empty for now.
@@ -6852,9 +6893,12 @@ export interface components {
         };
         /**
          * GroupDetail
-         * @description One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student
-         *     ``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are
-         *     only their own confirmed sessions.
+         * @description One tutoring group (``GET /api/v1/groups/{id}``, #56 G1; #246 A4).
+         *     Without ``schedule.view``, ``enrolled_count`` and ``roster`` are null;
+         *     for a student or a guardian ``next_occurrences`` are the family-visible
+         *     ones a visible student takes part in; for the group's tutor
+         *     ``tutor_roster`` is set and ``next_occurrences`` are the tutor-visible
+         *     ones they currently teach.
          */
         GroupDetail: {
             /**
@@ -6869,7 +6913,7 @@ export interface components {
             max_students: number;
             /**
              * Enrolled Count
-             * @description Active enrollments; null for a student.
+             * @description Active enrollments; null without schedule.view.
              */
             enrolled_count: number | null;
             /**
@@ -6898,9 +6942,14 @@ export interface components {
             updated_at: string;
             /**
              * Roster
-             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for a student.
+             * @description schedule.view holders only: active enrollments by student name, then withdrawn ones, latest first; null for anyone else.
              */
             roster: components["schemas"]["GroupEnrollmentItem"][] | null;
+            /**
+             * Tutor Roster
+             * @description The group's tutor only (absent for anyone else): the active enrollments' students, by name.
+             */
+            tutor_roster?: components["schemas"]["TutorRosterItem"][] | null;
         };
         /**
          * GroupEnrollmentCreate
@@ -7011,11 +7060,14 @@ export interface components {
             max_students: number;
             /**
              * Enrolled Count
-             * @description Null for a student.
+             * @description Null without schedule.view.
              */
             enrolled_count: number | null;
-            /** @description The current series' tutor. */
-            tutor: components["schemas"]["SessionTutor"] | null;
+            /**
+             * Tutor
+             * @description The current series' tutor; for a student or a guardian the name only, once they accepted.
+             */
+            tutor: components["schemas"]["SessionTutor"] | components["schemas"]["TutorName"] | null;
             /** Next Starts At */
             next_starts_at: string | null;
         };
@@ -7082,7 +7134,8 @@ export interface components {
          * GroupSeries
          * @description The group's current series (#56 G1): the producing series with the
          *     latest start; its rule, tutor and room (the participants are the
-         *     roster).
+         *     roster). For a student or a guardian the tutor is the name only, once
+         *     they accepted.
          */
         GroupSeries: {
             /**
@@ -7090,7 +7143,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            tutor: components["schemas"]["SessionTutor"] | null;
+            /** Tutor */
+            tutor: components["schemas"]["SessionTutor"] | components["schemas"]["TutorName"] | null;
             classroom: components["schemas"]["SessionClassroom"] | null;
             /**
              * Starts On
@@ -7127,7 +7181,11 @@ export interface components {
         };
         /**
          * GroupSessionItem
-         * @description One session of the group.
+         * @description One session of the group (#56 H3; #246 A5). Staff see every state;
+         *     a student or a guardian the family-visible sessions a visible student
+         *     takes part in, with ``students`` and the tutor's name only; the
+         *     group's tutor the tutor-visible sessions they currently teach, with
+         *     ``participants``.
          */
         GroupSessionItem: {
             /**
@@ -7146,8 +7204,19 @@ export interface components {
              * Format: date-time
              */
             ends_at: string;
-            tutor: components["schemas"]["SessionTutor"] | null;
+            /** Tutor */
+            tutor: components["schemas"]["SessionTutor"] | components["schemas"]["TutorName"] | null;
             classroom: components["schemas"]["GroupSessionClassroom"] | null;
+            /**
+             * Students
+             * @description Students and guardians only (absent otherwise): the caller's own students among the participants, by name.
+             */
+            students?: components["schemas"]["CohortSessionStudent"][] | null;
+            /**
+             * Participants
+             * @description The session's tutor only (absent otherwise): every student, by name.
+             */
+            participants?: components["schemas"]["SessionParticipantName"][] | null;
         };
         /**
          * GroupSessions
@@ -8265,6 +8334,20 @@ export interface components {
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
+        /**
+         * RosterStudent
+         * @description A student of a tutor's group or cohort (#246 E2: the `limited`
+         *     level).
+         */
+        RosterStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
         /** @enum {string} */
         ScheduleAccessCode: "allowed" | "consent_required";
         /**
@@ -8717,6 +8800,19 @@ export interface components {
             display_name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * SessionParticipantName
+         * @description A student of a session the caller teaches (#246 A5; #67 B4).
+         */
+        SessionParticipantName: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * SessionReassignment
@@ -9745,6 +9841,15 @@ export interface components {
             phone: string | null;
         };
         /**
+         * TutorName
+         * @description Who teaches, for a student or a guardian: the display name only
+         *     (#246 A5; #67 E4), and only once the tutor accepted.
+         */
+        TutorName: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * TutorOption
          * @description A user holding the tutor role, for the calendar's tutor filter. No
          *     contact data.
@@ -9768,6 +9873,14 @@ export interface components {
         TutorOptions: {
             /** Items */
             items: components["schemas"]["TutorOption"][];
+        };
+        /**
+         * TutorRosterItem
+         * @description An active enrollment of a group or cohort the caller teaches (#246
+         *     E2): the student only, never who enrolled them or a withdrawal.
+         */
+        TutorRosterItem: {
+            student: components["schemas"]["RosterStudent"];
         };
         /**
          * TutorSchedule

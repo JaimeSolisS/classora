@@ -297,3 +297,89 @@ export const ENROLLED: GroupEnrollmentCreated = {
 };
 
 export const CREATED_GROUP: GroupCreated = { ...GROUP, warnings: [] };
+
+// --- Tutors and guardians (#246) ------------------------------------------------
+
+/** What the group's tutor reads (#246 A4, E2): names only, no roster. */
+export const TUTOR_GROUP: GroupDetail = {
+  ...STUDENT_GROUP,
+  tutor_roster: [
+    { student: { id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name } },
+    {
+      student: {
+        id: STUDENT_BRUNO.id,
+        display_name: STUDENT_BRUNO.display_name,
+      },
+    },
+  ],
+};
+
+/** What a guardian reads (#246 A4): the tutor's name only. */
+export const FAMILY_GROUP: GroupDetail = {
+  ...STUDENT_GROUP,
+  current_series: {
+    ...GROUP.current_series!,
+    tutor: { display_name: 'Carmen Ruiz' },
+  },
+};
+
+const ANA_REF = { id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name };
+const CARLA_REF = {
+  id: STUDENT_CARLA.id,
+  display_name: STUDENT_CARLA.display_name,
+};
+
+/**
+ * A guardian of Ana and Carla (#246 A5, B3): a confirmed session of Ana, a
+ * once-confirmed cancelled one of both, a closure of Carla.
+ */
+export const FAMILY_SESSIONS: GroupSessionItem[] = [
+  {
+    id: '00000000-0000-4000-8000-000000000e01',
+    state: 'confirmed',
+    starts_at: '2031-01-04T16:00:00Z',
+    ends_at: '2031-01-04T17:30:00Z',
+    tutor: { display_name: 'Carmen Ruiz' },
+    classroom: { id: ROOM_ID, name: 'Aula 1' },
+    students: [ANA_REF],
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000e02',
+    state: 'cancelled',
+    starts_at: '2031-01-11T16:00:00Z',
+    ends_at: '2031-01-11T17:30:00Z',
+    tutor: { display_name: 'Carmen Ruiz' },
+    classroom: null,
+    students: [ANA_REF, CARLA_REF],
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000e03',
+    state: 'skipped_closure',
+    starts_at: '2031-01-18T16:00:00Z',
+    ends_at: '2031-01-18T17:30:00Z',
+    tutor: null,
+    classroom: null,
+    students: [CARLA_REF],
+  },
+];
+
+/** The same sessions for a guardian of Ana only (no "For: …" labels). */
+export const ONE_CHILD_SESSIONS: GroupSessionItem[] = FAMILY_SESSIONS.slice(
+  0,
+  2,
+).map((item) => ({ ...item, students: [ANA_REF] }));
+
+/** The tutor's sessions (#246 A5): with the participants. */
+export const TUTOR_SESSIONS: GroupSessionItem[] = [
+  {
+    ...SESSIONS[0]!,
+    state: 'offered',
+    participants: [
+      { student_id: STUDENT_ANA.id, display_name: STUDENT_ANA.display_name },
+      {
+        student_id: STUDENT_BRUNO.id,
+        display_name: STUDENT_BRUNO.display_name,
+      },
+    ],
+  },
+];

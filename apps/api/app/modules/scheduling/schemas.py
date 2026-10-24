@@ -1666,13 +1666,46 @@ class GroupSubject(BaseModel):
     level: GroupLevel
 
 
+def _absent_when_none(value: object) -> bool:
+    return value is None
+
+
+class TutorName(BaseModel):
+    """Who teaches, for a student or a guardian: the display name only
+    (#246 A5; #67 E4), and only once the tutor accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str
+
+
+class RosterStudent(BaseModel):
+    """A student of a tutor's group or cohort (#246 E2: the `limited`
+    level)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    display_name: str
+
+
+class TutorRosterItem(BaseModel):
+    """An active enrollment of a group or cohort the caller teaches (#246
+    E2): the student only, never who enrolled them or a withdrawal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    student: RosterStudent
+
+
 class GroupSeries(BaseModel):
     """The group's current series (#56 G1): the producing series with the
     latest start; its rule, tutor and room (the participants are the
-    roster)."""
+    roster). For a student or a guardian the tutor is the name only, once
+    they accepted."""
 
     id: uuid.UUID
-    tutor: SessionTutor | None
+    tutor: SessionTutor | TutorName | None
     classroom: SessionClassroom | None
     starts_on: date
     start_time: str = Field(description="The local start time, HH:MM.")
@@ -1730,16 +1763,19 @@ class GroupEnrollmentCreated(GroupEnrollmentItem):
 
 
 class GroupDetail(BaseModel):
-    """One tutoring group (``GET /api/v1/groups/{id}``, #56 G1). For a student
-    ``enrolled_count`` and ``roster`` are null and ``next_occurrences`` are
-    only their own confirmed sessions."""
+    """One tutoring group (``GET /api/v1/groups/{id}``, #56 G1; #246 A4).
+    Without ``schedule.view``, ``enrolled_count`` and ``roster`` are null;
+    for a student or a guardian ``next_occurrences`` are the family-visible
+    ones a visible student takes part in; for the group's tutor
+    ``tutor_roster`` is set and ``next_occurrences`` are the tutor-visible
+    ones they currently teach."""
 
     id: uuid.UUID
     name: str
     subject: GroupSubject
     max_students: int
     enrolled_count: int | None = Field(
-        description="Active enrollments; null for a student."
+        description="Active enrollments; null without schedule.view."
     )
     effective_capacity: int = Field(
         description="min(max_students, the current series' room capacity)."
@@ -1756,8 +1792,16 @@ class GroupDetail(BaseModel):
     roster: list[GroupEnrollmentItem] | None = Field(
         description=(
             "schedule.view holders only: active enrollments by student name,"
-            " then withdrawn ones, latest first; null for a student."
+            " then withdrawn ones, latest first; null for anyone else."
         )
+    )
+    tutor_roster: list[TutorRosterItem] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "The group's tutor only (absent for anyone else): the active"
+            " enrollments' students, by name."
+        ),
     )
 
 
@@ -1777,8 +1821,13 @@ class GroupListItem(BaseModel):
     name: str
     subject: GroupSubject
     max_students: int
-    enrolled_count: int | None = Field(description="Null for a student.")
-    tutor: SessionTutor | None = Field(description="The current series' tutor.")
+    enrolled_count: int | None = Field(description="Null without schedule.view.")
+    tutor: SessionTutor | TutorName | None = Field(
+        description=(
+            "The current series' tutor; for a student or a guardian the name"
+            " only, once they accepted."
+        )
+    )
     next_starts_at: datetime | None
 
 
@@ -1813,29 +1862,59 @@ class GroupSessionClassroom(BaseModel):
     name: str
 
 
-class GroupSessionItem(BaseModel):
-    """One session of the group."""
-
-    id: uuid.UUID
-    state: SessionStateCode
-    starts_at: datetime
-    ends_at: datetime
-    tutor: SessionTutor | None
-    classroom: GroupSessionClassroom | None
-
-
 class CohortSessionStudent(BaseModel):
-    """One of the caller's own students taking part in a session (#66 G4)."""
+    """One of the caller's own students taking part in a session (#66 G4;
+    groups too, #246 A5)."""
 
     id: uuid.UUID
     display_name: str
 
 
+class SessionParticipantName(BaseModel):
+    """A student of a session the caller teaches (#246 A5; #67 B4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: uuid.UUID
+    display_name: str
+
+
+class GroupSessionItem(BaseModel):
+    """One session of the group (#56 H3; #246 A5). Staff see every state;
+    a student or a guardian the family-visible sessions a visible student
+    takes part in, with ``students`` and the tutor's name only; the
+    group's tutor the tutor-visible sessions they currently teach, with
+    ``participants``."""
+
+    id: uuid.UUID
+    state: SessionStateCode
+    starts_at: datetime
+    ends_at: datetime
+    tutor: SessionTutor | TutorName | None
+    classroom: GroupSessionClassroom | None
+    students: list[CohortSessionStudent] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "Students and guardians only (absent otherwise): the caller's own"
+            " students among the participants, by name."
+        ),
+    )
+    participants: list[SessionParticipantName] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "The session's tutor only (absent otherwise): every student, by name."
+        ),
+    )
+
+
 class CohortSessionItem(BaseModel):
-    """One session of a cohort (#65 F4; #66 G4). Staff see every state;
-    an enrolled student or a linked guardian only the ``confirmed`` and
-    ``completed`` sessions one of their students takes part in, with
-    ``students``."""
+    """One session of a cohort (#65 F4; #66 G4; #246 A5). Staff see every
+    state; a student or a guardian the family-visible sessions a visible
+    student takes part in, with ``students`` and the tutor's name only; the
+    cohort's tutor the tutor-visible sessions they currently teach, with
+    ``participants``."""
 
     id: uuid.UUID
     state: SessionStateCode
@@ -1843,7 +1922,7 @@ class CohortSessionItem(BaseModel):
     ends_at: datetime
     original_start: datetime = Field(description="The rule's instant.")
     is_exception: bool = Field(description="Moved or edited on its own (#54).")
-    tutor: SessionTutor | None
+    tutor: SessionTutor | TutorName | None
     classroom: GroupSessionClassroom | None
     students: list[CohortSessionStudent] | None = Field(
         default=None,
@@ -1851,6 +1930,13 @@ class CohortSessionItem(BaseModel):
         description=(
             "Students and guardians only (absent for staff): the caller's own"
             " students among the participants, by name."
+        ),
+    )
+    participants: list[SessionParticipantName] | None = Field(
+        default=None,
+        exclude_if=_absent_when_none,
+        description=(
+            "The session's tutor only (absent otherwise): every student, by name."
         ),
     )
 

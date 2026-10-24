@@ -45,7 +45,8 @@
     "offers": "My offers",
     "sessionRequests": "Session requests",
     "mySchedule": "My schedule",
-    "changeRequests": "My change requests"
+    "changeRequests": "My change requests",
+    "myCourses": "My courses"
   },
   "notFound": {
     "title": "Page not found",
@@ -2351,7 +2352,8 @@
         "classroom": "Classroom",
         "exception": "Exception",
         "noTutor": "No tutor",
-        "noClassroom": "No classroom"
+        "noClassroom": "No classroom",
+        "students": "Student"
       },
       "tutor": {
         "heading": "Tutor",
@@ -2436,7 +2438,8 @@
           "versionConflict": "This enrollment changed. The list was reloaded.",
           "notFound": "This enrollment no longer exists. The list was reloaded."
         }
-      }
+      },
+      "myTitle": "My courses"
     }
   },
   "offers": {
@@ -2577,7 +2580,9 @@
       "next": "Next 4 weeks",
       "none": "No sessions in these weeks.",
       "tutor": "Tutor: {{name}}",
-      "classroom": "Classroom: {{name}}"
+      "classroom": "Classroom: {{name}}",
+      "forStudents": "For: {{names}}",
+      "participants": "Students: {{names}}"
     },
     "roster": {
       "heading": "Students",
@@ -2658,6 +2663,10 @@
       "overrideDescription": "The group is created despite these rules. The reason is saved in the audit log.",
       "done_one": "Group created: {{count}} upcoming session.",
       "done_other": "Group created: {{count}} upcoming sessions."
+    },
+    "tutorRoster": {
+      "heading": "Students",
+      "none": "No students enrolled yet."
     }
   },
   "sessionRequests": {

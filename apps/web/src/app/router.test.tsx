@@ -166,19 +166,28 @@ describe('route tree', () => {
     expect(children[33]!.handle).toEqual({ permission: 'course.view' });
     expect(children[34]!.handle).toEqual({ permission: 'course.manage' });
     expect(children[35]!.handle).toEqual({ permission: 'course.view' });
-    // #243 A2: the cohorts for course.view; the create form needs
-    // schedule.manage.
-    expect(children[36]!.handle).toEqual({ permission: 'course.view' });
+    // #243 A2, #246 B2: the cohorts for course.view, tutors, students and
+    // guardians; the create form needs schedule.manage.
+    const cohorts = {
+      anyOf: [
+        { permission: 'course.view' },
+        { anyRole: ['tutor', 'student', 'guardian'] },
+      ],
+    };
+    expect(children[36]!.handle).toEqual(cohorts);
     expect(children[37]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[38]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[38]!.handle).toEqual(cohorts);
     // #37 H3.
     expect(children[39]!.handle).toEqual({ permission: 'settings.manage' });
     // #61 F1.
     expect(children[40]!.handle).toEqual({ permission: 'settings.manage' });
-    // #234 A3: staff with schedule.view or students; the create form needs
-    // schedule.manage.
+    // #234 A3, #246 B1: staff with schedule.view, students, tutors and
+    // guardians; the create form needs schedule.manage.
     const groups = {
-      anyOf: [{ permission: 'schedule.view' }, { anyRole: ['student'] }],
+      anyOf: [
+        { permission: 'schedule.view' },
+        { anyRole: ['student', 'tutor', 'guardian'] },
+      ],
     };
     expect(children[41]!.handle).toEqual(groups);
     expect(children[42]!.handle).toEqual({ permission: 'schedule.manage' });

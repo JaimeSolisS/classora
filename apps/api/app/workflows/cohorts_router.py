@@ -20,10 +20,11 @@ a module's router may not import ``app.workflows``.
   /api/v1/cohorts/{cohort_id}/sessions``: ``authenticated()`` with the #66
   record policy (``app.workflows.cohorts.cohort_viewer``): ``course.view``
   holders (Owners, Administrators, Academic Coordinators, Finance Staff)
-  see everything; an enrolled student and the guardians linked to them see
-  only their cohorts and their students' confirmed and completed sessions;
-  anyone else an empty list or ``404 cohort_not_found``. #67 adds
-  tutors.
+  see everything; an enrolled student and the guardians linked to them (an
+  adult's only with the academic consent, #246 E1) see only their cohorts
+  and their students' family-visible sessions; a tutor the cohorts they
+  teach and their own sessions (#246); anyone else an empty list or ``404
+  cohort_not_found``.
 
 The tutor of a cohort is offered through its series:
 ``POST /api/v1/class-series/{class_series_id}/offers`` (#233,
@@ -167,8 +168,10 @@ async def list_cohorts(
     """The cohorts you can see by name, with their template, subject, tutor
     and dates (cursor pagination). Staff with course.view see every cohort
     and its enrolled count; an enrolled student or their guardian only the
-    cohorts the student is enrolled in (without the count or the tutor
-    assignment); anyone else an empty list."""
+    cohorts the student is enrolled in (an adult's guardian only with the
+    student's academic consent), and a tutor the cohorts whose series they
+    teach or were offered, without the count or the tutor assignment;
+    anyone else an empty list."""
     return await cohorts.list_cohorts(
         uow.session,
         viewer=await cohorts.cohort_viewer(uow.session, principal),
@@ -192,7 +195,9 @@ async def get_cohort(
     syllabus from the snapshot; for staff with course.view also the roster
     and the enrolled count. An enrolled student or their guardian sees only
     a cohort the student is enrolled in, without the roster, the count or
-    the tutor assignment, and only the student's confirmed sessions."""
+    the tutor assignment (the tutor's name only), and only the student's
+    sessions; the cohort's tutor sees `tutor_roster` (the students' names)
+    and the sessions they teach."""
     viewer = await cohorts.cohort_viewer(uow.session, principal)
     return await cohorts.get_cohort_detail(uow.session, cohort_id, viewer)
 
@@ -217,9 +222,11 @@ async def list_cohort_sessions(
     uow: UnitOfWorkDep,
 ) -> CohortSessions:
     """The cohort's sessions overlapping `[from, to)`, by start. Staff with
-    course.view see every state; an enrolled student or their guardian only
-    the `confirmed` and `completed` sessions their students take part in,
-    each with `students` (only theirs)."""
+    course.view see every state; an enrolled student or their guardian the
+    sessions their students take part in that are confirmed or completed
+    (or were confirmed before being cancelled or skipped), each with
+    `students` (only theirs); the cohort's tutor the sessions they teach,
+    with `participants`."""
     viewer = await cohorts.cohort_viewer(uow.session, principal)
     return await cohorts.list_cohort_sessions(uow.session, cohort_id, query, viewer)
 

@@ -112,7 +112,11 @@ export type AssignmentView =
 export function assignmentOf(series: CohortSeries | null): AssignmentView {
   const assignment = series?.assignment ?? null;
   if (!assignment) {
-    return { kind: 'none' };
+    // A tutor, student or guardian gets no assignment (#246 A4): the
+    // series' tutor (their name only, once accepted for families) is shown.
+    return series?.tutor
+      ? { kind: 'accepted', tutor: series.tutor.display_name }
+      : { kind: 'none' };
   }
   return assignment.status === 'pending'
     ? {
