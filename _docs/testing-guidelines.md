@@ -527,6 +527,10 @@ follows these rules.
   (`e2e/tests/support/catalog.ts`) instead of repeating strings.
 - Use web-first assertions (`await expect(locator).toBeVisible()`). No fixed
   sleeps (`waitForTimeout`).
+- The first visible element after loading a page in a fresh context (a new
+  browser context, a `goto` or a navigation) waits up to
+  `FIRST_RENDER_TIMEOUT_MS` (`e2e/tests/support/timeouts.ts`, 60 s, #252);
+  later assertions on the rendered page keep the default 5 s.
 - No retries: a test that fails once is a failure. `test.only` fails the run in
   CI (`forbidOnly`).
 - The time zone (`America/Mexico_City`) and the locale (`es-MX`) are fixed in

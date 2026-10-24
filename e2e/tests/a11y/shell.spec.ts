@@ -12,6 +12,7 @@ import { createDemoNotificationViaApi } from '../support/notifications';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 import { inviteTutorViaApi } from '../support/tutors';
+import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 import { createActiveUser } from '../support/users';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
@@ -173,10 +174,8 @@ const ROUTES: ScannedRoute[] = [
   { name: 'register', path: '/register', signedIn: false },
 ];
 
-// Under machine load, the first pages of a cold dev server (and the session
-// request before a guarded page renders) can take longer than the default
-// waits: the first heading gets a longer wait, inside a longer test timeout.
-const FIRST_RENDER_TIMEOUT_MS = 60_000;
+// Under machine load the first heading of a page gets FIRST_RENDER_TIMEOUT_MS
+// (support/timeouts.ts, #252), inside a longer test timeout.
 const TEST_TIMEOUT_MS = 90_000;
 
 /** Every violation as `rule-id (impact): selector, selector`. */
