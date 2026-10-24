@@ -43,8 +43,16 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // session page, which shows Offered to that tutor (axe on the review page).
 // Then the Owner rejects 11:00 with a reason. The guardian reloads My
 // requests: 10:00 Confirmed, 11:00 Rejected with the reason, both
-// notifications in the bell, and no tutor name on the family pages. The
-// offered session doesn't block the revocation that follows (#198 E1).
+// notifications in the bell, and no tutor name on the family pages.
+//
+// #67 G8: the tutor accepts that offer (the #52 API in the tutor's context);
+// the Owner links a second child to the guardian and creates a student no
+// one links. On a phone (390×844) the tutor opens "My schedule" from the
+// menu and finds the session in the List view (the default below 768 px);
+// the guardian chooses the child and sees it Confirmed with the tutor's
+// display name (the rejected 11:00 has no session), and the guardian's API
+// call for the unlinked student is 404. Axe on both pages. The confirmed
+// session doesn't block the revocation that follows (#198 E1).
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
@@ -65,15 +73,18 @@ const REQUEST_NOTE = 'Prefiere la sesión antes del mediodía.';
 // #60 I5: the reason the family sees for the 11:00 request.
 const REJECT_REASON = 'Ese día solo hay una tutora disponible.';
 const CENTER_ZONE = 'America/Mexico_City';
+// #67 G8: the phone viewport of the My schedule checks.
+const PHONE = { width: 390, height: 844 };
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // A seeded level (#32) that no spec deactivates.
 const LEVEL = 'Secundaria';
 
 // Chromium logs every 4xx resource as a console error: the signed-out
-// /auth/me (401) of the fresh context and the request answered 409
-// qualification_exists are expected.
+// /auth/me (401) of the fresh context, the request answered 409
+// qualification_exists and (#67 G8) the guardian's deliberate 404 for an
+// unlinked student's schedule are expected.
 const EXPECTED_RESOURCE_ERROR =
-  /Failed to load resource: the server responded with a status of (401|409)/;
+  /Failed to load resource: the server responded with a status of (401|404|409)/;
 
 // Three browsers, two logins, two decisions, two session requests and their
 // review, and a revocation: more than the default 30 s under machine load.
@@ -150,7 +161,8 @@ function plusDays(
  * #59 H5 setup with the shared Owner session: the tutor's weekly window
  * (`weekday`, 10:00-12:00), a minor student, and a guardian account (an
  * approved self-registration: 1 registration, no login) whose profile is
- * linked to the student. Returns the student's full name.
+ * linked to the student. Returns the student's full name and the guardian
+ * profile's id.
  */
 async function setUpFamily(
   page: Page,
@@ -159,7 +171,7 @@ async function setUpFamily(
   tutorId: string,
   weekday: number,
   suffix: string,
-): Promise<string> {
+): Promise<{ studentName: string; guardianId: string }> {
   const me = await api(page, '/api/v1/auth/me');
   expect(me.status).toBe(200);
   const weekly = await api(
@@ -193,7 +205,7 @@ async function setUpFamily(
     userId,
   });
   await linkGuardianViaApi(page, studentId, guardianId);
-  return `${givenNames} ${familyNames}`;
+  return { studentName: `${givenNames} ${familyNames}`, guardianId };
 }
 
 const qualifications = (page: Page) =>
@@ -403,7 +415,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
     const target = plusDays(centerToday(), 14);
     // Sunday is closed (default operating hours): use the Monday after.
     const day = target.weekday === 7 ? plusDays(target.date, 1) : target;
-    const studentName = await setUpFamily(
+    const { studentName, guardianId } = await setUpFamily(
       page,
       playwright.request,
       baseURL!,
@@ -651,6 +663,113 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(parentPanel).toBeHidden();
       await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
       expect(await axeViolations(parent.page)).toEqual([]);
+
+      // 4c. (#67 G8) The tutor accepts the offer the Owner's confirm made,
+      // through the #52 API in the tutor's context.
+      const tutorMe = await api(tutor.page, '/api/v1/auth/me');
+      const offers = await api(tutor.page, '/api/v1/assignment-offers');
+      expect(offers.status).toBe(200);
+      const [offer] = (offers.body as { items: { id: string }[] }).items;
+      expect(offer).toBeDefined();
+      const accepted = await api(
+        tutor.page,
+        `/api/v1/assignment-offers/${offer!.id}/accept`,
+        { method: 'POST', headers: { 'X-CSRF-Token': csrfTokenOf(tutorMe) } },
+      );
+      expect(accepted.status).toBe(200);
+      // A second child (created and linked by the Owner, no login), so the
+      // guardian chooses one; and a student nobody linked to the guardian.
+      const siblingId = await createStudentViaApi(page, {
+        givenNames: 'Andrés',
+        familyNames: `Solicitudes ${suffix}`,
+      });
+      await linkGuardianViaApi(page, siblingId, guardianId);
+      const strangerId = await createStudentViaApi(page, {
+        givenNames: 'Extraña',
+        familyNames: `Horario ${suffix}`,
+      });
+      const sessionName = (state: string, who: string) =>
+        new RegExp(`${escape(physics)}.*${escape(state)}.*${escape(who)}`);
+      const openMySchedule = async (who: Page) => {
+        await who.setViewportSize(PHONE);
+        await who
+          .getByRole('banner')
+          .getByRole('button', { name: common.nav.toggle })
+          .click();
+        await who
+          .getByRole('banner')
+          .getByRole('link', { name: common.nav.mySchedule, exact: true })
+          .click();
+        await expect(who).toHaveURL(/\/my-schedule/);
+        await expect(
+          who.getByRole('heading', { level: 1, name: common.mySchedule.title }),
+        ).toBeVisible();
+      };
+      const calendarOf = (who: Page) =>
+        who.getByRole('main').getByRole('region', {
+          name: common.mySchedule.regionLabel,
+        });
+
+      // The tutor, on a phone: My schedule, List by default, the session.
+      const tutorProfile = tutor.page.url();
+      const tutorViewport = tutor.page.viewportSize();
+      await openMySchedule(tutor.page);
+      await tutor.page.goto(`/my-schedule?date=${day.date}`);
+      await expect(calendarOf(tutor.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await expect(
+        tutor.page.getByRole('main').getByRole('button', {
+          name: common.scheduling.calendar.views.list,
+          exact: true,
+        }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        calendarOf(tutor.page).getByRole('button', {
+          name: sessionName(common.mySchedule.states.confirmed, studentName),
+        }),
+      ).toHaveCount(1);
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      // Back to the tutor's profile for step 6.
+      if (tutorViewport) {
+        await tutor.page.setViewportSize(tutorViewport);
+      }
+      await tutor.page.goto(tutorProfile);
+
+      // The guardian, on a phone: chooses the child; Confirmed with the
+      // tutor's display name. The rejected 11:00 request has no session.
+      await openMySchedule(parent.page);
+      await parent.page.goto(`/my-schedule?date=${day.date}`);
+      const whose = parent.page
+        .getByRole('main')
+        .getByLabel(common.mySchedule.whose.label, { exact: true });
+      await whose.selectOption({ label: studentName });
+      await expect(parent.page).toHaveURL(/for=[0-9a-f-]{36}/);
+      await expect(calendarOf(parent.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      const classes = calendarOf(parent.page).getByRole('button', {
+        name: new RegExp(escape(physics)),
+      });
+      await expect(classes).toHaveCount(1);
+      await expect(classes).toHaveAccessibleName(
+        sessionName(
+          common.mySchedule.states.confirmed,
+          fill(common.mySchedule.tutor, { name: TUTOR_NAME }),
+        ),
+      );
+      expect(await axeViolations(parent.page)).toEqual([]);
+      // Another student's schedule: the same 404 as an unknown id.
+      const from = `${day.date}T00:00:00Z`;
+      const to = `${plusDays(day.date, 7).date}T00:00:00Z`;
+      const foreign = await api(
+        parent.page,
+        `/api/v1/students/${strangerId}/schedule?from=${from}&to=${to}`,
+      );
+      expect(foreign.status).toBe(404);
+      expect((foreign.body as { code: string }).code).toBe('not_found');
       expect(await cspViolations(parent.page)).toEqual([]);
       expect(parent.consoleErrors).toEqual([]);
     } finally {

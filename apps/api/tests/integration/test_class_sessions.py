@@ -102,6 +102,11 @@ def columns(refs: Refs, **overrides: Any) -> dict[str, Any]:
         "scheduled_minutes",
         int((values["ends_at"] - values["starts_at"]).total_seconds() // 60),
     )
+    # #67 A1: a confirmed or completed row was confirmed once.
+    values.setdefault(
+        "first_confirmed_at",
+        at(1) if values["state"] in {"confirmed", "completed"} else None,
+    )
     return values
 
 

@@ -29,6 +29,19 @@ type Common = {
     offers: string;
     groups: string;
     sessionRequests: string;
+    // #67 G8: the phone menu and My schedule.
+    toggle: string;
+    mySchedule: string;
+  };
+  mySchedule: {
+    title: string;
+    regionLabel: string;
+    tutor: string;
+    states: Record<
+      'offered' | 'confirmed' | 'completed' | 'cancelled' | 'skipped_closure',
+      string
+    >;
+    whose: { label: string };
   };
   sessionRequests: {
     status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;

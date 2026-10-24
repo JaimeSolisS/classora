@@ -175,6 +175,10 @@ def set_state(url: str, session_id: Any, state: str) -> None:
         return
     run_sql(
         url,
-        "UPDATE class_sessions SET state = :state WHERE id = :id",
+        # #67 A1: a confirmed or completed row needs first_confirmed_at.
+        "UPDATE class_sessions SET state = :state, first_confirmed_at ="
+        " coalesce(first_confirmed_at, now()) WHERE id = :id"
+        if state in {"confirmed", "completed"}
+        else "UPDATE class_sessions SET state = :state WHERE id = :id",
         {"id": str(session_id), "state": state},
     )

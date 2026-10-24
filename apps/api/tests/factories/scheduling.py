@@ -42,6 +42,11 @@ def _default_start() -> datetime:
     return WEEK_START + timedelta(days=day, hours=hour)
 
 
+_FIRST_CONFIRMED_STATES = frozenset(
+    {SessionState.CONFIRMED.value, SessionState.COMPLETED.value}
+)
+
+
 def _minutes(starts_at: datetime, ends_at: datetime) -> int:
     return int((ends_at - starts_at).total_seconds() // 60)
 
@@ -65,6 +70,16 @@ class ClassSessionFactory(ClassoraFactory):
     actual_minutes = None
     cancelled_at = None
     cancellation_reason = None
+    # #67 A2: a confirmed or completed row was confirmed once (the CHECK
+    # ck_class_sessions_confirmed_has_first_confirmed_at requires it). Pass
+    # it explicitly for a cancelled or skipped row the family saw confirmed.
+    first_confirmed_at = factory.LazyAttribute(
+        lambda o: (
+            o.starts_at - timedelta(days=7)
+            if o.state in _FIRST_CONFIRMED_STATES
+            else None
+        )
+    )
 
 
 async def persist_subject(session: AsyncSession) -> Subject:

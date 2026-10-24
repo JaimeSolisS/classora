@@ -50,8 +50,8 @@ FAMILY_VISIBLE_STATES: Final = frozenset(
 """The states in which a session shows on its students' and guardians'
 schedules (ADR-0005 D2 family visibility; #52 B4, E3): only once a tutor has
 accepted it. ``unassigned``, ``offered`` and ``conflict`` never show. #67
-(M4-22) builds the family views on this set and adds its rule for sessions
-cancelled or skipped after the family saw them confirmed."""
+(M4-22) adds :data:`ONCE_CONFIRMED_VISIBLE_STATES` for sessions cancelled
+or skipped after the family saw them confirmed (:func:`is_family_visible`)."""
 
 FINAL_STATES: Final = frozenset({SessionState.COMPLETED, SessionState.CANCELLED})
 """States with no way out."""
@@ -119,10 +119,52 @@ def can_transition(from_state: str, to_state: str) -> bool:
     return target in ALLOWED_TRANSITIONS[source]
 
 
-def is_family_visible(state: str) -> bool:
-    """Whether a session in ``state`` shows on a family schedule
-    (:data:`FAMILY_VISIBLE_STATES`). Unknown states never do."""
+ONCE_CONFIRMED_VISIBLE_STATES: Final = frozenset(
+    {SessionState.CANCELLED, SessionState.SKIPPED_CLOSURE}
+)
+"""The states in which a session shows on a role-scoped schedule only when
+it was once ``confirmed`` (``class_sessions.first_confirmed_at`` set; #67
+A3, ADR-0005 D2: "cancelled or skipped sessions they had already seen as
+confirmed")."""
+
+TUTOR_VISIBLE_STATES: Final = frozenset(
+    {SessionState.OFFERED, SessionState.CONFIRMED, SessionState.COMPLETED}
+)
+"""The states in which a session always shows on its tutor's schedule (#67
+A3): ``offered`` too (the tutor still has to answer it, linked to
+``/offers``); never ``unassigned`` or ``conflict``."""
+
+
+def _state_of(state: str) -> SessionState | None:
     try:
-        return SessionState(state) in FAMILY_VISIBLE_STATES
+        return SessionState(state)
     except ValueError:
+        return None
+
+
+def is_family_visible(state: str, *, was_confirmed: bool = False) -> bool:
+    """Whether a session in ``state`` shows on a family schedule (#52 B4,
+    #67 A3): :data:`FAMILY_VISIBLE_STATES` always, and
+    :data:`ONCE_CONFIRMED_VISIBLE_STATES` only when ``was_confirmed``.
+    ``unassigned``, ``offered`` and ``conflict`` never do, nor do unknown
+    states. The one-argument form (#52) answers for a session that was
+    never confirmed, so it stays ``state in FAMILY_VISIBLE_STATES``."""
+    found = _state_of(state)
+    if found is None:
         return False
+    return found in FAMILY_VISIBLE_STATES or (
+        was_confirmed and found in ONCE_CONFIRMED_VISIBLE_STATES
+    )
+
+
+def is_tutor_visible(state: str, *, was_confirmed: bool) -> bool:
+    """Whether a session in ``state`` shows on its tutor's schedule (#67
+    A3): :data:`TUTOR_VISIBLE_STATES` always, and
+    :data:`ONCE_CONFIRMED_VISIBLE_STATES` only when ``was_confirmed``;
+    ``unassigned``, ``conflict`` and unknown states never."""
+    found = _state_of(state)
+    if found is None:
+        return False
+    return found in TUTOR_VISIBLE_STATES or (
+        was_confirmed and found in ONCE_CONFIRMED_VISIBLE_STATES
+    )

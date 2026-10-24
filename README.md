@@ -71,8 +71,7 @@ unless a bullet says otherwise.
   deactivated instead of deleted, and the name search tolerates accents and
   typos.
 - Finance staff see student profiles without personal or contact details.
-  Tutors see only their assigned students (assignments arrive with
-  scheduling, so for now they see none).
+  Tutors see only the students of their recent and upcoming sessions.
 - On the Guardians page, staff keep a profile for every parent or guardian
   (with or without a login), link it to the guardian's account and link
   guardians to students with a relationship (a child may have several
@@ -154,6 +153,10 @@ unless a bullet says otherwise.
   class type. Each session shows its state, and is marked when it falls on a
   center closure, its tutor is no longer qualified for the subject, or it was
   booked or moved with an override.
+- Tutors, students and guardians see their own schedules under My schedule,
+  as a phone-friendly list or a calendar, and guardians choose a child.
+  Families see only confirmed and completed classes, and cancelled ones they
+  had seen confirmed.
 - Owners and Administrators reschedule a session on the calendar by dragging
   it (or resizing its end), or with the keyboard from its "Reschedule"
   dialog; the server checks every move, refused moves snap back, and soft

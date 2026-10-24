@@ -9921,6 +9921,244 @@
         }
       }
     },
+    "/api/v1/tutors/{user_id}/schedule": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Get Tutor Schedule",
+        "description": "The sessions the tutor currently teaches that overlap `[from, to)`\n(at most 45 days), by start then id, at most 1000 (`truncated` when more\nmatch): `offered` (awaiting the tutor's answer), `confirmed` and\n`completed`, and `cancelled` or `skipped_closure` ones that were once\nconfirmed. Never `unassigned` or `conflict`, never markers. Only the\ntutor themselves, or staff with schedule.view.",
+        "operationId": "get_tutor_schedule_api_v1_tutors__user_id__schedule_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "From"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later.",
+              "title": "To"
+            },
+            "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorSchedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or not one whose schedule you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/schedule": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Get Student Schedule",
+        "description": "The student's sessions overlapping `[from, to)` (at most 45 days), by\nstart then id, at most 1000 (`truncated` when more match): `confirmed`\nand `completed`, and `cancelled` or `skipped_closure` ones that were\nonce confirmed. Each shows the tutor's display name and the room's\nname only; never other students. For the student themselves, a linked\nguardian (an adult student only with their academic-access consent),\nor staff with schedule.view.",
+        "operationId": "get_student_schedule_api_v1_students__student_id__schedule_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339).",
+              "title": "From"
+            },
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later.",
+              "title": "To"
+            },
+            "description": "An instant with an offset (RFC 3339), after `from` and at most 45 days later."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilySchedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose schedule you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedule/family-students": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "List Family Students",
+        "description": "The students whose schedule you may choose: your own profile (as a\nstudent) and the students linked to your guardian profile, by name.\n`schedule_access` is `consent_required` for an adult who hasn't given\nyou consent. Empty for a caller who is neither a student nor a\nguardian.",
+        "operationId": "list_family_students_api_v1_schedule_family_students_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyScheduleStudents"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tutor-suggestions": {
       "get": {
         "tags": [
@@ -21198,6 +21436,198 @@
         "title": "FamilyReference",
         "description": "The family a student or guardian belongs to (#172 E1)."
       },
+      "FamilyRelation": {
+        "type": "string",
+        "enum": [
+          "self",
+          "guardian"
+        ]
+      },
+      "FamilySchedule": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyScheduleItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "items",
+          "truncated"
+        ],
+        "title": "FamilySchedule",
+        "description": "The student's sessions overlapping the range, by ``starts_at`` then\n``id``; at most 1000, with ``truncated`` true when more match."
+      },
+      "FamilyScheduleClassroom": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "FamilyScheduleClassroom",
+        "description": "Where the session is: the classroom's name only."
+      },
+      "FamilyScheduleItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/FamilyScheduleState"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ScheduleSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyScheduleTutor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyScheduleClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "starts_at",
+          "ends_at",
+          "subject",
+          "tutor",
+          "classroom"
+        ],
+        "title": "FamilyScheduleItem",
+        "description": "One session on a student's schedule (#67 C3)."
+      },
+      "FamilyScheduleState": {
+        "type": "string",
+        "enum": [
+          "confirmed",
+          "completed",
+          "cancelled",
+          "skipped_closure"
+        ]
+      },
+      "FamilyScheduleStudent": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/FamilyRelation",
+            "description": "`self`: the caller's own profile; `guardian`: a linked child."
+          },
+          "is_minor": {
+            "type": "boolean",
+            "title": "Is Minor",
+            "description": "A minor today in the center's time zone."
+          },
+          "schedule_access": {
+            "$ref": "#/components/schemas/ScheduleAccessCode",
+            "description": "`consent_required`: an adult who hasn't given this guardian academic access; their schedule answers 403 student_consent_required."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name",
+          "relation",
+          "is_minor",
+          "schedule_access"
+        ],
+        "title": "FamilyScheduleStudent",
+        "description": "A student whose schedule the caller may choose (#67 C4)."
+      },
+      "FamilyScheduleStudents": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyScheduleStudent"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "FamilyScheduleStudents",
+        "description": "The caller's own profile and the students linked to their active\nguardian profile, by display name. Never a tutor's or staff member's\nother students."
+      },
+      "FamilyScheduleTutor": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "FamilyScheduleTutor",
+        "description": "Who teaches the session: the display name only (#67 E4)."
+      },
       "FamilyStatus": {
         "type": "string",
         "enum": [
@@ -24517,6 +24947,39 @@
           "tutor"
         ]
       },
+      "ScheduleAccessCode": {
+        "type": "string",
+        "enum": [
+          "allowed",
+          "consent_required"
+        ]
+      },
+      "ScheduleSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name"
+        ],
+        "title": "ScheduleSubject",
+        "description": "The session's subject with its level's name."
+      },
       "SchedulingConflict": {
         "additionalProperties": false,
         "description": "One broken scheduling rule (ADR-0005): its code, whether it is\n``hard`` (never allowed) or ``soft`` (allowed with an override), and\ncode-specific details.",
@@ -27439,6 +27902,141 @@
         ],
         "title": "TutorOptions",
         "description": "The matching tutors, in the user list order."
+      },
+      "TutorSchedule": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TutorScheduleItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "title": "TutorSchedule",
+        "description": "The tutor's sessions overlapping the range, by ``starts_at`` then\n``id``; at most 1000, with ``truncated`` true when more match."
+      },
+      "TutorScheduleClassroom": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "TutorScheduleClassroom",
+        "description": "The session's classroom."
+      },
+      "TutorScheduleItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TutorScheduleState"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ScheduleSubject"
+          },
+          "classroom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TutorScheduleClassroom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/TutorScheduleParticipant"
+            },
+            "type": "array",
+            "title": "Participants",
+            "description": "The students, by display name."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "starts_at",
+          "ends_at",
+          "subject",
+          "classroom",
+          "participants"
+        ],
+        "title": "TutorScheduleItem",
+        "description": "One session on a tutor's schedule (#67 B4)."
+      },
+      "TutorScheduleParticipant": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name"
+        ],
+        "title": "TutorScheduleParticipant",
+        "description": "A student of the tutor's session."
+      },
+      "TutorScheduleState": {
+        "type": "string",
+        "enum": [
+          "offered",
+          "confirmed",
+          "completed",
+          "cancelled",
+          "skipped_closure"
+        ]
       },
       "TutorSuggestion": {
         "properties": {

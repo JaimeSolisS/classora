@@ -100,6 +100,7 @@ describe('route tree', () => {
       'groups/:groupId',
       'requests',
       'requests/new',
+      'my-schedule',
       'account/password',
       'privacy-notice',
       '*',
@@ -185,10 +186,14 @@ describe('route tree', () => {
     const requests = { anyRole: ['guardian', 'student'] };
     expect(children[44]!.handle).toEqual(requests);
     expect(children[45]!.handle).toEqual(requests);
-    expect(children[46]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[47]!.id).toBe('privacy-notice');
+    // #67 E1: tutors, students and guardians (the API decides).
+    expect(children[46]!.handle).toEqual({
+      anyRole: ['tutor', 'student', 'guardian'],
+    });
     expect(children[47]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[48]!.id).toBe('privacy-notice');
+    expect(children[48]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

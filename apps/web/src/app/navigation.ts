@@ -3,6 +3,7 @@ import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
+import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
@@ -59,6 +60,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // The calendar (#57 D1): every schedule.view holder (Coordinators and
   // Finance too). "Schedule a session" (/schedule/new) is linked from it.
   { to: '/schedule', labelKey: 'nav.schedule', permission: 'schedule.view' },
+  // My schedule (#67 E1): tutors, students and guardians (the API decides
+  // whose schedule each may read). Staff-only users use /schedule.
+  { to: '/my-schedule', labelKey: 'nav.mySchedule', ...MY_SCHEDULE_ACCESS },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
   // Session requests (#59 F1): guardians and students (the API decides

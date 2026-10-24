@@ -204,15 +204,34 @@ function reassignmentCalendar(
   return query ? `/schedule?${query}` : '/schedule';
 }
 
+/** My schedule (#67 F3), in the List view on the local date of the
+ * session's `starts_at` (center zone); without the zone or the instant, the
+ * page's default date. */
+function mySchedule(
+  params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+): string {
+  const search = new URLSearchParams({ view: 'list' });
+  const start = params.starts_at;
+  if (
+    recipient.timeZone &&
+    typeof start === 'string' &&
+    !Number.isNaN(Date.parse(start))
+  ) {
+    search.set('date', toLocalDate(start, recipient.timeZone));
+  }
+  return `/my-schedule?${search.toString()}`;
+}
+
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
  * `scheduling.occurrence_skipped_closure`, #232, and #54's
  * `scheduling.session_rescheduled`, `scheduling.series_changed` and
  * `scheduling.series_cancelled`: their tutor, student and guardian
- * recipients have no session or series page yet, #54b / #67; #55's
+ * recipients have no session or series page yet, #54b; #55's
  * `scheduling.tutor_substituted`, `scheduling.session_tutor_changed` and
- * `scheduling.session_cancelled` for the same reason, until #67).
+ * `scheduling.session_cancelled` open My schedule since #67 F3).
  */
 export const NOTIFICATION_LINKS: Readonly<
   Record<
@@ -239,6 +258,11 @@ export const NOTIFICATION_LINKS: Readonly<
   'staff.availability_change_approved': ownAvailability,
   'staff.availability_change_rejected': ownAvailability,
   'scheduling.reassignment_needed': reassignmentCalendar,
+  // #67 F3: the #55 cancellation and tutor changes open My schedule (List)
+  // on the session's local date.
+  'scheduling.session_cancelled': mySchedule,
+  'scheduling.session_tutor_changed': mySchedule,
+  'scheduling.tutor_substituted': mySchedule,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

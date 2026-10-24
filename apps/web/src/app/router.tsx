@@ -52,6 +52,7 @@ import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
+import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
 
@@ -398,6 +399,16 @@ export const routes: RouteObject[] = [
               ).RequestSessionPage,
             }),
             handle: SESSION_REQUESTS_ACCESS,
+          },
+          // #67 E1: My schedule (code-split, FullCalendar): tutors, students
+          // and guardians; the API's record policies decide.
+          {
+            path: 'my-schedule',
+            lazy: async () => ({
+              Component: (await import('@/features/my-schedule/MySchedulePage'))
+                .MySchedulePage,
+            }),
+            handle: MY_SCHEDULE_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

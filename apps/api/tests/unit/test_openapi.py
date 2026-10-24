@@ -103,6 +103,10 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/assignment-offers/{offer_id}/accept",
         "/api/v1/assignment-offers/{offer_id}/decline",
         "/api/v1/schedule/tutor-options",
+        # #67: the role-scoped schedules.
+        "/api/v1/tutors/{user_id}/schedule",
+        "/api/v1/students/{student_id}/schedule",
+        "/api/v1/schedule/family-students",
         "/api/v1/tutor-suggestions",
         "/api/v1/class-series",
         "/api/v1/class-series/{class_series_id}",

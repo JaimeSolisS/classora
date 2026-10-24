@@ -43,7 +43,8 @@
     "schedule": "Schedule",
     "courses": "Courses",
     "offers": "My offers",
-    "sessionRequests": "Session requests"
+    "sessionRequests": "Session requests",
+    "mySchedule": "My schedule"
   },
   "notFound": {
     "title": "Page not found",
@@ -2719,6 +2720,38 @@
       "withdrawn": "Withdrawn: {{request}}.",
       "reason": "Reason",
       "confirmedHelp": "Confirmed — the center scheduled this session."
+    }
+  },
+  "mySchedule": {
+    "title": "My schedule",
+    "regionLabel": "My schedule calendar",
+    "loading": "Loading classes…",
+    "empty": "No classes in this period.",
+    "count_one": "{{count}} class in this period.",
+    "count_other": "{{count}} classes in this period.",
+    "truncated": "Showing the first 1000 classes. Choose a shorter period.",
+    "nothing": "There is no schedule to show yet.",
+    "tutor": "Tutor: {{name}}",
+    "noTutor": "No tutor",
+    "noStudents": "No students",
+    "room": "Room: {{name}}",
+    "answerOffer": "Answer this offer in My offers",
+    "states": {
+      "offered": "Awaiting your answer",
+      "confirmed": "Confirmed",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "skipped_closure": "Not held: center closed"
+    },
+    "whose": {
+      "label": "Whose schedule",
+      "teaching": "My teaching",
+      "self": "My classes",
+      "consentRequired": "{{name}} (not shared)"
+    },
+    "consent": {
+      "title": "This student hasn't shared their schedule with you",
+      "how": "They can share their academic records with you in Classora (Consents), or the center can record their consent."
     }
   }
 }

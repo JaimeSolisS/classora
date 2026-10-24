@@ -2135,6 +2135,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tutors/{user_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor Schedule
+         * @description The sessions the tutor currently teaches that overlap `[from, to)`
+         *     (at most 45 days), by start then id, at most 1000 (`truncated` when more
+         *     match): `offered` (awaiting the tutor's answer), `confirmed` and
+         *     `completed`, and `cancelled` or `skipped_closure` ones that were once
+         *     confirmed. Never `unassigned` or `conflict`, never markers. Only the
+         *     tutor themselves, or staff with schedule.view.
+         */
+        get: operations["get_tutor_schedule_api_v1_tutors__user_id__schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Schedule
+         * @description The student's sessions overlapping `[from, to)` (at most 45 days), by
+         *     start then id, at most 1000 (`truncated` when more match): `confirmed`
+         *     and `completed`, and `cancelled` or `skipped_closure` ones that were
+         *     once confirmed. Each shows the tutor's display name and the room's
+         *     name only; never other students. For the student themselves, a linked
+         *     guardian (an adult student only with their academic-access consent),
+         *     or staff with schedule.view.
+         */
+        get: operations["get_student_schedule_api_v1_students__student_id__schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedule/family-students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Students
+         * @description The students whose schedule you may choose: your own profile (as a
+         *     student) and the students linked to your guardian profile, by name.
+         *     `schedule_access` is `consent_required` for an adult who hasn't given
+         *     you consent. Empty for a caller who is neither a student nor a
+         *     guardian.
+         */
+        get: operations["list_family_students_api_v1_schedule_family_students_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tutor-suggestions": {
         parameters: {
             query?: never;
@@ -6519,6 +6594,100 @@ export interface components {
             name: string;
         };
         /** @enum {string} */
+        FamilyRelation: "self" | "guardian";
+        /**
+         * FamilySchedule
+         * @description The student's sessions overlapping the range, by ``starts_at`` then
+         *     ``id``; at most 1000, with ``truncated`` true when more match.
+         */
+        FamilySchedule: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Items */
+            items: components["schemas"]["FamilyScheduleItem"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * FamilyScheduleClassroom
+         * @description Where the session is: the classroom's name only.
+         */
+        FamilyScheduleClassroom: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * FamilyScheduleItem
+         * @description One session on a student's schedule (#67 C3).
+         */
+        FamilyScheduleItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["FamilyScheduleState"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["ScheduleSubject"];
+            tutor: components["schemas"]["FamilyScheduleTutor"] | null;
+            classroom: components["schemas"]["FamilyScheduleClassroom"] | null;
+        };
+        /** @enum {string} */
+        FamilyScheduleState: "confirmed" | "completed" | "cancelled" | "skipped_closure";
+        /**
+         * FamilyScheduleStudent
+         * @description A student whose schedule the caller may choose (#67 C4).
+         */
+        FamilyScheduleStudent: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
+            /** @description `self`: the caller's own profile; `guardian`: a linked child. */
+            relation: components["schemas"]["FamilyRelation"];
+            /**
+             * Is Minor
+             * @description A minor today in the center's time zone.
+             */
+            is_minor: boolean;
+            /** @description `consent_required`: an adult who hasn't given this guardian academic access; their schedule answers 403 student_consent_required. */
+            schedule_access: components["schemas"]["ScheduleAccessCode"];
+        };
+        /**
+         * FamilyScheduleStudents
+         * @description The caller's own profile and the students linked to their active
+         *     guardian profile, by display name. Never a tutor's or staff member's
+         *     other students.
+         */
+        FamilyScheduleStudents: {
+            /** Items */
+            items: components["schemas"]["FamilyScheduleStudent"][];
+        };
+        /**
+         * FamilyScheduleTutor
+         * @description Who teaches the session: the display name only (#67 E4).
+         */
+        FamilyScheduleTutor: {
+            /** Display Name */
+            display_name: string;
+        };
+        /** @enum {string} */
         FamilyStatus: "active" | "inactive" | "all";
         /**
          * FamilyStudentItem
@@ -8096,6 +8265,23 @@ export interface components {
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
+        /** @enum {string} */
+        ScheduleAccessCode: "allowed" | "consent_required";
+        /**
+         * ScheduleSubject
+         * @description The session's subject with its level's name.
+         */
+        ScheduleSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
         /**
          * SchedulingConflict
          * @description One broken scheduling rule (ADR-0005): its code, whether it is
@@ -9583,6 +9769,75 @@ export interface components {
             /** Items */
             items: components["schemas"]["TutorOption"][];
         };
+        /**
+         * TutorSchedule
+         * @description The tutor's sessions overlapping the range, by ``starts_at`` then
+         *     ``id``; at most 1000, with ``truncated`` true when more match.
+         */
+        TutorSchedule: {
+            /** Items */
+            items: components["schemas"]["TutorScheduleItem"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * TutorScheduleClassroom
+         * @description The session's classroom.
+         */
+        TutorScheduleClassroom: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TutorScheduleItem
+         * @description One session on a tutor's schedule (#67 B4).
+         */
+        TutorScheduleItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["TutorScheduleState"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["ScheduleSubject"];
+            classroom: components["schemas"]["TutorScheduleClassroom"] | null;
+            /**
+             * Participants
+             * @description The students, by display name.
+             */
+            participants: components["schemas"]["TutorScheduleParticipant"][];
+        };
+        /**
+         * TutorScheduleParticipant
+         * @description A student of the tutor's session.
+         */
+        TutorScheduleParticipant: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** @enum {string} */
+        TutorScheduleState: "offered" | "confirmed" | "completed" | "cancelled" | "skipped_closure";
         /**
          * TutorSuggestion
          * @description An eligible tutor and the values of the workload ranking rule.
@@ -16959,6 +17214,170 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_tutor_schedule_api_v1_tutors__user_id__schedule_get: {
+        parameters: {
+            query: {
+                /** @description An instant with an offset (RFC 3339). */
+                from: string;
+                /** @description An instant with an offset (RFC 3339), after `from` and at most 45 days later. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorSchedule"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor, or not one whose schedule you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_schedule_api_v1_students__student_id__schedule_get: {
+        parameters: {
+            query: {
+                /** @description An instant with an offset (RFC 3339). */
+                from: string;
+                /** @description An instant with an offset (RFC 3339), after `from` and at most 45 days later. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilySchedule"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student is an adult who hasn't given you consent (student_consent_required), or privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose schedule you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_students_api_v1_schedule_family_students_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyScheduleStudents"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
