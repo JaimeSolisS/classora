@@ -87,6 +87,12 @@ export default defineConfig(({ mode }) => {
             // so a helper that leaks the host zone fails here and in CI.
             // An explicit TZ (e.g. `TZ=UTC make test-web`) takes precedence.
             env: { TZ: env.TZ || DEFAULT_TEST_TIME_ZONE },
+            // Three times Vitest's defaults (5 s, 10 s): a full-app render
+            // can pass 5 s on a starved CPU (#260). The waits inside tests
+            // are condition-based (findBy*, waitFor) or a fixed tick count,
+            // so a higher ceiling hides no ordering bug; a hang still fails.
+            testTimeout: 15_000,
+            hookTimeout: 20_000,
             // Vitest replaces CSS with an empty module by default; the token
             // contrast test reads tokens.css as raw text.
             css: { include: [/tokens\.css/] },
