@@ -50,7 +50,7 @@ def test_the_source_follows_the_d1_rule(module_seeded_url):
     url = module_seeded_url
     tutor = create_user(url, roles=(TUTOR,))
     other = create_user(url, roles=(TUTOR,))
-    s = {name: new_student(url) for name in "abcdefgh"}
+    s = {name: new_student(url) for name in "abcdefghi"}
     t = tutor.id
     stored(url, NOW + timedelta(days=3), tutor_user_id=t, students=(s["a"],))
     stored(
@@ -62,6 +62,18 @@ def test_the_source_follows_the_d1_rule(module_seeded_url):
     )
     stored(url, ended_ago(29), state="completed", tutor_user_id=t, students=(s["c"],))
     stored(url, ended_ago(31), state="completed", tutor_user_id=t, students=(s["d"],))
+    # The boundary is on ends_at (groomed mutation 7): a 3-hour session that
+    # started more than 30 days ago but ended less than 30 days ago counts
+    # (the mirror, one that ended 31 days ago, is "d").
+    boundary = NOW - timedelta(days=30)
+    stored(
+        url,
+        boundary - timedelta(hours=1),
+        minutes=180,
+        state="completed",
+        tutor_user_id=t,
+        students=(s["i"],),
+    )
     stored(url, NOW + timedelta(days=5), state="unassigned", students=(s["e"],))
     stored(
         url,
@@ -86,7 +98,7 @@ def test_the_source_follows_the_d1_rule(module_seeded_url):
 
     count, found = count_statements(url, _read)
 
-    assert found == {s["a"], s["b"], s["c"]}
+    assert found == {s["a"], s["b"], s["c"], s["i"]}
     assert count == 1
     assert scheduling.TUTOR_ASSIGNMENT_LOOKBACK_DAYS == 30
 
