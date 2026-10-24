@@ -206,7 +206,7 @@ def test_local_creates_the_three_demo_families(migrated_url, env_for, capsys):
 
     out = capsys.readouterr().out.splitlines()
     assert out == FIRST_RUN_LINES
-    assert out[-1] == f"{FAMILIES_GENERATOR}: {DEMO_FAMILIES_ROWS} rows"
+    assert f"{FAMILIES_GENERATOR}: {DEMO_FAMILIES_ROWS} rows" in out
     assert table_counts(migrated_url) == SEEDED_COUNTS
 
     first, second, third = family_shape(migrated_url)

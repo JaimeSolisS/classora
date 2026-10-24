@@ -119,6 +119,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "identity.demo_student: 1 rows",
         "identity.demo_guardian: 1 rows",
         "families.demo_families: 34 rows",
+        "catalog.demo_catalog: 24 rows",
+        "staff.demo_tutor: 21 rows",
+        "scheduling.demo_schedule: 111 rows",
     ]
 
 

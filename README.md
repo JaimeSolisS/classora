@@ -376,7 +376,7 @@ It is safe to repeat; a second run changes nothing.
 `uv`) and needs `.env`. It applies the reference data and then generates
 synthetic Spanish (Mexico) demo data. It never uses real personal data, and it
 refuses to run unless `APP_ENV` is `local` or `dev`. Running it again leaves
-the demo accounts and families as they are; to start over, run
+the demo data as it is; to start over, run
 `docker compose down -v`, then `make dev`, `make migrate` and `make seed-demo`.
 
 The reference data currently consists of the user roles and their
@@ -392,12 +392,30 @@ permissions. The demo data consists of one demo account per role:
 | `demo.student` | `classora-demo-student` | Student |
 | `demo.guardian` | `classora-demo-guardian` | Parent/Guardian |
 
-These passwords are development placeholders: the accounts and families exist
-only when `APP_ENV` is `local` (a `dev` run skips them). There are also three
-demo families; `demo.student` is a minor in `demo.guardian`'s family, with a
-recorded guardian consent, and `demo.tutor` sees no students until classes
-exist. `make bootstrap-owner` (below) is refused once any Owner exists, so
-locally use either the demo Owner or `make bootstrap-owner`, not both.
+These passwords are development placeholders: the accounts, families and the
+rest of the demo data exist only when `APP_ENV` is `local` (a `dev` run skips
+them). There are also three demo families; `demo.student` is a minor in
+`demo.guardian`'s family, with a recorded guardian consent. The rest of the
+demo data:
+
+- **Catalog**: example subjects for the four levels, three classrooms, the
+  current school year and one holiday in the coming week.
+- **`demo.tutor`**: a profile, three approved qualifications and one pending
+  request (on Approvals), weekly availability with one day off, teaching
+  limits and a preferred classroom.
+- **Schedule**, around the day you run it: completed classes in the past week
+  and upcoming classes for `demo.student` and a sibling, a weekly series (one
+  date skipped for the holiday), a Saturday group, one offer waiting in
+  `demo.tutor`'s My offers, one declined offer waiting for reassignment on
+  Approvals, and one unassigned session.
+
+The dates stay those of the first run (a second run changes nothing), so reset
+with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
+to get a fresh schedule. The pending offer expires after the scheduling
+policy's 48 hours and then also waits on Approvals. With classes scheduled, the
+center time zone can no longer be changed. `make bootstrap-owner` (below) is
+refused once any Owner exists, so locally use either the demo Owner or
+`make bootstrap-owner`, not both.
 
 ### First Owner account
 
