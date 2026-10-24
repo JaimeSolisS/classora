@@ -13,6 +13,7 @@ const COLOR_TOKENS = [
   'popover-foreground',
   'primary',
   'primary-foreground',
+  'primary-hover',
   'secondary',
   'secondary-foreground',
   'muted',
@@ -34,6 +35,9 @@ const TEXT_PAIRS: [ColorToken, ColorToken][] = [
   ['card-foreground', 'card'],
   ['popover-foreground', 'popover'],
   ['primary-foreground', 'primary'],
+  // The default button's hover background (opaque, so the surface behind
+  // the button does not change the ratio).
+  ['primary-foreground', 'primary-hover'],
   ['secondary-foreground', 'secondary'],
   ['muted-foreground', 'muted'],
   ['muted-foreground', 'background'],
