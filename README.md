@@ -209,8 +209,11 @@ unless a bullet says otherwise.
   free-text materials references), assessment definitions and completion
   criteria (minimum attendance, required modules and assessments). Templates
   are deactivated instead of deleted; finance staff can read them.
-- Cohorts (arriving with scheduling) will be created from a fixed copy of
-  the template, so later edits never change a cohort already created.
+- Staff create a cohort from an active template with its weekly schedule;
+  the schedule skips known closures, and the cohort keeps a fixed copy of
+  the template's syllabus, so later edits never change it. A cohort is
+  offered to a tutor for the whole course, and staff with course access
+  browse the cohorts with their dates, status and sessions.
 
 **Approvals**
 
@@ -251,9 +254,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** course cohorts,
-attendance, academic records, billing and payments, payroll, reporting and
-analytics, and deployment. See the
+**Not built yet:** attendance, academic records, billing and payments,
+payroll, reporting and analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

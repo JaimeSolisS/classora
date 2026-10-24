@@ -90,6 +90,9 @@ describe('route tree', () => {
       'courses',
       'courses/templates/new',
       'courses/templates/:templateId',
+      'courses/cohorts',
+      'courses/cohorts/new',
+      'courses/cohorts/:cohortId',
       'settings',
       'settings/scheduling-policies',
       'groups',
@@ -161,26 +164,31 @@ describe('route tree', () => {
     expect(children[33]!.handle).toEqual({ permission: 'course.view' });
     expect(children[34]!.handle).toEqual({ permission: 'course.manage' });
     expect(children[35]!.handle).toEqual({ permission: 'course.view' });
+    // #243 A2: the cohorts for course.view; the create form needs
+    // schedule.manage.
+    expect(children[36]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[37]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[38]!.handle).toEqual({ permission: 'course.view' });
     // #37 H3.
-    expect(children[36]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[39]!.handle).toEqual({ permission: 'settings.manage' });
     // #61 F1.
-    expect(children[37]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[40]!.handle).toEqual({ permission: 'settings.manage' });
     // #234 A3: staff with schedule.view or students; the create form needs
     // schedule.manage.
     const groups = {
       anyOf: [{ permission: 'schedule.view' }, { anyRole: ['student'] }],
     };
-    expect(children[38]!.handle).toEqual(groups);
-    expect(children[39]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[40]!.handle).toEqual(groups);
+    expect(children[41]!.handle).toEqual(groups);
+    expect(children[42]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[43]!.handle).toEqual(groups);
     // #59 F1: guardians and students (the API's record policy decides).
     const requests = { anyRole: ['guardian', 'student'] };
-    expect(children[41]!.handle).toEqual(requests);
-    expect(children[42]!.handle).toEqual(requests);
-    expect(children[43]!.handle).toBeUndefined();
+    expect(children[44]!.handle).toEqual(requests);
+    expect(children[45]!.handle).toEqual(requests);
+    expect(children[46]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[44]!.id).toBe('privacy-notice');
-    expect(children[44]!.handle).toBeUndefined();
+    expect(children[47]!.id).toBe('privacy-notice');
+    expect(children[47]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

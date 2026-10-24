@@ -10,12 +10,15 @@ import { conflictsByDate } from './rules';
 // A series offer's 409 scheduling_conflict (#233 G2): every conflict of
 // every covered occurrence, grouped by its local date, as a plain list
 // (role="alert"; the focus moves to the heading when the list changes).
-// No override: a series offer takes none (E3).
+// No override: a series offer takes none (E3). A cohort's offer (#243 D4)
+// passes its own `noOverride` text (it has no "this session only").
 
 export function SeriesConflictList({
   conflicts,
+  noOverride,
 }: {
   conflicts: readonly SchedulingConflict[];
+  noOverride?: string;
 }) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -69,7 +72,9 @@ export function SeriesConflictList({
             </li>
           ))}
         </ul>
-        <p className="text-sm">{t('scheduling.offer.series.noOverride')}</p>
+        <p className="text-sm">
+          {noOverride ?? t('scheduling.offer.series.noOverride')}
+        </p>
       </div>
     </section>
   );

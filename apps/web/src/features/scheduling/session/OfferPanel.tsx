@@ -57,7 +57,8 @@ import { SeriesConflictList } from './SeriesConflictList';
 // page passes `series`: the panel then offers "This session only" (the
 // route above) or "This and following sessions" (the series from this
 // occurrence's date). The series choice never has an override (E3): its 409
-// lists the conflicts grouped by local date.
+// lists the conflicts grouped by local date. With `series.only` (#243 D4,
+// a cohort's series) the panel offers the series alone, no scope choice.
 //
 // `variant="substitute"` (#55 H1) is "Find a substitute" for a confirmed
 // session: the same picker, suggestions, deadline, conflict panel and
@@ -82,6 +83,11 @@ export interface OfferPanelProps<T = AssignmentOfferCreated> {
   /** The series choice (#233 G2), for an occurrence of a tutorless series. */
   series?: {
     onSubmit: (values: OfferValues) => Promise<T>;
+    /**
+     * Only the series, without "This session only" (#243 D4: a cohort's
+     * series), with its own help line and "can't override" text.
+     */
+    only?: { help: string; noOverride: string; submit: string };
   };
   /** "offer" (#52), "substitute" (#55) or "confirm" (#60). */
   variant?: 'offer' | 'substitute' | 'confirm';
@@ -158,7 +164,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
     initialConflicts ?? null,
   );
   const [scope, setScope] = useState<OfferScope>(
-    series ? initialScope : 'session',
+    series?.only ? 'series' : series ? initialScope : 'session',
   );
   const [seriesConflicts, setSeriesConflicts] = useState<
     SchedulingConflict[] | null
@@ -358,7 +364,10 @@ export function OfferPanel<T = AssignmentOfferCreated>({
       </h2>
       <p className="text-sm text-muted-foreground">{labels.intro}</p>
       {seriesConflicts ? (
-        <SeriesConflictList conflicts={seriesConflicts} />
+        <SeriesConflictList
+          conflicts={seriesConflicts}
+          noOverride={series?.only?.noOverride}
+        />
       ) : null}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
@@ -418,7 +427,9 @@ export function OfferPanel<T = AssignmentOfferCreated>({
         onSubmit={onFormSubmit}
         className="flex flex-col gap-4"
       >
-        {series ? (
+        {series?.only ? (
+          <p className="text-sm text-muted-foreground">{series.only.help}</p>
+        ) : series ? (
           <fieldset className="flex flex-col gap-2">
             <legend className="text-sm font-medium">
               {t('scheduling.offer.series.scope')}
@@ -625,7 +636,9 @@ export function OfferPanel<T = AssignmentOfferCreated>({
         <div>
           <Button type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}
-            {submitting ? labels.submitting : labels.submit}
+            {submitting
+              ? labels.submitting
+              : (series?.only?.submit ?? labels.submit)}
           </Button>
         </div>
       </form>

@@ -38,7 +38,8 @@ const THEMES = ['light', 'dark'] as const;
 // the scan invites through the API first (#43 F2; an invitation only, no
 // redemption; scanned once its Qualifications and Availability sections
 // loaded, #44 G2, #45 G2), /courses and the course template editor
-// (/courses/templates/new once its form loaded, #64 H2), and
+// (/courses/templates/new once its form loaded, #64 H2), /courses/cohorts
+// and /courses/cohorts/new (once its form loaded, #243 E5), and
 // the open notification panel
 // (#41 F2, its own test below)
 // are behind the guard: scanned signed in
@@ -157,6 +158,14 @@ const ROUTES: ScannedRoute[] = [
     path: '/courses/templates/new',
     signedIn: true,
     waitForField: common.courses.templates.name,
+  },
+  // #243 E5: the cohorts list and the create form (once its form loaded).
+  { name: 'cohorts', path: '/courses/cohorts', signedIn: true },
+  {
+    name: 'cohort-new',
+    path: '/courses/cohorts/new',
+    signedIn: true,
+    waitForField: common.courses.cohorts.fields.name,
   },
   { name: 'login', path: '/login', signedIn: false },
   { name: 'invite', path: '/invite', signedIn: false },

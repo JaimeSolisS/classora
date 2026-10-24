@@ -315,6 +315,34 @@ export const routes: RouteObject[] = [
             element: <CourseTemplateEditPage />,
             handle: { permission: 'course.view' },
           },
+          // Course cohorts (#243 A2, code-split): course.view holders browse
+          // them; the create form needs schedule.manage.
+          {
+            path: 'courses/cohorts',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/courses/cohorts/CohortsPage')
+              ).CohortsPage,
+            }),
+            handle: { permission: 'course.view' },
+          },
+          {
+            path: 'courses/cohorts/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/courses/cohorts/create/NewCohortPage')
+              ).NewCohortPage,
+            }),
+            handle: { permission: 'schedule.manage' },
+          },
+          {
+            path: 'courses/cohorts/:cohortId',
+            lazy: async () => ({
+              Component: (await import('@/features/courses/cohorts/CohortPage'))
+                .CohortPage,
+            }),
+            handle: { permission: 'course.view' },
+          },
           {
             path: 'settings',
             element: <SettingsPage />,
