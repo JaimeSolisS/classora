@@ -94,7 +94,10 @@ from app.modules.families import groupings as _groupings
 from app.modules.families import guardians as _guardians
 from app.modules.families import logins, search
 from app.modules.families.ages import is_minor
-from app.modules.families.assignments import TutorAssignmentSource
+from app.modules.families.assignments import (
+    TutorAssignmentSource,
+    register_tutor_assignment_source,
+)
 from app.modules.families.errors import (
     BirthdateInFutureError,
     EducationLevelUnavailableError,
@@ -159,6 +162,7 @@ __all__ = [
     "list_students",
     "load_access_facts",
     "record_consent",
+    "register_tutor_assignment_source",
     "remove_family_guardian",
     "remove_family_student",
     "revoke_consent",

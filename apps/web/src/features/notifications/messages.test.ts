@@ -175,7 +175,10 @@ describe('substitutions and cancellations (#55 F4)', () => {
       expect(edited('en', type, session)).not.toContain(
         session.class_session_id,
       );
-      expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+      // #67 F3: they open My schedule (mySchedule.test.tsx).
+      expect(
+        NOTIFICATION_LINKS[type]?.(session, { userId: 'u', timeZone: 'UTC' }),
+      ).toBe('/my-schedule?view=list&date=2031-03-10');
     }
   });
 

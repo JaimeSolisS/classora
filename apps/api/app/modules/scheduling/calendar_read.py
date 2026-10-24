@@ -40,7 +40,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Final
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -116,6 +116,30 @@ def validate_range(start: datetime, end: datetime) -> None:
         raise SessionValidationError([_query_error("to", "range_too_long")])
 
 
+def in_range[*Ts](
+    statement: Select[*Ts],
+    start: datetime,
+    end: datetime,
+    *scope: ColumnElement[bool],
+) -> Select[*Ts]:
+    """``statement`` limited to the sessions overlapping ``[start, end)``
+    (``starts_at < end AND ends_at > start``, plus the ``starts_at > start -
+    480 minutes`` index bound) and to ``scope``, by ``starts_at`` then
+    ``id``, at most ``ITEM_LIMIT + 1`` rows (the extra one tells
+    ``truncated``). The one range query of #57 A and of the role-scoped
+    schedules (#67 B3, C2), which pass their scope predicate."""
+    return (
+        statement.where(
+            ClassSession.starts_at < end,
+            ClassSession.ends_at > start,
+            ClassSession.starts_at > start - MAX_SESSION,
+            *scope,
+        )
+        .order_by(ClassSession.starts_at, ClassSession.id)
+        .limit(ITEM_LIMIT + 1)
+    )
+
+
 def _sessions_query(
     query: ClassSessionRangeQuery, now: datetime
 ) -> Select[ClassSession, bool, bool]:
@@ -132,28 +156,27 @@ def _sessions_query(
         .exists()
         .label("reassignment_needed")
     )
-    statement = select(ClassSession, overridden, reassignment).where(
-        ClassSession.starts_at < end,
-        ClassSession.ends_at > start,
-        ClassSession.starts_at > start - MAX_SESSION,
-    )
+    scope: list[ColumnElement[bool]] = []
     if not query.include_cancelled:
-        statement = statement.where(ClassSession.state != SessionState.CANCELLED.value)
+        scope.append(ClassSession.state != SessionState.CANCELLED.value)
     if query.tutor_user_id is not None:
-        statement = statement.where(ClassSession.tutor_user_id == query.tutor_user_id)
+        scope.append(ClassSession.tutor_user_id == query.tutor_user_id)
     if query.classroom_id is not None:
-        statement = statement.where(ClassSession.classroom_id == query.classroom_id)
+        scope.append(ClassSession.classroom_id == query.classroom_id)
     if query.kind is not None:
-        statement = statement.where(ClassSession.kind == query.kind)
+        scope.append(ClassSession.kind == query.kind)
     if query.student_id is not None:
-        statement = statement.where(
-            select(ClassSessionParticipant.id)
-            .where(ClassSessionParticipant.class_session_id == ClassSession.id)
-            .where(ClassSessionParticipant.student_id == query.student_id)
-            .exists()
-        )
-    return statement.order_by(ClassSession.starts_at, ClassSession.id).limit(
-        ITEM_LIMIT + 1
+        scope.append(has_participant(query.student_id))
+    return in_range(select(ClassSession, overridden, reassignment), start, end, *scope)
+
+
+def has_participant(student_id: uuid.UUID) -> ColumnElement[bool]:
+    """The session has ``student_id`` among its participants."""
+    return (
+        select(ClassSessionParticipant.id)
+        .where(ClassSessionParticipant.class_session_id == ClassSession.id)
+        .where(ClassSessionParticipant.student_id == student_id)
+        .exists()
     )
 
 

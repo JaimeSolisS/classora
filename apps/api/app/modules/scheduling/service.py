@@ -81,8 +81,15 @@ or expired offer becomes a ``scheduling.offer_reassignment`` inbox item
 (:data:`OFFER_REASSIGNMENT_HANDLER`) and notifies the ``schedule.assign``
 holders; ``app.wiring`` registers the handler and the three notification
 types (:func:`register_offer_notifications`). Family visibility:
-:data:`FAMILY_VISIBLE_STATES` / :func:`is_family_visible` (#67 builds on
-them).
+:data:`FAMILY_VISIBLE_STATES` / :func:`is_family_visible`, and
+:func:`is_tutor_visible` (#67).
+
+Role-scoped schedules (#67, :mod:`~app.modules.scheduling.role_schedules`):
+:func:`tutor_schedule`, :func:`family_schedule` and :func:`family_students`.
+The tutor assignment source of the ``families`` student record policy
+(:mod:`~app.modules.scheduling.tutor_assignments`):
+:func:`student_ids_for_tutor` and :data:`TUTOR_ASSIGNMENT_SOURCE`, which
+``app.wiring`` registers.
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -542,6 +549,15 @@ from app.modules.scheduling.requests import (
 from app.modules.scheduling.requests import (
     withdraw_session_request as withdraw_session_request,
 )
+from app.modules.scheduling.role_schedules import (
+    family_schedule as family_schedule,
+)
+from app.modules.scheduling.role_schedules import (
+    family_students as family_students,
+)
+from app.modules.scheduling.role_schedules import (
+    tutor_schedule as tutor_schedule,
+)
 from app.modules.scheduling.series import (
     SERIES_TIME_ZONE_DEPENDENCY as SERIES_TIME_ZONE_DEPENDENCY,
 )
@@ -612,6 +628,9 @@ from app.modules.scheduling.states import SessionKind as SessionKind
 from app.modules.scheduling.states import SessionState as SessionState
 from app.modules.scheduling.states import can_transition as can_transition
 from app.modules.scheduling.states import is_family_visible as is_family_visible
+from app.modules.scheduling.states import (
+    is_tutor_visible as is_tutor_visible,
+)
 from app.modules.scheduling.substitution_flow import (
     list_session_substitutions as list_session_substitutions,
 )
@@ -637,6 +656,15 @@ from app.modules.scheduling.times import (
 )
 from app.modules.scheduling.times import (
     validate_session_bounds as validate_session_bounds,
+)
+from app.modules.scheduling.tutor_assignments import (
+    TUTOR_ASSIGNMENT_LOOKBACK_DAYS as TUTOR_ASSIGNMENT_LOOKBACK_DAYS,
+)
+from app.modules.scheduling.tutor_assignments import (
+    TUTOR_ASSIGNMENT_SOURCE as TUTOR_ASSIGNMENT_SOURCE,
+)
+from app.modules.scheduling.tutor_assignments import (
+    student_ids_for_tutor as student_ids_for_tutor,
 )
 from app.modules.scheduling.tutor_suggestions import (
     suggest_for_slot as suggest_for_slot,

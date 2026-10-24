@@ -1384,8 +1384,9 @@ without a login.
 - **Who sees which student** (record policy, pure functions in
   `families/permissions.py`): Owners, Administrators, Academic Coordinators
   and Finance Staff see every student. Tutors see only the students of their
-  current assignments; assignments arrive with scheduling (M4), so until
-  then tutors see none. Guardians see the students linked to their active
+  current assignments: the students of the sessions they currently teach in
+  `offered`, `confirmed` or `completed` that ended less than 30 days ago or
+  haven't ended (#67 D1-D3, see Role-scoped schedules). Guardians see the students linked to their active
   guardian profile (#34, see Guardians and links) and a student user their
   own profile (the one linked to their login, #35, whatever its
   `is_active`; suspending the login is the access control).
@@ -2019,6 +2020,15 @@ calendar's range read and tutor options (M4-12, #57) are in
 Recurring series (M4-08, #53) are in Class series below; their occurrences
 are class sessions too. The conflict checks of every write path run in one
 collector, `checks.collect_conflicts`.
+
+`class_sessions.first_confirmed_at` (M4-22, #67 A1, A2) records when a
+session was first `confirmed`: a mapper event in `models.py` sets it once
+(every ORM writer: an accept, a series row created `confirmed`, a restore)
+and never changes or clears it, and
+`ck_class_sessions_confirmed_has_first_confirmed_at` requires it for
+`confirmed` and `completed` rows. It is not part of the staff responses
+(`ClassSessionDetail` and the range read are unchanged); the role-scoped
+schedules use it (Role-scoped schedules below).
 
 `schedule.assign` (M4-06, ADR-0005 D9; not delegable) is held by the Owner,
 Administrators and Academic coordinators: it covers seeing tutor
@@ -3838,6 +3848,79 @@ for a type decided on its own page.
 `session_request.user` 10 per hour, per signed-in user (see Rate limits).
 `session_requests` rows are audited (`create`/`update`); pending ones block
 a change of the center's time zone (`scheduling.session_requests`).
+
+### Role-scoped schedules
+
+Implemented by M4-22 (#67; spec §2, §3, §10 "mobile-friendly
+tutor/student/guardian interfaces", §15 W1.4; ADR-0005 D2, D8, D9; ADR-0007
+D17) in `apps/api/app/modules/scheduling/` (`role_schedules.py`: the reads;
+`permissions.py`: the pure record policies; `schedule_schemas.py`: the
+closed bodies; `schedule_router.py`; `tutor_assignments.py`: the tutor
+assignment source). No new permission: the routes require permissions every
+caller already holds, then a record policy decides. `GET
+/api/v1/class-sessions` (#57) is unchanged: tutors, students and guardians
+still get `403`.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/tutors/{user_id}/schedule?from=…&to=…` | `require("tutor.view")` (Owner, Administrator, Academic coordinator, Tutor) + record policy | The tutor themselves, or a staff role with `schedule.view`. Anyone else, an unknown id and a user who isn't a tutor get the same `404 not_found`. `200` with `TutorSchedule`. At most 7 statements. |
+| `GET /api/v1/students/{student_id}/schedule?from=…&to=…` | `require("student.view")` (every role) + record policy | The student themselves (own profile, whatever its `is_active`), a guardian linked through their **active** profile (a minor; an adult only with that student's `guardian_academic_access` consent naming the guardian, otherwise `403 student_consent_required`), or a staff role with `schedule.view`. An unknown id, an unlinked student, a sibling, a student a tutor only teaches and an inactive guardian profile get the same `404 not_found`. `200` with `FamilySchedule`. At most 8 statements. |
+| `GET /api/v1/schedule/family-students` | `require("student.view")` (every role) | The whose-schedule choices: `{items: [{student_id, display_name, relation: "self" \| "guardian", is_minor, schedule_access: "allowed" \| "consent_required"}]}`, by display name. Only the caller's own profile (student role) and the students linked to their active guardian profile, never a tutor's or staff member's other students; `{items: []}` without either role. At most 4 statements. |
+
+Order: `401`/`403` → `422` query → `404` / `403 student_consent_required`
+→ `200`. The facts are loaded on every request (no cache): an unlink, a
+deactivated guardian profile or a revoked consent applies on the next
+request.
+
+**Query** (both schedules): `from`, `to` as the #57 range read: instants with
+an offset (a naive one is `422 naive_datetime` on its field), `to` after
+`from` (`range_invalid`), at most 45 days (`range_too_long`); unknown
+parameters are `422`. No filters. A session matches when it overlaps
+`[from, to)`; items by `starts_at` then `id`, at most 1000, then `truncated:
+true`. Both reads use the #57 range query (`calendar_read.in_range`) with
+their scope.
+
+**Visibility** (`states.is_family_visible` / `is_tutor_visible`; the SQL
+predicates are built from the same sets, a drift test compares them):
+
+| State | Family | Tutor |
+| ----- | ------ | ----- |
+| `confirmed`, `completed` | always | always |
+| `offered` | never | always ("awaiting your answer") |
+| `cancelled`, `skipped_closure` | only when `first_confirmed_at` is set | only when `first_confirmed_at` is set |
+| `unassigned`, `conflict` | never | never |
+
+A family sees the sessions the student takes part in
+(`class_session_participants`: individual, group and course sessions alike);
+a tutor sees the sessions whose **current** `tutor_user_id` they are (after a
+#55 substitution the original tutor no longer sees it). Rows that existed
+before 0048 keep `first_confirmed_at = NULL` unless `confirmed`/`completed`
+(backfilled from `updated_at`), so their cancelled or skipped sessions stay
+hidden from families.
+
+**Items** (closed allow-lists, `extra="forbid"`):
+
+- `TutorScheduleItem`: `{id, kind, state, starts_at, ends_at, subject {id,
+  name, education_level_name}, classroom {id, name} | null, participants
+  [{student_id, display_name}]}` (students by display name). No markers,
+  override data, reassignment flags, cancellation reason or offer details.
+  `TutorSchedule` is `{items, truncated}`.
+- `FamilyScheduleItem`: `{id, kind, state, starts_at, ends_at, subject {id,
+  name, education_level_name}, tutor {display_name} | null, classroom {name}
+  | null}`. Never other participants (no ids, names or counts), the tutor's
+  id, username or contact data, the classroom id, markers, overrides,
+  reassignment flags, offer data or the cancellation reason.
+  `FamilySchedule` is `{student_id, items, truncated}`.
+
+**Tutor assignments** (#67 D1-D3): `scheduling.service.student_ids_for_tutor
+(session, tutor_user_id, *, now)` returns the participants of the sessions
+whose current tutor is `tutor_user_id`, in `offered`, `confirmed` or
+`completed`, with `ends_at > now - 30 days` (`TUTOR_ASSIGNMENT_LOOKBACK_DAYS`),
+in one statement. `app/wiring.py` registers it with
+`families.assignments.register_tutor_assignment_source`, so a tutor sees
+those students (at the `limited` level) in `GET /api/v1/students` and
+`/students/{id}`; the access ends 30 days after the last such session, or as
+soon as a substitution or a decline removes the tutor.
 
 ### Change requests
 

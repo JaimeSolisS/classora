@@ -196,7 +196,7 @@ describes the route declarations and the 401/403/404 rule.
   access = "permission"            # or "public" (needs reason) / "authenticated"
   permission = "user.view"         # the code the route's require() names
   allow = ["owner", "administrator"]
-  # optional: path_params = { user_id = "..." }, json = { ... }
+  # optional: path_params = { user_id = "..." }, query = { ... } (#67), json = { ... }
   ```
 
   Every role not in `allow` is expected to get `403 permission_denied`;
@@ -261,11 +261,24 @@ describes the route declarations and the 401/403/404 rule.
   `assert_same_not_found(hidden_response, missing_response)` from
   `tests/authz/assertions.py`: both are `404 not_found` with identical bodies
   apart from `request_id` and the same headers.
+- **Visibility tests** (#67): a read that shows rows by state (the
+  role-scoped schedules) is tested for every state × the fact it depends on
+  (`first_confirmed_at` set or `NULL`), through the real route, against the
+  pure rule (`states.is_family_visible` / `is_tutor_visible`); a unit drift
+  test compares the SQL predicate with the same sets. A closed response is
+  checked on the raw JSON: its key sets, and a leak test that the ids and
+  names it must never carry (other participants, the tutor's id) are absent
+  from the body text.
 - **Injected facts** (#33): a record policy whose facts come from another
   module that doesn't exist yet reads them through one FastAPI dependency the
-  tests override. Tutor assignments (M4) come from
-  `get_tutor_assignment_source` (`app/modules/families/assignments.py`; the
-  app wires `NoTutorAssignments`, always empty). Integration tests inject a
+  tests override. Tutor assignments come from
+  `get_tutor_assignment_source` (`app/modules/families/assignments.py`):
+  since #67 `app.wiring` registers the scheduling source
+  (`scheduling.service.student_ids_for_tutor`, so `families` never imports
+  `scheduling`), and `NoTutorAssignments` (always empty) is only the
+  default before any registration and the source of the family routes.
+  `test_tutor_assignment_source.py` uses the real source with real
+  sessions and a frozen clock (the 30-day lookback). Integration tests inject a
   fixed tutor → students map with `student_support.assigned(client,
   {tutor_id: {student_id, ...}})`, which overrides that dependency on the
   test client's app for the block and counts the calls (facts are loaded only

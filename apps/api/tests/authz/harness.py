@@ -122,6 +122,7 @@ ENTRY_FIELDS = frozenset(
         "allow",
         "reason",
         "path_params",
+        "query",
         "json",
         "reauth",
         "reauth_conditional",
@@ -157,6 +158,7 @@ class MatrixEntry:
     allow: Any = None
     reason: Any = None
     path_params: Any = None
+    query: Any = None
     json: Any = None
     reauth: Any = None
     reauth_conditional: Any = None
@@ -265,6 +267,8 @@ def entry_problems(
             problems.append("a public entry needs a non-empty reason")
     if entry.path_params is not None and not isinstance(entry.path_params, dict):
         problems.append("path_params must be a table")
+    if entry.query is not None and not isinstance(entry.query, dict):
+        problems.append("query must be a table")
     if entry.reauth is not None and entry.reauth not in sensitive_actions:
         problems.append(
             f"unknown reauth action {entry.reauth!r} (see app/core/reauth.py)"
@@ -935,7 +939,11 @@ def _send(
     try:
         client.cookies.clear()
         request = client.build_request(
-            method, request_path(app, entry), json=entry.json, headers=headers
+            method,
+            request_path(app, entry),
+            params=entry.query,
+            json=entry.json,
+            headers=headers,
         )
         if omit == "no-origin" and "origin" in request.headers:
             del request.headers["origin"]

@@ -18,11 +18,14 @@ approval type, its two decision notification types and the
 ``staff.availability_change`` approval type
 (``app.workflows.availability_change``), its two decision notification
 types, ``scheduling.reassignment_needed`` and the scheduling implementation
-of the ``staff`` availability impact seam) are wired here, by the API app factory
+of the ``staff`` availability impact seam; #67 D2: the ``scheduling`` tutor
+assignment source of the ``families`` student record policy) are wired
+here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
 from app.modules.administration import service as administration_service
+from app.modules.families import service as families_service
 from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
     get_account_references,
@@ -70,6 +73,9 @@ def register_approval_wiring() -> None:
     scheduling_service.register_change_request_notifications()
     scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
+    families_service.register_tutor_assignment_source(
+        scheduling_service.TUTOR_ASSIGNMENT_SOURCE
+    )
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
     )

@@ -172,6 +172,13 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   ``uq_class_session_reassignment_flags_source`` flags a session once per
   tutor and change. ``Audited`` (``create`` only).
 
+- ``class_sessions.first_confirmed_at`` (#67 A1, A2): when the session was
+  first ``confirmed`` (``NULL``: never). A mapper event sets it once and
+  never changes or clears it; ``ck_class_sessions_confirmed_has_first_confirmed_at``
+  requires it for ``confirmed`` and ``completed`` rows. The role-scoped
+  schedules show ``cancelled`` and ``skipped_closure`` sessions only when it
+  is set (``states.is_family_visible`` / ``is_tutor_visible``).
+
 Cohorts add their own columns and tables (#65).
 """
 
@@ -192,6 +199,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     and_,
+    event,
     func,
     text,
 )
@@ -200,10 +208,12 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core import clock
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
 from app.modules.scheduling.conflicts import CODE_ORDER, SOFT
 from app.modules.scheduling.states import (
+    FAMILY_VISIBLE_STATES,
     ROOM_OCCUPYING_STATES,
     TUTOR_OCCUPYING_STATES,
     SessionKind,
@@ -372,6 +382,11 @@ class ClassSession(Audited, VersionedMixin, Model):
             "(kind = 'course') = (cohort_id IS NOT NULL)", name="cohort_iff_kind"
         ),
         Index("ix_class_sessions_cohort_id_starts_at", "cohort_id", "starts_at"),
+        CheckConstraint(
+            f"state NOT IN ({_quoted(FAMILY_VISIBLE_STATES)})"
+            " OR first_confirmed_at IS NOT NULL",
+            name="confirmed_has_first_confirmed_at",
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -427,6 +442,31 @@ class ClassSession(Audited, VersionedMixin, Model):
         ForeignKey("course_cohorts.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    first_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+def _record_first_confirmation(
+    mapper: Any, connection: Any, target: ClassSession
+) -> None:
+    """``first_confirmed_at`` (#67 A2): set to ``clock.now()`` when the row
+    is written ``confirmed`` (or ``completed``, only reachable from
+    ``confirmed``) and it is still ``NULL``. Never changed once set, never
+    cleared when the session leaves ``confirmed``. A mapper event, so every
+    ORM writer is covered (the #52 accept, #233 series rows created
+    ``confirmed``, the #53/#53b/#232 restores, #55, M5 closeout); the value
+    is set during the flush, before ``after_flush``, so the row's audit
+    event lists it."""
+    if target.first_confirmed_at is None and target.state in _FIRST_CONFIRMED_STATES:
+        target.first_confirmed_at = clock.now()
+
+
+_FIRST_CONFIRMED_STATES: Final = frozenset(
+    state.value for state in FAMILY_VISIBLE_STATES
+)
+event.listen(ClassSession, "before_insert", _record_first_confirmation)
+event.listen(ClassSession, "before_update", _record_first_confirmation)
 
 
 class ClassSessionParticipant(Audited, Model):

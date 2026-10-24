@@ -19,7 +19,8 @@
 #                             codes). Every other role gets 403
 #                             permission_denied, anonymous gets 401.
 #   Optional: `path_params` (values for the path template; default: a fixed
-#   UUID, or 1 for an int parameter) and `json` (a request body).
+#   UUID, or 1 for an int parameter), `query` (query parameters, #67) and
+#   `json` (a request body).
 #
 # Reauthentication (#26, ADR-0007 D10; actions and bound permissions in
 # apps/api/app/core/reauth.py):
@@ -1018,6 +1019,15 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/schedule/family-students"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# #67 C4: every role; the caller's own family students only (an empty list
+# for a caller who is neither a student nor a guardian). 200 for every role.
+
+[[route]]
+method = "GET"
 path = "/api/v1/schedule/tutor-options"
 access = "permission"
 permission = "schedule.view"
@@ -1110,9 +1120,9 @@ path = "/api/v1/students"
 access = "permission"
 permission = "student.view"
 allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
-# Every role may call it; the record policy filters the list (tutors and
-# students see an empty page until M4 and #35; guardians see their linked
-# students, #34).
+# Every role may call it; the record policy filters the list (tutors see
+# the students of their recent and upcoming sessions, #67 D3; students their
+# own profile, #35; guardians their linked students, #34).
 
 [[route]]
 method = "POST"
@@ -1191,6 +1201,18 @@ access = "permission"
 permission = "family.manage"
 allow = ["owner", "administrator"]
 # The placeholder ids are no link: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/schedule"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# #67 C1: the record policy (self, a linked guardian, staff with
+# schedule.view). A valid range; the placeholder id is no student: 404 for
+# every allowed role. The 200 and 403 student_consent_required cases are in
+# tests/integration/test_family_schedule.py.
+query = { from = "2031-01-06T00:00:00Z", to = "2031-01-13T00:00:00Z" }
 
 [[route]]
 method = "GET"
@@ -1356,6 +1378,17 @@ allow = ["owner", "administrator"]
 # #198: reviewers revoke an approved qualification. A valid body for the
 # placeholder ids, which are no qualification: 404 for every allowed role.
 json = { reason = "Outdated certificate.", version = 2 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/schedule"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #67 B1: the tutor themselves or staff with schedule.view. A valid range;
+# the placeholder id is no tutor: 404 for every allowed role. The 200 cases
+# are in tests/integration/test_tutor_schedule.py.
+query = { from = "2031-01-06T00:00:00Z", to = "2031-01-13T00:00:00Z" }
 
 [[route]]
 method = "GET"

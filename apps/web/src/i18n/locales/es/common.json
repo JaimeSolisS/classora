@@ -43,7 +43,8 @@
     "schedule": "Agenda",
     "courses": "Cursos",
     "offers": "Mis ofertas",
-    "sessionRequests": "Solicitudes de sesión"
+    "sessionRequests": "Solicitudes de sesión",
+    "mySchedule": "Mi horario"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -2770,6 +2771,39 @@
       "withdrawn": "Retirada: {{request}}.",
       "reason": "Motivo",
       "confirmedHelp": "Confirmada: el centro programó esta sesión."
+    }
+  },
+  "mySchedule": {
+    "title": "Mi horario",
+    "regionLabel": "Calendario de mi horario",
+    "loading": "Cargando clases…",
+    "empty": "No hay clases en este periodo.",
+    "count_one": "{{count}} clase en este periodo.",
+    "count_many": "{{count}} clases en este periodo.",
+    "count_other": "{{count}} clases en este periodo.",
+    "truncated": "Se muestran las primeras 1000 clases. Elige un periodo más corto.",
+    "nothing": "Todavía no hay un horario que mostrar.",
+    "tutor": "Tutor(a): {{name}}",
+    "noTutor": "Sin tutor(a)",
+    "noStudents": "Sin estudiantes",
+    "room": "Aula: {{name}}",
+    "answerOffer": "Responde esta oferta en Mis ofertas",
+    "states": {
+      "offered": "Esperando tu respuesta",
+      "confirmed": "Confirmada",
+      "completed": "Completada",
+      "cancelled": "Cancelada",
+      "skipped_closure": "No se impartió: centro cerrado"
+    },
+    "whose": {
+      "label": "Horario de",
+      "teaching": "Mis clases como tutor(a)",
+      "self": "Mis clases",
+      "consentRequired": "{{name}} (no compartido)"
+    },
+    "consent": {
+      "title": "Este estudiante no ha compartido su horario contigo",
+      "how": "Puede compartir contigo su expediente académico en Classora (Consentimientos), o el centro puede registrar su consentimiento."
     }
   }
 }
