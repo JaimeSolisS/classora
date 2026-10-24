@@ -35,11 +35,13 @@ sessions or participants (#56; #65 G1, also in ``_docs/api.md``):
     ``FOR SHARE`` (only in the cohort create) → group **or cohort**
     ``FOR UPDATE`` → series ``FOR UPDATE`` → sessions by id → offer
 
-A group series takes its group row (:mod:`.group_lock`); a course series
-takes its cohort row instead (``courses.service.lock_cohort``: the nightly
-extension, the #233 series offer, the #54 series edits and ``PATCH`` of a
-course series or occurrence, and the #66 enrollment and withdrawal in
-``app.workflows.cohort_enrollment``, each after the students and the zone).
+A group series takes its group row (``lock_group``, #56 F1; the rule and
+its list of writers are in :mod:`.group_lock`, not repeated here); a course
+series takes its cohort row instead (``courses.service.lock_cohort``: the
+nightly extension, the #233 series offer, the #54 series edits and
+``PATCH`` of a course series or occurrence, and the #66 enrollment and
+withdrawal in ``app.workflows.cohort_enrollment``, each after the students
+and the zone).
 The ``courses`` module never takes a scheduling lock. Any step a writer
 does not need is skipped, never reordered.
 """
