@@ -56,7 +56,11 @@ type Common = {
     submit: string;
     success: { heading: string; unassigned: string; another: string };
     severity: { hard: string; soft: string };
-    conflicts: { student_overlap: string; group_capacity_exceeded: string };
+    conflicts: {
+      student_overlap: string;
+      group_capacity_exceeded: string;
+      cohort_capacity_exceeded: string;
+    };
     suggestions: { heading: string; slot: string };
     override: {
       action: string;
@@ -570,6 +574,24 @@ type Common = {
       next: Record<'heading', string>;
       tutor: Record<'heading', string>;
       assignment: Record<'noTutor', string>;
+      // #245: the Students panel and the enrollment dialogs.
+      enrollment: Record<
+        | 'heading'
+        | 'capacity'
+        | 'full'
+        | 'enroll'
+        | 'overridden'
+        | 'showWithdrawn'
+        | 'withdrawOf'
+        | 'withdrawn_one',
+        string
+      > & {
+        dialog: Record<
+          'title' | 'submit' | 'overrideAction' | 'wholeCohort' | 'done',
+          string
+        >;
+        withdrawDialog: Record<'title' | 'reason' | 'submit' | 'done', string>;
+      };
     };
     templates: Record<
       | 'title'

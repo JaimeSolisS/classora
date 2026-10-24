@@ -214,6 +214,10 @@ unless a bullet says otherwise.
   the template's syllabus, so later edits never change it. A cohort is
   offered to a tutor for the whole course, and staff with course access
   browse the cohorts with their dates, status and sessions.
+- Staff enroll students in a cohort and withdraw them at any time, also
+  after the course has started (a student who joins late gets only the
+  sessions that haven't started). Enrollment respects the cohort's maximum
+  and the room's capacity; going over the maximum needs an override.
 
 **Approvals**
 

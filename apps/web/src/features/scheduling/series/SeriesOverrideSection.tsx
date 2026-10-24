@@ -58,6 +58,8 @@ export interface SeriesOverrideLabels {
   noOverrideLabel?: string;
   /** The text under the panel when such a conflict is listed. */
   notYet?: string;
+  /** The label of a hard conflict (default: "Not allowed"; #245). */
+  hardLabel?: string;
 }
 
 export function SeriesOverrideSection({
@@ -127,6 +129,7 @@ export function SeriesOverrideSection({
         accepts={accepts}
         noOverrideLabel={labels?.noOverrideLabel}
         noDateHeading={labels?.noDateHeading}
+        hardLabel={labels?.hardLabel}
       />
       {action === 'override' ? (
         <div>

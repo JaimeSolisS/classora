@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useParams } from 'react-router';
+import { useLocation, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -13,9 +13,12 @@ import {
   fetchClassroomCapacityOptions,
   GROUP_OPTIONS_KEY,
 } from '@/features/groups/api';
+import { EnrollDialog } from '@/features/groups/EnrollDialog';
+import { WithdrawDialog } from '@/features/groups/WithdrawDialog';
 import {
   fetchTutorOptions,
   SCHEDULE_OPTIONS_KEY,
+  searchStudents,
   type TutorSuggestionList,
 } from '@/features/scheduling/create/api';
 import {
@@ -35,9 +38,12 @@ import {
   cohortKey,
   COHORTS_KEY,
   cohortSessionsKey,
+  enrollInCohort,
   fetchCohort,
   fetchCohortSessions,
   updateCohort,
+  withdrawFromCohort,
+  type CohortEnrollmentItem,
 } from './api';
 import {
   CohortSessionsSection,
@@ -45,12 +51,19 @@ import {
 } from './CohortSessionsSection';
 import { CohortView } from './CohortView';
 import { EditCohortDialog } from './EditCohortDialog';
+import { useEnrollLabels, useWithdrawLabels } from './enrollmentLabels';
+import { RosterPanel } from './RosterPanel';
 import {
   canOfferSeries,
+  cohortWithdrawBody,
+  enrollBody,
+  enrolledStudentIds,
+  enrollmentControls,
   offerFromDate,
   roomLimited,
   sessionsWindow,
   shiftWindow,
+  withdrawnShown,
 } from './rules';
 
 // /courses/cohorts/:cohortId (#243 D), for course.view holders: the
@@ -60,8 +73,23 @@ import {
 // too) offer the series to a tutor while it has none, from today (or its
 // start) with the #51 suggestions for its next session. An unknown id (404)
 // is the shared not-found page. Every write refreshes the cohort (and the
-// list and the calendar) and is announced at the top. No enrollment here
-// (#245 adds a Students section to the composed page).
+// list and the calendar) and is announced at the top.
+//
+// The Students section (#245) shows when the detail carries a `roster`
+// (course.view holders, #66 F1); "Show withdrawn" is `?withdrawn=1`.
+// schedule.manage holders enroll (the #234 dialog with the cohort's texts:
+// `{student_id, override?: {codes, reason}}`) and withdraw (`{version,
+// reason?}`). An already_enrolled or cohort_ended answer refreshes the
+// cohort and stays in the dialog; a withdrawal's version_conflict,
+// enrollment_not_active or enrollment_not_found closes it, refreshes the
+// roster and says so at the top.
+
+/** The withdrawal answers that mean "the roster you saw is stale" (C2). */
+const STALE_WITHDRAWAL = new Set([
+  'version_conflict',
+  'enrollment_not_active',
+  'enrollment_not_found',
+]);
 
 interface PageNotice {
   notice?: string;
@@ -76,19 +104,27 @@ export function CohortPage() {
 
 function CohortPageContent({ cohortId }: { cohortId: string }) {
   const { t } = useTranslation();
+  const { t: tErrors } = useTranslation('errors');
   const location = useLocation();
+  const [search, setSearch] = useSearchParams();
   const timeZone = useCenterTimeZone();
   const { formatLocalDate } = useFormatters();
   const canManage = useCan('schedule.manage');
   const canAssign = useCan('schedule.assign');
   const canViewSchedule = useCan('schedule.view');
   const canViewCourses = useCan('course.view');
+  const canOverride = useCan('schedule.override');
+  const canViewStudents = useCan('student.view');
   const client = useQueryClient();
   const [notice, setNotice] = useState<string | null>(
     (location.state as PageNotice | null)?.notice ?? null,
   );
   const [noticeFocus, setNoticeFocus] = useState(notice !== null);
   const [editing, setEditing] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<CohortEnrollmentItem | null>(
+    null,
+  );
   const [windowStart, setWindowStart] = useState<string>(() =>
     todayInZone(timeZone),
   );
@@ -97,6 +133,8 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
     queryKey: cohortKey(cohortId),
     queryFn: ({ signal }) => fetchCohort(cohortId, signal),
   });
+  const enrollLabels = useEnrollLabels(cohort.data?.name ?? '');
+  const withdrawLabels = useWithdrawLabels(cohort.data?.name ?? '');
   useDocumentTitle(cohort.data?.name ?? t('courses.cohorts.page.title'));
   const range = sessionsWindow(windowStart, timeZone);
   const sessions = useQuery({
@@ -228,6 +266,62 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
     );
   }
 
+  const roster = detail.roster ?? null;
+  const controls = enrollmentControls(detail, canManage);
+
+  function showWithdrawn(shown: boolean) {
+    setSearch(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (shown) {
+          next.set('withdrawn', '1');
+        } else {
+          next.delete('withdrawn');
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  async function withdraw(item: CohortEnrollmentItem, reason: string) {
+    try {
+      await withdrawFromCohort(
+        cohortId,
+        item.id,
+        cohortWithdrawBody(item.version, reason),
+      );
+    } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        caught.code &&
+        STALE_WITHDRAWAL.has(caught.code)
+      ) {
+        setWithdrawing(null);
+        announce(
+          caught.code === 'version_conflict'
+            ? t('courses.cohorts.enrollment.withdrawDialog.versionConflict')
+            : caught.code === 'enrollment_not_active'
+              ? tErrors('enrollment_not_active')
+              : t('courses.cohorts.enrollment.withdrawDialog.notFound'),
+          true,
+        );
+        await refresh();
+        return;
+      }
+      throw caught;
+    }
+    setWithdrawing(null);
+    // The row's button is gone: the notice takes the focus.
+    announce(
+      t('courses.cohorts.enrollment.withdrawDialog.done', {
+        name: item.student.display_name,
+      }),
+      true,
+    );
+    await refresh();
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <CoursesTabs />
@@ -254,7 +348,88 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
           onPrevious={() => setWindowStart((d) => shiftWindow(d, -1))}
           onNext={() => setWindowStart((d) => shiftWindow(d, 1))}
         />
+        {roster ? (
+          <RosterPanel
+            cohort={detail}
+            roster={roster}
+            timeZone={timeZone}
+            canManage={canManage}
+            linkStudents={canViewStudents}
+            showWithdrawn={withdrawnShown(search)}
+            onShowWithdrawnChange={showWithdrawn}
+            onEnroll={() => {
+              setNotice(null);
+              setEnrolling(true);
+            }}
+            onWithdraw={(item) => {
+              setNotice(null);
+              setWithdrawing(item);
+            }}
+          />
+        ) : null}
       </CohortView>
+      {roster && canManage ? (
+        <>
+          <EnrollDialog
+            open={enrolling}
+            groupName={detail.name}
+            enrolledIds={enrolledStudentIds(roster)}
+            searchStudents={searchStudents}
+            canOverride={canOverride}
+            help={
+              controls.startedHelp
+                ? t('courses.cohorts.enrollment.dialog.started')
+                : undefined
+            }
+            labels={enrollLabels}
+            onEnroll={async (student, override) => {
+              try {
+                return await enrollInCohort(
+                  cohortId,
+                  enrollBody(student.id, override),
+                );
+              } catch (caught) {
+                // B2, B4: the roster or the status moved on; the dialog
+                // shows the message.
+                if (
+                  caught instanceof ApiError &&
+                  (caught.code === 'already_enrolled' ||
+                    caught.code === 'cohort_ended')
+                ) {
+                  void refresh();
+                }
+                throw caught;
+              }
+            }}
+            onDone={(_created, student) => {
+              setEnrolling(false);
+              announce(
+                t('courses.cohorts.enrollment.dialog.done', {
+                  name: student.name,
+                }),
+                false,
+              );
+              void refresh();
+            }}
+            onCancel={() => setEnrolling(false)}
+          />
+          <WithdrawDialog
+            enrollment={withdrawing}
+            groupName={detail.name}
+            labels={withdrawLabels}
+            onReload={() => {
+              setWithdrawing(null);
+              void cohort.refetch();
+            }}
+            onCancel={() => setWithdrawing(null)}
+            onConfirm={async (reason) => {
+              if (withdrawing) {
+                await withdraw(withdrawing, reason);
+              }
+            }}
+          />
+        </>
+      ) : null}
       {canManage ? (
         <EditCohortDialog
           open={editing}

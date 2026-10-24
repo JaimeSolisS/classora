@@ -619,8 +619,13 @@ describe('navigation and access (A2, A3)', () => {
     async (_role, as, path) => {
       const api = stub(as);
       app = await open(path);
-      expect(main().querySelector('h1')?.textContent).toBe(
-        "You don't have access to this page",
+      // Wait on the page, not a fixed number of turns (flaked under load).
+      await vi.waitFor(
+        () =>
+          expect(main().querySelector('h1')?.textContent).toBe(
+            "You don't have access to this page",
+          ),
+        { timeout: 3000, interval: 20 },
       );
       expect(api.calls(LIST)).toHaveLength(0);
       expect(api.calls(DETAIL)).toHaveLength(0);

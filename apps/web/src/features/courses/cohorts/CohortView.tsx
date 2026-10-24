@@ -24,7 +24,7 @@ import { assignmentOf, cohortRule, roomLimited } from './rules';
 // (with the page's offer panel while the series has no tutor), the next
 // sessions (state as text and an icon; a link to the session page for
 // schedule.view holders), then `children` (the page's "Sessions" range
-// list; #245 adds the Students section the same way) and the syllabus from
+// list and the #245 Students panel) and the syllabus from
 // the cohort's snapshot, never the live template.
 
 export interface CohortViewProps {
