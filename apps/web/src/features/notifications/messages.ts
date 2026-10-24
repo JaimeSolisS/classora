@@ -251,8 +251,12 @@ export const NOTIFICATION_LINKS: Readonly<
   // #60 F3: the requester's decided request, in My requests.
   'scheduling.session_request_confirmed': myRequests,
   'scheduling.session_request_rejected': myRequests,
-  // #62 F3: no family or tutor page for change requests until #62b, so
-  // scheduling.change_request_approved / _rejected only become read.
+  // #62b C1: the requester's decided change request, in My change
+  // requests filtered by the decision.
+  'scheduling.change_request_approved': () =>
+    '/change-requests?status=approved',
+  'scheduling.change_request_rejected': () =>
+    '/change-requests?status=rejected',
   // #63: the tutor's availability decisions and the staff's reassignment
   // notice.
   'staff.availability_change_approved': ownAvailability,

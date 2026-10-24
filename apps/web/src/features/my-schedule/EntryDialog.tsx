@@ -15,15 +15,18 @@ import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
 
 // The details of one "My schedule" item (#67 E6; the #57 D8 dialog): only
-// the item's own fields, from the loaded data (no request, no actions). A
-// tutor's `offered` item links to /offers, where the answer is given.
-// Focus is trapped while it is open and goes back to the event on close.
+// the item's own fields, from the loaded data. A tutor's `offered` item
+// links to /offers, where the answer is given. `action` is the page's slot
+// under the details (#62b A1: "Request a change"). Focus is trapped while
+// it is open and goes back to the event on close.
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
   context: LabelContext;
   onClose: () => void;
   onReturnFocus: () => void;
+  /** Rendered under the details (#62b A1). */
+  action?: ReactNode;
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -40,6 +43,7 @@ export function EntryDialog({
   context,
   onClose,
   onReturnFocus,
+  action,
 }: EntryDialogProps) {
   const { t } = useTranslation();
   return (
@@ -110,6 +114,7 @@ export function EntryDialog({
               {t('mySchedule.answerOffer')}
             </Link>
           ) : null}
+          {action}
           <DialogFooter showCloseButton />
         </DialogContent>
       ) : null}

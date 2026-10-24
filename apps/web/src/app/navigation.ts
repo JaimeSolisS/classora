@@ -1,6 +1,7 @@
 import type { ParseKeys } from 'i18next';
 import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
+import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
@@ -71,5 +72,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/requests',
     labelKey: 'nav.sessionRequests',
     ...SESSION_REQUESTS_ACCESS,
+  },
+  // My change requests (#62b B1): guardians, students and tutors (the API
+  // decides which requests each sees).
+  {
+    to: '/change-requests',
+    labelKey: 'nav.changeRequests',
+    ...CHANGE_REQUESTS_ACCESS,
   },
 ];

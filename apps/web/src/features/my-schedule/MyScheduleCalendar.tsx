@@ -40,7 +40,8 @@ import type { LabelContext } from './labels';
 // (FullCalendar v7, ADR-0005 D8: List, Day, Week, Month) in the center zone,
 // Monday first, with the #57 toolbar. No drag, select or date-click (#58
 // edits the staff calendar only). One query per (whose, range); the
-// details dialog shows the loaded item only (no request, no actions).
+// details dialog shows the loaded item and the page's action for it
+// (`renderAction`, #62b A1).
 
 export interface CalendarPosition {
   view: CalendarView;
@@ -58,6 +59,8 @@ export interface MyScheduleCalendarProps {
   today: LocalDate;
   /** Renders an error of the read (the consent case is the page's). */
   renderError?: (error: unknown, retry: () => void) => React.ReactNode;
+  /** The details dialog's action for an item (#62b A1). */
+  renderAction?: (entry: ScheduleEntry) => React.ReactNode;
 }
 
 interface EventProps {
@@ -92,6 +95,7 @@ export function MyScheduleCalendar({
   timeZone,
   today,
   renderError,
+  renderAction,
 }: MyScheduleCalendarProps) {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -333,6 +337,7 @@ export function MyScheduleCalendar({
         context={context}
         onClose={() => setSelected(null)}
         onReturnFocus={returnFocus}
+        action={selected ? renderAction?.(selected) : null}
       />
     </div>
   );

@@ -41,8 +41,8 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * 2 (the tutor on two devices; #36), tutors/profiles.spec.ts 1 (the tutor;
  * #43), tutors/qualifications.spec.ts 3 (the demo Owner's reauthenticated
  * API context for the tutor's role change, and the tutor; #44; and the
- * guardian who requests a session, #59; #60 and #67 G8 reuse both
- * contexts: 0 more), scheduling/offers.spec.ts 2
+ * guardian who requests a session, #59; #60, #67 G8 and #62b E1 reuse
+ * both contexts: 0 more), scheduling/offers.spec.ts 2
  * (`demo.tutor`, a #195 demo account, #52; and the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55) = 48 attempts, 2 failures for

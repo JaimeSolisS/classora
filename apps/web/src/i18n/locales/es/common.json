@@ -44,7 +44,8 @@
     "courses": "Cursos",
     "offers": "Mis ofertas",
     "sessionRequests": "Solicitudes de sesión",
-    "mySchedule": "Mi horario"
+    "mySchedule": "Mi horario",
+    "changeRequests": "Mis solicitudes de cambio"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -2804,6 +2805,108 @@
     "consent": {
       "title": "Este estudiante no ha compartido su horario contigo",
       "how": "Puede compartir contigo su expediente académico en Classora (Consentimientos), o el centro puede registrar su consentimiento."
+    }
+  },
+  "changeRequests": {
+    "title": "Mis solicitudes de cambio",
+    "intro": "Tus solicitudes para cancelar o mover una clase y las decisiones del centro. Solicita un cambio desde una clase en Mi horario.",
+    "action": {
+      "request": "Solicitar un cambio",
+      "checking": "Buscando solicitudes de cambio…",
+      "pending": "Cambio solicitado — pendiente",
+      "pendingLink": "Ver Mis solicitudes de cambio",
+      "sent": "Solicitud enviada. Recibirás una notificación cuando se decida."
+    },
+    "dialog": {
+      "title": "Solicitar un cambio",
+      "description": "{{subject}}, {{when}}. El centro decide; nada cambia hasta entonces.",
+      "step1": "Paso 1 de 2",
+      "step2": "Paso 2 de 2",
+      "what": "¿Qué necesitas?",
+      "cancel": "Cancelar esta clase",
+      "move": "Moverla a otro horario",
+      "cantMove": "Esta clase no se puede mover desde aquí. Consulta al centro.",
+      "chosen": "Cambio",
+      "slots": "Horarios disponibles del {{from}} al {{to}}",
+      "slotsHelp": "Horarios en {{zone}}. No se muestran los horarios que se traslapan con esta clase.",
+      "earlier": "Horarios anteriores",
+      "later": "Horarios posteriores",
+      "newTime": "Nuevo horario: {{when}}",
+      "chooseSlot": "Elige un nuevo horario.",
+      "newTimeLegend": "Nuevo horario (hora del centro, {{zone}})",
+      "date": "Fecha",
+      "time": "Hora de inicio",
+      "end": "Termina a las {{time}} (la clase conserva su duración: {{minutes}} min).",
+      "sameLength": "La clase conserva su duración: {{minutes}} min.",
+      "proposal": {
+        "required": "Elige la fecha y la hora de inicio.",
+        "invalid": "Escribe una fecha y una hora válidas.",
+        "past": "Elige un horario posterior a ahora."
+      },
+      "note": "Nota para el centro (opcional)",
+      "counter": "{{length}} de {{max}} caracteres",
+      "noteTooLong": "Usa como máximo 500 caracteres.",
+      "next": "Siguiente",
+      "back": "Atrás",
+      "close": "Cerrar",
+      "send": "Enviar solicitud",
+      "sending": "Enviando…"
+    },
+    "preview": {
+      "heading": "Resultado según la política",
+      "estimate": "Estimación. La decisión del centro es la definitiva.",
+      "onTimeMakeup": "A tiempo — se permite una clase de reposición hasta el {{date}}",
+      "onTimeNoMakeup": "A tiempo — sin clase de reposición",
+      "onTimeReschedule": "A tiempo — la clase se mueve, así que no hay reposición",
+      "lateMakeup": "Menos de {{hours}} h antes de la clase: una cancelación tardía; se permite una clase de reposición hasta el {{date}}",
+      "lateNoMakeup": "Menos de {{hours}} h antes de la clase: una cancelación tardía, sin reposición",
+      "lateReschedule": "Menos de {{hours}} h antes de la clase: un cambio tardío, sin reposición",
+      "excusedMakeup": "Solicitud del tutor: justificada — se permite una clase de reposición hasta el {{date}}",
+      "excused": "Solicitud del tutor: justificada"
+    },
+    "errors": {
+      "slot_unavailable": "Ese horario ya no está disponible. Elige otro.",
+      "change_request_pending": "Esta clase ya tiene una solicitud de cambio pendiente.",
+      "change_request_session_started": "Esta clase ya empezó, así que ya no se puede cambiar por solicitud.",
+      "class_session_not_changeable": "Solo una clase confirmada se puede cambiar por solicitud.",
+      "change_request_kind_unsupported": "Las clases de grupo y de curso no se pueden cambiar por solicitud. Consulta al centro.",
+      "rate_limited_one": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minuto.",
+      "rate_limited_many": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minutos.",
+      "rate_limited_other": "Demasiadas solicitudes. Inténtalo de nuevo en {{count}} minutos.",
+      "proposal_in_past": "Elige un horario en el futuro.",
+      "proposal_unchanged": "Elige un horario distinto del horario actual de la clase.",
+      "not_found": "Esta clase ya no está disponible."
+    },
+    "list": {
+      "statusFilter": "Estado",
+      "allStatuses": "Todos",
+      "studentFilter": "Estudiante",
+      "allStudents": "Todos los estudiantes",
+      "empty": "Aún no tienes solicitudes de cambio.",
+      "emptyFiltered": "Ninguna solicitud de cambio coincide con estos filtros.",
+      "openSchedule": "Abrir Mi horario",
+      "zone": "Horarios en {{zone}}.",
+      "heading": "{{kind}}: {{subject}}",
+      "statusText": "Estado: {{status}}",
+      "session": "Clase",
+      "proposed": "Horario propuesto",
+      "student": "Estudiante",
+      "outcome": "Resultado",
+      "asRequested": "{{outcome}} (al solicitarla)",
+      "approvedOutcome": "Aprobada — {{outcome}}",
+      "approvedException": "Aprobada como excepción — {{makeup}}",
+      "reason": "Motivo del centro",
+      "note": "Tu nota",
+      "label": "{{kind}}, {{subject}}, {{date}} {{start}}",
+      "withdraw": "Retirar",
+      "withdrawFor": "Retirar la solicitud: {{request}}",
+      "withdrawTitle": "¿Retirar esta solicitud de cambio?",
+      "withdrawBody": "El centro ya no verá tu solicitud ({{request}}). La clase sigue como está programada.",
+      "withdrawn": "Solicitud retirada: {{request}}.",
+      "stale": {
+        "changed": "Esta solicitud cambió desde que la cargaste. La lista se actualizó.",
+        "notPending": "Esta solicitud ya no está pendiente. La lista se actualizó."
+      }
     }
   }
 }

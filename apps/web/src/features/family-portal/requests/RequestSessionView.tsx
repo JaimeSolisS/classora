@@ -291,16 +291,24 @@ export function RequestSessionView({
   );
 }
 
-function SlotList({
+/**
+ * The days and slot buttons of a slot search (also the reschedule picker
+ * of #62b). With `selected` (a slot's `starts_at`, or null), the buttons
+ * are toggle buttons and the chosen one is pressed; without it, as on
+ * "Request a session", a button only reports the choice.
+ */
+export function SlotList({
   slots,
   ready,
   timeZone,
   onChoose,
+  selected,
 }: {
   slots: SlotsState;
   ready: boolean;
   timeZone: string;
   onChoose: (slot: AvailableSlot) => void;
+  selected?: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -355,11 +363,16 @@ function SlotList({
                     start: times.start,
                     end: times.end,
                   });
+                  const pressed =
+                    selected === undefined
+                      ? undefined
+                      : selected === slot.starts_at;
                   return (
                     <li key={slot.starts_at}>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={pressed ? 'default' : 'outline'}
+                        aria-pressed={pressed}
                         className="h-auto min-h-11 min-w-24 py-2"
                         disabled={slot.already_requested}
                         onClick={() => onChoose(slot)}

@@ -203,6 +203,11 @@ unless a bullet says otherwise.
   by themselves. Staff confirm a request by choosing the tutor (the session
   is offered to that tutor) or reject it with a reason, and the requester is
   notified.
+- Families and tutors ask to cancel an upcoming confirmed session, or move
+  it to another time, from My schedule, and follow their requests under My
+  change requests. Staff approve it, approve it as an exception or reject
+  it, and the cancellation policy's outcome (on time, late or excused, and
+  any makeup allowed) is recorded.
 
 **Courses**
 
@@ -228,7 +233,9 @@ unless a bullet says otherwise.
   filtered by status, type and assignee. It holds account requests, tutor
   qualification requests, sessions to reassign after a tutor declined or
   didn't answer an offer, families' session requests (reviewed on their
-  own page) and tutor availability changes that affect scheduled classes;
+  own page), families' and tutors' cancellation and reschedule requests
+  (also reviewed on their own page) and tutor availability changes that
+  affect scheduled classes;
   staff approve or reject them. Approving an account request
   never enrolls anyone.
 

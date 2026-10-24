@@ -44,7 +44,8 @@
     "courses": "Courses",
     "offers": "My offers",
     "sessionRequests": "Session requests",
-    "mySchedule": "My schedule"
+    "mySchedule": "My schedule",
+    "changeRequests": "My change requests"
   },
   "notFound": {
     "title": "Page not found",
@@ -2752,6 +2753,107 @@
     "consent": {
       "title": "This student hasn't shared their schedule with you",
       "how": "They can share their academic records with you in Classora (Consents), or the center can record their consent."
+    }
+  },
+  "changeRequests": {
+    "title": "My change requests",
+    "intro": "Your requests to cancel or move a class, and the center’s decisions. Request a change from a class in My schedule.",
+    "action": {
+      "request": "Request a change",
+      "checking": "Checking for change requests…",
+      "pending": "Change requested — pending",
+      "pendingLink": "See My change requests",
+      "sent": "Request sent. You’ll get a notification when it’s decided."
+    },
+    "dialog": {
+      "title": "Request a change",
+      "description": "{{subject}}, {{when}}. The center decides; nothing changes until then.",
+      "step1": "Step 1 of 2",
+      "step2": "Step 2 of 2",
+      "what": "What do you need?",
+      "cancel": "Cancel this class",
+      "move": "Move it to another time",
+      "cantMove": "This class can’t be moved from here. Ask the center.",
+      "chosen": "Change",
+      "slots": "Available times from {{from}} to {{to}}",
+      "slotsHelp": "Times in {{zone}}. Times that overlap this class aren’t shown.",
+      "earlier": "Earlier times",
+      "later": "Later times",
+      "newTime": "New time: {{when}}",
+      "chooseSlot": "Choose a new time.",
+      "newTimeLegend": "New time (center time, {{zone}})",
+      "date": "Date",
+      "time": "Start time",
+      "end": "Ends at {{time}} (the class keeps its length: {{minutes}} min).",
+      "sameLength": "The class keeps its length: {{minutes}} min.",
+      "proposal": {
+        "required": "Choose the date and the start time.",
+        "invalid": "Enter a valid date and time.",
+        "past": "Choose a time after now."
+      },
+      "note": "Note for the center (optional)",
+      "counter": "{{length}} of {{max}} characters",
+      "noteTooLong": "Use at most 500 characters.",
+      "next": "Next",
+      "back": "Back",
+      "close": "Close",
+      "send": "Send request",
+      "sending": "Sending…"
+    },
+    "preview": {
+      "heading": "Policy outcome",
+      "estimate": "Estimate. The center’s decision is final.",
+      "onTimeMakeup": "On time — a makeup class is allowed until {{date}}",
+      "onTimeNoMakeup": "On time — no makeup class",
+      "onTimeReschedule": "On time — the class is moved, so there is no makeup",
+      "lateMakeup": "Less than {{hours}} h before the class: a late cancellation; a makeup class is allowed until {{date}}",
+      "lateNoMakeup": "Less than {{hours}} h before the class: a late cancellation, no makeup",
+      "lateReschedule": "Less than {{hours}} h before the class: a late change, no makeup",
+      "excusedMakeup": "Teacher request: excused — a makeup class is allowed until {{date}}",
+      "excused": "Teacher request: excused"
+    },
+    "errors": {
+      "slot_unavailable": "That time is no longer available. Choose another one.",
+      "change_request_pending": "This class already has a pending change request.",
+      "change_request_session_started": "This class has already started, so it can no longer be changed by request.",
+      "class_session_not_changeable": "Only a confirmed class can be changed by request.",
+      "change_request_kind_unsupported": "Group and course classes can’t be changed by request. Ask the center.",
+      "rate_limited_one": "Too many requests. Try again in {{count}} minute.",
+      "rate_limited_other": "Too many requests. Try again in {{count}} minutes.",
+      "proposal_in_past": "Choose a time in the future.",
+      "proposal_unchanged": "Choose a time different from the class’s current time.",
+      "not_found": "This class is no longer available."
+    },
+    "list": {
+      "statusFilter": "Status",
+      "allStatuses": "All",
+      "studentFilter": "Student",
+      "allStudents": "All students",
+      "empty": "You have no change requests yet.",
+      "emptyFiltered": "No change requests match these filters.",
+      "openSchedule": "Open My schedule",
+      "zone": "Times in {{zone}}.",
+      "heading": "{{kind}}: {{subject}}",
+      "statusText": "Status: {{status}}",
+      "session": "Class",
+      "proposed": "Proposed time",
+      "student": "Student",
+      "outcome": "Outcome",
+      "asRequested": "{{outcome}} (as requested)",
+      "approvedOutcome": "Approved — {{outcome}}",
+      "approvedException": "Approved as an exception — {{makeup}}",
+      "reason": "Center’s reason",
+      "note": "Your note",
+      "label": "{{kind}}, {{subject}}, {{date}} {{start}}",
+      "withdraw": "Withdraw",
+      "withdrawFor": "Withdraw the request: {{request}}",
+      "withdrawTitle": "Withdraw this change request?",
+      "withdrawBody": "The center will no longer see your request ({{request}}). The class stays as scheduled.",
+      "withdrawn": "Request withdrawn: {{request}}.",
+      "stale": {
+        "changed": "This request changed since you loaded it. The list is updated.",
+        "notPending": "This request is no longer pending. The list is updated."
+      }
     }
   }
 }

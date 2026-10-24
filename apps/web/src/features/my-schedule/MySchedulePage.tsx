@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -7,6 +7,8 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
+import type { ChangeRequestLoaders } from '@/features/change-requests/api';
+import { RequestChangeAction } from '@/features/change-requests/RequestChangeAction';
 import { useSession } from '@/features/auth/useSession';
 import { todayInZone, type LocalDate } from '@/lib/time';
 import {
@@ -31,7 +33,8 @@ import { WhoseSchedule } from './WhoseSchedule';
 // FullCalendar stays out of the entry chunk. The URL holds whose schedule
 // (`?for=`), the view and the date. A guardian chooses a child; an adult
 // child without consent shows the consent message instead of the calendar
-// (no schedule request).
+// (no schedule request). The details dialog offers "Request a change"
+// (#62b A1) for the caller's own upcoming confirmed individual sessions.
 
 export interface MyScheduleViewProps {
   userId: string;
@@ -42,6 +45,10 @@ export interface MyScheduleViewProps {
   state: MyScheduleState;
   onStateChange: (state: MyScheduleState) => void;
   loaders?: MyScheduleLoaders;
+  /** The change request calls (stubs in stories). */
+  changeRequestLoaders?: ChangeRequestLoaders;
+  /** The clock (stories and tests). */
+  now?: () => number;
 }
 
 function isConsentRequired(error: unknown): boolean {
@@ -57,8 +64,11 @@ export function MyScheduleView({
   state,
   onStateChange,
   loaders = API_LOADERS,
+  changeRequestLoaders,
+  now,
 }: MyScheduleViewProps) {
   const { t } = useTranslation();
+  const client = useQueryClient();
   const family = useQuery({
     queryKey: [...MY_SCHEDULE_KEY, 'family-students'],
     queryFn: ({ signal }) => loaders.fetchFamilyStudents(signal),
@@ -119,6 +129,26 @@ export function MyScheduleView({
               }
               timeZone={timeZone}
               today={today}
+              renderAction={(entry) => (
+                <RequestChangeAction
+                  key={entry.item.id}
+                  entry={entry}
+                  whose={selected.kind}
+                  studentId={
+                    selected.kind === 'student'
+                      ? selected.student.student_id
+                      : null
+                  }
+                  timeZone={timeZone}
+                  loaders={changeRequestLoaders}
+                  now={now}
+                  onScheduleStale={() =>
+                    void client.invalidateQueries({
+                      queryKey: [...MY_SCHEDULE_KEY, 'schedule'],
+                    })
+                  }
+                />
+              )}
               renderError={(error, retry) =>
                 isConsentRequired(error) && selected.kind === 'student' ? (
                   <ConsentRequired name={entryLabel(selected, t)} />
