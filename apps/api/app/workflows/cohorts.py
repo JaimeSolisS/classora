@@ -273,18 +273,6 @@ def _status(schedule: scheduling.CohortSchedule | None) -> CohortStatus:
 COURSE_VIEW: Final = "course.view"
 
 
-class _NoAssignments:
-    """Cohort reads never use tutor assignments (#67 adds tutors)."""
-
-    async def student_ids_for_tutor(
-        self, session: AsyncSession, user_id: uuid.UUID
-    ) -> frozenset[uuid.UUID]:
-        return frozenset()
-
-
-_NO_ASSIGNMENTS: Final = _NoAssignments()
-
-
 @dataclass(frozen=True)
 class CohortViewer:
     """Who reads a cohort (#66 G1): staff (``course.view``), or the caller's
@@ -299,15 +287,13 @@ STAFF_VIEWER: Final = CohortViewer(staff=True, students=frozenset())
 
 
 async def cohort_viewer(session: AsyncSession, principal: Principal) -> CohortViewer:
-    """The G1 facts of ``principal``: no statement for staff, one per family
-    role otherwise (``families.service.load_access_facts``)."""
+    """The G1 facts of ``principal``: no statement for staff, one otherwise
+    whatever the family roles (``families.service.visible_student_ids``; a
+    tutor has none until #67)."""
     if principal.has(COURSE_VIEW):
         return STAFF_VIEWER
-    facts = await families.load_access_facts(session, principal, _NO_ASSIGNMENTS)
-    students = set(facts.linked_student_ids)
-    if facts.own_student_id is not None:
-        students.add(facts.own_student_id)
-    return CohortViewer(staff=False, students=frozenset(students))
+    students = await families.family_schedule_student_ids(session, principal)
+    return CohortViewer(staff=False, students=students)
 
 
 def _actor(accounts: dict[uuid.UUID, Any], user_id: uuid.UUID) -> EnrollmentActor:
@@ -490,17 +476,21 @@ async def list_cohorts(
     """``GET /api/v1/cohorts`` (#65 F2, #66 F3, G2): a cursor page by name,
     then id (the #56 groups keyset; ``400 invalid_cursor`` for a bad
     cursor). ``status`` ``current`` (the default) is upcoming plus in
-    progress. For staff at most five statements whatever the page size
-    (every cohort's series facts; the page; the subjects; the tutors; the
-    enrolled counts). A family caller sees only the cohorts where a visible
-    student has an active enrollment (none: an empty page), with
+    progress. At most five statements whatever the page size and the
+    caller: for staff every cohort's series facts, the page, the subjects,
+    the tutors and the enrolled counts; for a family caller the access
+    facts (one statement for any roles) in the counts' place. A family
+    caller sees only the cohorts where a visible student has an active
+    enrollment (none: an empty page), with
     ``enrolled_count`` and ``assignment_status`` null, the tutor only once
     they accepted, and ``next_starts_at`` from the ``confirmed`` sessions
     their students take part in."""
     if not viewer.staff and not viewer.students:
         return CohortPage(items=[], next_cursor=None)
     now = clock.now()
-    schedules = await scheduling.cohort_schedules(session, None, now=now)
+    schedules = await scheduling.cohort_schedules(
+        session, None, now=now, family=None if viewer.staff else viewer.students
+    )
     ids = None
     if status != "all":
         wanted = STATUS_FILTERS[status]
@@ -531,13 +521,9 @@ async def list_cohorts(
     }
     accounts = await identity.get_account_references(session, tutors)
     counts: dict[uuid.UUID, int] = {}
-    family_starts: dict[uuid.UUID, Any] = {}
-    page_ids = [record.id for record in records]
     if viewer.staff:
-        counts = await courses.active_cohort_enrollment_counts(session, page_ids)
-    else:
-        family_starts = await scheduling.cohort_family_next_starts(
-            session, page_ids, viewer.students, now=now
+        counts = await courses.active_cohort_enrollment_counts(
+            session, [record.id for record in records]
         )
     return CohortPage(
         items=[
@@ -548,7 +534,6 @@ async def list_cohorts(
                 accounts,
                 viewer=viewer,
                 enrolled_count=counts.get(record.id, 0) if viewer.staff else None,
-                family_next=family_starts.get(record.id),
             )
             for record in records
         ],
@@ -574,7 +559,6 @@ def _list_item(
     *,
     viewer: CohortViewer,
     enrolled_count: int | None,
-    family_next: Any,
 ) -> CohortListItem:
     tutor = None
     tutor_id = None if schedule is None else _shown_tutor(schedule, viewer)
@@ -584,11 +568,9 @@ def _list_item(
             id=tutor_id,
             display_name="" if account is None else account.display_name,
         )
-    next_starts_at = None
-    if viewer.staff:
-        next_starts_at = None if schedule is None else schedule.next_starts_at
-    else:
-        next_starts_at = family_next
+    # For a family caller the schedule's next start is already their
+    # students' confirmed sessions only.
+    next_starts_at = None if schedule is None else schedule.next_starts_at
     return CohortListItem(
         id=record.id,
         name=record.name,

@@ -54,11 +54,11 @@ def _series(kind: str, **owner: uuid.UUID | None) -> ClassSeries:
 class _Session:
     """Only ``get``: the helpers check the caller's locked series first."""
 
-    def __init__(self, series: ClassSeries) -> None:
-        self.series = series
+    def __init__(self, *series: ClassSeries) -> None:
+        self.series = {one.id: one for one in series}
 
     async def get(self, model: Any, key: uuid.UUID) -> ClassSeries | None:
-        return self.series if key == self.series.id else None
+        return self.series.get(key)
 
 
 def test_the_owner_matches_its_own_series_only():
@@ -79,19 +79,35 @@ def test_the_owner_matches_its_own_series_only():
         (_series("group", group_id=GROUP), "is not of"),
     ],
 )
-async def test_the_helpers_refuse_another_kind_or_owner(series, message):
+async def test_add_and_remove_refuse_another_kind_or_owner(series, message):
     session: Any = _Session(series)
     owner = SeriesOwner.cohort(COHORT)
     common = {"series_ids": [series.id], "student_id": uuid.uuid4(), "owner": owner}
 
     with pytest.raises(ValueError, match=message):
-        await plan_series_participant_add(
-            session, max_students=2, active_count=0, now=NOW, zone="UTC", **common
-        )
-    with pytest.raises(ValueError, match=message):
         await add_series_participant(session, now=NOW, **common)
     with pytest.raises(ValueError, match=message):
         await remove_series_participant(session, now=NOW, **common)
+
+
+async def test_the_plan_derives_the_owner_and_refuses_a_mix_or_another_kind():
+    # B1: the AC signature; the owner comes from the locked series.
+    course = _series("course", cohort_id=COHORT)
+    other = _series("course", cohort_id=uuid.uuid4())
+    individual = _series("individual")
+    session: Any = _Session(course, other, individual)
+    plan = {"student_id": uuid.uuid4(), "max_students": 2, "active_count": 0}
+
+    for series_ids, message in (
+        ([individual.id], "individual series"),
+        ([course.id, other.id], "is not of"),
+        ([], "at least one"),
+        ([uuid.uuid4()], "no class series"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            await plan_series_participant_add(
+                session, series_ids=series_ids, now=NOW, **plan
+            )
 
 
 async def test_an_unknown_series_is_refused():

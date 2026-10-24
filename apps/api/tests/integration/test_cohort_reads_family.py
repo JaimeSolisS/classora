@@ -480,9 +480,9 @@ def test_the_statement_budgets(module_seeded_url, world):
 
         return _read
 
-    def listed(limit: int) -> Any:
+    def listed(principal: Principal, limit: int) -> Any:
         async def _read(session: Any) -> Any:
-            viewer = await cohorts.cohort_viewer(session, staff)
+            viewer = await cohorts.cohort_viewer(session, principal)
             return await cohorts.list_cohorts(
                 session,
                 q=None,
@@ -504,7 +504,11 @@ def test_the_statement_budgets(module_seeded_url, world):
         session_counts = [
             count_statements(url, found(p))[0] for p in (staff, student, guardian, both)
         ]
-        list_counts = [count_statements(url, listed(n))[0] for n in (1, 25)]
+        list_counts = [
+            count_statements(url, listed(p, n))[0]
+            for p in (staff, student, guardian, both)
+            for n in (1, 25)
+        ]
 
     assert staff_detail.roster is not None and len(staff_detail.roster) == 6
     assert staff_count <= 9

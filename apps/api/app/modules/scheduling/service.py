@@ -309,9 +309,6 @@ from app.modules.scheduling.course_series import (
     check_course_series as check_course_series,
 )
 from app.modules.scheduling.course_series import (
-    cohort_family_next_starts as cohort_family_next_starts,
-)
-from app.modules.scheduling.course_series import (
     cohort_schedules as cohort_schedules,
 )
 from app.modules.scheduling.course_series import (

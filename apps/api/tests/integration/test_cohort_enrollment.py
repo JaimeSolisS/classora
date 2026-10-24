@@ -221,13 +221,17 @@ def test_mid_course_enroll_and_withdraw_touch_only_future_occurrences(
     assert series_students(url, series.id) == ids(a, c)
     assert cohort_series(url, cohort["id"])[0].version == series.version + 1
 
-    # Withdraw: a stale version, the real one, then again.
+    # Withdraw: a stale version, the real one, then again; and a, who is on
+    # the completed, cancelled and started rows too.
     withdraw_at = rows[5].starts_at + timedelta(minutes=1)
+    [a_period] = [e for e in enrollment_rows(url, cohort["id"]) if e.student_id == a]
     with frozen_clock(withdraw_at):
         cookie = owner_cookie(url, client)
         stale = withdraw(client, cookie, cohort["id"], item["id"], version=99)
         done = withdraw(client, cookie, cohort["id"], item["id"], reason=" Mudanza ")
         again = withdraw(client, cookie, cohort["id"], item["id"], version=2)
+        a_done = withdraw(client, cookie, cohort["id"], a_period.id)
+    assert code_of(a_done) == OK, a_done.text
 
     assert code_of(stale) == (409, "version_conflict")
     assert code_of(done) == OK, done.text
@@ -241,11 +245,18 @@ def test_mid_course_enroll_and_withdraw_touch_only_future_occurrences(
     assert code_of(again) == (409, "enrollment_not_active")
     [row_db] = [e for e in enrollment_rows(url, cohort["id"]) if e.student_id == c]
     assert row_db.withdrawn_by_user_id is not None
-    for row in rows:
-        kept = row.id in {r.id for r in rows[3:6]}  # joined, then started
-        expected = ids(a, c) if kept else ids(a)
-        assert participants(url, row.id) == expected, row
-    assert series_students(url, series.id) == ids(a)
+    # D2: the completed, cancelled and started rows keep a (c never joined
+    # them); rows 3-5 started before the withdrawal and keep both; the later
+    # rows and the series lose them.
+    for index, row in enumerate(rows):
+        if index < 3:
+            expected = ids(a)
+        elif index < 6:
+            expected = ids(a, c)
+        else:
+            expected = set()
+        assert participants(url, row.id) == expected, (index, row.state)
+    assert series_students(url, series.id) == set()
 
     # Re-enrolling makes a second period; an active duplicate is refused.
     with frozen_clock(withdraw_at + timedelta(minutes=1)):

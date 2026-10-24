@@ -910,9 +910,7 @@ describe('the dialogs (D)', () => {
       )!,
     );
     await click(buttonNamed(dialog, 'Enroll'));
-    expect(dialog.textContent).toContain(
-      'This student is already enrolled in the group.',
-    );
+    expect(dialog.textContent).toContain('This student is already enrolled.');
   });
 
   it('withdraws with a blank reason as no reason', async () => {

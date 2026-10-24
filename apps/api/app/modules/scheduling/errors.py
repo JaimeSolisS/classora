@@ -290,7 +290,7 @@ class EnrollmentNotFoundError(AppError):
 
     status = 404
     code = "enrollment_not_found"
-    detail = "No such enrollment in this group."
+    detail = "No such enrollment."
 
     def __init__(self) -> None:
         super().__init__()
@@ -326,7 +326,7 @@ class AlreadyEnrolledError(AppError):
 
     status = 409
     code = "already_enrolled"
-    detail = "The student is already enrolled in this group."
+    detail = "The student is already enrolled."
 
     def __init__(self, enrollment_id: str | None) -> None:
         super().__init__(

@@ -20,7 +20,6 @@ and has validated the fields (:func:`check_course_series`).
 
 **Reads** (#65 F): :func:`cohort_schedules` (the cohort list: every
 cohort's series facts and next start, one statement),
-:func:`cohort_family_next_starts` (the family list's next start, #66),
 :func:`cohort_series_read` (the detail: the current series as
 :class:`~app.modules.scheduling.schemas.ClassSeriesSummary`, the room
 capacity and the next occurrences; at most six statements) and
@@ -404,21 +403,39 @@ def _schedule(
 
 
 async def cohort_schedules(
-    session: AsyncSession, cohort_ids: Collection[uuid.UUID] | None, *, now: datetime
+    session: AsyncSession,
+    cohort_ids: Collection[uuid.UUID] | None,
+    *,
+    now: datetime,
+    family: Collection[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, CohortSchedule]:
     """The :class:`CohortSchedule` of these cohorts (``None``: every cohort
     with a series), by cohort id. One statement: the series with each
     one's next upcoming occurrence (``unassigned``, ``offered``,
-    ``confirmed`` or ``conflict``, starting after ``now``)."""
+    ``confirmed`` or ``conflict``, starting after ``now``); with ``family``
+    (#66 G2: a caller's visible students) only the ``confirmed`` ones one
+    of them takes part in."""
     if cohort_ids is not None and not cohort_ids:
         return {}
+    upcoming = [
+        ClassSession.series_id == ClassSeries.id,
+        ClassSession.starts_at > now,
+    ]
+    if family is None:
+        upcoming.append(ClassSession.state.in_(UPCOMING_STATES))
+    else:
+        upcoming += [
+            ClassSession.state == SessionState.CONFIRMED,
+            select(ClassSessionParticipant.class_session_id)
+            .where(
+                ClassSessionParticipant.class_session_id == ClassSession.id,
+                ClassSessionParticipant.student_id.in_(set(family)),
+            )
+            .exists(),
+        ]
     next_start = (
         select(func.min(ClassSession.starts_at))
-        .where(
-            ClassSession.series_id == ClassSeries.id,
-            ClassSession.starts_at > now,
-            ClassSession.state.in_(UPCOMING_STATES),
-        )
+        .where(*upcoming)
         .correlate(ClassSeries)
         .scalar_subquery()
     )
@@ -431,44 +448,6 @@ async def cohort_schedules(
         grouped.setdefault(series.cohort_id, []).append((series, starts))
     return {
         cohort_id: _schedule(cohort_id, rows) for cohort_id, rows in grouped.items()
-    }
-
-
-async def cohort_family_next_starts(
-    session: AsyncSession,
-    cohort_ids: Collection[uuid.UUID],
-    student_ids: Collection[uuid.UUID],
-    *,
-    now: datetime,
-) -> dict[uuid.UUID, datetime]:
-    """The next ``confirmed`` occurrence of each cohort where one of
-    ``student_ids`` is a participant, after ``now`` (#66 G2: the family
-    list's ``next_starts_at``). One statement, none when either collection
-    is empty."""
-    if not cohort_ids or not student_ids:
-        return {}
-    taking_part = (
-        select(ClassSessionParticipant.class_session_id)
-        .where(
-            ClassSessionParticipant.class_session_id == ClassSession.id,
-            ClassSessionParticipant.student_id.in_(set(student_ids)),
-        )
-        .exists()
-    )
-    rows = await session.execute(
-        select(ClassSession.cohort_id, func.min(ClassSession.starts_at))
-        .where(
-            ClassSession.cohort_id.in_(set(cohort_ids)),
-            ClassSession.starts_at > now,
-            ClassSession.state == SessionState.CONFIRMED,
-            taking_part,
-        )
-        .group_by(ClassSession.cohort_id)
-    )
-    return {
-        cohort_id: starts.astimezone(UTC)
-        for cohort_id, starts in rows
-        if cohort_id is not None
     }
 
 

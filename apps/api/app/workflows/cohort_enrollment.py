@@ -191,8 +191,6 @@ async def enroll_in_cohort(
         max_students=max_students,
         active_count=len(active),
         now=now,
-        owner=owner,
-        zone=zone,
     )
     decision = scheduling.evaluate_override(conflicts, body.override)
     if not decision.allowed:

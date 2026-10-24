@@ -244,6 +244,29 @@ def _capacity_conflicts(
     )
 
 
+async def _owner_of(
+    session: AsyncSession, series_ids: Sequence[uuid.UUID]
+) -> tuple[SeriesOwner, str]:
+    """The owner and the zone of the caller's locked series (from the
+    identity map, no statement): they all belong to one group or one cohort
+    (B2, else ``ValueError``). The zone is the series' ``time_zone``, the
+    center zone, which can't change while series exist (#37 E1: the
+    ``scheduling.class_series`` time-zone dependency)."""
+    if not series_ids:
+        raise ValueError("an enrollment needs at least one producing series")
+    first = await session.get(ClassSeries, series_ids[0])
+    if first is None:
+        raise ValueError(f"no class series {series_ids[0]}")
+    if first.kind == SessionKind.GROUP and first.group_id is not None:
+        owner = SeriesOwner.group(first.group_id)
+    elif first.kind == SessionKind.COURSE and first.cohort_id is not None:
+        owner = SeriesOwner.cohort(first.cohort_id)
+    else:
+        raise ValueError(f"series {first.id} is a {first.kind} series")
+    await _locked_series(session, series_ids, owner)
+    return owner, first.time_zone
+
+
 async def plan_series_participant_add(
     session: AsyncSession,
     *,
@@ -252,16 +275,17 @@ async def plan_series_participant_add(
     max_students: int,
     active_count: int,
     now: datetime,
-    owner: SeriesOwner,
-    zone: str,
 ) -> list[Conflict]:
-    """The conflicts of adding ``student_id`` at ``now`` (#56 E1 step 9):
-    ``group_capacity_exceeded`` (soft) when ``active_count + 1`` is above
-    ``max_students``, then, on each checked B3 occurrence the student isn't
-    already on (by start), ``student_overlap`` and the hard
-    ``room_capacity_exceeded`` (the occurrence's own room against its
-    participants plus one). Locks the B3 occurrences; writes nothing."""
-    await _locked_series(session, series_ids, owner)
+    """The conflicts of adding ``student_id`` at ``now`` (#56 E1 step 9; the
+    #66 B1 signature): ``group_capacity_exceeded`` (soft) when
+    ``active_count + 1`` is above ``max_students``, then, on each checked B3
+    occurrence the student isn't already on (by start), ``student_overlap``
+    and the hard ``room_capacity_exceeded`` (the occurrence's own room
+    against its participants plus one). The owner (the group or the
+    cohort) and the zone come from the given locked series, which must all
+    be group or course series of one owner (``ValueError``). Locks the B3
+    occurrences; writes nothing."""
+    owner, zone = await _owner_of(session, series_ids)
     conflicts = _capacity_conflicts(owner, active_count + 1, max_students)
     rows = await lock_affected_rows(session, owner, now)
     rooms = {row.classroom_id for row in rows if row.classroom_id is not None}

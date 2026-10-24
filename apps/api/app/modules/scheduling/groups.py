@@ -481,8 +481,6 @@ async def enroll_in_group(
         max_students=group.max_students,
         active_count=len(active),
         now=now,
-        owner=owner,
-        zone=zone,
     )
     decision = evaluate_override(conflicts, body.override)
     if not decision.allowed:
