@@ -40,6 +40,9 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const cohorts = common.courses.cohorts;
 const templates = common.courses.templates;
+// Chromium logs every 4xx resource as a console error: the expected 409.
+const EXPECTED_RESOURCE_ERROR =
+  /Failed to load resource: the server responded with a status of 409/;
 
 /** The first Tuesday at least 14 days after today, in the center zone. */
 function firstTuesdayAhead(): string {
@@ -314,7 +317,10 @@ test('an Owner enrolls over the maximum with an override, then withdraws', async
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (
+      message.type() === 'error' &&
+      !EXPECTED_RESOURCE_ERROR.test(message.text())
+    ) {
       consoleErrors.push(message.text());
     }
   });
