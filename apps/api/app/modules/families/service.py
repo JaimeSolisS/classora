@@ -116,6 +116,7 @@ from app.modules.families.facts import (
     FamilyScheduleFacts,
     family_schedule_facts,
     load_access_facts,
+    own_student_id,
 )
 from app.modules.families.models import (
     ConsentRecord,
@@ -175,6 +176,7 @@ __all__ = [
     "list_guardians",
     "list_students",
     "load_access_facts",
+    "own_student_id",
     "record_consent",
     "register_tutor_assignment_source",
     "remove_family_guardian",

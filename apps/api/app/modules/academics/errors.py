@@ -1,5 +1,5 @@
 """Academics errors: session closeouts (#77 D2, E1; #78 C, D), notes (#79),
-evaluations (#80) and learning plans (#81).
+evaluations (#80), learning plans (#81) and homework assignments (#82).
 
 The routes also answer the shared ``404 not_found``
 (:class:`~app.core.authz.RecordNotFoundError`, the same body for an unknown
@@ -561,3 +561,176 @@ class LearningPlanFieldError(AppError):
             for path, code, message in errors
         ]
         super().__init__(errors=items)
+
+
+# --- Homework assignments (#82) ----------------------------------------------------
+# ``details`` carry codes or ids only: an assignment's or a submission's text
+# never reaches an error body.
+
+
+class AssignmentTutorOnlyError(AppError):
+    """``403 assignment_tutor_only`` (#82 C2 step 3): only a user with the
+    tutor role sets homework."""
+
+    status = 403
+    code = "assignment_tutor_only"
+    detail = "Only tutors set homework."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AssignmentCreatorOnlyError(AppError):
+    """``403 assignment_creator_only`` (#82 E6): only the tutor who set the
+    homework edits, deletes or grades it, or records handed-in work."""
+
+    status = 403
+    code = "assignment_creator_only"
+    detail = "Only the tutor who set this homework can do this."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AssignmentReadOnlyError(AppError):
+    """``403 assignment_read_only`` (#82 E6): the student is no longer one
+    of the creator's current students."""
+
+    status = 403
+    code = "assignment_read_only"
+    detail = "This student is no longer assigned to you: the homework is read-only."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SubmissionStudentOnlyError(AppError):
+    """``403 submission_student_only`` (#82 E4): guardians never submit;
+    the student does (or the tutor records handed-in work)."""
+
+    status = 403
+    code = "submission_student_only"
+    detail = "Only the student submits their homework."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionNotAssignableError(AppError):
+    """``409 session_not_assignable`` (#82 C2 step 5): homework links only a
+    confirmed or completed class."""
+
+    status = 409
+    code = "session_not_assignable"
+    detail = "Homework can only be linked to a confirmed or completed class."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SubmissionGradedError(AppError):
+    """``409 submission_graded`` (#82 E4): a graded submission never
+    changes."""
+
+    status = 409
+    code = "submission_graded"
+    detail = "This homework was already graded."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SubmissionLockedError(AppError):
+    """``409 submission_locked`` (#82 E4): after the deadline the student's
+    existing submission can't be replaced."""
+
+    status = 409
+    code = "submission_locked"
+    detail = "The deadline has passed: the submission can no longer be replaced."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SubmissionRequiredError(AppError):
+    """``409 submission_required`` (#82 D2): only submitted work is graded."""
+
+    status = 409
+    code = "submission_required"
+    detail = "Nothing was submitted yet."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AssignmentHasSubmissionsError(AppError):
+    """``409 assignment_has_submissions`` (#82 C5): homework with a
+    submission is never deleted."""
+
+    status = 409
+    code = "assignment_has_submissions"
+    detail = "This homework has submissions and can't be deleted."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AssignmentHasGradesError(AppError):
+    """``409 assignment_has_grades`` (#82 E5, C4): the maximum score is
+    locked once a recipient is graded."""
+
+    status = 409
+    code = "assignment_has_grades"
+    detail = "This homework has grades: its maximum score can't change."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class RecipientHasSubmissionError(AppError):
+    """``409 recipient_has_submission`` (#82 C4): a recipient who submitted
+    is never removed; ``details.student_ids`` lists them."""
+
+    status = 409
+    code = "recipient_has_submission"
+    detail = "A student you removed has already submitted."
+
+    def __init__(self, student_ids: Sequence[object]) -> None:
+        super().__init__(details={"student_ids": sorted(str(s) for s in student_ids)})
+
+
+class AssignmentFieldError(AppError):
+    """``422 validation_error`` with field errors (#82 C2, C4, D1, D2, E3):
+    the content checks that need stored data or the caller (``subject_unknown``,
+    ``class_session_invalid``, ``subject_mismatch``, ``recipients_required``,
+    ``recipient_invalid``, ``due_in_past``, ``due_too_far``, ``url_invalid``,
+    ``submission_empty``, ``score_required``, …). ``errors`` items are
+    ``(path, code, message)``; ``details`` holds ids only (``recipient_invalid``:
+    ``{"student_ids": [...]}``)."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(
+        self,
+        errors: Sequence[tuple[Sequence[str | int], str, str]],
+        *,
+        details: dict[str, str | list[str]] | None = None,
+    ) -> None:
+        items: list[FieldError] = [
+            {"path": list(path), "code": code, "message": message}
+            for path, code, message in errors
+        ]
+        super().__init__(errors=items, details=details)
+
+    @classmethod
+    def one(
+        cls,
+        path: Sequence[str | int],
+        code: str,
+        message: str,
+        *,
+        details: dict[str, str | list[str]] | None = None,
+    ) -> AssignmentFieldError:
+        return cls([(path, code, message)], details=details)

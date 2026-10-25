@@ -112,6 +112,10 @@ from app.modules.scheduling.router import (
 from app.modules.scheduling.schedule_router import router as schedules_router
 from app.modules.staff.router import router as tutors_router
 from app.wiring import register_approval_wiring
+from app.workflows.assignments_router import router as assignments_router
+from app.workflows.assignments_router import (
+    student_router as student_assignments_router,
+)
 from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
@@ -263,6 +267,8 @@ def build_app(
     app.include_router(student_learning_plans_router)
     app.include_router(learning_plans_router)
     app.include_router(learning_plan_milestones_router)
+    app.include_router(assignments_router)
+    app.include_router(student_assignments_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

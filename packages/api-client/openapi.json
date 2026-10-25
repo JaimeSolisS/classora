@@ -13610,6 +13610,948 @@
         }
       }
     },
+    "/api/v1/assignments": {
+      "post": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Create Assignment",
+        "description": "Set homework for one or more of your current students (optionally\nlinked to one of your classes). Each student and the guardians with\naccess to their academic records see it at once and are notified.",
+        "operationId": "create_assignment_api_v1_assignments_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only tutors set homework (assignment_tutor_only); csrf_failed; privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The class isn't confirmed or completed (session_not_assignable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "List Assignments",
+        "description": "The homework you set (tutors), or every homework assignment (staff\nwith assignment.review), newest deadline first, with counts per state.\nAnyone else gets 403 permission_denied.",
+        "operationId": "list_assignments_api_v1_assignments_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "class_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Due"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "upcoming: due today or later; past: before today.",
+              "title": "Due"
+            },
+            "description": "upcoming: due today or later; past: before today."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "1-50, default 20.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "1-50, default 20."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Get Assignment",
+        "description": "One homework assignment with its roster (every student's submission\nand grade): the tutor who set it and staff with assignment.review.",
+        "operationId": "get_assignment_api_v1_assignments__assignment_id__get",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Edit Assignment",
+        "description": "Change homework you set: a key you leave out keeps its value;\ndue_time null means the end of the day; max_score null makes it\nfeedback-only. Added students are notified.",
+        "operationId": "edit_assignment_api_v1_assignments__assignment_id__patch",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The homework changed since it was read (version_conflict); the maximum score is locked after a grade (assignment_has_grades); a removed student already submitted (recipient_has_submission).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Delete Assignment",
+        "description": "Delete homework you set while nobody has submitted. It disappears\neverywhere.",
+        "operationId": "delete_assignment_api_v1_assignments__assignment_id__delete",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The assignment's version, as last read.",
+              "title": "Version"
+            },
+            "description": "The assignment's version, as last read."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The homework changed since it was read (version_conflict) or has a submission (assignment_has_submissions).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/students/{student_id}/submission": {
+      "put": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Submit Assignment",
+        "description": "The student submits text and/or a link (replaceable until the\ndeadline; a missing one can still be submitted late), or the tutor who\nset the homework records work handed in on paper.",
+        "operationId": "submit_assignment_api_v1_assignments__assignment_id__students__student_id__submission_put",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmissionPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Guardians don't submit (submission_student_only); the adult student hasn't given you access (student_consent_required); only the tutor who set it records handed-in work (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); csrf_failed; privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, the student isn't one of its students, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The submission changed since it was read (version_conflict); it was graded (submission_graded); the deadline passed and it can't be replaced (submission_locked).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/students/{student_id}/grade": {
+      "put": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Grade Assignment",
+        "description": "Grade a student's submitted homework (a score and feedback, or\nfeedback only). The student and their guardians see it at once and are\nnotified; changing a grade needs a reason they never see.",
+        "operationId": "grade_assignment_api_v1_assignments__assignment_id__students__student_id__grade_put",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradePut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RosterEntry"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, the student isn't one of its students, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The submission changed since it was read (version_conflict) or nothing was submitted (submission_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/assignments": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "List Student Assignments",
+        "description": "A student's homework with their own submission and grade (never\nanother student's), newest deadline first, and a summary per state.\nStaff with assignment.review, tutors currently teaching the student,\nthe student and their guardians with access to their academic\nrecords.",
+        "operationId": "list_student_assignments_api_v1_students__student_id__assignments_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SubmissionState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "due_on on or after.",
+              "title": "From"
+            },
+            "description": "due_on on or after."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "due_on on or before.",
+              "title": "To"
+            },
+            "description": "due_on on or before."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "1-50, default 20.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "1-50, default 20."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentAssignmentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose homework you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/assignments/{assignment_id}": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "Get Student Assignment",
+        "description": "One homework assignment with the student's own submission and\ngrade.",
+        "operationId": "get_student_assignment_api_v1_students__student_id__assignments__assignment_id__get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such homework, the student isn't one of its students, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -17573,7 +18515,7 @@
           },
           "entries": {
             "items": {
-              "$ref": "#/components/schemas/HistoryEntry"
+              "$ref": "#/components/schemas/HistoryItem"
             },
             "type": "array",
             "title": "Entries"
@@ -17596,7 +18538,7 @@
           "groups"
         ],
         "title": "AcademicHistory",
-        "description": "A student's academic history (#80 F3): one chronological list of\nfinal evaluations from every tutor, and the same entries grouped by\nperiod and subject. The same shape for staff, tutors and families."
+        "description": "A student's academic history (#80 F3, #82 G1): one chronological\nlist of final evaluations and scored homework grades from every tutor,\nand the same entries grouped by period and subject. The same shape for\nstaff, tutors and families."
       },
       "AcademicPeriodCreate": {
         "properties": {
@@ -18015,6 +18957,257 @@
           "all"
         ]
       },
+      "AssignmentCounts": {
+        "properties": {
+          "recipients": {
+            "type": "integer",
+            "title": "Recipients"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "submitted": {
+            "type": "integer",
+            "title": "Submitted"
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late",
+            "description": "Submitted or graded after the deadline."
+          },
+          "graded": {
+            "type": "integer",
+            "title": "Graded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recipients",
+          "pending",
+          "missing",
+          "submitted",
+          "late",
+          "graded"
+        ],
+        "title": "AssignmentCounts"
+      },
+      "AssignmentCreate": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id",
+            "description": "An active subject (subject_unknown); with a class, the class's subject (subject_mismatch). It never changes."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "1-200 characters, plain text."
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions",
+            "description": "1-4000 characters, plain text."
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On",
+            "description": "The deadline's local date: from the center's today (due_in_past) to 365 days ahead (due_too_far)."
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time",
+            "description": "The deadline's local time (HH:MM[:SS], no offset); null means the end of due_on. On today it must not have passed (due_in_past)."
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0.5-1000, at most two decimal places: graded with a score; null: graded with feedback only."
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id",
+            "description": "Optional: one of your confirmed or completed classes (class_session_invalid / session_not_assignable). Never changes."
+          },
+          "student_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Ids",
+            "description": "1-100 of your current students, each once (with a class: its participants). Omitted with a class: the class's participants who are your current students. Required without a class (recipients_required)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject_id",
+          "title",
+          "instructions",
+          "due_on"
+        ],
+        "title": "AssignmentCreate",
+        "description": "`POST /api/v1/assignments` (#82 C1): homework for one or more of your\ncurrent students. Each student and the guardians with access to their\nacademic records see it at once and are notified (no draft)."
+      },
+      "AssignmentGradeEntry": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "assignment_grade",
+            "title": "Kind",
+            "description": "The entry type."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The submission's id."
+          },
+          "graded_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Graded On",
+            "description": "The local date of the first grade."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/EvaluationSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "author": {
+            "$ref": "#/components/schemas/EvaluationPerson",
+            "description": "The tutor who set it."
+          },
+          "max_score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "score_percent": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "is_late": {
+            "type": "boolean",
+            "title": "Is Late"
+          },
+          "graded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Graded At"
+          },
+          "updated": {
+            "type": "boolean",
+            "title": "Updated",
+            "description": "The grade was changed after it was given."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "graded_on",
+          "subject",
+          "title",
+          "author",
+          "max_score",
+          "score",
+          "score_percent",
+          "feedback",
+          "due_on",
+          "is_late",
+          "graded_at",
+          "updated"
+        ],
+        "title": "AssignmentGradeEntry",
+        "description": "One entry of the academic history: a scored homework grade (#82 G1;\nclosed allow-list: no author id, no submission text or link, no change\nreason). Feedback-only grades are not history entries."
+      },
+      "AssignmentList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AssignmentList",
+        "description": "`GET /api/v1/assignments` (#82 F1): newest deadline first."
+      },
       "AssignmentOfferCreate": {
         "properties": {
           "tutor_user_id": {
@@ -18252,6 +19445,430 @@
         ],
         "title": "AssignmentOfferPage",
         "description": "A page of the caller's offers (#52 G2)."
+      },
+      "AssignmentPatch": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The assignment's version, as last read."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "1-200 characters."
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions",
+            "description": "1-4000 characters."
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On",
+            "description": "A new local date: not before the center's today (due_in_past), at most 365 days ahead (due_too_far)."
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time",
+            "description": "null clears the time (the end of due_on)."
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0.5-1000; null: feedback only. Locked once a student is graded (assignment_has_grades)."
+          },
+          "add_student_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Add Student Ids",
+            "description": "Students to add (your current students; with a class, its participants). Existing recipients are ignored; each new one is notified."
+          },
+          "remove_student_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Remove Student Ids",
+            "description": "Recipients to remove; one who submitted can't be removed (recipient_has_submission)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "AssignmentPatch",
+        "description": "`PATCH /api/v1/assignments/{id}` (#82 C4, AM1): a key you leave out\nkeeps its value. `due_time: null` clears the time (the end of due_on);\n`max_score: null` makes the homework feedback-only. `null` for any other\nkey is a validation error."
+      },
+      "AssignmentPerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "AssignmentPerson"
+      },
+      "AssignmentSession": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "starts_at"
+        ],
+        "title": "AssignmentSession"
+      },
+      "AssignmentStateSummary": {
+        "properties": {
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "submitted": {
+            "type": "integer",
+            "title": "Submitted"
+          },
+          "graded": {
+            "type": "integer",
+            "title": "Graded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pending",
+          "missing",
+          "submitted",
+          "graded"
+        ],
+        "title": "AssignmentStateSummary"
+      },
+      "AssignmentStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "AssignmentStudent"
+      },
+      "AssignmentSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "AssignmentSubject"
+      },
+      "AssignmentSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The assignment's version (send it back)."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AssignmentSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline At",
+            "description": "The deadline as an instant (due_time null: the end of due_on in the center's time zone)."
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "class_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssignmentSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "creator": {
+            "$ref": "#/components/schemas/AssignmentPerson"
+          },
+          "is_own": {
+            "type": "boolean",
+            "title": "Is Own",
+            "description": "You set it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AssignmentCounts"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "subject",
+          "title",
+          "instructions",
+          "due_on",
+          "due_time",
+          "deadline_at",
+          "max_score",
+          "class_session",
+          "creator",
+          "is_own",
+          "created_at",
+          "updated_at",
+          "counts",
+          "can_edit",
+          "can_delete"
+        ],
+        "title": "AssignmentSummary",
+        "description": "A homework assignment in the working list (#82 F1): no roster."
+      },
+      "AssignmentView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The assignment's version (send it back)."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AssignmentSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline At",
+            "description": "The deadline as an instant (due_time null: the end of due_on in the center's time zone)."
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "class_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssignmentSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "creator": {
+            "$ref": "#/components/schemas/AssignmentPerson"
+          },
+          "is_own": {
+            "type": "boolean",
+            "title": "Is Own",
+            "description": "You set it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AssignmentCounts"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          },
+          "roster": {
+            "items": {
+              "$ref": "#/components/schemas/RosterEntry"
+            },
+            "type": "array",
+            "title": "Roster"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "subject",
+          "title",
+          "instructions",
+          "due_on",
+          "due_time",
+          "deadline_at",
+          "max_score",
+          "class_session",
+          "creator",
+          "is_own",
+          "created_at",
+          "updated_at",
+          "counts",
+          "can_edit",
+          "can_delete",
+          "roster"
+        ],
+        "title": "AssignmentView",
+        "description": "A homework assignment with its roster, for the tutor who set it and\nstaff with assignment.review (#82 C6). The roster is ordered by name."
       },
       "AttendanceBlock": {
         "type": "string",
@@ -25736,6 +27353,13 @@
           "user.admin_role.assign"
         ]
       },
+      "Due": {
+        "type": "string",
+        "enum": [
+          "upcoming",
+          "past"
+        ]
+      },
       "EducationLevelCreate": {
         "properties": {
           "name": {
@@ -27718,6 +29342,57 @@
         "title": "FieldError",
         "type": "object"
       },
+      "GradePut": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The submission's version, as last read."
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 to max_score, at most two decimal places (score_required / score_out_of_range / score_not_allowed)."
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "Plain text, at most 4000 characters; required without a max_score (feedback_required)."
+          },
+          "change_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Reason",
+            "description": "Required to change a grade: 1-500 characters (change_reason_required). Ignored on the first grade."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "GradePut",
+        "description": "`PUT /api/v1/assignments/{id}/students/{student_id}/grade` (#82 D2):\nwith a max_score, a score (and optional feedback); without one,\nfeedback only. Changing a grade needs a reason (internal: families never\nsee it)."
+      },
       "GroupBy": {
         "type": "string",
         "enum": [
@@ -29215,7 +30890,7 @@
             "type": "string",
             "const": "evaluation",
             "title": "Kind",
-            "description": "The entry type (later issues add others)."
+            "description": "The entry type: evaluation (this shape) or assignment_grade."
           },
           "id": {
             "type": "string",
@@ -29339,6 +31014,23 @@
         ],
         "title": "HistoryGroup"
       },
+      "HistoryItem": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/HistoryEntry"
+          },
+          {
+            "$ref": "#/components/schemas/AssignmentGradeEntry"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "assignment_grade": "#/components/schemas/AssignmentGradeEntry",
+            "evaluation": "#/components/schemas/HistoryEntry"
+          }
+        }
+      },
       "HistoryPeriod": {
         "properties": {
           "id": {
@@ -29382,10 +31074,35 @@
           },
           "count": {
             "type": "integer",
-            "title": "Count"
+            "title": "Count",
+            "description": "Evaluations only."
           },
           "average_percent": {
-            "$ref": "#/components/schemas/DecimalOut"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mean of the evaluations' percentages; null without one."
+          },
+          "assignment_count": {
+            "type": "integer",
+            "title": "Assignment Count",
+            "description": "Scored homework grades (#82)."
+          },
+          "assignment_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mean of the homework grades' percentages; null without one."
           },
           "entry_ids": {
             "items": {
@@ -29393,7 +31110,8 @@
               "format": "uuid"
             },
             "type": "array",
-            "title": "Entry Ids"
+            "title": "Entry Ids",
+            "description": "Both kinds, newest first."
           }
         },
         "additionalProperties": false,
@@ -29402,6 +31120,8 @@
           "subject",
           "count",
           "average_percent",
+          "assignment_count",
+          "assignment_average_percent",
           "entry_ids"
         ],
         "title": "HistorySubjectGroup"
@@ -31857,6 +33577,7 @@
         "type": "string",
         "enum": [
           "academic_note.review",
+          "assignment.review",
           "attendance.correct",
           "audit.view",
           "catalog.manage",
@@ -32341,6 +34062,166 @@
           "student",
           "tutor"
         ]
+      },
+      "RosterEntry": {
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/AssignmentStudent"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The submission's version (send it back)."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SubmissionState"
+          },
+          "is_late": {
+            "type": "boolean",
+            "title": "Is Late"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "submitted_via": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubmittedVia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "grade_amended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Amended At"
+          },
+          "last_change_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Change Reason",
+            "description": "Internal: never shown to families."
+          },
+          "can_record_submission": {
+            "type": "boolean",
+            "title": "Can Record Submission"
+          },
+          "can_grade": {
+            "type": "boolean",
+            "title": "Can Grade"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student",
+          "version",
+          "state",
+          "is_late",
+          "submitted_at",
+          "submitted_via",
+          "text",
+          "url",
+          "score",
+          "score_percent",
+          "feedback",
+          "graded_at",
+          "grade_amended_at",
+          "last_change_reason",
+          "can_record_submission",
+          "can_grade"
+        ],
+        "title": "RosterEntry",
+        "description": "One recipient's row in the working view."
       },
       "RosterStudent": {
         "properties": {
@@ -34696,6 +36577,151 @@
         "title": "StudentAccountUpdate",
         "description": "Link a login account to the profile, or ``null`` to unlink it (``PUT\n/api/v1/students/{student_id}/account``), with the ``version`` the caller\nloaded."
       },
+      "StudentAssignment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AssignmentSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline At"
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "creator": {
+            "$ref": "#/components/schemas/AssignmentPerson"
+          },
+          "class_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudentAssignmentSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "submission": {
+            "$ref": "#/components/schemas/StudentSubmission"
+          },
+          "can_submit": {
+            "type": "boolean",
+            "title": "Can Submit",
+            "description": "You are the student and may submit now."
+          },
+          "can_grade": {
+            "type": "boolean",
+            "title": "Can Grade",
+            "description": "You set it and may grade it now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "title",
+          "instructions",
+          "due_on",
+          "due_time",
+          "deadline_at",
+          "max_score",
+          "creator",
+          "class_session",
+          "submission",
+          "can_submit",
+          "can_grade"
+        ],
+        "title": "StudentAssignment",
+        "description": "A homework assignment with one student's submission (#82 E2): the same\nclosed shape for staff, tutors, the student and guardians."
+      },
+      "StudentAssignmentList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StudentAssignment"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AssignmentStateSummary"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "summary",
+          "next_cursor"
+        ],
+        "title": "StudentAssignmentList",
+        "description": "`GET /api/v1/students/{id}/assignments` (#82 E3): the summary counts\nthe whole filtered set (ignoring `state` and the cursor)."
+      },
+      "StudentAssignmentSession": {
+        "properties": {
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "starts_at"
+        ],
+        "title": "StudentAssignmentSession"
+      },
       "StudentCreate": {
         "properties": {
           "given_names": {
@@ -35159,6 +37185,132 @@
           "all"
         ]
       },
+      "StudentSubmission": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/SubmissionState"
+          },
+          "is_late": {
+            "type": "boolean",
+            "title": "Is Late"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "submitted_via": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubmittedVia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "updated": {
+            "type": "boolean",
+            "title": "Updated",
+            "description": "The grade was changed after it was given."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The submission's version (send it back)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "is_late",
+          "submitted_at",
+          "submitted_via",
+          "text",
+          "url",
+          "score",
+          "score_percent",
+          "feedback",
+          "graded_at",
+          "updated",
+          "version"
+        ],
+        "title": "StudentSubmission",
+        "description": "One student's submission and grade (#82 E2)."
+      },
       "StudentUpdate": {
         "properties": {
           "version": {
@@ -35413,6 +37565,66 @@
         ],
         "title": "SubjectUpdate",
         "description": "A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with\nthe ``version`` the caller loaded. The level can't be changed."
+      },
+      "SubmissionPut": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "The submission's version, as last read: required when something was already submitted (version_required)."
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "Plain text, at most 10000 characters."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "An absolute http or https link with a host, no user name or password, at most 2000 characters (url_invalid). Never opened by the server."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SubmissionPut",
+        "description": "`PUT /api/v1/assignments/{id}/students/{student_id}/submission` (#82\nD1): the student submits text and/or a link (at least one), or the tutor\nwho set the homework records work handed in on paper (both may be\nempty). Replacing an existing submission needs its version."
+      },
+      "SubmissionState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "missing",
+          "submitted",
+          "graded"
+        ]
+      },
+      "SubmittedVia": {
+        "type": "string",
+        "enum": [
+          "student",
+          "tutor"
+        ]
       },
       "SubstitutionCreate": {
         "properties": {

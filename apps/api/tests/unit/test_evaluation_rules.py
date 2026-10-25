@@ -32,6 +32,7 @@ from app.modules.identity.permissions import (
 from app.modules.scheduling.states import SessionState
 from app.workflows.evaluation_schemas import (
     AcademicHistory,
+    AssignmentGradeEntry,
     EvaluationCreate,
     EvaluationPatch,
     EvaluationTemplateCreate,
@@ -456,7 +457,33 @@ def test_the_history_shapes_are_closed_allow_lists():
         "subject",
         "count",
         "average_percent",
+        "assignment_count",
+        "assignment_average_percent",
         "entry_ids",
     }
-    for model in (AcademicHistory, HistoryEntry, HistoryGroup, HistorySubjectGroup):
+    # #82 G1: the homework grade entry; never the change reason, the
+    # submission text or link.
+    assert set(AssignmentGradeEntry.model_fields) == {
+        "kind",
+        "id",
+        "graded_on",
+        "subject",
+        "title",
+        "author",
+        "max_score",
+        "score",
+        "score_percent",
+        "feedback",
+        "due_on",
+        "is_late",
+        "graded_at",
+        "updated",
+    }
+    for model in (
+        AcademicHistory,
+        HistoryEntry,
+        AssignmentGradeEntry,
+        HistoryGroup,
+        HistorySubjectGroup,
+    ):
         assert model.model_config.get("extra") == "forbid"

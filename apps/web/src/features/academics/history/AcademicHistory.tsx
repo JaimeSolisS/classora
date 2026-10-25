@@ -253,6 +253,10 @@ function Grouped({
       {history.groups.map((group, index) => {
         const headingId = `${id}-g${index}`;
         const subjectLevel = unnamed ? 2 : 3;
+        // #82: a subject with homework grades only has no evaluation to
+        // show here (#313 renders those); a period without any is skipped.
+        const subjects = group.subjects.filter((subject) => subject.count > 0);
+        if (subjects.length === 0) return null;
         return (
           <section
             key={group.period?.id ?? `none-${index}`}
@@ -273,7 +277,7 @@ function Grouped({
                   : t('academics.history.noPeriod')}
               </h2>
             )}
-            {group.subjects.map((subject) => {
+            {subjects.map((subject) => {
               const entries = subject.entry_ids
                 .map((entryId) => byId.get(entryId))
                 .filter((entry): entry is HistoryEntry => entry !== undefined);

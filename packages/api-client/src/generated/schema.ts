@@ -2778,6 +2778,155 @@ export interface paths {
         patch: operations["update_learning_plan_milestone_api_v1_learning_plan_milestones__milestone_id__patch"];
         trace?: never;
     };
+    "/api/v1/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assignments
+         * @description The homework you set (tutors), or every homework assignment (staff
+         *     with assignment.review), newest deadline first, with counts per state.
+         *     Anyone else gets 403 permission_denied.
+         */
+        get: operations["list_assignments_api_v1_assignments_get"];
+        put?: never;
+        /**
+         * Create Assignment
+         * @description Set homework for one or more of your current students (optionally
+         *     linked to one of your classes). Each student and the guardians with
+         *     access to their academic records see it at once and are notified.
+         */
+        post: operations["create_assignment_api_v1_assignments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assignments/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Assignment
+         * @description One homework assignment with its roster (every student's submission
+         *     and grade): the tutor who set it and staff with assignment.review.
+         */
+        get: operations["get_assignment_api_v1_assignments__assignment_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Assignment
+         * @description Delete homework you set while nobody has submitted. It disappears
+         *     everywhere.
+         */
+        delete: operations["delete_assignment_api_v1_assignments__assignment_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Assignment
+         * @description Change homework you set: a key you leave out keeps its value;
+         *     due_time null means the end of the day; max_score null makes it
+         *     feedback-only. Added students are notified.
+         */
+        patch: operations["edit_assignment_api_v1_assignments__assignment_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/assignments/{assignment_id}/students/{student_id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Submit Assignment
+         * @description The student submits text and/or a link (replaceable until the
+         *     deadline; a missing one can still be submitted late), or the tutor who
+         *     set the homework records work handed in on paper.
+         */
+        put: operations["submit_assignment_api_v1_assignments__assignment_id__students__student_id__submission_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assignments/{assignment_id}/students/{student_id}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Grade Assignment
+         * @description Grade a student's submitted homework (a score and feedback, or
+         *     feedback only). The student and their guardians see it at once and are
+         *     notified; changing a grade needs a reason they never see.
+         */
+        put: operations["grade_assignment_api_v1_assignments__assignment_id__students__student_id__grade_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Student Assignments
+         * @description A student's homework with their own submission and grade (never
+         *     another student's), newest deadline first, and a summary per state.
+         *     Staff with assignment.review, tutors currently teaching the student,
+         *     the student and their guardians with access to their academic
+         *     records.
+         */
+        get: operations["list_student_assignments_api_v1_students__student_id__assignments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/assignments/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Assignment
+         * @description One homework assignment with the student's own submission and
+         *     grade.
+         */
+        get: operations["get_student_assignment_api_v1_students__student_id__assignments__assignment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -3721,9 +3870,10 @@ export interface components {
     schemas: {
         /**
          * AcademicHistory
-         * @description A student's academic history (#80 F3): one chronological list of
-         *     final evaluations from every tutor, and the same entries grouped by
-         *     period and subject. The same shape for staff, tutors and families.
+         * @description A student's academic history (#80 F3, #82 G1): one chronological
+         *     list of final evaluations and scored homework grades from every tutor,
+         *     and the same entries grouped by period and subject. The same shape for
+         *     staff, tutors and families.
          */
         AcademicHistory: {
             /**
@@ -3738,7 +3888,7 @@ export interface components {
              */
             truncated: boolean;
             /** Entries */
-            entries: components["schemas"]["HistoryEntry"][];
+            entries: components["schemas"]["HistoryItem"][];
             /** Groups */
             groups: components["schemas"]["HistoryGroup"][];
         };
@@ -3929,6 +4079,133 @@ export interface components {
         ApprovalStatus: "pending" | "approved" | "rejected" | "changes_requested" | "cancelled";
         /** @enum {string} */
         ApprovalStatusFilter: "open" | "pending" | "approved" | "rejected" | "changes_requested" | "cancelled" | "all";
+        /** AssignmentCounts */
+        AssignmentCounts: {
+            /** Recipients */
+            recipients: number;
+            /** Pending */
+            pending: number;
+            /** Missing */
+            missing: number;
+            /** Submitted */
+            submitted: number;
+            /**
+             * Late
+             * @description Submitted or graded after the deadline.
+             */
+            late: number;
+            /** Graded */
+            graded: number;
+        };
+        /**
+         * AssignmentCreate
+         * @description `POST /api/v1/assignments` (#82 C1): homework for one or more of your
+         *     current students. Each student and the guardians with access to their
+         *     academic records see it at once and are notified (no draft).
+         */
+        AssignmentCreate: {
+            /**
+             * Subject Id
+             * Format: uuid
+             * @description An active subject (subject_unknown); with a class, the class's subject (subject_mismatch). It never changes.
+             */
+            subject_id: string;
+            /**
+             * Title
+             * @description 1-200 characters, plain text.
+             */
+            title: string;
+            /**
+             * Instructions
+             * @description 1-4000 characters, plain text.
+             */
+            instructions: string;
+            /**
+             * Due On
+             * Format: date
+             * @description The deadline's local date: from the center's today (due_in_past) to 365 days ahead (due_too_far).
+             */
+            due_on: string;
+            /**
+             * Due Time
+             * @description The deadline's local time (HH:MM[:SS], no offset); null means the end of due_on. On today it must not have passed (due_in_past).
+             */
+            due_time?: string | null;
+            /** @description 0.5-1000, at most two decimal places: graded with a score; null: graded with feedback only. */
+            max_score?: components["schemas"]["DecimalIn"] | null;
+            /**
+             * Class Session Id
+             * @description Optional: one of your confirmed or completed classes (class_session_invalid / session_not_assignable). Never changes.
+             */
+            class_session_id?: string | null;
+            /**
+             * Student Ids
+             * @description 1-100 of your current students, each once (with a class: its participants). Omitted with a class: the class's participants who are your current students. Required without a class (recipients_required).
+             */
+            student_ids?: string[] | null;
+        };
+        /**
+         * AssignmentGradeEntry
+         * @description One entry of the academic history: a scored homework grade (#82 G1;
+         *     closed allow-list: no author id, no submission text or link, no change
+         *     reason). Feedback-only grades are not history entries.
+         */
+        AssignmentGradeEntry: {
+            /**
+             * @description The entry type. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            kind: "assignment_grade";
+            /**
+             * Id
+             * Format: uuid
+             * @description The submission's id.
+             */
+            id: string;
+            /**
+             * Graded On
+             * Format: date
+             * @description The local date of the first grade.
+             */
+            graded_on: string;
+            subject: components["schemas"]["EvaluationSubject"];
+            /** Title */
+            title: string;
+            /** @description The tutor who set it. */
+            author: components["schemas"]["EvaluationPerson"];
+            max_score: components["schemas"]["DecimalOut"];
+            score: components["schemas"]["DecimalOut"];
+            score_percent: components["schemas"]["DecimalOut"];
+            /** Feedback */
+            feedback: string | null;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Is Late */
+            is_late: boolean;
+            /**
+             * Graded At
+             * Format: date-time
+             */
+            graded_at: string;
+            /**
+             * Updated
+             * @description The grade was changed after it was given.
+             */
+            updated: boolean;
+        };
+        /**
+         * AssignmentList
+         * @description `GET /api/v1/assignments` (#82 F1): newest deadline first.
+         */
+        AssignmentList: {
+            /** Items */
+            items: components["schemas"]["AssignmentSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /**
          * AssignmentOfferCreate
          * @description Offer an ``unassigned`` session to a tutor
@@ -4039,6 +4316,219 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * AssignmentPatch
+         * @description `PATCH /api/v1/assignments/{id}` (#82 C4, AM1): a key you leave out
+         *     keeps its value. `due_time: null` clears the time (the end of due_on);
+         *     `max_score: null` makes the homework feedback-only. `null` for any other
+         *     key is a validation error.
+         */
+        AssignmentPatch: {
+            /**
+             * Version
+             * @description The assignment's version, as last read.
+             */
+            version: number;
+            /**
+             * Title
+             * @description 1-200 characters.
+             */
+            title?: string;
+            /**
+             * Instructions
+             * @description 1-4000 characters.
+             */
+            instructions?: string;
+            /**
+             * Due On
+             * Format: date
+             * @description A new local date: not before the center's today (due_in_past), at most 365 days ahead (due_too_far).
+             */
+            due_on?: string;
+            /**
+             * Due Time
+             * @description null clears the time (the end of due_on).
+             */
+            due_time?: string | null;
+            /** @description 0.5-1000; null: feedback only. Locked once a student is graded (assignment_has_grades). */
+            max_score?: components["schemas"]["DecimalIn"] | null;
+            /**
+             * Add Student Ids
+             * @description Students to add (your current students; with a class, its participants). Existing recipients are ignored; each new one is notified.
+             */
+            add_student_ids?: string[];
+            /**
+             * Remove Student Ids
+             * @description Recipients to remove; one who submitted can't be removed (recipient_has_submission).
+             */
+            remove_student_ids?: string[];
+        };
+        /** AssignmentPerson */
+        AssignmentPerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /** AssignmentSession */
+        AssignmentSession: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+        };
+        /** AssignmentStateSummary */
+        AssignmentStateSummary: {
+            /** Pending */
+            pending: number;
+            /** Missing */
+            missing: number;
+            /** Submitted */
+            submitted: number;
+            /** Graded */
+            graded: number;
+        };
+        /** AssignmentStudent */
+        AssignmentStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** AssignmentSubject */
+        AssignmentSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * AssignmentSummary
+         * @description A homework assignment in the working list (#82 F1): no roster.
+         */
+        AssignmentSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The assignment's version (send it back).
+             */
+            version: number;
+            subject: components["schemas"]["AssignmentSubject"];
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Due Time */
+            due_time: string | null;
+            /**
+             * Deadline At
+             * Format: date-time
+             * @description The deadline as an instant (due_time null: the end of due_on in the center's time zone).
+             */
+            deadline_at: string;
+            max_score: components["schemas"]["DecimalOut"] | null;
+            class_session: components["schemas"]["AssignmentSession"] | null;
+            creator: components["schemas"]["AssignmentPerson"];
+            /**
+             * Is Own
+             * @description You set it.
+             */
+            is_own: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            counts: components["schemas"]["AssignmentCounts"];
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+        };
+        /**
+         * AssignmentView
+         * @description A homework assignment with its roster, for the tutor who set it and
+         *     staff with assignment.review (#82 C6). The roster is ordered by name.
+         */
+        AssignmentView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The assignment's version (send it back).
+             */
+            version: number;
+            subject: components["schemas"]["AssignmentSubject"];
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Due Time */
+            due_time: string | null;
+            /**
+             * Deadline At
+             * Format: date-time
+             * @description The deadline as an instant (due_time null: the end of due_on in the center's time zone).
+             */
+            deadline_at: string;
+            max_score: components["schemas"]["DecimalOut"] | null;
+            class_session: components["schemas"]["AssignmentSession"] | null;
+            creator: components["schemas"]["AssignmentPerson"];
+            /**
+             * Is Own
+             * @description You set it.
+             */
+            is_own: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            counts: components["schemas"]["AssignmentCounts"];
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Roster */
+            roster: components["schemas"]["RosterEntry"][];
         };
         /** @enum {string} */
         AttendanceBlock: "attendance_not_recordable" | "attendance_not_started" | "attendance_locked";
@@ -7524,6 +8014,8 @@ export interface components {
         DecimalOut: string;
         /** @enum {string} */
         DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
+        /** @enum {string} */
+        Due: "upcoming" | "past";
         /**
          * EducationLevelCreate
          * @description A new education level (``POST /api/v1/education-levels``). Without
@@ -8455,6 +8947,32 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * GradePut
+         * @description `PUT /api/v1/assignments/{id}/students/{student_id}/grade` (#82 D2):
+         *     with a max_score, a score (and optional feedback); without one,
+         *     feedback only. Changing a grade needs a reason (internal: families never
+         *     see it).
+         */
+        GradePut: {
+            /**
+             * Version
+             * @description The submission's version, as last read.
+             */
+            version: number;
+            /** @description 0 to max_score, at most two decimal places (score_required / score_out_of_range / score_not_allowed). */
+            score?: components["schemas"]["DecimalIn"] | null;
+            /**
+             * Feedback
+             * @description Plain text, at most 4000 characters; required without a max_score (feedback_required).
+             */
+            feedback?: string | null;
+            /**
+             * Change Reason
+             * @description Required to change a grade: 1-500 characters (change_reason_required). Ignored on the first grade.
+             */
+            change_reason?: string | null;
+        };
         /** @enum {string} */
         GroupBy: "none" | "school_year" | "semester" | "term";
         /**
@@ -9154,9 +9672,8 @@ export interface components {
          */
         HistoryEntry: {
             /**
-             * Kind
-             * @description The entry type (later issues add others).
-             * @constant
+             * @description The entry type: evaluation (this shape) or assignment_grade. (enum property replaced by openapi-typescript)
+             * @enum {string}
              */
             kind: "evaluation";
             /**
@@ -9200,6 +9717,7 @@ export interface components {
             /** Subjects */
             subjects: components["schemas"]["HistorySubjectGroup"][];
         };
+        HistoryItem: components["schemas"]["HistoryEntry"] | components["schemas"]["AssignmentGradeEntry"];
         /** HistoryPeriod */
         HistoryPeriod: {
             /**
@@ -9224,10 +9742,24 @@ export interface components {
         /** HistorySubjectGroup */
         HistorySubjectGroup: {
             subject: components["schemas"]["EvaluationSubject"];
-            /** Count */
+            /**
+             * Count
+             * @description Evaluations only.
+             */
             count: number;
-            average_percent: components["schemas"]["DecimalOut"];
-            /** Entry Ids */
+            /** @description The mean of the evaluations' percentages; null without one. */
+            average_percent: components["schemas"]["DecimalOut"] | null;
+            /**
+             * Assignment Count
+             * @description Scored homework grades (#82).
+             */
+            assignment_count: number;
+            /** @description The mean of the homework grades' percentages; null without one. */
+            assignment_average_percent: components["schemas"]["DecimalOut"] | null;
+            /**
+             * Entry Ids
+             * @description Both kinds, newest first.
+             */
             entry_ids: string[];
         };
         /**
@@ -10386,7 +10918,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -10614,6 +11146,45 @@ export interface components {
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
+        /**
+         * RosterEntry
+         * @description One recipient's row in the working view.
+         */
+        RosterEntry: {
+            student: components["schemas"]["AssignmentStudent"];
+            /**
+             * Version
+             * @description The submission's version (send it back).
+             */
+            version: number;
+            state: components["schemas"]["SubmissionState"];
+            /** Is Late */
+            is_late: boolean;
+            /** Submitted At */
+            submitted_at: string | null;
+            submitted_via: components["schemas"]["SubmittedVia"] | null;
+            /** Text */
+            text: string | null;
+            /** Url */
+            url: string | null;
+            score: components["schemas"]["DecimalOut"] | null;
+            score_percent: components["schemas"]["DecimalOut"] | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Graded At */
+            graded_at: string | null;
+            /** Grade Amended At */
+            grade_amended_at: string | null;
+            /**
+             * Last Change Reason
+             * @description Internal: never shown to families.
+             */
+            last_change_reason: string | null;
+            /** Can Record Submission */
+            can_record_submission: boolean;
+            /** Can Grade */
+            can_grade: boolean;
+        };
         /**
          * RosterStudent
          * @description A student of a tutor's group or cohort (#246 E2: the `limited`
@@ -11937,6 +12508,69 @@ export interface components {
             version: number;
         };
         /**
+         * StudentAssignment
+         * @description A homework assignment with one student's submission (#82 E2): the same
+         *     closed shape for staff, tutors, the student and guardians.
+         */
+        StudentAssignment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            subject: components["schemas"]["AssignmentSubject"];
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Due Time */
+            due_time: string | null;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            max_score: components["schemas"]["DecimalOut"] | null;
+            creator: components["schemas"]["AssignmentPerson"];
+            class_session: components["schemas"]["StudentAssignmentSession"] | null;
+            submission: components["schemas"]["StudentSubmission"];
+            /**
+             * Can Submit
+             * @description You are the student and may submit now.
+             */
+            can_submit: boolean;
+            /**
+             * Can Grade
+             * @description You set it and may grade it now.
+             */
+            can_grade: boolean;
+        };
+        /**
+         * StudentAssignmentList
+         * @description `GET /api/v1/students/{id}/assignments` (#82 E3): the summary counts
+         *     the whole filtered set (ignoring `state` and the cursor).
+         */
+        StudentAssignmentList: {
+            /** Items */
+            items: components["schemas"]["StudentAssignment"][];
+            summary: components["schemas"]["AssignmentStateSummary"];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** StudentAssignmentSession */
+        StudentAssignmentSession: {
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+        };
+        /**
          * StudentCreate
          * @description A new student profile (``POST /api/v1/students``). It starts active.
          *     The list order of ``emergency_contacts`` (1 to 5) is their order.
@@ -12127,6 +12761,38 @@ export interface components {
         /** @enum {string} */
         StudentStatus: "active" | "inactive" | "all";
         /**
+         * StudentSubmission
+         * @description One student's submission and grade (#82 E2).
+         */
+        StudentSubmission: {
+            state: components["schemas"]["SubmissionState"];
+            /** Is Late */
+            is_late: boolean;
+            /** Submitted At */
+            submitted_at: string | null;
+            submitted_via: components["schemas"]["SubmittedVia"] | null;
+            /** Text */
+            text: string | null;
+            /** Url */
+            url: string | null;
+            score: components["schemas"]["DecimalOut"] | null;
+            score_percent: components["schemas"]["DecimalOut"] | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Graded At */
+            graded_at: string | null;
+            /**
+             * Updated
+             * @description The grade was changed after it was given.
+             */
+            updated: boolean;
+            /**
+             * Version
+             * @description The submission's version (send it back).
+             */
+            version: number;
+        };
+        /**
          * StudentUpdate
          * @description A change to a profile (``PATCH /api/v1/students/{student_id}``) with
          *     the ``version`` the caller loaded. ``emergency_contacts``, when sent, is
@@ -12211,6 +12877,34 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /**
+         * SubmissionPut
+         * @description `PUT /api/v1/assignments/{id}/students/{student_id}/submission` (#82
+         *     D1): the student submits text and/or a link (at least one), or the tutor
+         *     who set the homework records work handed in on paper (both may be
+         *     empty). Replacing an existing submission needs its version.
+         */
+        SubmissionPut: {
+            /**
+             * Version
+             * @description The submission's version, as last read: required when something was already submitted (version_required).
+             */
+            version?: number | null;
+            /**
+             * Text
+             * @description Plain text, at most 10000 characters.
+             */
+            text?: string | null;
+            /**
+             * Url
+             * @description An absolute http or https link with a host, no user name or password, at most 2000 characters (url_invalid). Never opened by the server.
+             */
+            url?: string | null;
+        };
+        /** @enum {string} */
+        SubmissionState: "pending" | "missing" | "submitted" | "graded";
+        /** @enum {string} */
+        SubmittedVia: "student" | "tutor";
         /**
          * SubstitutionCreate
          * @description Offer one ``confirmed`` session to a substitute tutor (``POST
@@ -22526,6 +23220,590 @@ export interface operations {
             };
             /** @description The milestone changed since it was read (version_conflict), the plan is a draft (plan_not_active) or closed (plan_closed). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_assignments_api_v1_assignments_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                subject_id?: string | null;
+                class_session_id?: string | null;
+                /** @description upcoming: due today or later; past: before today. */
+                due?: components["schemas"]["Due"] | null;
+                cursor?: string | null;
+                /** @description 1-50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_assignment_api_v1_assignments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only tutors set homework (assignment_tutor_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The class isn't confirmed or completed (session_not_assignable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_assignment_api_v1_assignments__assignment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_assignment_api_v1_assignments__assignment_id__delete: {
+        parameters: {
+            query: {
+                /** @description The assignment's version, as last read. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The homework changed since it was read (version_conflict) or has a submission (assignment_has_submissions). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    edit_assignment_api_v1_assignments__assignment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The homework changed since it was read (version_conflict); the maximum score is locked after a grade (assignment_has_grades); a removed student already submitted (recipient_has_submission). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    submit_assignment_api_v1_assignments__assignment_id__students__student_id__submission_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmissionPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAssignment"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Guardians don't submit (submission_student_only); the adult student hasn't given you access (student_consent_required); only the tutor who set it records handed-in work (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, the student isn't one of its students, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The submission changed since it was read (version_conflict); it was graded (submission_graded); the deadline passed and it can't be replaced (submission_locked). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    grade_assignment_api_v1_assignments__assignment_id__students__student_id__grade_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradePut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterEntry"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the tutor who set it (assignment_creator_only); the student is no longer one of your current students (assignment_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, the student isn't one of its students, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The submission changed since it was read (version_conflict) or nothing was submitted (submission_required). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_student_assignments_api_v1_students__student_id__assignments_get: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["SubmissionState"] | null;
+                subject_id?: string | null;
+                /** @description due_on on or after. */
+                from?: string | null;
+                /** @description due_on on or before. */
+                to?: string | null;
+                cursor?: string | null;
+                /** @description 1-50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAssignmentList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose homework you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_assignment_api_v1_students__student_id__assignments__assignment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAssignment"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such homework, the student isn't one of its students, or it isn't one you may see (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

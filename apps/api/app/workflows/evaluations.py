@@ -49,7 +49,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, cast
 from zoneinfo import ZoneInfo
@@ -70,6 +70,7 @@ from app.modules.identity import service as identity
 from app.modules.scheduling import service as scheduling
 from app.workflows.evaluation_schemas import (
     AcademicHistory,
+    AssignmentGradeEntry,
     EvaluationContext,
     EvaluationContextAssessment,
     EvaluationContextCourse,
@@ -99,11 +100,13 @@ from app.workflows.evaluation_schemas import (
     HistoryCriterion,
     HistoryEntry,
     HistoryGroup,
+    HistoryItem,
     HistoryPeriod,
     HistorySubjectGroup,
 )
 
 rules = academics.evaluation_rules
+assignment_rules = academics.assignment_rules
 Relation = rules.EvaluationRelation
 
 FINALIZED_NOTIFICATION: Final = "academics.evaluation_finalized"
@@ -986,8 +989,9 @@ async def _history_scope(
     session: AsyncSession, principal: Principal, student_id: uuid.UUID
 ) -> uuid.UUID | None:
     """F1: ``None`` (every author) for reviewers, tutors with the student
-    assigned and the family; the caller's id for a former author; ``403
-    student_consent_required`` / ``404`` otherwise."""
+    assigned and the family; the caller's id for a former author (of an
+    evaluation, or the creator of homework the student received, #82 G1);
+    ``403 student_consent_required`` / ``404`` otherwise."""
     if rules.is_reviewer(principal):
         if not await families.student_references(session, [student_id]):
             raise RecordNotFoundError()
@@ -1001,9 +1005,15 @@ async def _history_scope(
     except RecordNotFoundError:
         if not tutor:
             raise
-    if await academics.has_own_evaluation(session, student_id, principal.user_id):
+    if await academics.has_own_evaluation(
+        session, student_id, principal.user_id
+    ) or await academics.has_own_assignment(session, student_id, principal.user_id):
         return principal.user_id
     raise RecordNotFoundError()
+
+
+def _entry_date(entry: HistoryItem) -> date:
+    return entry.evaluated_on if isinstance(entry, HistoryEntry) else entry.graded_on
 
 
 def _period(period: Any) -> HistoryPeriod:
@@ -1017,17 +1027,19 @@ def _period(period: Any) -> HistoryPeriod:
 
 
 def _groups(
-    entries: Sequence[HistoryEntry], periods: Sequence[Any], *, grouped: bool
+    entries: Sequence[HistoryItem], periods: Sequence[Any], *, grouped: bool
 ) -> list[HistoryGroup]:
     """F4: entries by period (the active period of the type holding the
     date; ``None`` last), then subject (name casefold, then id), each with
-    its count, average percentage and entry ids (newest first)."""
-    buckets: dict[uuid.UUID | None, dict[uuid.UUID, list[HistoryEntry]]] = defaultdict(
+    the evaluations' count and average percentage, the homework grades'
+    count and average percentage (#82 G1: kept apart) and the entry ids of
+    both kinds (newest first)."""
+    buckets: dict[uuid.UUID | None, dict[uuid.UUID, list[HistoryItem]]] = defaultdict(
         lambda: defaultdict(list)
     )
     by_id = {period.id: period for period in periods}
     for entry in entries:
-        period = rules.period_for(entry.evaluated_on, periods) if grouped else None
+        period = rules.period_for(_entry_date(entry), periods) if grouped else None
         buckets[None if period is None else period.id][entry.subject.id].append(entry)
 
     def order(key: uuid.UUID | None) -> tuple[int, int]:
@@ -1039,14 +1051,19 @@ def _groups(
     for key in sorted(buckets, key=order):
         subjects = []
         for items in buckets[key].values():
-            subject = items[0].subject
-            average = rules.average_percent([item.score_percent for item in items])
-            assert average is not None  # noqa: S101 (never empty)
+            evaluations = [i for i in items if isinstance(i, HistoryEntry)]
+            grades = [i for i in items if isinstance(i, AssignmentGradeEntry)]
             subjects.append(
                 HistorySubjectGroup(
-                    subject=subject,
-                    count=len(items),
-                    average_percent=average,
+                    subject=items[0].subject,
+                    count=len(evaluations),
+                    average_percent=rules.average_percent(
+                        [item.score_percent for item in evaluations]
+                    ),
+                    assignment_count=len(grades),
+                    assignment_average_percent=rules.average_percent(
+                        [item.score_percent for item in grades]
+                    ),
                     entry_ids=[item.id for item in items],
                 )
             )
@@ -1069,34 +1086,52 @@ async def academic_history(
     from_: date | None,
     to: date | None,
 ) -> AcademicHistory:
-    """``GET /api/v1/students/{id}/academic-history`` (F1-F4): the one
-    family-safe read of evaluations. At most 8 statements whatever the
-    number of entries, criteria or periods."""
+    """``GET /api/v1/students/{id}/academic-history`` (F1-F4, #82 G1): the
+    one family-safe read of evaluations and homework grades. At most 10
+    statements whatever the number of entries, criteria or periods."""
     if from_ is not None and to is not None and from_ > to:
         raise academics.EvaluationFieldError(
             [(["query", "from"], "range_invalid", "'from' is after 'to'.")]
         )
     author = await _history_scope(session, principal, student_id)
+    subjects = catalog.subject_name_columns()
     found = await academics.history_rows(
         session,
         student_id,
-        subjects=catalog.subject_name_columns(),
+        subjects=subjects,
         author_user_id=author,
         subject_id=subject_id,
         from_=from_,
         to=to,
         limit=rules.HISTORY_MAX_ENTRIES + 1,
     )
-    truncated = len(found) > rules.HISTORY_MAX_ENTRIES
-    found = found[: rules.HISTORY_MAX_ENTRIES]
-    entries = await _entries(session, found)
+    grades = await academics.history_grades(
+        session,
+        student_id,
+        subjects=subjects,
+        creator_user_id=author,
+        subject_id=subject_id,
+        from_=from_,
+        to=to,
+        limit=rules.HISTORY_MAX_ENTRIES + 1,
+    )
+    authors = await identity.get_account_references(
+        session,
+        {e.author_user_id for e, _ in found}
+        | {g.assignment.creator_user_id for g in grades},
+    )
+    merged: list[HistoryItem] = [
+        *await _entries(session, found, authors),
+        *await _grade_entries(session, grades, authors),
+    ]
+    merged.sort(key=_history_order, reverse=True)
+    truncated = len(merged) > rules.HISTORY_MAX_ENTRIES
+    entries = merged[: rules.HISTORY_MAX_ENTRIES]
     periods: list[Any] = []
     if group_by != "none" and entries:
+        dates = [_entry_date(e) for e in entries]
         periods = await catalog.periods_overlapping(
-            session,
-            group_by,
-            min(e.evaluated_on for e in entries),
-            max(e.evaluated_on for e in entries),
+            session, group_by, min(dates), max(dates)
         )
     return AcademicHistory(
         student_id=student_id,
@@ -1109,19 +1144,73 @@ async def academic_history(
     )
 
 
+def _history_order(entry: HistoryItem) -> tuple[date, datetime, str]:
+    """F2 + G1 (sorted in reverse): the date (``evaluated_on`` /
+    ``graded_on``), then the instant (``finalized_at`` / ``graded_at``),
+    then the id."""
+    instant = entry.finalized_at if isinstance(entry, HistoryEntry) else entry.graded_at
+    return (_entry_date(entry), instant, str(entry.id))
+
+
+async def _grade_entries(
+    session: AsyncSession,
+    grades: Sequence[academics.GradeRow],
+    authors: Mapping[uuid.UUID, Any],
+) -> list[AssignmentGradeEntry]:
+    """G1: the closed homework grade entries; the zone (for ``is_late``) in
+    at most one statement (cached for the Unit of Work)."""
+    if not grades:
+        return []
+    zone = await administration.get_center_time_zone(session)
+    entries = []
+    for grade in grades:
+        submission, assignment = grade.submission, grade.assignment
+        assert submission.graded_on is not None  # noqa: S101 (graded rows only)
+        assert submission.graded_at is not None  # noqa: S101
+        assert submission.score is not None  # noqa: S101 (scored rows only)
+        assert submission.score_percent is not None  # noqa: S101
+        assert assignment.max_score is not None  # noqa: S101 (a score needs it)
+        author = authors.get(assignment.creator_user_id)
+        deadline = assignment_rules.deadline_instant(
+            assignment.due_on, assignment.due_time, zone
+        )
+        entries.append(
+            AssignmentGradeEntry(
+                kind="assignment_grade",
+                id=submission.id,
+                graded_on=submission.graded_on,
+                subject=EvaluationSubject(
+                    id=assignment.subject_id, name=grade.subject_name
+                ),
+                title=assignment.title,
+                author=EvaluationPerson(
+                    display_name="" if author is None else author.display_name
+                ),
+                max_score=assignment.max_score,
+                score=submission.score,
+                score_percent=submission.score_percent,
+                feedback=submission.feedback,
+                due_on=assignment.due_on,
+                is_late=assignment_rules.is_late(submission.submitted_at, deadline),
+                graded_at=submission.graded_at,
+                updated=submission.grade_amended_at is not None,
+            )
+        )
+    return entries
+
+
 async def _entries(
-    session: AsyncSession, found: Iterable[tuple[academics.Evaluation, str]]
+    session: AsyncSession,
+    found: Iterable[tuple[academics.Evaluation, str]],
+    authors: Mapping[uuid.UUID, Any],
 ) -> list[HistoryEntry]:
-    """The closed history entries (F3): the scores, the authors' display
-    names and the cohorts' names in at most three statements."""
+    """The closed history entries (F3): the scores and the cohorts' names
+    in at most two statements (the authors' names are given)."""
     found = list(found)
     if not found:
         return []
     evaluations = [evaluation for evaluation, _ in found]
     scores = await academics.scores_of(session, [e.id for e in evaluations])
-    authors = await identity.get_account_references(
-        session, {e.author_user_id for e in evaluations}
-    )
     cohorts = await courses.cohort_names(
         session, {e.cohort_id for e in evaluations if e.cohort_id is not None}
     )

@@ -174,6 +174,14 @@ class LeakWorld:
     shown_plans: dict[uuid.UUID, dict[str, set[str]]] = field(default_factory=dict)
     """Per student: the plans their family sees (plan id → its visible
     canaries), for the #81 positive control."""
+    assignment_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#82: every homework assignment, deleted
+    ones and ones the world's students didn't receive too)."""
+    shown_feedback: dict[uuid.UUID, str] = field(default_factory=dict)
+    """Per student: the feedback of their graded homework, for the #82
+    history positive control."""
+    url: str = ""
+    """The database (sources that persist rows directly, #82)."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -293,6 +301,7 @@ def build_world(url: str) -> LeakWorld:
         subject_ids=[row.subject_id for row in rows],
         staff=staff,
         session_subjects={str(row.id): row.subject_id for row in rows},
+        url=url,
     )
 
 
@@ -596,10 +605,154 @@ def learning_plan_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     return Canaries(hidden=hidden, visible=visible, shown_on=[])
 
 
+def assignment_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#82: one group homework for both students and a third student of the
+    world tutor whose name is a canary (v), and one individual homework per
+    student. Per student: (i) their own submission text and URL in the group
+    homework (their own login), (ii) the tutor's feedback, then (iii) the
+    re-grade's internal change reason; (iv) a deleted homework's
+    instructions; (vi) the individual homework of the other student. The
+    third student's handed-in work (recorded by the tutor) is hidden from
+    both families. Visible to that family only: their submission, the
+    current feedback and their individual homework."""
+    cookie = sign_in(client, world.tutor.username)
+    hidden: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+
+    def canary(kind: str) -> str:
+        return f"CANARY-assignment-{kind}-{uuid.uuid4().hex}"
+
+    name = canary("name")
+
+    async def _third(session: AsyncSession) -> uuid.UUID:
+        student = await persist_student(
+            session, contacts=0, birthdate=MINOR_BIRTHDATE, given_names=name
+        )
+        return student.id
+
+    third = in_uow(world.url, _third)
+    stored(
+        world.url,
+        STARTED + timedelta(days=3),
+        students=(third,),
+        tutor_user_id=world.tutor.id,
+    )
+    subject = str(world.subject_ids[0])
+
+    def create(title: str, students: list[uuid.UUID], **values: Any) -> Any:
+        response = post(
+            client,
+            cookie,
+            "/api/v1/assignments",
+            {
+                "subject_id": subject,
+                "title": title,
+                "instructions": values.pop("instructions", "Leer el capítulo 3"),
+                "due_on": "2031-03-12",
+                "max_score": "10",
+                "student_ids": [str(s) for s in students],
+                **values,
+            },
+        )
+        assert code_of(response) == (201, None), response.text
+        view = response.json()
+        world.assignment_ids.append(view["id"])
+        return view
+
+    group = create("Tarea de grupo", [*world.students, third])
+    # The group class's homework (default recipients: its participants).
+    response = post(
+        client,
+        cookie,
+        "/api/v1/assignments",
+        {
+            "subject_id": str(world.session_subjects[world.group_session]),
+            "title": "Tarea de la clase",
+            "instructions": "Repasar",
+            "due_on": "2031-03-12",
+            "class_session_id": world.group_session,
+        },
+    )
+    assert code_of(response) == (201, None), response.text
+    world.assignment_ids.append(response.json()["id"])
+
+    handed_in = canary("third-work")
+    response = put(
+        client,
+        cookie,
+        f"/api/v1/assignments/{group['id']}/students/{third}/submission",
+        {"text": handed_in},
+    )
+    assert code_of(response) == (200, None), response.text
+    for student in world.students:
+        hidden[student] |= {name, handed_in}
+
+    for actor in (world.minor_student, world.adult_student):
+        student = actor.student_id
+        own = sign_in(client, actor.user.username)
+        text = canary("text")
+        link = f"https://example.com/{canary('url')}"
+        response = put(
+            client,
+            own,
+            f"/api/v1/assignments/{group['id']}/students/{student}/submission",
+            {"text": text, "url": link},
+        )
+        assert code_of(response) == (200, None), response.text
+        version = response.json()["submission"]["version"]
+        first = canary("feedback-before")
+        response = put(
+            client,
+            cookie,
+            f"/api/v1/assignments/{group['id']}/students/{student}/grade",
+            {"version": version, "score": "7", "feedback": first},
+        )
+        assert code_of(response) == (200, None), response.text
+        reason = canary("change-reason")
+        feedback = canary("feedback")
+        response = put(
+            client,
+            cookie,
+            f"/api/v1/assignments/{group['id']}/students/{student}/grade",
+            {
+                "version": response.json()["version"],
+                "score": "8",
+                "feedback": feedback,
+                "change_reason": reason,
+            },
+        )
+        assert code_of(response) == (200, None), response.text
+        hidden[student] |= {first, reason}
+        visible[student] |= {text, link, feedback}
+        world.shown_feedback[student] = feedback
+
+        individual = canary("individual")
+        create(individual, [student])
+        visible[student].add(individual)
+
+        deleted = canary("deleted")
+        view = create(canary("deleted-title"), [student], instructions=deleted)
+        client.cookies.clear()
+        response = client.delete(
+            f"/api/v1/assignments/{view['id']}",
+            params={"version": view["version"]},
+            headers=signed_headers(cookie),
+        )
+        assert response.status_code == 204, response.text
+        hidden[student] |= {deleted}
+
+    return Canaries(
+        hidden=hidden,
+        visible=visible,
+        shown_on=["/api/v1/students/{student_id}/assignments"],
+    )
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
     evaluation_canaries,
     learning_plan_canaries,
+    assignment_canaries,
 ]
 
 
@@ -619,6 +772,7 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "template_id": lambda w: list(w.template_ids),
     "plan_id": lambda w: list(w.plan_ids),
     "milestone_id": lambda w: list(w.milestone_ids),
+    "assignment_id": lambda w: list(w.assignment_ids),
     "group_id": lambda w: [str(w.group_id)],
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
@@ -767,6 +921,11 @@ def test_every_path_parameter_is_mapped():
         # #81 learning plans
         "/api/v1/students/{student_id}/learning-plans",
         "/api/v1/learning-plans/{plan_id}",
+        # #82 homework assignments
+        "/api/v1/assignments",
+        "/api/v1/assignments/{assignment_id}",
+        "/api/v1/students/{student_id}/assignments",
+        "/api/v1/students/{student_id}/assignments/{assignment_id}",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
 
@@ -880,3 +1039,51 @@ def test_learning_plan_notifications_carry_ids_only(client, walk):
             assert set(item["params"]) == {"student_id", "plan_id", "subject_id"}
             assert item["params"]["student_id"] == str(actor.student_id)
             assert item["params"]["plan_id"] in walk.world.shown_plans[actor.student_id]
+
+
+def test_the_graded_homework_reaches_its_own_family_history(client, walk):
+    """#82 G1 positive control: the student's own scored homework grade is an
+    ``assignment_grade`` entry of their academic history (with the current
+    feedback), and the group homework detail shows the student's own row."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(
+            client, cookie, f"/api/v1/students/{actor.student_id}/academic-history"
+        )
+        assert code_of(response) == (200, None), (actor.label, response.text)
+        grades = [
+            e for e in response.json()["entries"] if e["kind"] == "assignment_grade"
+        ]
+        assert [g["feedback"] for g in grades] == [
+            walk.world.shown_feedback[actor.student_id]
+        ], actor.label
+        assert grades[0]["score"] == "8.00"
+
+
+def test_assignment_notifications_carry_ids_only(client, walk):
+    """#82 E8: setting and grading notified both families (the student's
+    login and the guardians with academic access), each about their own
+    student, with ids (and the deadline's date) only."""
+    keys = {
+        "academics.assignment_set": {
+            "student_id",
+            "assignment_id",
+            "subject_id",
+            "due_on",
+        },
+        "academics.assignment_graded": {"student_id", "assignment_id", "subject_id"},
+    }
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(client, cookie, "/api/v1/notifications", limit=100)
+        assert code_of(response) == (200, None)
+        items = [
+            item
+            for item in response.json()["items"]
+            if item["notification_type"] in keys
+        ]
+        assert {item["notification_type"] for item in items} == set(keys), actor.label
+        for item in items:
+            assert set(item["params"]) == keys[item["notification_type"]]
+            assert item["params"]["student_id"] == str(actor.student_id)
+            assert item["params"]["assignment_id"] in walk.world.assignment_ids

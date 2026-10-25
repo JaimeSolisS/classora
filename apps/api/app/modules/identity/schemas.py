@@ -36,6 +36,7 @@ type RoleCode = Literal[
 ]
 type PermissionCode = Literal[
     "academic_note.review",
+    "assignment.review",
     "attendance.correct",
     "audit.view",
     "catalog.manage",

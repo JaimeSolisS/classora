@@ -197,6 +197,14 @@ Codes in use today:
 | `plan_closed` / `plan_not_active` / `plan_not_draft` | 409 | A write to a completed or discontinued plan; completing a draft or progress on a draft; activating an active plan or deleting a plan that isn't a draft (see Learning plans). |
 | `active_plan_exists` | 409 | Activating a plan while the student has another active plan in the subject (see Learning plans). |
 | `title_required` / `objectives_required` / `objectives_too_many` / `milestones_required` / `milestones_too_many` / `target_before_start` / `due_on_invalid` / `objective_unknown` / `milestone_unknown` | 422 | Learning plan field errors on the field they name (see Learning plans). |
+| `assignment_tutor_only` | 403 | `POST /api/v1/assignments` by a user without the tutor role (see Homework assignments and submissions). |
+| `assignment_creator_only` | 403 | Editing, deleting or grading homework, or recording handed-in work, by someone who can read it but didn't set it (staff with `assignment.review`, another tutor of the student). |
+| `assignment_read_only` | 403 | A homework write by its creator once the student (for an edit or delete: every recipient) is no longer one of their current students; it stays readable. |
+| `submission_student_only` | 403 | A guardian submitting homework: only the student submits (or the tutor records handed-in work). |
+| `session_not_assignable` | 409 | Homework linked to a class that isn't `confirmed` or `completed`. |
+| `submission_graded` / `submission_locked` / `submission_required` | 409 | Submitting graded homework; a student replacing their submission after the deadline; grading homework nothing was submitted for. |
+| `assignment_has_submissions` / `assignment_has_grades` / `recipient_has_submission` | 409 | Deleting homework with a submission; changing `max_score` once a student is graded; removing a recipient who submitted (`details.student_ids`). |
+| `instructions_required` / `duplicate_recipient` / `recipients_too_many` / `recipients_required` / `recipient_invalid` / `due_in_past` / `due_too_far` / `time_has_offset` / `null_not_allowed` / `version_required` / `url_invalid` / `submission_empty` / `score_not_allowed` / `feedback_required` | 422 | Homework field errors on the field they name; `recipient_invalid` has `details.student_ids` (see Homework assignments and submissions). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4670,8 +4678,12 @@ evaluation_kind, template_name, author {display_name}, criteria [{title,
 max_score, score, comment}], score_total, max_total, score_percent, feedback,
 course {cohort_name, assessment_title} | null, finalized_at, updated}`. Never
 an author id, a change reason, void fields, a draft, `template_id`,
-`class_session_id` or another student. `kind` is a discriminator later
-issues extend (#82 assignment grades).
+`class_session_id` or another student. `kind` is a discriminator: since #82
+the entries also hold **`assignment_grade`** entries (scored homework
+grades; see Homework assignments and submissions), and each subject group
+adds `assignment_count` and `assignment_average_percent` (`null` without
+one); `count` and `average_percent` stay **evaluation-only**, and
+`average_percent` is `null` for a subject with homework grades only.
 
 **Grouping** (`group_by=school_year|semester|term|none`, default
 `school_year`): an evaluation stores a local `evaluated_on` date and no
@@ -4682,8 +4694,10 @@ Within a group, subjects by name (ignoring case), then id, each with its
 `count`, `average_percent` (the mean of the entries' `score_percent`,
 half-up to two places) and `entry_ids` (newest first). Editing or
 deactivating a period regroups on the next read. Entries are newest first by
-`evaluated_on`, then `finalized_at`, then `id`. A history with no entries
-has no groups.
+`evaluated_on` (a homework grade: `graded_on`), then `finalized_at`
+(`graded_at`), then `id`. The 500-entry cap, `truncated`, `subject_id` and
+`from`/`to` apply to both kinds. A history with no entries has no groups. At
+most 10 statements since #82.
 
 **Notifications** (never a score, a percentage, feedback, a comment, a
 reason or a tutor name): `academics.evaluation_finalized` `{student_id,
@@ -4865,6 +4879,160 @@ through `audit.view`.
 deferrable; `title` 1-200, `activities` ≤ 2000, `due_on`, `status`,
 `completed_at` / `completed_by_user_id` exactly when `done`, `version`),
 every key `ON DELETE RESTRICT`.
+
+### Homework assignments and submissions
+
+Implemented by M5-15 (#82; spec §2, §4 "tutors provide instructions/deadlines,
+students upload work, tutors grade and provide feedback, guardians track
+completion", as rescoped on 2026-10-21: students submit **text and/or a
+link**, no uploads; §9, §16, W5.3, W5.4; architecture §4.1, §4.2; ADR-0004)
+in `academics` (`assignment_rules.py`: the pure rules; `assignments.py`: the
+rows) and the workflow `app/workflows/assignments.py` with its routes in
+`app/workflows/assignments_router.py` and bodies in
+`app/workflows/assignment_schemas.py`. One new permission,
+`assignment.review` (Owner, Administrator, Academic coordinator; read-only
+oversight, not delegable). The web pages are #313 (M5-15b). "Assignment"
+here means **homework**, not a tutor's current student assignment.
+
+A tutor sets **homework** (a subject, a title, instructions, a deadline, an
+optional `max_score`, an optional link to one of their classes) for **1-100
+of their current students**; each recipient has their own submission row
+(submission and grade). There is no draft: the recipients and their
+guardians with academic access see it at once and are notified. The
+**deadline** is the center-local `due_on` date plus an optional `due_time`
+(`null`: the end of that day); no time-zone dependency is registered, so a
+zone change reinterprets it in the new zone. **Late** (`submitted_at` after
+the deadline; exactly at it is on time) and **missing** (nothing submitted,
+the deadline passed) are computed at read time, never stored, so moving the
+deadline changes them. A row's `state` is `pending`, `missing`, `submitted`
+or `graded` (with `is_late`).
+
+**Submissions:** the student (own login, own row) submits `text` (≤ 10000)
+and/or `url` (≤ 2000: absolute `http`/`https` with a host, no user-info, no
+whitespace or control characters; **never fetched** by the server); at least
+one (`422 submission_empty`). They may replace it until the deadline (the
+row's `version` is required once something was submitted, `422
+version_required`); after it an existing submission is locked (`409
+submission_locked`), while a missing one may still be submitted, late. The
+creator may **record work handed in** on paper or in class for any
+recipient, with or without text or a link, at any time (`submitted_via:
+"tutor"`). Once graded nobody changes it (`409 submission_graded`).
+**Guardians never submit** (`403 submission_student_only`).
+
+**Grades:** only the creator, while the student is one of their current
+students, grades a submitted row (`409 submission_required`). With a
+`max_score`: a `score` 0..`max_score`, two decimals, plus optional
+`feedback` (≤ 4000); `score_percent` = score / max × 100, half-up to two
+places, stored. Without one: `feedback` only. Decimals are JSON **strings**
+(`"7.50"`). The first grade stores `graded_at` and the center-local
+`graded_on`, and notifies; a **re-grade** needs a `change_reason` (1-500,
+internal: families never see it, only `updated: true`), keeps `graded_on`
+and notifies nobody; an unchanged re-grade writes nothing. `max_score` is
+locked once any recipient is graded (`409 assignment_has_grades`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/assignments` | `authenticated()` + record policy | `{subject_id, title, instructions, due_on, due_time?, max_score?, class_session_id?, student_ids?}`. With a class and no `student_ids`, its participants who are the caller's current students. `201 AssignmentView`. |
+| `GET /api/v1/assignments[?student_id&subject_id&class_session_id&due=upcoming\|past&cursor&limit]` | `authenticated()` + record policy | The working list: a tutor the homework they set (current and former students), `assignment.review` holders every one; anyone else `403 permission_denied`. Newest `due_on` first, then id; `due=upcoming` is `due_on` on or after the center's today; cursor, `limit` 1-50 (default 20). Items are `AssignmentSummary` (no roster). At most 8 statements. |
+| `GET /api/v1/assignments/{assignment_id}` | `authenticated()` + record policy | `AssignmentView` with the roster: the creator (current or former) and `assignment.review` holders; anyone else `404`. At most 8 statements for 1 and 100 recipients. |
+| `PATCH /api/v1/assignments/{assignment_id}` | `authenticated()` + record policy | `{version, title?, instructions?, due_on?, due_time?, max_score?, add_student_ids?, remove_student_ids?}` (the creator). A key left out keeps its value; an explicit `null` clears `due_time` (the end of `due_on`) or `max_score` (feedback-only; `409 assignment_has_grades` once graded); `null` for any other key is `422`. `subject_id` and `class_session_id` never change (`422 extra_forbidden`). Added students follow the create rule (`422 recipient_invalid`) and are notified (existing recipients are ignored); removing one who submitted is `409 recipient_has_submission`, otherwise the row is deleted (the audit keeps it); none left `422 recipients_required`; at most 100. A changed deadline may not be before the center's today. A body that changes nothing writes nothing. |
+| `DELETE /api/v1/assignments/{assignment_id}?version=` | `authenticated()` + record policy | The creator, while nothing is submitted (`409 assignment_has_submissions`): soft delete, `204`; every route then answers `404`, and every list, the summary and the history leave it out. |
+| `PUT /api/v1/assignments/{assignment_id}/students/{student_id}/submission` | `authenticated()` + record policy | `{version?, text?, url?}`: the student (own row) or the creator (handed-in work). Returns the `StudentAssignment`. A student's submission notifies the creator. |
+| `PUT /api/v1/assignments/{assignment_id}/students/{student_id}/grade` | `authenticated()` + record policy | `{version, score?, feedback?, change_reason?}` (the creator). Returns the roster row. |
+| `GET /api/v1/students/{student_id}/assignments[?state&subject_id&from&to&cursor&limit]` | `authenticated()` + record policy | **One closed shape for every audience**: `{items [StudentAssignment], summary {pending, missing, submitted, graded}, next_cursor}`. Order `due_on` desc, `due_time` desc (no time first), id; `state` filters the items, `from`/`to` (`due_on`, `422 range_invalid`) and `subject_id` filter both; the `summary` counts the filtered set ignoring `state` and the cursor; `limit` 1-50 (default 20). At most 7 statements. |
+| `GET /api/v1/students/{student_id}/assignments/{assignment_id}` | `authenticated()` + record policy | One `StudentAssignment`; an assignment the student didn't receive is `404`. |
+
+**Who** (the assignment record policy; a user with several roles gets the
+union):
+
+- a user with the `tutor` role sets homework for their current students
+  (`scheduling.service.student_ids_for_tutor`, any subject; `403
+  assignment_tutor_only` without the role, `422 recipient_invalid` for
+  anyone else). Only the **creator** edits, deletes, grades or records
+  handed-in work (`403 assignment_creator_only` for staff and other tutors
+  who can read it), and only while the student is still one of their
+  current students (for an edit or delete: while any recipient is); after
+  that it is read-only (`403 assignment_read_only`), still listed and
+  readable;
+- `assignment.review` holders read every homework assignment, roster,
+  submission and grade, and write nothing;
+- a tutor currently teaching the student reads that student's homework (that
+  student's row only) through the per-student routes; a former creator only
+  the homework they set;
+- the student reads their own homework and submits; the linked guardians of
+  a minor, or of an adult who gave that guardian `guardian_academic_access`
+  (the #67 rule without its staff branch) read it; a linked guardian of an
+  adult without the consent gets `403 student_consent_required` on the
+  per-student routes, the history and the submit route (also on the next
+  request after a revocation) and the `404` of an unknown id on the routes
+  a family never uses;
+- anyone else (Finance, unlinked users, another student, other tutors, a
+  tutor who lost the role, the original tutor after a substitution when the
+  student isn't otherwise theirs) and an unknown id get the same `404`.
+
+**Create order:** `401` → `422` schema (lengths, `max_score` range and
+precision, duplicate or more than 100 ids) → `403 assignment_tutor_only` →
+`422 subject_unknown` (the subject `FOR SHARE`) → the class link (`FOR
+SHARE`): `422 class_session_invalid` (unknown, or not the caller's current
+class) → `409 session_not_assignable` → `422 subject_mismatch` → the
+recipients (`422 recipients_required` / `recipient_invalid`) → the deadline
+(`422 due_in_past`: before the center's today, or today at a time that has
+passed; `422 due_too_far`: over 365 days) → insert, audit, notify.
+
+**Write order** (`PATCH`, `DELETE`, submit, grade): `401` → `422` schema →
+`404` (unknown, deleted, not a recipient, or not readable) → `403` → the
+assignment `FOR UPDATE`, then the submission row(s) `FOR UPDATE` → `409
+version_conflict` → `409` state → `422` content → the write (version + 1,
+the audit diff). A submit and a grade on one row, two submits with one
+version, a removal and a submit, and a delete and a submit are serialized:
+one wins, the other gets `409 version_conflict`, `404`,
+`recipient_has_submission` or `assignment_has_submissions`.
+
+**`AssignmentView`** (closed; the creator and `assignment.review` holders):
+`{id, version, subject {id, name}, title, instructions, due_on, due_time,
+deadline_at, max_score, class_session {id, starts_at} | null, creator
+{display_name}, is_own, created_at, updated_at, counts {recipients, pending,
+missing, submitted, late, graded}, roster [{student {id, display_name},
+version, state, is_late, submitted_at, submitted_via, text, url, score,
+score_percent, feedback, graded_at, grade_amended_at, last_change_reason,
+can_record_submission, can_grade}], can_edit, can_delete}`, the roster by
+name (ignoring case), then id. **`StudentAssignment`** (closed, the same for
+every audience): `{id, subject, title, instructions, due_on, due_time,
+deadline_at, max_score, creator {display_name}, class_session {starts_at} |
+null, submission {state, is_late, submitted_at, submitted_via, text, url,
+score, score_percent, feedback, graded_at, updated, version}, can_submit,
+can_grade}`. **Families never see another student's submission, the roster,
+counts, user ids or change reasons**; the family leak walk
+`apps/api/tests/integration/test_session_notes_leak.py` proves no `GET`
+route carries another student's text, link, feedback or name, a change
+reason or a deleted assignment.
+
+**History:** `GET /api/v1/students/{id}/academic-history` gains `{kind:
+"assignment_grade", id (the submission's), graded_on, subject {id, name},
+title, author {display_name}, max_score, score, score_percent, feedback,
+due_on, is_late, graded_at, updated}` for every **scored** grade of live
+homework (feedback-only grades stay in the homework views); a former
+creator sees only theirs (see Evaluations and academic history).
+
+**Notifications** (ids and the deadline's date only: never a title,
+instructions, text, link, score, feedback or tutor name):
+`academics.assignment_set` `{student_id, assignment_id, subject_id, due_on}`
+on create and for each added student, one per student, to the student's
+login and the accounts of linked, active guardian profiles with academic
+access; `academics.assignment_submitted` `{student_id, assignment_id}` to
+the creator when the student submits (tutor-recorded work notifies nobody);
+`academics.assignment_graded` `{student_id, assignment_id, subject_id}` on
+the first grade, like `assignment_set`. Deadline changes, re-grades,
+removals and deletes notify nobody. No reminders.
+
+**Data** (revision 0056): `assignments` (`title` 1-200 and `instructions`
+1-4000 trimmed, `due_on`, `due_time`, `max_score` 0.5-1000, soft delete,
+`version`) and `assignment_submissions` (unique per assignment and student;
+`text` ≤ 10000, `url` ≤ 2000, `submitted_at` / `submitted_by_user_id` /
+`submitted_via` together, `score` ≥ 0 and `score_percent` 0-100 together,
+`feedback` ≤ 4000, `graded_at` / `graded_on` / `graded_by_user_id` together
+and only on a submitted row, `grade_amended_at`, `last_change_reason` 1-500,
+`version`), both audited, every key `ON DELETE RESTRICT`.
 
 ### Change requests
 

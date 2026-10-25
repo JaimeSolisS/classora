@@ -68,12 +68,68 @@ pure rules in :mod:`~app.modules.academics.learning_plan_rules`): the rows
 ``app.workflows.learning_plans`` composes them with ``scheduling``,
 ``catalog``, ``families``, ``identity`` and ``administration``.
 
+Homework assignments (#82, :mod:`~app.modules.academics.assignments`, the
+pure rules in :mod:`~app.modules.academics.assignment_rules`): the rows
+(:class:`Assignment`, :class:`AssignmentSubmission`), the reads
+:func:`assignment_with_subject`, :func:`submissions_of`,
+:func:`submission_facts`, :func:`submission_for`, :func:`student_facts`,
+:func:`student_rows` (only the student's own row), :func:`has_own_assignment`,
+:func:`assignment_working_page` and :func:`history_grades` (scored grades of
+live assignments); the locks :func:`get_assignment_for_update`,
+:func:`get_submission_for_update`, :func:`submissions_for_update`; the writes
+:func:`create_assignment`, :func:`add_recipients`, :func:`remove_recipients`,
+:func:`change_assignment`, :func:`soft_delete_assignment`,
+:func:`record_submission`, :func:`grade_submission`; the rules module
+(:data:`assignment_rules`) and the errors. ``app.workflows.assignments``
+composes them with ``scheduling``, ``catalog``, ``families``, ``identity``
+and ``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
+from app.modules.academics import assignment_rules as assignment_rules
 from app.modules.academics import evaluation_rules as evaluation_rules
 from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
+from app.modules.academics.assignments import AssignmentRow as AssignmentRow
+from app.modules.academics.assignments import (
+    AssignmentWorkingPage as AssignmentWorkingPage,
+)
+from app.modules.academics.assignments import GradeRow as GradeRow
+from app.modules.academics.assignments import StudentFact as StudentFact
+from app.modules.academics.assignments import StudentRow as StudentRow
+from app.modules.academics.assignments import SubmissionFact as SubmissionFact
+from app.modules.academics.assignments import add_recipients as add_recipients
+from app.modules.academics.assignments import (
+    assignment_with_subject as assignment_with_subject,
+)
+from app.modules.academics.assignments import (
+    assignment_working_page as assignment_working_page,
+)
+from app.modules.academics.assignments import change_assignment as change_assignment
+from app.modules.academics.assignments import create_assignment as create_assignment
+from app.modules.academics.assignments import (
+    get_assignment_for_update as get_assignment_for_update,
+)
+from app.modules.academics.assignments import (
+    get_submission_for_update as get_submission_for_update,
+)
+from app.modules.academics.assignments import grade_submission as grade_submission
+from app.modules.academics.assignments import has_own_assignment as has_own_assignment
+from app.modules.academics.assignments import history_grades as history_grades
+from app.modules.academics.assignments import record_submission as record_submission
+from app.modules.academics.assignments import remove_recipients as remove_recipients
+from app.modules.academics.assignments import (
+    soft_delete_assignment as soft_delete_assignment,
+)
+from app.modules.academics.assignments import student_facts as student_facts
+from app.modules.academics.assignments import student_rows as student_rows
+from app.modules.academics.assignments import submission_facts as submission_facts
+from app.modules.academics.assignments import submission_for as submission_for
+from app.modules.academics.assignments import (
+    submissions_for_update as submissions_for_update,
+)
+from app.modules.academics.assignments import submissions_of as submissions_of
 from app.modules.academics.closeout_review import (
     ApprovalSnapshot as ApprovalSnapshot,
 )
@@ -151,6 +207,22 @@ from app.modules.academics.closeouts import (
 )
 from app.modules.academics.closeouts import summary_of as summary_of
 from app.modules.academics.errors import ActivePlanExistsError as ActivePlanExistsError
+from app.modules.academics.errors import (
+    AssignmentCreatorOnlyError as AssignmentCreatorOnlyError,
+)
+from app.modules.academics.errors import AssignmentFieldError as AssignmentFieldError
+from app.modules.academics.errors import (
+    AssignmentHasGradesError as AssignmentHasGradesError,
+)
+from app.modules.academics.errors import (
+    AssignmentHasSubmissionsError as AssignmentHasSubmissionsError,
+)
+from app.modules.academics.errors import (
+    AssignmentReadOnlyError as AssignmentReadOnlyError,
+)
+from app.modules.academics.errors import (
+    AssignmentTutorOnlyError as AssignmentTutorOnlyError,
+)
 from app.modules.academics.errors import (
     CloseoutAlreadySubmittedError as CloseoutAlreadySubmittedError,
 )
@@ -250,6 +322,12 @@ from app.modules.academics.errors import (
     PlanSubjectNotAssignedError as PlanSubjectNotAssignedError,
 )
 from app.modules.academics.errors import (
+    RecipientHasSubmissionError as RecipientHasSubmissionError,
+)
+from app.modules.academics.errors import (
+    SessionNotAssignableError as SessionNotAssignableError,
+)
+from app.modules.academics.errors import (
     SessionNotClosableError as SessionNotClosableError,
 )
 from app.modules.academics.errors import (
@@ -263,6 +341,14 @@ from app.modules.academics.errors import (
 )
 from app.modules.academics.errors import (
     SessionNotStartedError as SessionNotStartedError,
+)
+from app.modules.academics.errors import SubmissionGradedError as SubmissionGradedError
+from app.modules.academics.errors import SubmissionLockedError as SubmissionLockedError
+from app.modules.academics.errors import (
+    SubmissionRequiredError as SubmissionRequiredError,
+)
+from app.modules.academics.errors import (
+    SubmissionStudentOnlyError as SubmissionStudentOnlyError,
 )
 from app.modules.academics.evaluation_templates import (
     CriterionValues as CriterionValues,
@@ -349,6 +435,8 @@ from app.modules.academics.learning_plans import transition_plan as transition_p
 from app.modules.academics.models import (
     CLOSEOUT_SUBMITTED as CLOSEOUT_SUBMITTED,
 )
+from app.modules.academics.models import Assignment as Assignment
+from app.modules.academics.models import AssignmentSubmission as AssignmentSubmission
 from app.modules.academics.models import Evaluation as Evaluation
 from app.modules.academics.models import EvaluationScore as EvaluationScore
 from app.modules.academics.models import (

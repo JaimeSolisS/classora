@@ -387,7 +387,7 @@ class HistoryEntry(_Closed):
     allow-list: no author id, no internal fields)."""
 
     kind: Literal["evaluation"] = Field(
-        description="The entry type (later issues add others)."
+        description="The entry type: evaluation (this shape) or assignment_grade."
     )
     id: uuid.UUID
     evaluated_on: date
@@ -405,6 +405,32 @@ class HistoryEntry(_Closed):
     updated: bool = Field(description="Amended after it was finalized.")
 
 
+class AssignmentGradeEntry(_Closed):
+    """One entry of the academic history: a scored homework grade (#82 G1;
+    closed allow-list: no author id, no submission text or link, no change
+    reason). Feedback-only grades are not history entries."""
+
+    kind: Literal["assignment_grade"] = Field(description="The entry type.")
+    id: uuid.UUID = Field(description="The submission's id.")
+    graded_on: date = Field(description="The local date of the first grade.")
+    subject: EvaluationSubject
+    title: str
+    author: EvaluationPerson = Field(description="The tutor who set it.")
+    max_score: DecimalOut
+    score: DecimalOut
+    score_percent: DecimalOut
+    feedback: str | None
+    due_on: date
+    is_late: bool
+    graded_at: datetime
+    updated: bool = Field(description="The grade was changed after it was given.")
+
+
+type HistoryItem = Annotated[
+    HistoryEntry | AssignmentGradeEntry, Field(discriminator="kind")
+]
+
+
 class HistoryPeriod(_Closed):
     id: uuid.UUID
     name: str
@@ -415,9 +441,15 @@ class HistoryPeriod(_Closed):
 
 class HistorySubjectGroup(_Closed):
     subject: EvaluationSubject
-    count: int
-    average_percent: DecimalOut
-    entry_ids: list[uuid.UUID]
+    count: int = Field(description="Evaluations only.")
+    average_percent: DecimalOut | None = Field(
+        description="The mean of the evaluations' percentages; null without one."
+    )
+    assignment_count: int = Field(description="Scored homework grades (#82).")
+    assignment_average_percent: DecimalOut | None = Field(
+        description="The mean of the homework grades' percentages; null without one."
+    )
+    entry_ids: list[uuid.UUID] = Field(description="Both kinds, newest first.")
 
 
 class HistoryGroup(_Closed):
@@ -426,16 +458,17 @@ class HistoryGroup(_Closed):
 
 
 class AcademicHistory(_Closed):
-    """A student's academic history (#80 F3): one chronological list of
-    final evaluations from every tutor, and the same entries grouped by
-    period and subject. The same shape for staff, tutors and families."""
+    """A student's academic history (#80 F3, #82 G1): one chronological
+    list of final evaluations and scored homework grades from every tutor,
+    and the same entries grouped by period and subject. The same shape for
+    staff, tutors and families."""
 
     student_id: uuid.UUID
     group_by: GroupBy
     truncated: bool = Field(
         description="More than 500 entries: the oldest are left out."
     )
-    entries: list[HistoryEntry]
+    entries: list[HistoryItem]
     groups: list[HistoryGroup]
 
 
