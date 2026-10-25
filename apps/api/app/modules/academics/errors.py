@@ -304,3 +304,163 @@ class NoteFieldError(AppError):
         super().__init__(
             errors=[{"path": ["body", field], "code": code, "message": message}]
         )
+
+
+# --- Evaluations (#80) -------------------------------------------------------------
+# ``details`` carry codes and positions only, never scores or text.
+
+
+class EvaluationTutorOnlyError(AppError):
+    """``403 evaluation_tutor_only`` (#80 D2 step 4): an
+    ``evaluation.manage`` holder who isn't a tutor with the student assigned
+    doesn't record evaluations (the scores are the tutor's)."""
+
+    status = 403
+    code = "evaluation_tutor_only"
+    detail = "Only a tutor currently teaching the student records evaluations."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationAuthorOnlyError(AppError):
+    """``403 evaluation_author_only`` (#80 D3 step 4)."""
+
+    status = 403
+    code = "evaluation_author_only"
+    detail = "Only the evaluation's author can do this."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationReadOnlyError(AppError):
+    """``403 evaluation_read_only`` (#80 E5): the student is no longer one of
+    the author's current assignments; their evaluations stay readable."""
+
+    status = 403
+    code = "evaluation_read_only"
+    detail = "This student is no longer assigned to you: evaluations are read-only."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationTemplateInactiveError(AppError):
+    """``409 template_inactive`` (#80 D2 step 5)."""
+
+    status = 409
+    code = "template_inactive"
+    detail = "This evaluation template is inactive."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationTemplateNameTakenError(AppError):
+    """``409 duplicate_name`` (#80 C1): template names are unique ignoring
+    case (inactive templates count)."""
+
+    status = 409
+    code = "duplicate_name"
+    detail = "Another evaluation template has this name."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionNotEvaluableError(AppError):
+    """``409 session_not_evaluable`` (#80 D2 step 7): a linked session must
+    be confirmed or completed and have started; ``details`` is ``{"state":
+    <state>}``."""
+
+    status = 409
+    code = "session_not_evaluable"
+    detail = "This class can't be evaluated yet."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})
+
+
+class EvaluationFinalError(AppError):
+    """``409 evaluation_final`` (#80 D7): a final evaluation can't be
+    deleted."""
+
+    status = 409
+    code = "evaluation_final"
+    detail = "A final evaluation can't be deleted."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationNotDraftError(AppError):
+    """``409 evaluation_not_draft`` (#80 D5)."""
+
+    status = 409
+    code = "evaluation_not_draft"
+    detail = "This evaluation is already final."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationNotFinalError(AppError):
+    """``409 evaluation_not_final`` (#80 D6)."""
+
+    status = 409
+    code = "evaluation_not_final"
+    detail = "Only a final evaluation can be voided."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationVoidedError(AppError):
+    """``409 evaluation_voided`` (#80 D4, D6)."""
+
+    status = 409
+    code = "evaluation_voided"
+    detail = "This evaluation was voided."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EvaluationIncompleteError(AppError):
+    """``409 evaluation_incomplete`` (#80 D5): every criterion needs a score
+    first; ``details`` is ``{"missing_positions": ["<position>", …]}`` (the
+    positions as strings: ``details`` values are strings or string lists)."""
+
+    status = 409
+    code = "evaluation_incomplete"
+    detail = "Score every criterion before finalizing."
+
+    def __init__(self, missing_positions: Sequence[int]) -> None:
+        super().__init__(
+            details={"missing_positions": [str(p) for p in missing_positions]}
+        )
+
+
+class EvaluationFieldError(AppError):
+    """``422 validation_error`` with field errors (#80 C1, D2, D4, D6, F2):
+    the content checks that need stored data (``template_unknown``,
+    ``subject_mismatch``, ``class_session_invalid``, ``score_out_of_range``,
+    …). ``errors`` items are ``(path, code, message)``, for example
+    ``(["body", "scores", 0, "score"], "score_out_of_range", "…")``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, errors: Sequence[tuple[Sequence[str | int], str, str]]) -> None:
+        items: list[FieldError] = [
+            {"path": list(path), "code": code, "message": message}
+            for path, code, message in errors
+        ]
+        super().__init__(errors=items)
+
+    @classmethod
+    def one(cls, field: str, code: str, message: str) -> EvaluationFieldError:
+        """One error at ``["body", field]``."""
+        return cls([(["body", field], code, message)])

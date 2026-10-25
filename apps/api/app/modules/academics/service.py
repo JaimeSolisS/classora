@@ -37,9 +37,25 @@ notes); the rules module itself (:data:`note_rules`) and the errors.
 ``app.workflows.session_notes`` composes them with ``scheduling``,
 ``families`` and ``administration``.
 
+Evaluations (#80, :mod:`~app.modules.academics.evaluation_templates`,
+:mod:`~app.modules.academics.evaluations`, the pure rules in
+:mod:`~app.modules.academics.evaluation_rules`): the template rows
+(:func:`template_with_criteria`, :func:`list_templates`,
+:func:`create_template`, :func:`replace_template`), the evaluation rows
+(:func:`evaluation_by_id`, :func:`evaluation_for_update`,
+:func:`scores_of`, :func:`create_evaluation`, :func:`change_evaluation`,
+:func:`finalize_evaluation`, :func:`void_evaluation`,
+:func:`soft_delete_evaluation`), the lists :func:`working_page`,
+:func:`has_own_evaluation` and :func:`history_rows` (the only family read:
+final, non-voided, live evaluations); the rules module
+(:data:`evaluation_rules`) and the errors. ``app.workflows.evaluations``
+composes them with ``scheduling``, ``catalog``, ``courses``, ``families``
+and ``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
+from app.modules.academics import evaluation_rules as evaluation_rules
 from app.modules.academics import note_rules as note_rules
 from app.modules.academics.closeout_review import (
     ApprovalSnapshot as ApprovalSnapshot,
@@ -154,6 +170,39 @@ from app.modules.academics.errors import (
     CloseoutWithTutorError as CloseoutWithTutorError,
 )
 from app.modules.academics.errors import (
+    EvaluationAuthorOnlyError as EvaluationAuthorOnlyError,
+)
+from app.modules.academics.errors import (
+    EvaluationFieldError as EvaluationFieldError,
+)
+from app.modules.academics.errors import (
+    EvaluationFinalError as EvaluationFinalError,
+)
+from app.modules.academics.errors import (
+    EvaluationIncompleteError as EvaluationIncompleteError,
+)
+from app.modules.academics.errors import (
+    EvaluationNotDraftError as EvaluationNotDraftError,
+)
+from app.modules.academics.errors import (
+    EvaluationNotFinalError as EvaluationNotFinalError,
+)
+from app.modules.academics.errors import (
+    EvaluationReadOnlyError as EvaluationReadOnlyError,
+)
+from app.modules.academics.errors import (
+    EvaluationTemplateInactiveError as EvaluationTemplateInactiveError,
+)
+from app.modules.academics.errors import (
+    EvaluationTemplateNameTakenError as EvaluationTemplateNameTakenError,
+)
+from app.modules.academics.errors import (
+    EvaluationTutorOnlyError as EvaluationTutorOnlyError,
+)
+from app.modules.academics.errors import (
+    EvaluationVoidedError as EvaluationVoidedError,
+)
+from app.modules.academics.errors import (
     NoteAlreadyPublishedError as NoteAlreadyPublishedError,
 )
 from app.modules.academics.errors import (
@@ -179,13 +228,71 @@ from app.modules.academics.errors import (
     SessionNotEndedError as SessionNotEndedError,
 )
 from app.modules.academics.errors import (
+    SessionNotEvaluableError as SessionNotEvaluableError,
+)
+from app.modules.academics.errors import (
     SessionNotNotableError as SessionNotNotableError,
 )
 from app.modules.academics.errors import (
     SessionNotStartedError as SessionNotStartedError,
 )
+from app.modules.academics.evaluation_templates import (
+    CriterionValues as CriterionValues,
+)
+from app.modules.academics.evaluation_templates import TemplateRow as TemplateRow
+from app.modules.academics.evaluation_templates import (
+    create_template as create_template,
+)
+from app.modules.academics.evaluation_templates import (
+    list_templates as list_templates,
+)
+from app.modules.academics.evaluation_templates import (
+    replace_template as replace_template,
+)
+from app.modules.academics.evaluation_templates import (
+    template_with_criteria as template_with_criteria,
+)
+from app.modules.academics.evaluations import CopiedCriterion as CopiedCriterion
+from app.modules.academics.evaluations import ScoreInput as ScoreInput
+from app.modules.academics.evaluations import WorkingPage as WorkingPage
+from app.modules.academics.evaluations import WorkingRow as WorkingRow
+from app.modules.academics.evaluations import (
+    change_evaluation as change_evaluation,
+)
+from app.modules.academics.evaluations import (
+    create_evaluation as create_evaluation,
+)
+from app.modules.academics.evaluations import (
+    evaluation_by_id as evaluation_by_id,
+)
+from app.modules.academics.evaluations import (
+    evaluation_for_update as evaluation_for_update,
+)
+from app.modules.academics.evaluations import (
+    finalize_evaluation as finalize_evaluation,
+)
+from app.modules.academics.evaluations import (
+    has_own_evaluation as has_own_evaluation,
+)
+from app.modules.academics.evaluations import history_rows as history_rows
+from app.modules.academics.evaluations import scores_of as scores_of
+from app.modules.academics.evaluations import (
+    soft_delete_evaluation as soft_delete_evaluation,
+)
+from app.modules.academics.evaluations import (
+    void_evaluation as void_evaluation,
+)
+from app.modules.academics.evaluations import working_page as working_page
 from app.modules.academics.models import (
     CLOSEOUT_SUBMITTED as CLOSEOUT_SUBMITTED,
+)
+from app.modules.academics.models import Evaluation as Evaluation
+from app.modules.academics.models import EvaluationScore as EvaluationScore
+from app.modules.academics.models import (
+    EvaluationTemplate as EvaluationTemplate,
+)
+from app.modules.academics.models import (
+    EvaluationTemplateCriterion as EvaluationTemplateCriterion,
 )
 from app.modules.academics.models import SessionCloseout as SessionCloseout
 from app.modules.academics.models import (

@@ -15,7 +15,14 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
-from app.modules.academics.models import SessionCloseout, SessionNote
+from app.modules.academics.models import (
+    Evaluation,
+    EvaluationScore,
+    EvaluationTemplate,
+    EvaluationTemplateCriterion,
+    SessionCloseout,
+    SessionNote,
+)
 from app.modules.administration.models import ApprovalRequest
 from app.modules.administration.settings_models import (
     BusinessSettings,
@@ -134,6 +141,10 @@ def test_the_guard_scans_the_real_audited_models():
         CourseTemplateSnapshot,
         CourseTemplateSubject,
         EducationLevel,
+        Evaluation,
+        EvaluationScore,
+        EvaluationTemplate,
+        EvaluationTemplateCriterion,
         Family,
         FamilyGuardian,
         FamilyStudent,

@@ -56,8 +56,9 @@ const INSTANT_PARAMS = new Set([
   'first_starts_at',
 ]);
 
-/** Params that hold a local date (`YYYY-MM-DD`, #233 series offers). */
-const DATE_PARAMS = new Set(['from_date']);
+/** Params that hold a local date (`YYYY-MM-DD`, #233 series offers; #80
+ * evaluations). */
+const DATE_PARAMS = new Set(['from_date', 'evaluated_on']);
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function values(
@@ -268,6 +269,8 @@ export const NOTIFICATION_LINKS: Readonly<
   // date; a reviewer's unpublish opens the tutor's notes page.
   'academics.learning_note_published': mySchedule,
   'academics.learning_note_unpublished': notesLink,
+  // #80 H1: academics.evaluation_finalized and academics.evaluation_voided
+  // have no link until #308 (M5-13b) adds the history and evaluation pages.
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

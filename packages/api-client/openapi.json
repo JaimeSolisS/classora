@@ -11729,6 +11729,1255 @@
         }
       }
     },
+    "/api/v1/evaluation-templates": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "List Evaluation Templates",
+        "description": "Evaluation templates by name (at most 200). `subject_id` also\nmatches any-subject templates; tutors always get active ones only.",
+        "operationId": "list_evaluation_templates_api_v1_evaluation_templates_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "active",
+                "inactive",
+                "all"
+              ],
+              "type": "string",
+              "default": "active",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EvaluationKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationTemplateList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only staff with evaluation.manage and tutors read evaluation templates (permission_denied); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Create Evaluation Template",
+        "description": "Create an evaluation template (active).",
+        "operationId": "create_evaluation_template_api_v1_evaluation_templates_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationTemplateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationTemplateView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another template has this name, ignoring case (duplicate_name).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation-templates/{template_id}": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Evaluation Template",
+        "description": "One evaluation template with its criteria.",
+        "operationId": "get_evaluation_template_api_v1_evaluation_templates__template_id__get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationTemplateView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only staff with evaluation.manage and tutors read evaluation templates (permission_denied); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template, or an inactive one and you are a tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Replace Evaluation Template",
+        "description": "Replace a template (name, subject, description, criteria, active).\nEvaluations already made from it never change.",
+        "operationId": "replace_evaluation_template_api_v1_evaluation_templates__template_id__put",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationTemplateReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationTemplateView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The template changed since it was read (version_conflict), or another template has this name (duplicate_name).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluations": {
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Create Evaluation",
+        "description": "Start a draft evaluation of a student you currently teach, from a\ntemplate (its criteria are copied). Only you see a draft; nobody is\nnotified.",
+        "operationId": "create_evaluation_api_v1_evaluations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Staff record no evaluations: only a tutor currently teaching the student (evaluation_tutor_only); csrf_failed; privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one you currently teach (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The template is inactive (template_inactive), or the linked class isn't confirmed or completed and started (session_not_evaluable, details.state).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluations/{evaluation_id}": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Evaluation",
+        "description": "One evaluation: for its author, tutors currently teaching the student\n(final ones) and staff with evaluation.manage (final and voided ones).",
+        "operationId": "get_evaluation_api_v1_evaluations__evaluation_id__get",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evaluation, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Edit Evaluation",
+        "description": "Change your draft, or amend your final evaluation with a reason\n(internal; families see an \"Updated\" marker). A request that changes\nnothing changes nothing.",
+        "operationId": "edit_evaluation_api_v1_evaluations__evaluation_id__patch",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evaluation, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The evaluation changed since it was read (version_conflict) or was voided (evaluation_voided).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Delete Evaluation",
+        "description": "Delete your draft. It disappears from every list.",
+        "operationId": "delete_evaluation_api_v1_evaluations__evaluation_id__delete",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The evaluation's version, as last read.",
+              "title": "Version"
+            },
+            "description": "The evaluation's version, as last read."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evaluation, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The evaluation changed since it was read (version_conflict) or is final (evaluation_final).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluations/{evaluation_id}/finalize": {
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Finalize Evaluation",
+        "description": "Finalize your draft: the student and their guardians with access to\ntheir academic records see it and are notified.",
+        "operationId": "finalize_evaluation_api_v1_evaluations__evaluation_id__finalize_post",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationVersion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evaluation, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The evaluation changed since it was read (version_conflict), is already final (evaluation_not_draft) or has unscored criteria (evaluation_incomplete, details.missing_positions).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluations/{evaluation_id}/void": {
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Void Evaluation",
+        "description": "Void a final evaluation (staff with evaluation.manage), with a reason:\nit leaves the academic history and the author is notified.",
+        "operationId": "void_evaluation_api_v1_evaluations__evaluation_id__void_post",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationVoid"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Voiding needs evaluation.manage (permission_denied); csrf_failed; privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such evaluation, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The evaluation changed since it was read (version_conflict), isn't final (evaluation_not_final) or is already voided (evaluation_voided).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/evaluations": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "List Student Evaluations",
+        "description": "A student's evaluations, newest first (the working list): staff with\nevaluation.manage read every final one (voided too); tutors currently\nteaching the student every final one and their own drafts; a tutor who\ntaught the student before only their own, read-only.",
+        "operationId": "list_student_evaluations_api_v1_students__student_id__evaluations_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "final",
+                    "voided"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "class_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_EvaluationView_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose evaluations you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/academic-history": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Academic History",
+        "description": "A student's academic history: final evaluations from every tutor,\nnewest first, and grouped by academic period and subject. For staff\nwith evaluation.manage, tutors currently teaching the student, the\nstudent and their guardians with access to their academic records.",
+        "operationId": "get_academic_history_api_v1_students__student_id__academic_history_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "none",
+                "school_year",
+                "semester",
+                "term"
+              ],
+              "type": "string",
+              "default": "school_year",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose history you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/evaluation-context": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Evaluation Context",
+        "description": "What the evaluation form needs of your class: its subject, whether it\ncan be evaluated, its participants and, for a course, the cohort's\nassessments.",
+        "operationId": "get_evaluation_context_api_v1_class_sessions__class_session_id__evaluation_context_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one you currently teach (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -15675,6 +16924,48 @@
   },
   "components": {
     "schemas": {
+      "AcademicHistory": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "group_by": {
+            "$ref": "#/components/schemas/GroupBy"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More than 500 entries: the oldest are left out."
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryGroup"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "group_by",
+          "truncated",
+          "entries",
+          "groups"
+        ],
+        "title": "AcademicHistory",
+        "description": "A student's academic history (#80 F3): one chronological list of\nfinal evaluations from every tutor, and the same entries grouped by\nperiod and subject. The same shape for staff, tutors and families."
+      },
       "AcademicPeriodCreate": {
         "properties": {
           "name": {
@@ -23678,6 +24969,34 @@
         ],
         "title": "CursorPage[AuditEventListItem]"
       },
+      "CursorPage_EvaluationView_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[EvaluationView]"
+      },
       "CursorPage_FamilyLearningNote_": {
         "properties": {
           "items": {
@@ -23761,6 +25080,20 @@
           "next_cursor"
         ],
         "title": "CursorPage[SessionNoteView]"
+      },
+      "DecimalIn": {
+        "type": "string",
+        "format": "decimal",
+        "examples": [
+          "7.50"
+        ]
+      },
+      "DecimalOut": {
+        "type": "string",
+        "format": "decimal",
+        "examples": [
+          "7.50"
+        ]
       },
       "DelegablePermissionCode": {
         "type": "string",
@@ -24086,6 +25419,1102 @@
         ],
         "title": "EnrollmentStudent",
         "description": "The enrolled student."
+      },
+      "EvaluationContext": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/EvaluationSubject"
+          },
+          "evaluable": {
+            "type": "boolean",
+            "title": "Evaluable",
+            "description": "Confirmed or completed, and started."
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationContextParticipant"
+            },
+            "type": "array",
+            "title": "Participants"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationContextCourse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "kind",
+          "state",
+          "starts_at",
+          "subject",
+          "evaluable",
+          "participants",
+          "course"
+        ],
+        "title": "EvaluationContext",
+        "description": "What the evaluation form needs of one of your classes (#80 AM1)."
+      },
+      "EvaluationContextAssessment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "min_score_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score Percent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "is_required",
+          "min_score_percent"
+        ],
+        "title": "EvaluationContextAssessment"
+      },
+      "EvaluationContextCourse": {
+        "properties": {
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "cohort_name": {
+            "type": "string",
+            "title": "Cohort Name"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationContextAssessment"
+            },
+            "type": "array",
+            "title": "Assessments",
+            "description": "The cohort's syllabus as frozen when it was created."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cohort_id",
+          "cohort_name",
+          "assessments"
+        ],
+        "title": "EvaluationContextCourse"
+      },
+      "EvaluationContextParticipant": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "display_name"
+        ],
+        "title": "EvaluationContextParticipant"
+      },
+      "EvaluationCourse": {
+        "properties": {
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "cohort_name": {
+            "type": "string",
+            "title": "Cohort Name"
+          },
+          "assessment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Assessment Id"
+          },
+          "assessment_title": {
+            "type": "string",
+            "title": "Assessment Title",
+            "description": "As it was when the evaluation was created."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cohort_id",
+          "cohort_name",
+          "assessment_id",
+          "assessment_title"
+        ],
+        "title": "EvaluationCourse"
+      },
+      "EvaluationCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Template Id",
+            "description": "An active evaluation template."
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "Defaults to the template's subject; required for an any-subject template."
+          },
+          "evaluated_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated On",
+            "description": "A local date, not in the future; defaults to the linked class's date, else today."
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id",
+            "description": "Optional: a started class of yours with the student."
+          },
+          "course_assessment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Assessment Id",
+            "description": "Optional, only with a course class: an assessment of the cohort's syllabus."
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationScoreInput"
+            },
+            "type": "array",
+            "title": "Scores"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/Feedback",
+            "description": "Plain text, at most 4000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "template_id"
+        ],
+        "title": "EvaluationCreate",
+        "description": "`POST /api/v1/evaluations` (#80 D1): a draft from a template, for a\nstudent you currently teach. Nobody is notified until you finalize\nit."
+      },
+      "EvaluationCriterionInput": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "1-120 characters, unique in the template ignoring case."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "max_score": {
+            "$ref": "#/components/schemas/DecimalIn",
+            "description": "0.5-1000, at most two decimal places (max_score_out_of_range / score_precision)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "max_score"
+        ],
+        "title": "EvaluationCriterionInput"
+      },
+      "EvaluationCriterionView": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "max_score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "position",
+          "title",
+          "description",
+          "max_score"
+        ],
+        "title": "EvaluationCriterionView"
+      },
+      "EvaluationKind": {
+        "type": "string",
+        "enum": [
+          "diagnostic",
+          "ongoing"
+        ]
+      },
+      "EvaluationPatch": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The evaluation's version, as last read."
+          },
+          "evaluated_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated On"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationScoreInput"
+            },
+            "type": "array",
+            "title": "Scores"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/Feedback",
+            "description": "Plain text, at most 4000 characters; null clears it."
+          },
+          "change_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Reason",
+            "description": "Required to amend a final evaluation: 1-500 characters (change_reason_required). Ignored on a draft."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "EvaluationPatch",
+        "description": "`PATCH /api/v1/evaluations/{id}` (#80 D4): change a draft, or amend a\nfinal evaluation with a change reason (internal: families never see\nit). A field left out keeps its value."
+      },
+      "EvaluationPerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "EvaluationPerson"
+      },
+      "EvaluationScoreInput": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "The criterion's position (1-based)."
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 to the criterion's max_score, at most two decimal places."
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Plain text, at most 1000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "position"
+        ],
+        "title": "EvaluationScoreInput",
+        "description": "One criterion's score and comment. A field left out keeps its value;\n`null` clears it."
+      },
+      "EvaluationScoreView": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "max_score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "position",
+          "title",
+          "description",
+          "max_score",
+          "score",
+          "comment"
+        ],
+        "title": "EvaluationScoreView"
+      },
+      "EvaluationSessionRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "starts_at"
+        ],
+        "title": "EvaluationSessionRef"
+      },
+      "EvaluationStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "final"
+        ]
+      },
+      "EvaluationStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "EvaluationStudent"
+      },
+      "EvaluationSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "EvaluationSubject"
+      },
+      "EvaluationTemplateCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "1-120 characters, unique ignoring case (duplicate_name)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvaluationKind",
+            "description": "Never changes after the create."
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "An active subject; null means any subject."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCriterionInput"
+            },
+            "type": "array",
+            "title": "Criteria",
+            "description": "1-20 criteria, in order (criteria_required / criteria_too_many / duplicate_title)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "criteria"
+        ],
+        "title": "EvaluationTemplateCreate",
+        "description": "`POST /api/v1/evaluation-templates` (#80 C1): a new active template.\nIts criteria are copied onto each evaluation made from it, so later\nedits never change existing evaluations."
+      },
+      "EvaluationTemplateList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationTemplateView"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationTemplateList",
+        "description": "`GET /api/v1/evaluation-templates` (#80 C3): by name, at most 200."
+      },
+      "EvaluationTemplateRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "As it was when the evaluation was created."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version"
+        ],
+        "title": "EvaluationTemplateRef"
+      },
+      "EvaluationTemplateReplace": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "1-120 characters, unique ignoring case (duplicate_name)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvaluationKind",
+            "description": "Never changes after the create."
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "An active subject; null means any subject."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCriterionInput"
+            },
+            "type": "array",
+            "title": "Criteria",
+            "description": "1-20 criteria, in order (criteria_required / criteria_too_many / duplicate_title)."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The template's version, as last read."
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "False deactivates the template."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "criteria",
+          "version",
+          "is_active"
+        ],
+        "title": "EvaluationTemplateReplace",
+        "description": "`PUT /api/v1/evaluation-templates/{id}` (#80 C1): the whole template,\nwith the version you loaded. `kind` must stay the same\n(kind_immutable)."
+      },
+      "EvaluationTemplateView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvaluationKind"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: any subject."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCriterionView"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "name",
+          "kind",
+          "subject",
+          "description",
+          "is_active",
+          "criteria",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EvaluationTemplateView",
+        "description": "An evaluation template with its criteria (#80 C1)."
+      },
+      "EvaluationVersion": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The evaluation's version, as last read."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "EvaluationVersion",
+        "description": "`POST /api/v1/evaluations/{id}/finalize` (#80 D5)."
+      },
+      "EvaluationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The evaluation's version (send it back)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvaluationStatus"
+          },
+          "student": {
+            "$ref": "#/components/schemas/EvaluationStudent"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/EvaluationSubject"
+          },
+          "author": {
+            "$ref": "#/components/schemas/EvaluationPerson"
+          },
+          "is_own": {
+            "type": "boolean",
+            "title": "Is Own",
+            "description": "You wrote it."
+          },
+          "template": {
+            "$ref": "#/components/schemas/EvaluationTemplateRef"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvaluationKind"
+          },
+          "evaluated_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Evaluated On"
+          },
+          "class_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSessionRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "course": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationCourse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationScoreView"
+            },
+            "type": "array",
+            "title": "Scores"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "score_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized At"
+          },
+          "amended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amended At"
+          },
+          "last_change_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Change Reason",
+            "description": "Internal: never shown to families."
+          },
+          "voided": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationVoided"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Change this draft."
+          },
+          "can_finalize": {
+            "type": "boolean",
+            "title": "Can Finalize"
+          },
+          "can_amend": {
+            "type": "boolean",
+            "title": "Can Amend",
+            "description": "Amend this final evaluation (with a reason)."
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          },
+          "can_void": {
+            "type": "boolean",
+            "title": "Can Void"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "status",
+          "student",
+          "subject",
+          "author",
+          "is_own",
+          "template",
+          "kind",
+          "evaluated_on",
+          "class_session",
+          "course",
+          "scores",
+          "feedback",
+          "score_total",
+          "max_total",
+          "score_percent",
+          "finalized_at",
+          "amended_at",
+          "last_change_reason",
+          "voided",
+          "created_at",
+          "can_edit",
+          "can_finalize",
+          "can_amend",
+          "can_delete",
+          "can_void"
+        ],
+        "title": "EvaluationView",
+        "description": "An evaluation, for its author, the tutors currently teaching the\nstudent and staff with evaluation.manage (#80 D8). Its criteria were\ncopied from the template when it was created. The `can_*` flags say\nwhat you may do now."
+      },
+      "EvaluationVoid": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The evaluation's version, as last read."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why it is voided: 1-500 characters, trimmed (reason_required)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "EvaluationVoid",
+        "description": "`POST /api/v1/evaluations/{id}/void` (#80 D6): why (1-500 characters,\nreason_required). The author is notified; families stop seeing it."
+      },
+      "EvaluationVoided": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "by": {
+            "$ref": "#/components/schemas/EvaluationPerson"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "at",
+          "by",
+          "reason"
+        ],
+        "title": "EvaluationVoided"
       },
       "ExceptionKind": {
         "type": "string",
@@ -24612,6 +27041,16 @@
         "title": "FamilyUpdate",
         "description": "A change to a family (``PATCH /api/v1/families/{id}``) with the\n``version`` the caller loaded. ``is_active`` deactivates or reactivates;\nthe members are kept."
       },
+      "Feedback": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "FieldError": {
         "additionalProperties": false,
         "description": "One field-level error: location, Pydantic error type and message.",
@@ -24646,6 +27085,15 @@
         ],
         "title": "FieldError",
         "type": "object"
+      },
+      "GroupBy": {
+        "type": "string",
+        "enum": [
+          "none",
+          "school_year",
+          "semester",
+          "term"
+        ]
       },
       "GroupCreate": {
         "properties": {
@@ -26075,6 +28523,256 @@
         ],
         "title": "HealthStatus",
         "description": "The success body of both health probes."
+      },
+      "HistoryCourse": {
+        "properties": {
+          "cohort_name": {
+            "type": "string",
+            "title": "Cohort Name"
+          },
+          "assessment_title": {
+            "type": "string",
+            "title": "Assessment Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cohort_name",
+          "assessment_title"
+        ],
+        "title": "HistoryCourse"
+      },
+      "HistoryCriterion": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "max_score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "score": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "max_score",
+          "score",
+          "comment"
+        ],
+        "title": "HistoryCriterion"
+      },
+      "HistoryEntry": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "evaluation",
+            "title": "Kind",
+            "description": "The entry type (later issues add others)."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "evaluated_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Evaluated On"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/EvaluationSubject"
+          },
+          "evaluation_kind": {
+            "$ref": "#/components/schemas/EvaluationKind"
+          },
+          "template_name": {
+            "type": "string",
+            "title": "Template Name"
+          },
+          "author": {
+            "$ref": "#/components/schemas/EvaluationPerson"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryCriterion"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "score_total": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "max_total": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "score_percent": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoryCourse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Finalized At"
+          },
+          "updated": {
+            "type": "boolean",
+            "title": "Updated",
+            "description": "Amended after it was finalized."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "evaluated_on",
+          "subject",
+          "evaluation_kind",
+          "template_name",
+          "author",
+          "criteria",
+          "score_total",
+          "max_total",
+          "score_percent",
+          "feedback",
+          "course",
+          "finalized_at",
+          "updated"
+        ],
+        "title": "HistoryEntry",
+        "description": "One entry of the academic history: a final evaluation (closed\nallow-list: no author id, no internal fields)."
+      },
+      "HistoryGroup": {
+        "properties": {
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoryPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: no period."
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySubjectGroup"
+            },
+            "type": "array",
+            "title": "Subjects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period",
+          "subjects"
+        ],
+        "title": "HistoryGroup"
+      },
+      "HistoryPeriod": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "period_type": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "period_type",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "HistoryPeriod"
+      },
+      "HistorySubjectGroup": {
+        "properties": {
+          "subject": {
+            "$ref": "#/components/schemas/EvaluationSubject"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "average_percent": {
+            "$ref": "#/components/schemas/DecimalOut"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Entry Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject",
+          "count",
+          "average_percent",
+          "entry_ids"
+        ],
+        "title": "HistorySubjectGroup"
       },
       "InvitationCreate": {
         "properties": {
@@ -27688,6 +30386,7 @@
           "consent.record",
           "course.manage",
           "course.view",
+          "evaluation.manage",
           "family.manage",
           "finance.refund.approve",
           "guardian.view",

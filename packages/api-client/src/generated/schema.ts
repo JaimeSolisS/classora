@@ -2461,6 +2461,219 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluation-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evaluation Templates
+         * @description Evaluation templates by name (at most 200). `subject_id` also
+         *     matches any-subject templates; tutors always get active ones only.
+         */
+        get: operations["list_evaluation_templates_api_v1_evaluation_templates_get"];
+        put?: never;
+        /**
+         * Create Evaluation Template
+         * @description Create an evaluation template (active).
+         */
+        post: operations["create_evaluation_template_api_v1_evaluation_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluation-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evaluation Template
+         * @description One evaluation template with its criteria.
+         */
+        get: operations["get_evaluation_template_api_v1_evaluation_templates__template_id__get"];
+        /**
+         * Replace Evaluation Template
+         * @description Replace a template (name, subject, description, criteria, active).
+         *     Evaluations already made from it never change.
+         */
+        put: operations["replace_evaluation_template_api_v1_evaluation_templates__template_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Evaluation
+         * @description Start a draft evaluation of a student you currently teach, from a
+         *     template (its criteria are copied). Only you see a draft; nobody is
+         *     notified.
+         */
+        post: operations["create_evaluation_api_v1_evaluations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/{evaluation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evaluation
+         * @description One evaluation: for its author, tutors currently teaching the student
+         *     (final ones) and staff with evaluation.manage (final and voided ones).
+         */
+        get: operations["get_evaluation_api_v1_evaluations__evaluation_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Evaluation
+         * @description Delete your draft. It disappears from every list.
+         */
+        delete: operations["delete_evaluation_api_v1_evaluations__evaluation_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Evaluation
+         * @description Change your draft, or amend your final evaluation with a reason
+         *     (internal; families see an "Updated" marker). A request that changes
+         *     nothing changes nothing.
+         */
+        patch: operations["edit_evaluation_api_v1_evaluations__evaluation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/evaluations/{evaluation_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalize Evaluation
+         * @description Finalize your draft: the student and their guardians with access to
+         *     their academic records see it and are notified.
+         */
+        post: operations["finalize_evaluation_api_v1_evaluations__evaluation_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluations/{evaluation_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void Evaluation
+         * @description Void a final evaluation (staff with evaluation.manage), with a reason:
+         *     it leaves the academic history and the author is notified.
+         */
+        post: operations["void_evaluation_api_v1_evaluations__evaluation_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Student Evaluations
+         * @description A student's evaluations, newest first (the working list): staff with
+         *     evaluation.manage read every final one (voided too); tutors currently
+         *     teaching the student every final one and their own drafts; a tutor who
+         *     taught the student before only their own, read-only.
+         */
+        get: operations["list_student_evaluations_api_v1_students__student_id__evaluations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/academic-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Academic History
+         * @description A student's academic history: final evaluations from every tutor,
+         *     newest first, and grouped by academic period and subject. For staff
+         *     with evaluation.manage, tutors currently teaching the student, the
+         *     student and their guardians with access to their academic records.
+         */
+        get: operations["get_academic_history_api_v1_students__student_id__academic_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/evaluation-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evaluation Context
+         * @description What the evaluation form needs of your class: its subject, whether it
+         *     can be evaluated, its participants and, for a course, the cohort's
+         *     assessments.
+         */
+        get: operations["get_evaluation_context_api_v1_class_sessions__class_session_id__evaluation_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -3402,6 +3615,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AcademicHistory
+         * @description A student's academic history (#80 F3): one chronological list of
+         *     final evaluations from every tutor, and the same entries grouped by
+         *     period and subject. The same shape for staff, tutors and families.
+         */
+        AcademicHistory: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            group_by: components["schemas"]["GroupBy"];
+            /**
+             * Truncated
+             * @description More than 500 entries: the oldest are left out.
+             */
+            truncated: boolean;
+            /** Entries */
+            entries: components["schemas"]["HistoryEntry"][];
+            /** Groups */
+            groups: components["schemas"]["HistoryGroup"][];
+        };
         /**
          * AcademicPeriodCreate
          * @description A new academic period (``POST /api/v1/academic-periods``): inclusive
@@ -7144,6 +7380,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** CursorPage[EvaluationView] */
+        CursorPage_EvaluationView_: {
+            /** Items */
+            items: components["schemas"]["EvaluationView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** CursorPage[FamilyLearningNote] */
         CursorPage_FamilyLearningNote_: {
             /** Items */
@@ -7165,6 +7408,16 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * Format: decimal
+         * @example 7.50
+         */
+        DecimalIn: string;
+        /**
+         * Format: decimal
+         * @example 7.50
+         */
+        DecimalOut: string;
         /** @enum {string} */
         DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
         /**
@@ -7322,6 +7575,492 @@ export interface components {
             display_name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * EvaluationContext
+         * @description What the evaluation form needs of one of your classes (#80 AM1).
+         */
+        EvaluationContext: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            subject: components["schemas"]["EvaluationSubject"];
+            /**
+             * Evaluable
+             * @description Confirmed or completed, and started.
+             */
+            evaluable: boolean;
+            /** Participants */
+            participants: components["schemas"]["EvaluationContextParticipant"][];
+            course: components["schemas"]["EvaluationContextCourse"] | null;
+        };
+        /** EvaluationContextAssessment */
+        EvaluationContextAssessment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Is Required */
+            is_required: boolean;
+            /** Min Score Percent */
+            min_score_percent: number | null;
+        };
+        /** EvaluationContextCourse */
+        EvaluationContextCourse: {
+            /**
+             * Cohort Id
+             * Format: uuid
+             */
+            cohort_id: string;
+            /** Cohort Name */
+            cohort_name: string;
+            /**
+             * Assessments
+             * @description The cohort's syllabus as frozen when it was created.
+             */
+            assessments: components["schemas"]["EvaluationContextAssessment"][];
+        };
+        /** EvaluationContextParticipant */
+        EvaluationContextParticipant: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** EvaluationCourse */
+        EvaluationCourse: {
+            /**
+             * Cohort Id
+             * Format: uuid
+             */
+            cohort_id: string;
+            /** Cohort Name */
+            cohort_name: string;
+            /**
+             * Assessment Id
+             * Format: uuid
+             */
+            assessment_id: string;
+            /**
+             * Assessment Title
+             * @description As it was when the evaluation was created.
+             */
+            assessment_title: string;
+        };
+        /**
+         * EvaluationCreate
+         * @description `POST /api/v1/evaluations` (#80 D1): a draft from a template, for a
+         *     student you currently teach. Nobody is notified until you finalize
+         *     it.
+         */
+        EvaluationCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Template Id
+             * Format: uuid
+             * @description An active evaluation template.
+             */
+            template_id: string;
+            /**
+             * Subject Id
+             * @description Defaults to the template's subject; required for an any-subject template.
+             */
+            subject_id?: string | null;
+            /**
+             * Evaluated On
+             * @description A local date, not in the future; defaults to the linked class's date, else today.
+             */
+            evaluated_on?: string | null;
+            /**
+             * Class Session Id
+             * @description Optional: a started class of yours with the student.
+             */
+            class_session_id?: string | null;
+            /**
+             * Course Assessment Id
+             * @description Optional, only with a course class: an assessment of the cohort's syllabus.
+             */
+            course_assessment_id?: string | null;
+            /** Scores */
+            scores?: components["schemas"]["EvaluationScoreInput"][];
+            /** @description Plain text, at most 4000 characters. */
+            feedback?: components["schemas"]["Feedback"];
+        };
+        /** EvaluationCriterionInput */
+        EvaluationCriterionInput: {
+            /**
+             * Title
+             * @description 1-120 characters, unique in the template ignoring case.
+             */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /** @description 0.5-1000, at most two decimal places (max_score_out_of_range / score_precision). */
+            max_score: components["schemas"]["DecimalIn"];
+        };
+        /** EvaluationCriterionView */
+        EvaluationCriterionView: {
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            max_score: components["schemas"]["DecimalOut"];
+        };
+        /** @enum {string} */
+        EvaluationKind: "diagnostic" | "ongoing";
+        /**
+         * EvaluationPatch
+         * @description `PATCH /api/v1/evaluations/{id}` (#80 D4): change a draft, or amend a
+         *     final evaluation with a change reason (internal: families never see
+         *     it). A field left out keeps its value.
+         */
+        EvaluationPatch: {
+            /**
+             * Version
+             * @description The evaluation's version, as last read.
+             */
+            version: number;
+            /** Evaluated On */
+            evaluated_on?: string | null;
+            /** Scores */
+            scores?: components["schemas"]["EvaluationScoreInput"][];
+            /** @description Plain text, at most 4000 characters; null clears it. */
+            feedback?: components["schemas"]["Feedback"];
+            /**
+             * Change Reason
+             * @description Required to amend a final evaluation: 1-500 characters (change_reason_required). Ignored on a draft.
+             */
+            change_reason?: string | null;
+        };
+        /** EvaluationPerson */
+        EvaluationPerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * EvaluationScoreInput
+         * @description One criterion's score and comment. A field left out keeps its value;
+         *     `null` clears it.
+         */
+        EvaluationScoreInput: {
+            /**
+             * Position
+             * @description The criterion's position (1-based).
+             */
+            position: number;
+            /** @description 0 to the criterion's max_score, at most two decimal places. */
+            score?: components["schemas"]["DecimalIn"] | null;
+            /**
+             * Comment
+             * @description Plain text, at most 1000 characters.
+             */
+            comment?: string | null;
+        };
+        /** EvaluationScoreView */
+        EvaluationScoreView: {
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            max_score: components["schemas"]["DecimalOut"];
+            score: components["schemas"]["DecimalOut"] | null;
+            /** Comment */
+            comment: string | null;
+        };
+        /** EvaluationSessionRef */
+        EvaluationSessionRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+        };
+        /** @enum {string} */
+        EvaluationStatus: "draft" | "final";
+        /** EvaluationStudent */
+        EvaluationStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** EvaluationSubject */
+        EvaluationSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * EvaluationTemplateCreate
+         * @description `POST /api/v1/evaluation-templates` (#80 C1): a new active template.
+         *     Its criteria are copied onto each evaluation made from it, so later
+         *     edits never change existing evaluations.
+         */
+        EvaluationTemplateCreate: {
+            /**
+             * Name
+             * @description 1-120 characters, unique ignoring case (duplicate_name).
+             */
+            name: string;
+            /** @description Never changes after the create. */
+            kind: components["schemas"]["EvaluationKind"];
+            /**
+             * Subject Id
+             * @description An active subject; null means any subject.
+             */
+            subject_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Criteria
+             * @description 1-20 criteria, in order (criteria_required / criteria_too_many / duplicate_title).
+             */
+            criteria: components["schemas"]["EvaluationCriterionInput"][];
+        };
+        /**
+         * EvaluationTemplateList
+         * @description `GET /api/v1/evaluation-templates` (#80 C3): by name, at most 200.
+         */
+        EvaluationTemplateList: {
+            /** Items */
+            items: components["schemas"]["EvaluationTemplateView"][];
+        };
+        /** EvaluationTemplateRef */
+        EvaluationTemplateRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description As it was when the evaluation was created.
+             */
+            name: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * EvaluationTemplateReplace
+         * @description `PUT /api/v1/evaluation-templates/{id}` (#80 C1): the whole template,
+         *     with the version you loaded. `kind` must stay the same
+         *     (kind_immutable).
+         */
+        EvaluationTemplateReplace: {
+            /**
+             * Name
+             * @description 1-120 characters, unique ignoring case (duplicate_name).
+             */
+            name: string;
+            /** @description Never changes after the create. */
+            kind: components["schemas"]["EvaluationKind"];
+            /**
+             * Subject Id
+             * @description An active subject; null means any subject.
+             */
+            subject_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Criteria
+             * @description 1-20 criteria, in order (criteria_required / criteria_too_many / duplicate_title).
+             */
+            criteria: components["schemas"]["EvaluationCriterionInput"][];
+            /**
+             * Version
+             * @description The template's version, as last read.
+             */
+            version: number;
+            /**
+             * Is Active
+             * @description False deactivates the template.
+             */
+            is_active: boolean;
+        };
+        /**
+         * EvaluationTemplateView
+         * @description An evaluation template with its criteria (#80 C1).
+         */
+        EvaluationTemplateView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /** Name */
+            name: string;
+            kind: components["schemas"]["EvaluationKind"];
+            /** @description Null: any subject. */
+            subject: components["schemas"]["EvaluationSubject"] | null;
+            /** Description */
+            description: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Criteria */
+            criteria: components["schemas"]["EvaluationCriterionView"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * EvaluationVersion
+         * @description `POST /api/v1/evaluations/{id}/finalize` (#80 D5).
+         */
+        EvaluationVersion: {
+            /**
+             * Version
+             * @description The evaluation's version, as last read.
+             */
+            version: number;
+        };
+        /**
+         * EvaluationView
+         * @description An evaluation, for its author, the tutors currently teaching the
+         *     student and staff with evaluation.manage (#80 D8). Its criteria were
+         *     copied from the template when it was created. The `can_*` flags say
+         *     what you may do now.
+         */
+        EvaluationView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The evaluation's version (send it back).
+             */
+            version: number;
+            status: components["schemas"]["EvaluationStatus"];
+            student: components["schemas"]["EvaluationStudent"];
+            subject: components["schemas"]["EvaluationSubject"];
+            author: components["schemas"]["EvaluationPerson"];
+            /**
+             * Is Own
+             * @description You wrote it.
+             */
+            is_own: boolean;
+            template: components["schemas"]["EvaluationTemplateRef"];
+            kind: components["schemas"]["EvaluationKind"];
+            /**
+             * Evaluated On
+             * Format: date
+             */
+            evaluated_on: string;
+            class_session: components["schemas"]["EvaluationSessionRef"] | null;
+            course: components["schemas"]["EvaluationCourse"] | null;
+            /** Scores */
+            scores: components["schemas"]["EvaluationScoreView"][];
+            /** Feedback */
+            feedback: string | null;
+            score_total: components["schemas"]["DecimalOut"] | null;
+            max_total: components["schemas"]["DecimalOut"] | null;
+            score_percent: components["schemas"]["DecimalOut"] | null;
+            /** Finalized At */
+            finalized_at: string | null;
+            /** Amended At */
+            amended_at: string | null;
+            /**
+             * Last Change Reason
+             * @description Internal: never shown to families.
+             */
+            last_change_reason: string | null;
+            voided: components["schemas"]["EvaluationVoided"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Can Edit
+             * @description Change this draft.
+             */
+            can_edit: boolean;
+            /** Can Finalize */
+            can_finalize: boolean;
+            /**
+             * Can Amend
+             * @description Amend this final evaluation (with a reason).
+             */
+            can_amend: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Void */
+            can_void: boolean;
+        };
+        /**
+         * EvaluationVoid
+         * @description `POST /api/v1/evaluations/{id}/void` (#80 D6): why (1-500 characters,
+         *     reason_required). The author is notified; families stop seeing it.
+         */
+        EvaluationVoid: {
+            /**
+             * Version
+             * @description The evaluation's version, as last read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Why it is voided: 1-500 characters, trimmed (reason_required).
+             */
+            reason: string | null;
+        };
+        /** EvaluationVoided */
+        EvaluationVoided: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            by: components["schemas"]["EvaluationPerson"];
+            /** Reason */
+            reason: string;
         };
         /** @enum {string} */
         ExceptionKind: "unavailable" | "available";
@@ -7599,6 +8338,7 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        Feedback: string | null;
         /**
          * FieldError
          * @description One field-level error: location, Pydantic error type and message.
@@ -7611,6 +8351,8 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** @enum {string} */
+        GroupBy: "none" | "school_year" | "semester" | "term";
         /**
          * GroupCreate
          * @description An ongoing tutoring group and its weekly series (``POST
@@ -8284,6 +9026,105 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** HistoryCourse */
+        HistoryCourse: {
+            /** Cohort Name */
+            cohort_name: string;
+            /** Assessment Title */
+            assessment_title: string;
+        };
+        /** HistoryCriterion */
+        HistoryCriterion: {
+            /** Title */
+            title: string;
+            max_score: components["schemas"]["DecimalOut"];
+            score: components["schemas"]["DecimalOut"];
+            /** Comment */
+            comment: string | null;
+        };
+        /**
+         * HistoryEntry
+         * @description One entry of the academic history: a final evaluation (closed
+         *     allow-list: no author id, no internal fields).
+         */
+        HistoryEntry: {
+            /**
+             * Kind
+             * @description The entry type (later issues add others).
+             * @constant
+             */
+            kind: "evaluation";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Evaluated On
+             * Format: date
+             */
+            evaluated_on: string;
+            subject: components["schemas"]["EvaluationSubject"];
+            evaluation_kind: components["schemas"]["EvaluationKind"];
+            /** Template Name */
+            template_name: string;
+            author: components["schemas"]["EvaluationPerson"];
+            /** Criteria */
+            criteria: components["schemas"]["HistoryCriterion"][];
+            score_total: components["schemas"]["DecimalOut"];
+            max_total: components["schemas"]["DecimalOut"];
+            score_percent: components["schemas"]["DecimalOut"];
+            /** Feedback */
+            feedback: string | null;
+            course: components["schemas"]["HistoryCourse"] | null;
+            /**
+             * Finalized At
+             * Format: date-time
+             */
+            finalized_at: string;
+            /**
+             * Updated
+             * @description Amended after it was finalized.
+             */
+            updated: boolean;
+        };
+        /** HistoryGroup */
+        HistoryGroup: {
+            /** @description Null: no period. */
+            period: components["schemas"]["HistoryPeriod"] | null;
+            /** Subjects */
+            subjects: components["schemas"]["HistorySubjectGroup"][];
+        };
+        /** HistoryPeriod */
+        HistoryPeriod: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            period_type: components["schemas"]["PeriodType"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+        };
+        /** HistorySubjectGroup */
+        HistorySubjectGroup: {
+            subject: components["schemas"]["EvaluationSubject"];
+            /** Count */
+            count: number;
+            average_percent: components["schemas"]["DecimalOut"];
+            /** Entry Ids */
+            entry_ids: string[];
         };
         /**
          * InvitationCreate
@@ -9055,7 +9896,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -19894,6 +20735,840 @@ export interface operations {
             };
             /** @description The note changed since it was read (version_conflict) or isn't shared (note_not_published). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_evaluation_templates_api_v1_evaluation_templates_get: {
+        parameters: {
+            query?: {
+                status?: "active" | "inactive" | "all";
+                kind?: components["schemas"]["EvaluationKind"] | null;
+                subject_id?: string | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationTemplateList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only staff with evaluation.manage and tutors read evaluation templates (permission_denied); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_evaluation_template_api_v1_evaluation_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationTemplateView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another template has this name, ignoring case (duplicate_name). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_evaluation_template_api_v1_evaluation_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationTemplateView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only staff with evaluation.manage and tutors read evaluation templates (permission_denied); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such template, or an inactive one and you are a tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    replace_evaluation_template_api_v1_evaluation_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationTemplateReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationTemplateView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such template (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The template changed since it was read (version_conflict), or another template has this name (duplicate_name). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_evaluation_api_v1_evaluations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Staff record no evaluations: only a tutor currently teaching the student (evaluation_tutor_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one you currently teach (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The template is inactive (template_inactive), or the linked class isn't confirmed or completed and started (session_not_evaluable, details.state). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_evaluation_api_v1_evaluations__evaluation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such evaluation, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_evaluation_api_v1_evaluations__evaluation_id__delete: {
+        parameters: {
+            query: {
+                /** @description The evaluation's version, as last read. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such evaluation, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The evaluation changed since it was read (version_conflict) or is final (evaluation_final). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    edit_evaluation_api_v1_evaluations__evaluation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such evaluation, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The evaluation changed since it was read (version_conflict) or was voided (evaluation_voided). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    finalize_evaluation_api_v1_evaluations__evaluation_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the evaluation's author can do this (evaluation_author_only); the student is no longer one of your current assignments (evaluation_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such evaluation, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The evaluation changed since it was read (version_conflict), is already final (evaluation_not_draft) or has unscored criteria (evaluation_incomplete, details.missing_positions). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    void_evaluation_api_v1_evaluations__evaluation_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationVoid"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Voiding needs evaluation.manage (permission_denied); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such evaluation, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The evaluation changed since it was read (version_conflict), isn't final (evaluation_not_final) or is already voided (evaluation_voided). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_student_evaluations_api_v1_students__student_id__evaluations_get: {
+        parameters: {
+            query?: {
+                status?: ("draft" | "final" | "voided") | null;
+                subject_id?: string | null;
+                class_session_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_EvaluationView_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose evaluations you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_academic_history_api_v1_students__student_id__academic_history_get: {
+        parameters: {
+            query?: {
+                group_by?: "none" | "school_year" | "semester" | "term";
+                subject_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicHistory"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose history you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_evaluation_context_api_v1_class_sessions__class_session_id__evaluation_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationContext"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one you currently teach (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

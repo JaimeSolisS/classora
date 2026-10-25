@@ -116,6 +116,18 @@ from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
 from app.workflows.cohorts_router import router as cohorts_router
+from app.workflows.evaluations_router import (
+    evaluation_router as evaluations_router,
+)
+from app.workflows.evaluations_router import (
+    session_router as evaluation_context_router,
+)
+from app.workflows.evaluations_router import (
+    student_router as student_evaluations_router,
+)
+from app.workflows.evaluations_router import (
+    template_router as evaluation_templates_router,
+)
 from app.workflows.groups_router import router as groups_router
 from app.workflows.overdue_closeouts_router import (
     router as overdue_closeouts_router,
@@ -235,6 +247,10 @@ def build_app(
     app.include_router(session_notes_router)
     app.include_router(student_notes_router)
     app.include_router(notes_router)
+    app.include_router(evaluation_templates_router)
+    app.include_router(evaluations_router)
+    app.include_router(student_evaluations_router)
+    app.include_router(evaluation_context_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

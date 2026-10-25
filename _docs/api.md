@@ -182,6 +182,16 @@ Codes in use today:
 | `note_already_published` / `note_not_published` | 409 | Sharing a note that is already shared, or stopping sharing one that isn't (see Session notes). |
 | `session_not_notable` | 409 | A note on a session that isn't `confirmed` or `completed`; `details.state` (see Session notes). |
 | `body_required` | 422 | A note left empty once trimmed; on `["body","body"]` (see Session notes). |
+| `evaluation_tutor_only` | 403 | `POST /api/v1/evaluations` by an `evaluation.manage` holder who isn't a tutor currently teaching the student: the scores are the tutor's (see Evaluations and academic history). |
+| `evaluation_author_only` | 403 | Changing, finalizing or deleting an evaluation the caller didn't write (see Evaluations and academic history). |
+| `evaluation_read_only` | 403 | A write by the author once the student is no longer one of their current assignments; their evaluations stay readable (see Evaluations and academic history). |
+| `template_inactive` | 409 | `POST /api/v1/evaluations` from an inactive evaluation template. |
+| `duplicate_name` | 409 | An evaluation template name another template has, ignoring case (inactive ones count). |
+| `session_not_evaluable` | 409 | An evaluation linked to a class that isn't `confirmed` or `completed` and started; `details.state`. |
+| `evaluation_not_draft` / `evaluation_final` | 409 | Finalizing an evaluation that is already final, or deleting a final one. |
+| `evaluation_not_final` / `evaluation_voided` | 409 | Voiding an evaluation that isn't final, or voiding, changing or amending a voided one. |
+| `evaluation_incomplete` | 409 | Finalizing with unscored criteria; `details.missing_positions` (the positions, as strings). |
+| `template_unknown` / `subject_mismatch` / `subject_required` / `class_session_invalid` / `course_assessment_requires_course_session` / `course_assessment_unknown` / `evaluated_on_in_future` / `evaluated_on_invalid` / `criterion_unknown` / `duplicate_criterion` / `score_out_of_range` / `score_precision` / `score_required` / `change_reason_required` / `kind_immutable` / `criteria_required` / `criteria_too_many` / `duplicate_title` / `max_score_out_of_range` / `range_invalid` | 422 | Evaluation field errors on the field they name (see Evaluations and academic history). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4535,6 +4545,164 @@ default `internal`, `published_at`/`published_by_user_id` set exactly when
 `internal` note, `version`), every key `ON DELETE RESTRICT`, with partial
 indexes over the live rows on `(student_id, created_at, id)` and
 `(class_session_id)`.
+
+### Evaluations and academic history
+
+Implemented by M5-13 (#80; spec §2, §4 "structured diagnostic and ongoing
+evaluations with templates, grading criteria, scores and tutor feedback",
+"complete academic history grouped by school year/semester/period", "grades
+… visible according to permissions", §9, §16, W5.3, W5.4; architecture §4.1,
+§4.2; ADR-0004) in `academics` (`evaluation_rules.py`: the pure rules;
+`evaluation_templates.py` and `evaluations.py`: the rows), the seams
+`scheduling/evaluation_context.py`, `catalog.service.periods_overlapping` /
+`subject_name_columns` and `courses.service.cohort_assessments` /
+`cohort_assessment`, and the workflow `app/workflows/evaluations.py` with its
+routes in `app/workflows/evaluations_router.py` and bodies in
+`app/workflows/evaluation_schemas.py`. One new permission,
+`evaluation.manage` (Owner, Administrator, Academic coordinator; not
+delegable). No web pages yet (#308, M5-13b).
+
+Tutors record evaluations of a student from a **template** (its name, kind,
+version and criteria are **copied** onto the evaluation: editing or
+deactivating the template never changes an evaluation). An evaluation is a
+`draft` (only its author sees it) until the author **finalizes** it; a
+`final` evaluation is a grade: it reaches the student and their guardians
+with academic access (no admin approval: that is #83's, for progress
+reports). The author **amends** a final evaluation with a required, internal
+change reason; staff with `evaluation.manage` **void** one with a reason; the
+author soft-deletes drafts only. **Drafts, voided evaluations, change
+reasons and void data are never returned to families:** the only route that
+returns evaluations to families is the academic history, and the family leak
+walk `apps/api/tests/integration/test_session_notes_leak.py` proves no other
+`GET` route carries them.
+
+Scores, maximums, totals and percentages are decimals with at most two
+places, JSON **strings** on the way out (`"7.50"`, OpenAPI `type: string,
+format: decimal`); the bodies take strings or numbers. `score_percent` =
+Σscore / Σmax × 100, rounded half-up to two places (never a float).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/evaluation-templates[?status&kind&subject_id&q]` | `authenticated()` + record policy | `evaluation.manage` holders (`status=active\|inactive\|all`, default `active`) and users with the `tutor` role (always `active`); anyone else `403 permission_denied`. `subject_id` matches that subject or any-subject templates; `q` a name part, ignoring case. By `lower(name)`, at most 200; at most 3 statements. |
+| `GET /api/v1/evaluation-templates/{template_id}` | `authenticated()` + record policy | As the list; an inactive template is `404` for a tutor-only caller. |
+| `POST /api/v1/evaluation-templates` | `require("evaluation.manage")` | `{name, kind (diagnostic\|ongoing), subject_id?, description?, criteria: [{title, description?, max_score}] (1-20)}`. `201 EvaluationTemplateView`. |
+| `PUT /api/v1/evaluation-templates/{template_id}` | `require("evaluation.manage")` | The whole template with `{version, is_active}`; `kind` never changes (`422 kind_immutable`). Criteria are matched by position; any change bumps the version once; a body that changes nothing writes nothing. |
+| `POST /api/v1/evaluations` | `authenticated()` + record policy | A tutor whose current assignments include the student; an `evaluation.manage` holder who isn't gets `403 evaluation_tutor_only`; anyone else, and an unknown student, `404`. A `draft`; nobody is notified. `201 EvaluationView`. |
+| `GET /api/v1/evaluations/{evaluation_id}` | `authenticated()` + record policy | The working view (below). |
+| `PATCH /api/v1/evaluations/{evaluation_id}` | `authenticated()` + record policy | The author while the student is a current assignment. `{version, evaluated_on?, scores?, feedback?, change_reason?}`; the template, student, subject, session and course links are immutable (`extra_forbidden`). On a draft anything changes (`change_reason` ignored); on a final one `change_reason` (1-500) is required, every criterion keeps a score (`score_required`), the totals are recomputed and `amended_at` / `last_change_reason` set. A request that changes nothing writes nothing. |
+| `POST /api/v1/evaluations/{evaluation_id}/finalize` | `authenticated()` + record policy | The author: every criterion scored (`409 evaluation_incomplete`, `details.missing_positions`); sets the totals and notifies (below). |
+| `POST /api/v1/evaluations/{evaluation_id}/void` | `authenticated()` + record policy | `evaluation.manage` (`403 permission_denied` after the `404`). `{version, reason}` (1-500, `reason_required`). The author is notified. |
+| `DELETE /api/v1/evaluations/{evaluation_id}?version=` | `authenticated()` + record policy | The author, drafts only (`409 evaluation_final`): soft delete, `204`; every route then answers `404`. |
+| `GET /api/v1/students/{student_id}/evaluations[?status&subject_id&class_session_id&cursor&limit]` | `authenticated()` + record policy | **The working list.** Reviewers: every final evaluation, voided ones too (never drafts); tutors with the student assigned: every final, non-voided one; an author also their own in any state (a former author only theirs, read-only); anyone else, and an unknown id, `404`. `status=draft\|final\|voided`. Newest first by `(created_at, id)`, `limit` 1-50 (default 20), `CursorPage[EvaluationView]`; at most 8 statements, the same for 1 and 20 items. |
+| `GET /api/v1/students/{student_id}/academic-history[?group_by&subject_id&from&to]` | `authenticated()` + record policy | **The unified history**, one closed shape for every audience: reviewers and tutors with the student assigned read it all; a former author only their own entries; the student and the linked guardians of a minor, or of an adult who gave that guardian `guardian_academic_access` (the #67 rule without its staff branch); a linked guardian of an adult without it `403 student_consent_required` (also on the next request after a revocation); anyone else (Finance, other tutors, unlinked users) and an unknown id `404`. Final, non-voided, live evaluations only; at most 500 entries (`truncated`); `422 range_invalid` when `from > to`; at most 8 statements whatever the number of entries, criteria or periods. |
+| `GET /api/v1/class-sessions/{class_session_id}/evaluation-context` | `authenticated()` + record policy | The session's **current** tutor only; anyone else, staff included, and an unknown id `404`. `{class_session_id, kind, state, starts_at, subject {id, name}, evaluable, participants [{student_id, display_name}], course {cohort_id, cohort_name, assessments [{id, title, is_required, min_score_percent}]} \| null}`, the assessments from the cohort's frozen snapshot; at most 4 statements (#308's form). |
+
+**Who** (the record policy): an evaluation is read by its author while they
+hold the `tutor` role (any state, also once voided, and read-only once the
+student is no longer one of their current assignments,
+`scheduling.service.student_ids_for_tutor`), by reviewers (`evaluation.manage`:
+final and voided ones), and by tutors whose current assignments include the
+student (final, non-voided ones, from every author). A draft reaches only its
+author. Anyone else, Finance included, gets the `404` of an unknown id. A user
+with several roles gets the union.
+
+**Template order:** `401` → `422` schema (`name_required`, `too_long`,
+`criteria_required`, `criteria_too_many`, `duplicate_title`,
+`max_score_out_of_range`, `score_precision`) → `403 permission_denied` →
+`404` → the template `FOR UPDATE` → `409 version_conflict` → `422
+kind_immutable` / `subject_unknown` (unknown or inactive subject, or an
+inactive level) / `409 duplicate_name` → the write (audited).
+
+**Create order:** `401` → `422` schema → `404` (unknown student, or neither a
+tutor with the student assigned nor a reviewer) → `403
+evaluation_tutor_only` → the template `FOR SHARE` (`422 template_unknown` /
+`409 template_inactive`; a concurrent replace waits, so the criteria are
+copied whole) → the subject (the template's, `422 subject_mismatch` if
+another is sent; without one `subject_required`, `subject_unknown`) → the
+session link (`FOR SHARE`: `422 class_session_invalid` for an unknown class,
+one that isn't the caller's current class or doesn't include the student;
+`409 session_not_evaluable` unless `confirmed`/`completed` and started; `422
+subject_mismatch`) → the course link (`422
+course_assessment_requires_course_session` without a `course` class; `422
+course_assessment_unknown` for an id the cohort's snapshot doesn't hold) →
+`evaluated_on` (defaults to the class's local date, else the center's today;
+`422 evaluated_on_in_future` / `evaluated_on_invalid` before 2000-01-01) →
+the scores (`422 criterion_unknown`, `duplicate_criterion`,
+`score_out_of_range`) → the draft with every criterion copied (unscored ones
+`null`) and its audit create.
+
+**Write order** (`PATCH`, `finalize`, `void`, `DELETE`): `401` → `422`
+schema (`version` required) → `404` (unknown, deleted or unreadable) →
+`403` `evaluation_author_only` / `evaluation_read_only` / `permission_denied`
+(void) → the evaluation `FOR UPDATE` → `409 version_conflict` → `409`
+`evaluation_voided` (edit), `evaluation_not_draft` (finalize),
+`evaluation_final` (delete), `evaluation_not_final` / `evaluation_voided`
+(void), `evaluation_incomplete` (finalize) → `422` content
+(`change_reason_required`, `score_required`, `reason_required`, …) → the
+write (version + 1, the audit diff).
+
+**`EvaluationView`** (closed allow-list, staff and tutors only): `{id,
+version, status, student {id, display_name}, subject {id, name}, author
+{display_name}, is_own, template {id, name, version}, kind, evaluated_on,
+class_session {id, starts_at} | null, course {cohort_id, cohort_name,
+assessment_id, assessment_title} | null, scores [{position, title,
+description, max_score, score, comment}], feedback, score_total, max_total,
+score_percent, finalized_at, amended_at, last_change_reason, voided {at, by
+{display_name}, reason} | null, created_at, can_edit, can_finalize,
+can_amend, can_delete, can_void}`.
+
+**`AcademicHistory`** (closed allow-list, the same for staff, tutors and
+families): `{student_id, group_by, truncated, entries [HistoryEntry], groups
+[{period {id, name, period_type, starts_on, ends_on} | null, subjects
+[{subject {id, name}, count, average_percent, entry_ids}]}]}`;
+`HistoryEntry` = `{kind: "evaluation", id, evaluated_on, subject {id, name},
+evaluation_kind, template_name, author {display_name}, criteria [{title,
+max_score, score, comment}], score_total, max_total, score_percent, feedback,
+course {cohort_name, assessment_title} | null, finalized_at, updated}`. Never
+an author id, a change reason, void fields, a draft, `template_id`,
+`class_session_id` or another student. `kind` is a discriminator later
+issues extend (#82 assignment grades).
+
+**Grouping** (`group_by=school_year|semester|term|none`, default
+`school_year`): an evaluation stores a local `evaluated_on` date and no
+period; each read puts an entry in the **active** academic period of that
+type whose inclusive range holds the date, or in the `period: null` group
+(last); groups by `starts_on` newest first; `none` gives one `null` group.
+Within a group, subjects by name (ignoring case), then id, each with its
+`count`, `average_percent` (the mean of the entries' `score_percent`,
+half-up to two places) and `entry_ids` (newest first). Editing or
+deactivating a period regroups on the next read. Entries are newest first by
+`evaluated_on`, then `finalized_at`, then `id`. A history with no entries
+has no groups.
+
+**Notifications** (never a score, a percentage, feedback, a comment, a
+reason or a tutor name): `academics.evaluation_finalized` `{student_id,
+evaluation_id, subject_id, evaluated_on}` on finalize, to the student's login
+and the accounts of linked, active guardian profiles with academic access
+(computed then); `academics.evaluation_voided` `{student_id, evaluation_id}`
+to the author when someone else voids it. Creates, amendments and deletions
+notify nobody.
+
+**Course assessments** (#85): `course_assessment_id` is an assessment id of
+the cohort's **snapshot** (no foreign key), stored with `cohort_id` and the
+title as it was. Several evaluations of one assessment are allowed; #80
+computes no completion.
+
+**History:** the four tables are audited (the create and update diffs,
+scores included, with prior and new values), readable through
+`audit.view`; families see `updated: true` on an amended evaluation.
+
+**Data** (revision 0054): `evaluation_templates` (`name` 1-120 unique
+ignoring case, `kind`, `subject_id` null = any, `description`, `is_active`,
+`version`), `evaluation_template_criteria` (`position` 1-20 unique per
+template, deferrable; `title`, `description`, `max_score NUMERIC(6,2)`
+0.5-1000), `evaluations` (the copied template name, kind and version,
+`evaluated_on DATE`, optional session and course link, `status`, `feedback`
+≤ 4000, the totals set exactly when final, amendment, void and soft-delete
+columns with their CHECKs) and `evaluation_scores` (the copied criterion and
+`score NUMERIC(6,2)` 0..max), every key `ON DELETE RESTRICT`, with partial
+indexes for the history, the working list, an author's drafts and `(cohort_id,
+course_assessment_id)`.
 
 ### Change requests
 

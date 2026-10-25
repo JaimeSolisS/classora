@@ -360,3 +360,62 @@ describe('closeout review notifications (#78 F1)', () => {
     }
   });
 });
+
+// #80 H1: the evaluation notifications name the evaluation's local date,
+// never a score, a reason or an id, and have no link until #308.
+
+describe('evaluation notifications (#80 H1)', () => {
+  const finalized = {
+    student_id: '00000000-0000-4000-8000-000000000080',
+    evaluation_id: '00000000-0000-4000-8000-000000000081',
+    subject_id: '00000000-0000-4000-8000-000000000082',
+    evaluated_on: '2031-03-04',
+  };
+
+  async function inLanguage(lng: 'es' | 'en', run: () => void): Promise<void> {
+    const previous = i18n.language;
+    await i18n.changeLanguage(lng);
+    try {
+      run();
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  }
+
+  const text = (lng: 'es' | 'en', type: string, params: object) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: params as Record<string, string>,
+    });
+
+  it('renders both types in both languages', async () => {
+    await inLanguage('en', () => {
+      const en = text('en', 'academics.evaluation_finalized', finalized);
+      expect(en).toBe(
+        'A tutor finalized an evaluation from Mar 4, 2031: it is in the academic history.',
+      );
+      expect(en).not.toContain(finalized.evaluation_id);
+      expect(
+        text('en', 'academics.evaluation_voided', {
+          student_id: finalized.student_id,
+          evaluation_id: finalized.evaluation_id,
+        }),
+      ).toBe('A reviewer voided one of your evaluations.');
+    });
+    await inLanguage('es', () => {
+      expect(text('es', 'academics.evaluation_finalized', finalized)).toBe(
+        'Un tutor finalizó una evaluación del 4 mar 2031: ya está en el historial académico.',
+      );
+      expect(text('es', 'academics.evaluation_voided', {})).toBe(
+        'Un revisor anuló una de tus evaluaciones.',
+      );
+    });
+  });
+
+  it('only become read when activated (no page until #308)', () => {
+    expect(
+      NOTIFICATION_LINKS['academics.evaluation_finalized'],
+    ).toBeUndefined();
+    expect(NOTIFICATION_LINKS['academics.evaluation_voided']).toBeUndefined();
+  });
+});

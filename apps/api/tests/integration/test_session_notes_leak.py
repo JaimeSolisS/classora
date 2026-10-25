@@ -1,7 +1,9 @@
-"""The family leak walk (#79 I1; spec §2 "Internal tutor notes are not
-automatically shared with families", §16): **no** ``GET`` route a family
-can reach returns a tutor's internal, unpublished or deleted note, nor
-another student's note.
+"""The family leak walk (#79 I1, #80 I1; spec §2 "Internal tutor notes are
+not automatically shared with families", §4 "grades … visible according to
+permissions", §16): **no** ``GET`` route a family can reach returns a
+tutor's internal, unpublished or deleted note, a draft, deleted or voided
+evaluation, an evaluation's internal change or void reason, nor another
+student's note or evaluation.
 
 Shared infrastructure: later family-facing issues (#80 evaluations, #81
 learning plans, #82 assignments, #83 progress reports, #84 dashboards)
@@ -22,6 +24,11 @@ ones must appear (``shown_on``, the positive control). #79's source writes,
 per student and session: (i) an internal note, (ii) a note published then
 unpublished, (iii) a note published, unpublished and soft-deleted, and a
 published note (visible to that family only: (iv) for the other family).
+#80's source writes, per student: (i) a draft evaluation, (ii) a deleted
+draft, (iii) a final evaluation then voided (its feedback and the void
+reason), (iv) the internal change reason of an amended final evaluation,
+and the amended evaluation's feedback and comment (visible to that family
+only: (v) for the other family), shown on the academic history.
 
 **The walk** (:func:`family_get_routes`): every ``GET`` route of
 ``build_app(include_dev_routes=True)``, except
@@ -69,7 +76,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import build_app
 from app.modules.families.models import Guardian, Student
-from app.modules.identity.permissions import GUARDIAN, STUDENT, TUTOR
+from app.modules.identity.permissions import (
+    ACADEMIC_COORDINATOR,
+    GUARDIAN,
+    STUDENT,
+    TUTOR,
+)
 from tests.authz.harness import api_route_contexts, load_matrix
 from tests.conftest import FrozenClock, frozen_clock
 from tests.factories.base import persist
@@ -87,7 +99,7 @@ from tests.integration.auth_support import (
     create_user,
     signed_headers,
 )
-from tests.integration.catalog_support import get, post
+from tests.integration.catalog_support import get, patch, post
 from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
@@ -134,8 +146,14 @@ class LeakWorld:
     adult_session: str
     group_id: uuid.UUID
     subject_ids: list[uuid.UUID]
+    staff: CreatedUser
+    """An Academic Coordinator (evaluation templates and voids, #80)."""
     note_ids: list[str] = field(default_factory=list)
     """Filled by the canary sources (#79: every note, deleted ones too)."""
+    evaluation_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#80: every evaluation, deleted too)."""
+    template_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#80: the evaluation templates)."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -218,6 +236,7 @@ def build_world(url: str) -> LeakWorld:
     )
     adult_parent, adult_guardian_id = _family_member(url, adult, consent=True)
     tutor = create_user(url, roles=(TUTOR,), display_name="Tutora Fuga")
+    staff = create_user(url, roles=(ACADEMIC_COORDINATOR,), display_name="Coord Fuga")
     group_session = stored(
         url,
         STARTED,
@@ -252,6 +271,7 @@ def build_world(url: str) -> LeakWorld:
         adult_session=adult_session,
         group_id=group_id,
         subject_ids=[row.subject_id for row in rows],
+        staff=staff,
     )
 
 
@@ -320,8 +340,114 @@ def session_note_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     )
 
 
+def evaluation_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#80: per student (both are the world tutor's current assignments),
+    (i) a draft, (ii) a deleted draft, (iii) a final evaluation then voided
+    (its feedback, comment and the void reason), (iv) the change reason of
+    an amended final evaluation, and that evaluation's amended feedback and
+    comment (the student's family may see them; (v) for the other
+    family)."""
+    staff = sign_in(client, world.staff.username)
+    response = post(
+        client,
+        staff,
+        "/api/v1/evaluation-templates",
+        {
+            "name": f"Fuga {uuid.uuid4().hex[:8]}",
+            "kind": "ongoing",
+            "subject_id": str(world.subject_ids[0]),
+            "criteria": [{"title": "Lectura", "max_score": "10"}],
+        },
+    )
+    assert code_of(response) == (201, None), response.text
+    template_id = str(response.json()["id"])
+    world.template_ids.append(template_id)
+    cookie = sign_in(client, world.tutor.username)
+    hidden: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+
+    def canary(kind: str) -> str:
+        return f"CANARY-evaluation-{kind}-{uuid.uuid4().hex}"
+
+    def evaluation(student: uuid.UUID, feedback: str, comment: str) -> str:
+        response = post(
+            client,
+            cookie,
+            "/api/v1/evaluations",
+            {
+                "student_id": str(student),
+                "template_id": template_id,
+                "scores": [{"position": 1, "score": "7", "comment": comment}],
+                "feedback": feedback,
+            },
+        )
+        assert code_of(response) == (201, None), response.text
+        evaluation_id = str(response.json()["id"])
+        world.evaluation_ids.append(evaluation_id)
+        return evaluation_id
+
+    def write(
+        caller: Any, path: str, body: dict[str, Any], *, edit: bool = False
+    ) -> None:
+        send = patch if edit else post
+        response = send(client, caller, path, body)
+        assert code_of(response) == (200, None), response.text
+
+    for student in world.students:
+        draft = (canary("draft"), canary("draft-comment"))
+        evaluation(student, *draft)
+        hidden[student] |= set(draft)
+
+        deleted = (canary("deleted"), canary("deleted-comment"))
+        deleted_id = evaluation(student, *deleted)
+        client.cookies.clear()
+        response = client.delete(
+            f"/api/v1/evaluations/{deleted_id}",
+            params={"version": 1},
+            headers=signed_headers(cookie),
+        )
+        assert response.status_code == 204, response.text
+        hidden[student] |= set(deleted)
+
+        voided = (canary("voided"), canary("voided-comment"))
+        voided_id = evaluation(student, *voided)
+        write(cookie, f"/api/v1/evaluations/{voided_id}/finalize", {"version": 1})
+        reason = canary("void-reason")
+        write(
+            staff,
+            f"/api/v1/evaluations/{voided_id}/void",
+            {"version": 2, "reason": reason},
+        )
+        hidden[student] |= {*voided, reason}
+
+        amended_id = evaluation(student, canary("before"), canary("before-comment"))
+        write(cookie, f"/api/v1/evaluations/{amended_id}/finalize", {"version": 1})
+        change_reason = canary("change-reason")
+        shown = (canary("final"), canary("final-comment"))
+        write(
+            cookie,
+            f"/api/v1/evaluations/{amended_id}",
+            {
+                "version": 2,
+                "change_reason": change_reason,
+                "feedback": shown[0],
+                "scores": [{"position": 1, "score": "8", "comment": shown[1]}],
+            },
+            edit=True,
+        )
+        hidden[student].add(change_reason)
+        visible[student] |= set(shown)
+
+    return Canaries(
+        hidden=hidden,
+        visible=visible,
+        shown_on=["/api/v1/students/{student_id}/academic-history"],
+    )
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
+    evaluation_canaries,
 ]
 
 
@@ -337,6 +463,8 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "student_id": lambda w: [str(s) for s in w.students],
     "class_session_id": lambda w: list(w.sessions),
     "note_id": lambda w: list(w.note_ids),
+    "evaluation_id": lambda w: list(w.evaluation_ids),
+    "template_id": lambda w: list(w.template_ids),
     "group_id": lambda w: [str(w.group_id)],
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
@@ -475,6 +603,13 @@ def test_every_path_parameter_is_mapped():
         "/api/v1/class-sessions/{class_session_id}/notes",
         "/api/v1/students/{student_id}/schedule",
         "/api/v1/notifications",
+        # #80 evaluations
+        "/api/v1/students/{student_id}/academic-history",
+        "/api/v1/students/{student_id}/evaluations",
+        "/api/v1/evaluations/{evaluation_id}",
+        "/api/v1/evaluation-templates",
+        "/api/v1/evaluation-templates/{template_id}",
+        "/api/v1/class-sessions/{class_session_id}/evaluation-context",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
 
@@ -526,3 +661,27 @@ def test_notifications_carry_no_note_text(client, walk):
         types = {item["notification_type"] for item in response.json()["items"]}
         assert "academics.learning_note_published" in types, actor.label
         assert not _leaks(response, every), actor.label
+
+
+def test_evaluation_notifications_carry_ids_only(client, walk):
+    """#80 B3: finalizing notified both families (the student's login and
+    the guardians with academic access), with ids and the date only: no
+    score, percentage, feedback, comment or reason."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(client, cookie, "/api/v1/notifications", limit=100)
+        assert code_of(response) == (200, None)
+        finalized = [
+            item
+            for item in response.json()["items"]
+            if item["notification_type"] == "academics.evaluation_finalized"
+        ]
+        assert finalized, actor.label
+        for item in finalized:
+            assert set(item["params"]) == {
+                "student_id",
+                "evaluation_id",
+                "subject_id",
+                "evaluated_on",
+            }
+            assert item["params"]["student_id"] == str(actor.student_id)

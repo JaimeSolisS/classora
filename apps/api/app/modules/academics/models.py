@@ -37,26 +37,47 @@
   marks an edit. A soft-deleted note (``deleted_at`` /
   ``deleted_by_user_id``, together) is always ``internal``.
 
-``session_closeouts`` and ``session_notes`` are audited (the create and
-update diffs are their record). The two append-only tables are not: a
-trigger rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named events
+- ``evaluation_templates`` and ``evaluation_template_criteria`` (#80 A1):
+  a named template (``diagnostic`` or ``ongoing``, an optional subject)
+  with 1–20 ordered criteria, each with a ``max_score`` (0.5–1000, two
+  places). The template row is the version anchor of its criteria.
+- ``evaluations`` and ``evaluation_scores`` (#80 A1): one tutor's
+  evaluation of one student from a template whose name, kind, version and
+  criteria are **copied** at create (editing the template never changes
+  it). ``draft`` → ``final`` (the totals and ``score_percent`` stored),
+  amendments (``amended_at``, the internal ``last_change_reason``), a staff
+  void (``voided_*``, final only) and a soft delete (drafts only). An
+  ``evaluated_on`` local date, no period column (E3). The optional course
+  link is ``cohort_id`` + a snapshot ``course_assessment_id`` (no foreign
+  key) + its title. The evaluation row is the version anchor of its scores.
+
+``session_closeouts``, ``session_notes`` and the four evaluation tables
+are audited (the create and update diffs are their record). The two
+append-only tables are not: a trigger rejects ``UPDATE``, ``DELETE``
+and ``TRUNCATE`` (42501), and their named events
 (``academics.closeout_approved``, ``academics.closeout_corrected``) are
 their audit record. Every foreign key is ``ON DELETE RESTRICT``.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Final
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -395,3 +416,266 @@ class SessionNote(Audited, SoftDeleteMixin, VersionedMixin, Model):
     deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+
+
+# --- Evaluations (#80) ------------------------------------------------------------
+
+EVALUATION_KINDS: Final = ("diagnostic", "ongoing")
+EVALUATION_STATUSES: Final = ("draft", "final")
+TEMPLATE_NAME_INDEX: Final = "uq_evaluation_templates_name_ci"
+CRITERION_POSITION_UNIQUE: Final = "uq_evaluation_template_criteria_position"
+SCORE_POSITION_UNIQUE: Final = "uq_evaluation_scores_position"
+
+
+def _trimmed_text(column: str, maximum: int, *, nullable: bool) -> CheckConstraint:
+    valid = (
+        f"char_length({column}) BETWEEN 1 AND {maximum} AND {column} = btrim({column})"
+    )
+    return CheckConstraint(
+        f"{column} IS NULL OR ({valid})" if nullable else valid,
+        name=f"{column}_valid",
+    )
+
+
+class EvaluationTemplate(Audited, VersionedMixin, Model):
+    """An evaluation template (#80 A1, C): the version anchor of its
+    criteria (a criteria change bumps ``version`` once). ``kind`` never
+    changes; ``subject_id`` ``NULL`` is "any subject"."""
+
+    __tablename__ = "evaluation_templates"
+    __table_args__ = (
+        _trimmed_text("name", 120, nullable=False),
+        CheckConstraint(_in("kind", EVALUATION_KINDS), name="kind_valid"),
+        _trimmed_text("description", 2000, nullable=True),
+        Index(TEMPLATE_NAME_INDEX, func.lower(text("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20))
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subjects.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class EvaluationTemplateCriterion(Audited, Model):
+    """One criterion of a template, at ``position`` (1-based). Removed
+    criteria are deleted (evaluations keep their copies)."""
+
+    __tablename__ = "evaluation_template_criteria"
+    __table_args__ = (
+        CheckConstraint("position BETWEEN 1 AND 20", name="position_range"),
+        _trimmed_text("title", 120, nullable=False),
+        _trimmed_text("description", 500, nullable=True),
+        CheckConstraint(
+            "max_score >= 0.5 AND max_score <= 1000", name="max_score_range"
+        ),
+        UniqueConstraint(
+            "template_id",
+            "position",
+            name=CRITERION_POSITION_UNIQUE,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
+
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_templates.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    max_score: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+
+
+class Evaluation(Audited, SoftDeleteMixin, VersionedMixin, Model):
+    """One tutor's evaluation of one student (#80 A1, D). Its audit create
+    and update diffs (scores via ``evaluation_scores``, feedback, date,
+    status, amendments, void, deletion) are its edit history (spec §9)."""
+
+    __tablename__ = "evaluations"
+    __table_args__ = (
+        CheckConstraint(_in("kind", EVALUATION_KINDS), name="kind_valid"),
+        CheckConstraint(_in("status", EVALUATION_STATUSES), name="status_valid"),
+        _trimmed_text("template_name", 120, nullable=False),
+        CheckConstraint(
+            "(cohort_id IS NULL) = (course_assessment_id IS NULL)"
+            " AND (cohort_id IS NULL) = (course_assessment_title IS NULL)",
+            name="course_together",
+        ),
+        CheckConstraint(
+            "cohort_id IS NULL OR class_session_id IS NOT NULL",
+            name="course_needs_session",
+        ),
+        CheckConstraint(
+            "course_assessment_title IS NULL"
+            " OR char_length(course_assessment_title) BETWEEN 1 AND 200",
+            name="course_assessment_title_valid",
+        ),
+        CheckConstraint(
+            "feedback IS NULL OR char_length(feedback) BETWEEN 1 AND 4000",
+            name="feedback_valid",
+        ),
+        CheckConstraint(
+            "score_percent >= 0 AND score_percent <= 100", name="score_percent_range"
+        ),
+        CheckConstraint(
+            "(status = 'final') = (finalized_at IS NOT NULL"
+            " AND score_total IS NOT NULL AND max_total IS NOT NULL"
+            " AND score_percent IS NOT NULL)",
+            name="final_totals",
+        ),
+        CheckConstraint(
+            "last_change_reason IS NULL"
+            " OR char_length(last_change_reason) BETWEEN 1 AND 500",
+            name="last_change_reason_valid",
+        ),
+        CheckConstraint(
+            "(voided_at IS NULL) = (voided_by_user_id IS NULL)"
+            " AND (voided_at IS NULL) = (void_reason IS NULL)",
+            name="voided_together",
+        ),
+        CheckConstraint(
+            "void_reason IS NULL OR char_length(void_reason) BETWEEN 1 AND 500",
+            name="void_reason_valid",
+        ),
+        CheckConstraint("voided_at IS NULL OR status = 'final'", name="voided_final"),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="deleted_together",
+        ),
+        CheckConstraint("deleted_at IS NULL OR status = 'draft'", name="deleted_draft"),
+        # The history (F2), newest first (read backwards).
+        Index(
+            "ix_evaluations_student_id_evaluated_on",
+            "student_id",
+            "evaluated_on",
+            "id",
+            postgresql_where=text("status = 'final' AND voided_at IS NULL"),
+        ),
+        # The working list (E2), newest first (read backwards).
+        Index(
+            "ix_evaluations_student_id_created_at",
+            "student_id",
+            "created_at",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_evaluations_author_user_id_drafts",
+            "author_user_id",
+            postgresql_where=text("status = 'draft' AND deleted_at IS NULL"),
+        ),
+        # #85: the evaluations of one cohort assessment.
+        Index(
+            "ix_evaluations_cohort_id_course_assessment_id",
+            "cohort_id",
+            "course_assessment_id",
+            postgresql_where=text("cohort_id IS NOT NULL"),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT")
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_templates.id", ondelete="RESTRICT")
+    )
+    template_version: Mapped[int] = mapped_column(Integer)
+    template_name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20))
+    evaluated_on: Mapped[date] = mapped_column(Date)
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_cohorts.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    course_assessment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    """A ``course_template_snapshots`` assessment id (no foreign key, E7)."""
+    course_assessment_title: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(10), server_default=text("'draft'"))
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score_total: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    max_total: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    score_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    amended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Internal (E4): never returned to families."""
+    voided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    voided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+
+
+class EvaluationScore(Audited, Model):
+    """One criterion of an evaluation, copied from the template at create
+    (title, description, max score), with its score (``NULL`` until
+    scored) and an optional comment."""
+
+    __tablename__ = "evaluation_scores"
+    __table_args__ = (
+        CheckConstraint("position BETWEEN 1 AND 20", name="position_range"),
+        _trimmed_text("criterion_title", 120, nullable=False),
+        CheckConstraint(
+            "criterion_description IS NULL"
+            " OR char_length(criterion_description) BETWEEN 1 AND 500",
+            name="criterion_description_valid",
+        ),
+        CheckConstraint(
+            "max_score >= 0.5 AND max_score <= 1000", name="max_score_range"
+        ),
+        CheckConstraint(
+            "score IS NULL OR (score >= 0 AND score <= max_score)",
+            name="score_range",
+        ),
+        CheckConstraint(
+            "comment IS NULL OR char_length(comment) BETWEEN 1 AND 1000",
+            name="comment_valid",
+        ),
+        UniqueConstraint("evaluation_id", "position", name=SCORE_POSITION_UNIQUE),
+    )
+
+    evaluation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluations.id", ondelete="RESTRICT")
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    criterion_title: Mapped[str] = mapped_column(String(120))
+    criterion_description: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    max_score: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)

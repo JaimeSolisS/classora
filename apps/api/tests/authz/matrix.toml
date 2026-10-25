@@ -590,6 +590,15 @@ json = { version = 1, override = { codes = ["outside_operating_hours"], reason =
 
 [[route]]
 method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/evaluation-context"
+access = "authenticated"
+# #80 AM1: the record policy (the session's current tutor only; anyone else,
+# staff included, the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_evaluations.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/class-sessions/{class_session_id}/notes"
 access = "authenticated"
 # #79 E1: the record policy (the session's current tutor, or an
@@ -904,6 +913,96 @@ permission = "catalog.manage"
 allow = ["owner", "administrator"]
 # An empty body gets 422 for the allowed roles.
 json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates"
+access = "authenticated"
+# #80 C2/C3: evaluation.manage holders and tutor-role users read; anyone
+# else gets 403 permission_denied from the record policy (not a require():
+# tutors hold no permission for it). The matrix sends an invalid kind, so
+# every signed-in role gets the schema's 422 first (C2 order: 422 before
+# 403). The 200 and 403 cases are tested in
+# tests/integration/test_evaluations.py.
+query = { kind = "matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluation-templates"
+access = "permission"
+permission = "evaluation.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #80 C1: an empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates/{template_id}"
+access = "authenticated"
+# #80 C2: as the list (403 permission_denied for callers without
+# evaluation.manage or the tutor role, before the 404). The matrix sends a
+# non-UUID id, so every signed-in role gets the schema's 422 first. The 200,
+# 403 and 404 cases are tested in tests/integration/test_evaluations.py.
+path_params = { template_id = "matrix" }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/evaluation-templates/{template_id}"
+access = "permission"
+permission = "evaluation.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #80 C1: an empty body gets 422 for the allowed roles: nothing changes.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations"
+access = "authenticated"
+# #80 D2: the record policy (a tutor currently teaching the student; a
+# reviewer 403 evaluation_tutor_only after the 404). A valid body; the
+# placeholder student is unknown: 404 for every role. The 201, 403, 409 and
+# 422 cases are tested in tests/integration/test_evaluations.py.
+json = { student_id = "00000000-0000-4000-8000-000000000080", template_id = "00000000-0000-4000-8000-000000000081" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D7: the evaluation record policy (the author). The placeholder id is
+# no evaluation: 404 for every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_evaluations.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D8: the evaluation record policy. The placeholder id is no evaluation:
+# 404 for every role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D4: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/finalize"
+access = "authenticated"
+# #80 D5: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/void"
+access = "authenticated"
+# #80 D6: the record policy, then 403 permission_denied without
+# evaluation.manage (after the 404: a hidden evaluation stays hidden). The
+# placeholder id is no evaluation: 404 for every role. The 200, 403 and 409
+# cases are tested in tests/integration/test_evaluations.py.
+json = { version = 1, reason = "Matrix" }
 
 [[route]]
 method = "GET"
@@ -1327,6 +1426,18 @@ allow = ["owner", "administrator", "academic_coordinator"]
 json = {}
 
 [[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/academic-history"
+access = "authenticated"
+# #80 F1: reviewers, tutors with the student assigned, a former author (own
+# entries), the student and linked guardians with academic access (403
+# student_consent_required for a guardian of an adult without it); anyone
+# else the 404 of an unknown id. The placeholder id is no student: 404 for
+# every role. The 200 and 403 cases are in
+# tests/integration/test_evaluations.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
 method = "PUT"
 path = "/api/v1/students/{student_id}/account"
 access = "permission"
@@ -1360,6 +1471,14 @@ access = "permission"
 permission = "consent.record"
 allow = ["owner", "administrator", "student", "guardian"]
 # The placeholder ids are no student or consent: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/evaluations"
+access = "authenticated"
+# #80 E1: the record policy (reviewers, tutors with the student assigned, a
+# former author for their own). The placeholder id is no student: 404 for
+# every role.
 
 [[route]]
 method = "POST"
