@@ -405,7 +405,13 @@
       "approveHelp": "Approving applies the change. Offered classes go back to unassigned; confirmed classes keep their tutor and are marked as needing reassignment."
     },
     "closeout": {
-      "openSession": "Open session"
+      "review": "Review",
+      "kinds": {
+        "first": "New",
+        "resubmission": "Resubmitted",
+        "correction": "Correction"
+      },
+      "approvedMinutes": "Approved now: {{minutes}} min"
     }
   },
   "users": {
@@ -1468,7 +1474,10 @@
       "scheduling_change_request_rejected_reschedule": "Your request to move the class on {{starts_at}} was rejected; the class stays as scheduled.",
       "staff_availability_change_approved": "Your availability change was approved. Classes flagged for reassignment: {{affected_count}}.",
       "staff_availability_change_rejected": "Your availability change was rejected. See the reason in your availability.",
-      "scheduling_reassignment_needed": "{{tutor_name}}'s availability changed: {{session_count}} classes need another tutor, the first on {{first_starts_at}}."
+      "scheduling_reassignment_needed": "{{tutor_name}}'s availability changed: {{session_count}} classes need another tutor, the first on {{first_starts_at}}.",
+      "academics_closeout_approved": "Your closeout of the {{subject_name}} class on {{starts_at}} was approved: {{approved_minutes}} min.",
+      "academics_closeout_corrected": "A reviewer corrected your closeout of the {{subject_name}} class on {{starts_at}}.",
+      "academics_closeout_changes_requested": "Changes were requested to your closeout of the {{subject_name}} class on {{starts_at}}."
     }
   },
   "scheduling": {
@@ -2997,6 +3006,75 @@
       "more_other": "{{count}} min more than scheduled",
       "less_one": "{{count}} min less than scheduled",
       "less_other": "{{count}} min less than scheduled"
+    },
+    "review": {
+      "correctionSubmitted": "Correction submitted",
+      "changesRequested": "Changes requested",
+      "approvedBadge": "Approved · {{minutes}} min by {{name}}, {{when}}",
+      "approvedShort": "Approved · {{minutes}} min",
+      "reviewReason": "Reviewer's reason",
+      "tutorNote": "Tutor's reason",
+      "approve": "Approve",
+      "requestChanges": "Request changes",
+      "correct": "Correct",
+      "reapprove": "Re-approve",
+      "attendanceChanged": "Attendance changed since approval.",
+      "reload": "Reload",
+      "cancel": "Cancel",
+      "reason": "Reason",
+      "reasonRequired": "Give a reason.",
+      "reasonTooLong": "The reason can have at most 1000 characters.",
+      "approveDialog": {
+        "title": "Approve closeout",
+        "description": "The approval is kept for payroll. A later correction adds a new approval; this one is never edited.",
+        "minutes": "Actual: {{actual}} of {{scheduled}} min",
+        "submit": "Approve",
+        "submitting": "Approving…"
+      },
+      "requestDialog": {
+        "title": "Request changes",
+        "description": "The tutor sees your reason, can fix the attendance, minutes and summary, and resubmits.",
+        "reason": "What should the tutor change?",
+        "submit": "Send back to the tutor",
+        "submitting": "Sending…"
+      },
+      "correctDialog": {
+        "title": "Correct closeout",
+        "reapproveTitle": "Re-approve closeout",
+        "description": "Change the minutes or the summary and give a reason. The tutor is notified.",
+        "reapproveDescription": "The attendance changed since the last approval. Saving approves the closeout again with the current attendance.",
+        "approvedNote": "Saving creates a new approval.",
+        "reason": "Reason for the correction",
+        "submit": "Save correction",
+        "reapproveSubmit": "Re-approve",
+        "submitting": "Saving…"
+      },
+      "notices": {
+        "approved": "Closeout approved.",
+        "changesRequested": "Closeout sent back to the tutor.",
+        "corrected": "Closeout corrected."
+      },
+      "history": {
+        "heading": "History",
+        "revision": "Approval {{revision}} · {{minutes}} min · {{name}}, {{when}}",
+        "sources": {
+          "review": "reviewed",
+          "staff_correction": "correction"
+        },
+        "correction": "Correction by {{name}}, {{when}}",
+        "fields": "Changed: {{fields}}",
+        "minutes": "Minutes: {{previous}} → {{next}}",
+        "reapproval": "Attendance re-approved",
+        "reason": "Reason: {{reason}}",
+        "reasonHidden": "Reason visible to academic reviewers",
+        "current": "(in force)"
+      },
+      "tutor": {
+        "changesRequested": "Changes requested: {{reason}}",
+        "changesRequestedNoReason": "Changes requested",
+        "approved": "Approved · {{minutes}} min",
+        "correctionSubmitted": "Correction submitted for review"
+      }
     }
   }
 }

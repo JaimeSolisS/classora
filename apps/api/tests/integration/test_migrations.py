@@ -71,7 +71,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0050"
+HEAD = "0051"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -129,6 +129,14 @@ AVAILABILITY_CHANGE_TABLES = [
 ]
 ATTENDANCE_TABLES = ["class_session_attendance", "class_session_attendance_corrections"]
 CLOSEOUT_TABLES = ["session_closeouts"]
+CLOSEOUT_REVIEW_TABLES = ["session_closeout_approvals", "session_closeout_corrections"]
+CLOSEOUT_REVIEW_COLUMNS = {
+    "last_submitted_at",
+    "review_reason",
+    "tutor_note",
+    "current_approval_id",
+}
+"""The session_closeouts columns revision 0051 adds (#78 A1)."""
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -332,6 +340,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *AVAILABILITY_CHANGE_TABLES,
             *ATTENDANCE_TABLES,
             *CLOSEOUT_TABLES,
+            *CLOSEOUT_REVIEW_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4353,9 +4362,31 @@ def _of_0050(diff: Any) -> bool:
     return False
 
 
+def _of_0051(diff: Any) -> bool:
+    """A metadata difference that revision 0051 adds: the two review tables
+    (and their indexes), the session_closeouts columns and the current
+    approval key (its CHECKs are not compared)."""
+    if diff[0] == "add_table":
+        return diff[1].name in CLOSEOUT_REVIEW_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in CLOSEOUT_REVIEW_TABLES
+    if diff[0] == "add_column":
+        return diff[2] == "session_closeouts" and diff[3].name in (
+            CLOSEOUT_REVIEW_COLUMNS
+        )
+    if diff[0] == "add_fk":
+        return diff[1].name == "fk_session_closeouts_current_approval_id"
+    return False
+
+
+def _of_0050_on(diff: Any) -> bool:
+    """A metadata difference that revision 0050 or a later one adds."""
+    return _of_0050(diff) or _of_0051(diff)
+
+
 def _of_0049_on(diff: Any) -> bool:
     """A metadata difference that revision 0049 or a later one adds."""
-    return _of_0049(diff) or _of_0050(diff)
+    return _of_0049(diff) or _of_0050_on(diff)
 
 
 def _of_0048_on(diff: Any) -> bool:
@@ -7984,7 +8015,7 @@ def test_0049_adds_the_attendance_tables_and_downgrade_drops_them(fresh_database
     command.upgrade(config, "0049")
 
     assert version_nums(dsn) == ["0049"]
-    assert [d for d in metadata_diff(dsn) if not _of_0050(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0050_on(d)] == []
     assert public_tables(dsn) - before == set(ATTENDANCE_TABLES)
     world = _attendance_world(dsn)
     [mark] = run_sql(dsn, ATTENDANCE_INSERT, world | {"status": "present"})
@@ -8135,12 +8166,20 @@ def test_attendance_rows_are_checked_and_corrections_never_change(fresh_database
 
 # --- 0050: session closeouts (#77 A2) -------------------------------------------------
 
-CLOSEOUT_INSERT = (
+CLOSEOUT_INSERT_0050 = (
     "INSERT INTO session_closeouts (class_session_id, tutor_user_id, status,"
     " topics, performance, homework, next_steps, submitted_at)"
     " VALUES (:s, :u, :status, :topics, :performance, :homework, :next_steps,"
     " now()) RETURNING id"
 )
+CLOSEOUT_INSERT = (
+    "INSERT INTO session_closeouts (class_session_id, tutor_user_id, status,"
+    " topics, performance, homework, next_steps, submitted_at,"
+    " last_submitted_at)"
+    " VALUES (:s, :u, :status, :topics, :performance, :homework, :next_steps,"
+    " now(), now()) RETURNING id"
+)
+"""At head (0051 adds ``last_submitted_at``)."""
 
 
 def _closeout_values(dsn: str) -> dict[str, Any]:
@@ -8165,15 +8204,15 @@ def test_0050_adds_the_closeout_table_and_downgrade_drops_it(fresh_database_url)
     command.upgrade(config, "0050")
 
     assert version_nums(dsn) == ["0050"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0051(d)] == []
     assert public_tables(dsn) - before == set(CLOSEOUT_TABLES)
-    run_sql(dsn, CLOSEOUT_INSERT, _closeout_values(dsn))
+    run_sql(dsn, CLOSEOUT_INSERT_0050, _closeout_values(dsn))
 
     command.downgrade(config, "0049")
 
     assert version_nums(dsn) == ["0049"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0050(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0050_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -8195,11 +8234,17 @@ def test_closeout_columns_constraints_and_indexes(fresh_database_url):
         "homework": ("text", "YES", None, None),
         "next_steps": ("text", "YES", None, None),
         "submitted_at": ("timestamp with time zone", "NO", None, None),
+        # #78 A1.
+        "last_submitted_at": ("timestamp with time zone", "NO", None, None),
+        "review_reason": ("text", "YES", None, None),
+        "tutor_note": ("text", "YES", None, None),
+        "current_approval_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(dsn, table)
     foreign_keys = {
         f"fk_{table}_class_session_id_class_sessions",
         f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_current_approval_id",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -8209,12 +8254,21 @@ def test_closeout_columns_constraints_and_indexes(fresh_database_url):
         f"ck_{table}_performance_length",
         f"ck_{table}_homework_length",
         f"ck_{table}_next_steps_length",
+        f"ck_{table}_review_reason_valid",
+        f"ck_{table}_tutor_note_valid",
+        f"ck_{table}_changes_requested_reason",
+        f"ck_{table}_approved_has_approval",
         *foreign_keys,
     }
     for name in foreign_keys:
         assert "ON DELETE RESTRICT" in constraints[name]
-    # A CHECK, not an enum type: #78 widens it.
-    assert "'submitted'" in constraints[f"ck_{table}_status_valid"]
+    assert (
+        "DEFERRABLE INITIALLY DEFERRED"
+        in constraints[f"fk_{table}_current_approval_id"]
+    )
+    # A CHECK, not an enum type: #78 widened it.
+    for status in ("'submitted'", "'changes_requested'", "'approved'"):
+        assert status in constraints[f"ck_{table}_status_valid"]
     assert set(_indexes(dsn, table)) == {
         f"pk_{table}",
         f"uq_{table}_class_session_id",
@@ -8228,7 +8282,7 @@ def test_closeout_rows_are_checked(fresh_database_url):
     values = _closeout_values(dsn)
 
     for changes, constraint in (
-        ({"status": "approved"}, "status_valid"),
+        ({"status": "closed"}, "status_valid"),
         ({"topics": ""}, "topics_length"),
         ({"performance": "x" * 2001}, "performance_length"),
         ({"homework": ""}, "homework_length"),
@@ -8253,3 +8307,297 @@ def test_closeout_rows_are_checked(fresh_database_url):
         dsn, "SELECT version FROM session_closeouts WHERE id = :id", {"id": row.id}
     )
     assert version.version == 1
+
+
+# --- 0051: closeout review (#78 A1, I6) ----------------------------------------------
+
+APPROVAL_INSERT = (
+    "INSERT INTO session_closeout_approvals (closeout_id, revision,"
+    " supersedes_approval_id, source, class_session_id, tutor_user_id,"
+    " session_starts_at, session_kind, scheduled_minutes, approved_minutes,"
+    " attendance, approved_by_user_id, approved_at)"
+    " VALUES (:c, :revision, :supersedes, :source, :s, :u, now(), 'individual',"
+    " 60, :minutes, '{}'::jsonb, :u, now()) RETURNING id"
+)
+CLOSEOUT_CORRECTION_INSERT = (
+    "INSERT INTO session_closeout_corrections (closeout_id, fields,"
+    " previous_minutes, new_minutes, reason, closeout_status, approval_id,"
+    " corrected_by_user_id)"
+    " VALUES (:c, CAST(:fields AS text[]), :previous, :new, :reason, :status,"
+    " :approval, :u) RETURNING id"
+)
+
+
+def _review_world(dsn: str) -> dict[str, Any]:
+    values = _closeout_values(dsn)
+    [closeout] = run_sql(dsn, CLOSEOUT_INSERT, values)
+    return {"c": closeout.id, "s": values["s"], "u": values["u"]}
+
+
+def test_0051_adds_the_review_objects_and_downgrade_drops_them(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0050")
+    before = public_tables(dsn)
+    values = _closeout_values(dsn)
+    [existing] = run_sql(dsn, CLOSEOUT_INSERT_0050, values)
+
+    command.upgrade(config, "0051")
+
+    assert version_nums(dsn) == ["0051"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(CLOSEOUT_REVIEW_TABLES)
+    # last_submitted_at is backfilled from submitted_at.
+    [row] = run_sql(
+        dsn,
+        "SELECT submitted_at, last_submitted_at, status, current_approval_id"
+        " FROM session_closeouts WHERE id = :id",
+        {"id": existing.id},
+    )
+    assert row.last_submitted_at == row.submitted_at
+    assert (row.status, row.current_approval_id) == ("submitted", None)
+
+    command.downgrade(config, "0050")
+
+    assert version_nums(dsn) == ["0050"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0051(d)] == []
+    assert not run_sql(
+        dsn, "SELECT 1 FROM pg_proc WHERE proname LIKE 'session_closeout_%'"
+    )
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_closeout_review_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+
+    table = "session_closeout_approvals"
+    assert _columns(dsn, table) == {
+        **standard,
+        "closeout_id": ("uuid", "NO", None, None),
+        "revision": ("integer", "NO", None, None),
+        "supersedes_approval_id": ("uuid", "YES", None, None),
+        "source": ("character varying", "NO", 20, None),
+        "class_session_id": ("uuid", "NO", None, None),
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "session_starts_at": ("timestamp with time zone", "NO", None, None),
+        "session_kind": ("character varying", "NO", 20, None),
+        "scheduled_minutes": ("integer", "NO", None, None),
+        "approved_minutes": ("integer", "NO", None, None),
+        "attendance": ("jsonb", "NO", None, None),
+        "approved_by_user_id": ("uuid", "NO", None, None),
+        "approved_at": ("timestamp with time zone", "NO", None, None),
+    }
+    constraints = _constraints(dsn, table)
+    foreign_keys = {
+        f"fk_{table}_closeout_id_session_closeouts",
+        f"fk_{table}_supersedes_approval_id",
+        f"fk_{table}_class_session_id_class_sessions",
+        f"fk_{table}_tutor_user_id_users",
+        f"fk_{table}_approved_by_user_id_users",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"uq_{table}_revision",
+        f"uq_{table}_supersedes_approval_id",
+        f"ck_{table}_revision_positive",
+        f"ck_{table}_revision_supersedes",
+        f"ck_{table}_source_valid",
+        f"ck_{table}_approved_minutes_range",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(dsn, table)) == {
+        f"pk_{table}",
+        f"uq_{table}_revision",
+        f"uq_{table}_supersedes_approval_id",
+        f"ix_{table}_tutor_user_id_session_starts_at",
+    }
+
+    table = "session_closeout_corrections"
+    assert _columns(dsn, table) == {
+        **standard,
+        "closeout_id": ("uuid", "NO", None, None),
+        "fields": ("ARRAY", "NO", None, None),
+        "previous_minutes": ("integer", "YES", None, None),
+        "new_minutes": ("integer", "YES", None, None),
+        "reason": ("text", "NO", None, None),
+        "closeout_status": ("character varying", "NO", 20, None),
+        "approval_id": ("uuid", "YES", None, None),
+        "corrected_by_user_id": ("uuid", "NO", None, None),
+    }
+    constraints = _constraints(dsn, table)
+    foreign_keys = {
+        f"fk_{table}_closeout_id_session_closeouts",
+        f"fk_{table}_approval_id",
+        f"fk_{table}_corrected_by_user_id_users",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"ck_{table}_fields_valid",
+        f"ck_{table}_fields_or_reapproval",
+        f"ck_{table}_minutes_with_field",
+        f"ck_{table}_new_minutes_range",
+        f"ck_{table}_reason_valid",
+        f"ck_{table}_closeout_status_valid",
+        f"ck_{table}_approval_when_approved",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert set(_indexes(dsn, table)) == {
+        f"pk_{table}",
+        f"ix_{table}_closeout_id",
+    }
+
+
+def test_closeout_review_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    world = _review_world(dsn)
+    closeout = {"c": world["c"]}
+
+    # session_closeouts: the widened status set and its two CHECKs.
+    for statement, constraint in (
+        (
+            "UPDATE session_closeouts SET status = 'closed' WHERE id = :c",
+            "status_valid",
+        ),
+        (
+            "UPDATE session_closeouts SET status = 'changes_requested' WHERE id = :c",
+            "changes_requested_reason",
+        ),
+        (
+            "UPDATE session_closeouts SET review_reason = ' x ' WHERE id = :c",
+            "review_reason_valid",
+        ),
+        (
+            "UPDATE session_closeouts SET tutor_note = repeat('x', 1001) WHERE id = :c",
+            "tutor_note_valid",
+        ),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, statement, closeout)
+    # approved needs a current revision (checked at once) ...
+    with pytest.raises(IntegrityError, match="approved_has_approval"):
+        run_sql(
+            dsn,
+            "UPDATE session_closeouts SET status = 'approved' WHERE id = :c",
+            closeout,
+        )
+    # ... and the key to it is deferred to the commit.
+    with pytest.raises(
+        IntegrityError, match="fk_session_closeouts_current_approval_id"
+    ):
+        run_sql(
+            dsn,
+            "UPDATE session_closeouts SET status = 'approved',"
+            " current_approval_id = uuidv7() WHERE id = :c",
+            closeout,
+        )
+
+    base = world | {
+        "revision": 1,
+        "supersedes": None,
+        "source": "review",
+        "minutes": 55,
+    }
+    for changes, constraint in (
+        ({"revision": 0}, "revision_positive"),
+        ({"revision": 2}, "revision_supersedes"),
+        ({"source": "payroll"}, "source_valid"),
+        ({"minutes": 721}, "approved_minutes_range"),
+        ({"minutes": -1}, "approved_minutes_range"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, APPROVAL_INSERT, base | changes)
+    [first] = run_sql(dsn, APPROVAL_INSERT, base | {"minutes": 720})
+    with pytest.raises(IntegrityError, match="revision_supersedes"):
+        run_sql(dsn, APPROVAL_INSERT, base | {"supersedes": first.id})
+    with pytest.raises(IntegrityError, match="uq_session_closeout_approvals_revision"):
+        run_sql(dsn, APPROVAL_INSERT, base)
+    second = base | {
+        "revision": 2,
+        "supersedes": first.id,
+        "source": "staff_correction",
+    }
+    run_sql(dsn, APPROVAL_INSERT, second)
+    # Never two revisions superseding the same one (H2 backstop).
+    with pytest.raises(
+        IntegrityError, match="uq_session_closeout_approvals_supersedes_approval_id"
+    ):
+        run_sql(dsn, APPROVAL_INSERT, second | {"revision": 3})
+    run_sql(
+        dsn,
+        "UPDATE session_closeouts SET status = 'approved', current_approval_id = :a"
+        " WHERE id = :c",
+        closeout | {"a": first.id},
+    )
+
+    correction = world | {
+        "fields": ["actual_minutes"],
+        "previous": 55,
+        "new": 50,
+        "reason": "Terminó antes",
+        "status": "submitted",
+        "approval": None,
+    }
+    for changes, constraint in (
+        ({"fields": ["room"]}, "fields_valid"),
+        ({"fields": [], "new": None}, "fields_or_reapproval"),
+        ({"new": None}, "minutes_with_field"),
+        ({"fields": ["topics"]}, "minutes_with_field"),
+        ({"new": 721}, "new_minutes_range"),
+        ({"reason": " "}, "reason_valid"),
+        ({"reason": " padded "}, "reason_valid"),
+        ({"reason": "x" * 1001}, "reason_valid"),
+        ({"status": "changes_requested"}, "closeout_status_valid"),
+        ({"status": "approved"}, "approval_when_approved"),
+        ({"approval": first.id}, "approval_when_approved"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, CLOSEOUT_CORRECTION_INSERT, correction | changes)
+    [fixed] = run_sql(
+        dsn, CLOSEOUT_CORRECTION_INSERT, correction | {"reason": "x" * 1000}
+    )
+    # An attendance re-approval: no field, a revision.
+    run_sql(
+        dsn,
+        CLOSEOUT_CORRECTION_INSERT,
+        correction
+        | {"fields": [], "new": None, "status": "approved", "approval": first.id},
+    )
+
+    # Append-only: UPDATE, DELETE and TRUNCATE raise 42501 on both tables.
+    for statement, row_id in (
+        (
+            "UPDATE session_closeout_approvals SET approved_minutes = 1 WHERE id = :id",
+            first.id,
+        ),
+        ("DELETE FROM session_closeout_approvals WHERE id = :id", first.id),
+        ("TRUNCATE session_closeout_approvals CASCADE", first.id),
+        (
+            "UPDATE session_closeout_corrections SET reason = 'Otra' WHERE id = :id",
+            fixed.id,
+        ),
+        ("DELETE FROM session_closeout_corrections WHERE id = :id", fixed.id),
+        ("TRUNCATE session_closeout_corrections", fixed.id),
+    ):
+        with pytest.raises(DBAPIError) as raised:
+            run_sql(dsn, statement, {"id": row_id})
+        assert getattr(raised.value.orig, "sqlstate", None) == "42501"
+    # A closeout with revisions and corrections can't be deleted (RESTRICT).
+    run_sql(
+        dsn,
+        "UPDATE session_closeouts SET current_approval_id = NULL,"
+        " status = 'submitted' WHERE id = :c",
+        closeout,
+    )
+    with pytest.raises(IntegrityError, match="fk_session_closeout_"):
+        run_sql(dsn, "DELETE FROM session_closeouts WHERE id = :c", closeout)

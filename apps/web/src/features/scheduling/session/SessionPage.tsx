@@ -32,15 +32,23 @@ import {
   fetchAttendance,
 } from '@/features/tutor-portal/attendance/api';
 import {
+  approveCloseout,
   closeoutKey,
+  correctCloseout,
   fetchCloseout,
+  requestCloseoutChanges,
 } from '@/features/tutor-portal/closeout/api';
+import { APPROVALS_QUERY_KEY } from '@/features/approvals/api';
 import { changeRequestPath } from '../change-requests/rules';
 import {
   AttendanceSection,
   type AttendanceSectionState,
 } from './AttendanceSection';
-import { CloseoutSection, type CloseoutSectionState } from './CloseoutSection';
+import {
+  CloseoutSection,
+  type CloseoutReviewActions,
+  type CloseoutSectionState,
+} from './CloseoutSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
 import {
@@ -330,6 +338,8 @@ export function SessionPage() {
         await Promise.all([
           refresh(),
           client.invalidateQueries({ queryKey: attendanceKey(sessionId) }),
+          // #78 E6: the closeout's "attendance changed since approval".
+          client.invalidateQueries({ queryKey: closeoutKey(sessionId) }),
         ]);
         window.setTimeout(
           () => announce(t('attendance.section.correctedNotice'), 'status'),
@@ -354,8 +364,39 @@ export function SessionPage() {
   } else {
     closeoutState = { status: 'ready', closeout: closeout.data };
   }
+  // #78 G1: the review decisions, each with the closeout's version.
+  async function afterDecision(notice: string) {
+    await Promise.all([
+      refresh(),
+      client.invalidateQueries({ queryKey: closeoutKey(sessionId) }),
+      client.invalidateQueries({ queryKey: APPROVALS_QUERY_KEY }),
+    ]);
+    window.setTimeout(() => announce(notice, 'status'), 0);
+  }
+  const closeoutReview: CloseoutReviewActions = {
+    onApprove: async (version) => {
+      await approveCloseout(sessionId, version);
+      await afterDecision(t('closeout.review.notices.approved'));
+    },
+    onRequestChanges: async (version, reason) => {
+      await requestCloseoutChanges(sessionId, version, reason);
+      await afterDecision(t('closeout.review.notices.changesRequested'));
+    },
+    onCorrect: async (body) => {
+      await correctCloseout(sessionId, body);
+      await afterDecision(t('closeout.review.notices.corrected'));
+    },
+    onReload: () => {
+      void refresh();
+      void client.invalidateQueries({ queryKey: closeoutKey(sessionId) });
+    },
+  };
   const closeoutSection = showCloseout ? (
-    <CloseoutSection state={closeoutState} timeZone={timeZone} />
+    <CloseoutSection
+      state={closeoutState}
+      timeZone={timeZone}
+      review={closeoutReview}
+    />
   ) : null;
   const actions =
     showCancel && detail ? (

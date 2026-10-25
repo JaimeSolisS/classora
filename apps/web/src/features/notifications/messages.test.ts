@@ -286,3 +286,66 @@ describe('availability change notifications (#63)', () => {
     );
   });
 });
+
+// #78 F1: the tutor's closeout decisions (no reason in the params) open the
+// closeout.
+
+describe('closeout review notifications (#78 F1)', () => {
+  const closeout = {
+    class_session_id: '00000000-0000-4000-8000-000000000078',
+    starts_at: '2031-01-08T22:00:00Z',
+    subject_name: 'Matemáticas',
+  };
+  const when = (lng: 'es' | 'en') => (instant: string) =>
+    formatInstant(instant, {
+      timeZone: 'America/Mexico_City',
+      language: lng,
+      style: 'dateTime',
+    });
+  const text = (
+    lng: 'es' | 'en',
+    type: string,
+    extra: Record<string, number | null> = {},
+  ) =>
+    notificationMessage(
+      i18n.getFixedT(lng),
+      i18n,
+      { notification_type: type, params: { ...closeout, ...extra } },
+      when(lng),
+    );
+
+  it('renders the three types in both languages', () => {
+    expect(
+      text('en', 'academics.closeout_approved', { approved_minutes: 50 }),
+    ).toBe(
+      'Your closeout of the Matemáticas class on Jan 8, 2031, 4:00 PM was approved: 50 min.',
+    );
+    expect(
+      text('es', 'academics.closeout_approved', { approved_minutes: 50 }),
+    ).toBe(
+      'Se aprobó tu cierre de la clase de Matemáticas del 8 ene 2031, 16:00: 50 min.',
+    );
+    expect(text('en', 'academics.closeout_changes_requested')).toBe(
+      'Changes were requested to your closeout of the Matemáticas class on Jan 8, 2031, 4:00 PM.',
+    );
+    expect(
+      text('es', 'academics.closeout_corrected', { approved_minutes: null }),
+    ).toBe(
+      'Un revisor corrigió tu cierre de la clase de Matemáticas del 8 ene 2031, 16:00.',
+    );
+  });
+
+  it('links each type to the closeout', () => {
+    const recipient = { userId: '00000000-0000-4000-8000-0000000000aa' };
+    for (const type of [
+      'academics.closeout_approved',
+      'academics.closeout_corrected',
+      'academics.closeout_changes_requested',
+    ]) {
+      expect(NOTIFICATION_LINKS[type]?.(closeout, recipient)).toBe(
+        `/my-schedule/sessions/${closeout.class_session_id}/closeout`,
+      );
+      expect(NOTIFICATION_LINKS[type]?.({}, recipient)).toBe('/my-schedule');
+    }
+  });
+});

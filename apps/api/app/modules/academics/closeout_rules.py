@@ -151,3 +151,91 @@ def sees_summary(principal: Principal, tutor_user_id: uuid.UUID | None) -> bool:
     return is_current_tutor(principal, tutor_user_id) or principal.has(
         TEACHING_HOURS_APPROVE
     )
+
+
+# --- Review (#78 A3, E7) ---------------------------------------------------------
+
+SUBMITTED: Final = "submitted"
+CHANGES_REQUESTED: Final = "changes_requested"
+APPROVED: Final = "approved"
+
+OWNER_ROLE: Final = "owner"
+"""The identity catalog's code (repeated here: ADR-0002)."""
+
+REASON_MAX: Final = 1000
+CORRECTABLE_FIELDS: Final = ("actual_minutes", *SUMMARY_FIELDS)
+
+type ReviewAction = Literal["approve", "request_changes", "correct", "tutor_update"]
+"""``tutor_update``: the tutor's ``PUT`` (a resubmission from
+``changes_requested`` or a correction request from ``approved``)."""
+
+REVIEW_ACTIONS: Final[Mapping[str, frozenset[ReviewAction]]] = {
+    SUBMITTED: frozenset({"approve", "request_changes", "correct"}),
+    CHANGES_REQUESTED: frozenset({"tutor_update"}),
+    APPROVED: frozenset({"correct", "tutor_update"}),
+}
+"""The actions each closeout status takes (the #78 status machine)."""
+
+NOT_SUBMITTED: Final = "closeout_not_submitted"
+WITH_TUTOR: Final = "closeout_with_tutor"
+UNDER_REVIEW: Final = "closeout_under_review"
+
+type ReviewBlock = Literal[
+    "closeout_not_submitted", "closeout_with_tutor", "closeout_under_review"
+]
+
+type KindOfReview = Literal["first", "resubmission", "correction"]
+
+
+def review_block(status: str, action: ReviewAction) -> ReviewBlock | None:
+    """Why ``action`` can't run on a closeout in ``status``, or ``None``:
+    ``closeout_not_submitted`` (approve or request changes when not
+    ``submitted``), ``closeout_with_tutor`` (a staff correction while
+    ``changes_requested``), ``closeout_under_review`` (the tutor's ``PUT``
+    while ``submitted``)."""
+    if action in REVIEW_ACTIONS.get(status, frozenset()):
+        return None
+    if action in ("approve", "request_changes"):
+        return NOT_SUBMITTED
+    if action == "correct":
+        return WITH_TUTOR
+    return UNDER_REVIEW
+
+
+def is_self_review(principal: Principal, tutor_user_id: uuid.UUID) -> bool:
+    """E7: the caller submitted the closeout and isn't the Owner (the final
+    payroll authority, so a one-person center still works)."""
+    return principal.user_id == tutor_user_id and OWNER_ROLE not in principal.roles
+
+
+def corrected_fields(
+    current: Mapping[str, int | str | None], proposed: Mapping[str, int | str | None]
+) -> list[str]:
+    """The fields of :data:`CORRECTABLE_FIELDS` that ``proposed`` (only the
+    given members) changes against ``current``, in that order."""
+    return [
+        field
+        for field in CORRECTABLE_FIELDS
+        if field in proposed and proposed[field] != current.get(field)
+    ]
+
+
+def attendance_changed(
+    snapshot: Mapping[str, str], live: Mapping[uuid.UUID, str]
+) -> bool:
+    """The live statuses differ from an approval's snapshot (a student
+    marked, unmarked or with another status)."""
+    return dict(snapshot) != {str(student): status for student, status in live.items()}
+
+
+def kind_of_review(
+    *, has_approval: bool, changes_requested_before: bool
+) -> KindOfReview:
+    """What a pending inbox item asks (C4): a correction of an approved
+    closeout, a resubmission after changes were requested, or a first
+    review."""
+    if has_approval:
+        return "correction"
+    if changes_requested_before:
+        return "resubmission"
+    return "first"

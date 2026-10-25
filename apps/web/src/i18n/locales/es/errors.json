@@ -178,7 +178,12 @@
   "closeout_tutor_only": "Solo el tutor de la clase envía su cierre.",
   "closeout_already_submitted": "El cierre de esta clase ya se envió.",
   "closeout_attendance_incomplete": "Marca la asistencia de todos los estudiantes antes de enviar el cierre.",
-  "closeout_review_unavailable": "Los cierres aún no se pueden revisar.",
+  "closeout_review_route_required": "Revisa este cierre en la página de la clase.",
+  "closeout_not_submitted": "Este cierre ya no está pendiente de revisión. Recarga para ver su estado.",
+  "closeout_with_tutor": "Se pidieron cambios: el tutor está editando este cierre. Recarga para ver su estado.",
+  "closeout_under_review": "Este cierre ya está en revisión.",
+  "closeout_self_review": "No puedes revisar tu propio cierre.",
+  "closeout_unchanged": "No cambió nada. Cambia los minutos o el resumen, o cancela.",
   "session_not_closable": "Esta clase no se puede cerrar en su estado actual.",
   "session_not_started": "El cierre se abre cuando empieza la clase.",
   "summary_required": "Completa las partes obligatorias del resumen."

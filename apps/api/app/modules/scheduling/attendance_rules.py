@@ -46,16 +46,23 @@ ATTENDANCE_CORRECT: Final = "attendance.correct"
 
 
 def attendance_block(
-    state: str, starts_at: datetime, now: datetime, *, by_tutor: bool
+    state: str,
+    starts_at: datetime,
+    now: datetime,
+    *,
+    by_tutor: bool,
+    tutor_unlocked: bool = False,
 ) -> AttendanceBlock | None:
     """Why attendance can't be written now, or ``None`` (A3), in this
     order: a state outside :data:`RECORDABLE_STATES`; a session that hasn't
-    started; for the tutor (``by_tutor``), a ``completed`` session."""
+    started; for the tutor (``by_tutor``), a ``completed`` session unless
+    ``tutor_unlocked`` (#78 E6: its closeout came back with changes
+    requested)."""
     if state not in RECORDABLE_STATES:
         return NOT_RECORDABLE
     if starts_at > now:
         return NOT_STARTED
-    if by_tutor and state == SessionState.COMPLETED:
+    if by_tutor and state == SessionState.COMPLETED and not tutor_unlocked:
         return LOCKED
     return None
 

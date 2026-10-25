@@ -95,7 +95,7 @@ The candidate modules mirror the spec §12 domain inventory:
 | `catalog` | Subjects, education levels, academic periods, classrooms, holidays and closures |
 | `scheduling` | Class sessions, recurrence, enrollment, attendance, substitutions, booking requests, conflict detection |
 | `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria (templates and snapshots: M4-19; cohorts: M4-20) |
-| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes (session closeouts: M5-10) |
+| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes (session closeouts: M5-10; closeout review, approval revisions: M5-11) |
 | `billing` | Price catalog, charges, payments, allocations, packages and credits, discounts, refunds, tuition plans, receipts |
 | `payroll` | Compensation rates, teaching hours, payroll periods and lines, adjustments, payments, payslips |
 | `finance` | Expenses, categories, vendors, recurring expense templates |
@@ -271,7 +271,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77) and closeout review part (issue #78).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -464,7 +464,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Per-session lessons: post the charge when the occurrence is **confirmed and materialized**.
   - Courses: post at **enrollment**.
   - Tuition plans: post per billing period by a periodic job.
-  - Packages: charge at purchase. Each delivered session then **debits package credit** at closeout approval.
+  - Packages: charge at purchase. Each delivered session then **debits package credit** at closeout approval (the hook is `app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only).
   - Cancellations and duration changes create adjustment entries according to policy.
 
 #### ISSUE-F2 — Billed duration vs actual duration (A)
@@ -514,7 +514,8 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - `payment.record` is granted to Finance and Administrator.
   - `teaching_hours.approve` is granted to Academic Coordinator and Administrator.
   - `payroll.prepare` goes to Finance. `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2).
-- **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type; the decisions arrive with #78). The `payment.record` and `payroll.*` parts stay PROPOSED.
+- **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type). The `payment.record` and `payroll.*` parts stay PROPOSED.
+- **Closeout review part ACCEPTED** (#78, owner-delegated, 2026-10-24): `teaching_hours.approve` holders approve, request changes or correct a closeout on the staff session page; closeouts have **no reject**; a reviewer can't approve, send back or correct a closeout they submitted (`403 closeout_self_review`) unless they hold the Owner role; approvals are immutable revisions and a correction supersedes.
 
 ### 10.7 Identity, security and privacy
 

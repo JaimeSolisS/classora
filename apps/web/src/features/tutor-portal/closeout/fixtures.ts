@@ -5,13 +5,22 @@ import {
   SESSION_ID,
 } from '@/features/tutor-portal/attendance/fixtures';
 import type { SessionAttendance } from '@/features/tutor-portal/attendance/api';
-import type { SessionCloseoutView } from './api';
+import type {
+  CloseoutApprovalRevision,
+  CloseoutCorrectionItem,
+  SessionCloseoutRecord,
+  SessionCloseoutView,
+} from './api';
 
 // Closeout data for tests and stories (#77 H6, H7): a started group session
 // of two students (attendance unmarked, all marked, all absent), the
 // submitted closeout (seen by the tutor, by a reviewer, by Finance with the
 // summary hidden), not started, not closable, completed without a closeout
-// and the staff view of a started session waiting for the tutor.
+// and the staff view of a started session waiting for the tutor; #78: the
+// review states (a reviewer on a submitted closeout, changes requested,
+// approved with its history, a correction request under review, attendance
+// changed since approval, Finance's redacted history) and the tutor's
+// read-only views of them.
 
 export { SESSION_ID, ZONE } from '@/features/tutor-portal/attendance/fixtures';
 
@@ -77,6 +86,10 @@ export function closeoutView(
     },
     tutor: { display_name: 'Carmen Ruiz' },
     can_submit: true,
+    can_review: false,
+    can_correct: false,
+    can_resubmit: false,
+    can_request_correction: false,
     block: null,
     attendance: {
       total: 2,
@@ -91,8 +104,9 @@ export function closeoutView(
 
 export const OPEN = closeoutView();
 
-const RECORD = {
+const RECORD: SessionCloseoutRecord = {
   id: '00000000-0000-4000-8000-000000077a01',
+  version: 1,
   status: 'submitted' as const,
   actual_minutes: 55,
   summary: SUMMARY,
@@ -100,6 +114,16 @@ const RECORD = {
   submitted_by: { display_name: 'Carmen Ruiz' },
   submitted_at: '2026-11-09T17:05:00Z',
   approval_request_id: '00000000-0000-4000-8000-000000077b01',
+  review: {
+    status: 'submitted',
+    reason: null,
+    last_submitted_at: '2026-11-09T17:05:00Z',
+    tutor_note: null,
+  },
+  approval: null,
+  revisions: [],
+  corrections: [],
+  attendance_changed_since_approval: false,
 };
 
 export const SUBMITTED = closeoutView({
@@ -144,4 +168,124 @@ export const NO_CLOSEOUT = closeoutView({
 export const WAITING = closeoutView({
   can_submit: false,
   block: 'closeout_tutor_only',
+});
+
+// --- #78 review --------------------------------------------------------------
+
+export const REVISION_1: CloseoutApprovalRevision = {
+  id: '00000000-0000-4000-8000-000000078a01',
+  revision: 1,
+  approved_minutes: 55,
+  approved_by: { display_name: 'Laura Méndez' },
+  approved_at: '2026-11-10T15:00:00Z',
+  source: 'review',
+};
+
+export const REVISION_2: CloseoutApprovalRevision = {
+  id: '00000000-0000-4000-8000-000000078a02',
+  revision: 2,
+  approved_minutes: 50,
+  approved_by: { display_name: 'Laura Méndez' },
+  approved_at: '2026-11-11T15:00:00Z',
+  source: 'staff_correction',
+};
+
+export const CORRECTION: CloseoutCorrectionItem = {
+  id: '00000000-0000-4000-8000-000000078c01',
+  fields: ['actual_minutes'],
+  previous_minutes: 55,
+  new_minutes: 50,
+  reason: 'Terminó 5 minutos antes',
+  corrected_by: { display_name: 'Laura Méndez' },
+  created_at: '2026-11-11T15:00:00Z',
+  approval_id: REVISION_2.id,
+};
+
+/** A reviewer on a submitted closeout: Approve, Request changes, Correct. */
+export const REVIEWABLE = closeoutView({
+  ...STAFF_SUBMITTED,
+  can_review: true,
+  can_correct: true,
+});
+
+export const CHANGES_REQUESTED_RECORD: SessionCloseoutRecord = {
+  ...RECORD,
+  version: 2,
+  status: 'changes_requested',
+  review: {
+    ...RECORD.review,
+    status: 'changes_requested',
+    reason: 'Añade la tarea asignada y los siguientes pasos con más detalle.',
+  },
+};
+
+/** Staff after requesting changes: no actions (the tutor owns it). */
+export const STAFF_CHANGES_REQUESTED = closeoutView({
+  ...STAFF_SUBMITTED,
+  closeout: CHANGES_REQUESTED_RECORD,
+});
+
+export const APPROVED_RECORD: SessionCloseoutRecord = {
+  ...RECORD,
+  version: 3,
+  status: 'approved',
+  actual_minutes: 50,
+  review: { ...RECORD.review, status: 'approved' },
+  approval: REVISION_2,
+  revisions: [REVISION_2, REVISION_1],
+  corrections: [CORRECTION],
+};
+
+/** A reviewer on an approved closeout with its history: Correct only. */
+export const STAFF_APPROVED = closeoutView({
+  ...STAFF_SUBMITTED,
+  can_correct: true,
+  closeout: APPROVED_RECORD,
+});
+
+/** A tutor's correction request under review (the approval in force). */
+export const CORRECTION_SUBMITTED = closeoutView({
+  ...REVIEWABLE,
+  closeout: {
+    ...APPROVED_RECORD,
+    version: 4,
+    status: 'submitted',
+    actual_minutes: 45,
+    review: {
+      status: 'submitted',
+      reason: null,
+      last_submitted_at: '2026-11-12T15:00:00Z',
+      tutor_note: 'Salimos 5 minutos antes por un simulacro.',
+    },
+  },
+});
+
+/** E6: a staff attendance correction after the approval. */
+export const ATTENDANCE_CHANGED = closeoutView({
+  ...STAFF_APPROVED,
+  closeout: { ...APPROVED_RECORD, attendance_changed_since_approval: true },
+});
+
+/** Finance: minutes and metadata, no reasons or summary. */
+export const FINANCE_APPROVED = closeoutView({
+  ...STAFF_SUBMITTED,
+  closeout: {
+    ...APPROVED_RECORD,
+    summary: null,
+    summary_hidden: true,
+    corrections: [{ ...CORRECTION, reason: null }],
+  },
+});
+
+/** The tutor's read-only views (G4). */
+export const TUTOR_CHANGES_REQUESTED = closeoutView({
+  ...SUBMITTED,
+  can_resubmit: true,
+  closeout: CHANGES_REQUESTED_RECORD,
+});
+
+export const TUTOR_APPROVED = closeoutView({
+  ...SUBMITTED,
+  can_request_correction: true,
+  closeout: APPROVED_RECORD,
 });

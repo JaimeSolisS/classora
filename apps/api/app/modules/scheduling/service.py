@@ -96,7 +96,9 @@ rules in :mod:`~app.modules.scheduling.attendance_rules`):
 :func:`get_session_attendance`, :func:`record_attendance` (the tutor's
 marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
 reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
-#84 and #85).
+#84 and #85); :func:`register_completed_attendance_unlock` (#78 E6: the
+predicate that lets the tutor mark a ``completed`` session again while its
+closeout is ``changes_requested``; ``app.wiring`` registers academics').
 
 Session closeout (#77, :mod:`~app.modules.scheduling.closeout`): the read
 bundle :func:`closeout_session_context`, :func:`lock_closeout_session`,
@@ -104,7 +106,8 @@ bundle :func:`closeout_session_context`, :func:`lock_closeout_session`,
 ``actual_minutes`` once every participant is marked; ``409
 closeout_attendance_incomplete`` otherwise) and the inbox summaries
 :func:`closeout_session_summaries`, composed with ``academics`` by
-``app.workflows.session_closeout``.
+``app.workflows.session_closeout``; #78 adds :func:`closeout_attendance`
+and :func:`set_actual_minutes` (``app.workflows.session_closeout_review``).
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -231,6 +234,9 @@ from app.modules.scheduling.attendance import (
 from app.modules.scheduling.attendance import (
     record_attendance as record_attendance,
 )
+from app.modules.scheduling.attendance import (
+    register_completed_attendance_unlock as register_completed_attendance_unlock,
+)
 from app.modules.scheduling.attendance_rules import (
     ATTENDANCE_STATUSES as ATTENDANCE_STATUSES,
 )
@@ -331,6 +337,9 @@ from app.modules.scheduling.closeout import (
 from app.modules.scheduling.closeout import ClosingSession as ClosingSession
 from app.modules.scheduling.closeout import CompletedSession as CompletedSession
 from app.modules.scheduling.closeout import (
+    closeout_attendance as closeout_attendance,
+)
+from app.modules.scheduling.closeout import (
     closeout_session_context as closeout_session_context,
 )
 from app.modules.scheduling.closeout import (
@@ -341,6 +350,9 @@ from app.modules.scheduling.closeout import (
 )
 from app.modules.scheduling.closeout import (
     lock_closeout_session as lock_closeout_session,
+)
+from app.modules.scheduling.closeout import (
+    set_actual_minutes as set_actual_minutes,
 )
 from app.modules.scheduling.closure_changes import (
     OCCURRENCE_SKIPPED_CLOSURE as OCCURRENCE_SKIPPED_CLOSURE,

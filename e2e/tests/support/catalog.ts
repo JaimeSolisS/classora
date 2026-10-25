@@ -88,6 +88,15 @@ type Common = {
     submitted: string;
     submittedNotice: string;
     section: { heading: string };
+    /** #78. */
+    review: {
+      correct: string;
+      approve: string;
+      approvedShort: string;
+      correctDialog: { reason: string; submit: string };
+      approveDialog: { minutes: string; submit: string };
+      history: { minutes: string };
+    };
   };
   sessionRequests: {
     status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;
@@ -595,7 +604,10 @@ type Common = {
       sessionRequest: string;
     };
     reassignment: { openSession: string };
-    closeout: { openSession: string };
+    closeout: {
+      review: string;
+      kinds: Record<'first' | 'resubmission' | 'correction', string>;
+    };
     availabilityChange: { affectedTitle: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };

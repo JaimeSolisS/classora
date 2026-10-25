@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { i18n } from '@/i18n';
 import { formatInstant } from '@/lib/time';
 import type { ApprovalRequestItem } from './api';
-import { AVAILABILITY_CHANGE, SESSION_CLOSEOUT } from './fixtures';
+import {
+  AVAILABILITY_CHANGE,
+  SESSION_CLOSEOUT,
+  SESSION_CLOSEOUT_CORRECTION,
+} from './fixtures';
 import {
   approvalSummary,
   availabilityChangeLink,
@@ -11,6 +15,7 @@ import {
   occurrenceCodeName,
   occurrenceConflictSubject,
   sessionCloseoutLink,
+  sessionCloseoutReviewLine,
   sessionCloseoutSubject,
   sessionRequestSubject,
   typeLabel,
@@ -180,6 +185,28 @@ describe('staff.availability_change', () => {
 });
 
 describe('academics.session_closeout (#77 G4)', () => {
+  it('names what the item asks (#78 G2)', () => {
+    const t = i18n.getFixedT('en', 'common');
+    const es = i18n.getFixedT('es', 'common');
+    expect(sessionCloseoutReviewLine(SESSION_CLOSEOUT, t)).toBe('New');
+    expect(sessionCloseoutReviewLine(SESSION_CLOSEOUT_CORRECTION, t)).toBe(
+      'Correction · Approved now: 55 min',
+    );
+    expect(
+      sessionCloseoutReviewLine(
+        {
+          ...SESSION_CLOSEOUT,
+          subject: {
+            ...(SESSION_CLOSEOUT.subject as Record<string, unknown>),
+            kind_of_review: 'resubmission',
+          },
+        },
+        es,
+      ),
+    ).toBe('Reenviado');
+    expect(sessionCloseoutReviewLine(AVAILABILITY_CHANGE, t)).toBe('');
+  });
+
   it('summarizes the session, the tutor and the minutes', () => {
     const t = i18n.getFixedT('en', 'common');
     const when = (instant: string) =>
@@ -201,7 +228,7 @@ describe('academics.session_closeout (#77 G4)', () => {
   it('reads the subject only for its own type and links to the session', () => {
     expect(sessionCloseoutSubject(SESSION_CLOSEOUT)?.participant_count).toBe(3);
     expect(sessionCloseoutLink(SESSION_CLOSEOUT)).toBe(
-      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2',
+      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2#closeout',
     );
     expect(sessionCloseoutLink(AVAILABILITY_CHANGE)).toBeNull();
     expect(

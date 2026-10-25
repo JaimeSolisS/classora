@@ -410,7 +410,13 @@
       "approveHelp": "Al aprobar se aplica el cambio. Las clases ofrecidas vuelven a quedar sin asignar; las confirmadas conservan su tutor y se marcan como pendientes de reasignación."
     },
     "closeout": {
-      "openSession": "Abrir sesión"
+      "review": "Revisar",
+      "kinds": {
+        "first": "Nuevo",
+        "resubmission": "Reenviado",
+        "correction": "Corrección"
+      },
+      "approvedMinutes": "Aprobado vigente: {{minutes}} min"
     }
   },
   "users": {
@@ -1476,7 +1482,10 @@
       "scheduling_change_request_rejected_reschedule": "Tu solicitud para mover la clase del {{starts_at}} fue rechazada; la clase sigue como estaba programada.",
       "staff_availability_change_approved": "Tu cambio de disponibilidad fue aprobado. Clases marcadas para reasignar: {{affected_count}}.",
       "staff_availability_change_rejected": "Tu cambio de disponibilidad fue rechazado. Consulta el motivo en tu disponibilidad.",
-      "scheduling_reassignment_needed": "La disponibilidad de {{tutor_name}} cambió: {{session_count}} clases necesitan otro tutor; la primera, el {{first_starts_at}}."
+      "scheduling_reassignment_needed": "La disponibilidad de {{tutor_name}} cambió: {{session_count}} clases necesitan otro tutor; la primera, el {{first_starts_at}}.",
+      "academics_closeout_approved": "Se aprobó tu cierre de la clase de {{subject_name}} del {{starts_at}}: {{approved_minutes}} min.",
+      "academics_closeout_corrected": "Un revisor corrigió tu cierre de la clase de {{subject_name}} del {{starts_at}}.",
+      "academics_closeout_changes_requested": "Se solicitaron cambios en tu cierre de la clase de {{subject_name}} del {{starts_at}}."
     }
   },
   "scheduling": {
@@ -3054,6 +3063,75 @@
       "less_one": "{{count}} min menos de lo programado",
       "less_many": "{{count}} min menos de lo programado",
       "less_other": "{{count}} min menos de lo programado"
+    },
+    "review": {
+      "correctionSubmitted": "Corrección enviada",
+      "changesRequested": "Cambios solicitados",
+      "approvedBadge": "Aprobado · {{minutes}} min por {{name}}, {{when}}",
+      "approvedShort": "Aprobado · {{minutes}} min",
+      "reviewReason": "Motivo del revisor",
+      "tutorNote": "Motivo del tutor",
+      "approve": "Aprobar",
+      "requestChanges": "Solicitar cambios",
+      "correct": "Corregir",
+      "reapprove": "Volver a aprobar",
+      "attendanceChanged": "La asistencia cambió después de la aprobación.",
+      "reload": "Recargar",
+      "cancel": "Cancelar",
+      "reason": "Motivo",
+      "reasonRequired": "Indica un motivo.",
+      "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres.",
+      "approveDialog": {
+        "title": "Aprobar cierre",
+        "description": "La aprobación se conserva para la nómina. Una corrección posterior añade una nueva aprobación; esta nunca se edita.",
+        "minutes": "Real: {{actual}} de {{scheduled}} min",
+        "submit": "Aprobar",
+        "submitting": "Aprobando…"
+      },
+      "requestDialog": {
+        "title": "Solicitar cambios",
+        "description": "El tutor ve tu motivo, puede corregir la asistencia, los minutos y el resumen, y lo vuelve a enviar.",
+        "reason": "¿Qué debe cambiar el tutor?",
+        "submit": "Devolver al tutor",
+        "submitting": "Enviando…"
+      },
+      "correctDialog": {
+        "title": "Corregir cierre",
+        "reapproveTitle": "Volver a aprobar el cierre",
+        "description": "Cambia los minutos o el resumen e indica un motivo. Se avisa al tutor.",
+        "reapproveDescription": "La asistencia cambió después de la última aprobación. Al guardar, el cierre se aprueba de nuevo con la asistencia actual.",
+        "approvedNote": "Al guardar se crea una nueva aprobación.",
+        "reason": "Motivo de la corrección",
+        "submit": "Guardar corrección",
+        "reapproveSubmit": "Volver a aprobar",
+        "submitting": "Guardando…"
+      },
+      "notices": {
+        "approved": "Cierre aprobado.",
+        "changesRequested": "Cierre devuelto al tutor.",
+        "corrected": "Cierre corregido."
+      },
+      "history": {
+        "heading": "Historial",
+        "revision": "Aprobación {{revision}} · {{minutes}} min · {{name}}, {{when}}",
+        "sources": {
+          "review": "revisión",
+          "staff_correction": "corrección"
+        },
+        "correction": "Corrección de {{name}}, {{when}}",
+        "fields": "Cambió: {{fields}}",
+        "minutes": "Minutos: {{previous}} → {{next}}",
+        "reapproval": "Asistencia aprobada de nuevo",
+        "reason": "Motivo: {{reason}}",
+        "reasonHidden": "Motivo visible para los revisores académicos",
+        "current": "(vigente)"
+      },
+      "tutor": {
+        "changesRequested": "Cambios solicitados: {{reason}}",
+        "changesRequestedNoReason": "Cambios solicitados",
+        "approved": "Aprobado · {{minutes}} min",
+        "correctionSubmitted": "Corrección enviada a revisión"
+      }
     }
   }
 }

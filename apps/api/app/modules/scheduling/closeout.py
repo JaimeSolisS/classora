@@ -20,6 +20,9 @@ imports ``academics`` (E2).
   It never commits and takes only the session row lock: the scheduling
   writers lock the session row last and refuse started sessions anyway, so
   there is no deadlock.
+- #78: :func:`closeout_attendance` (participants and statuses, for the
+  approval snapshot and the resubmission) and :func:`set_actual_minutes`
+  (a closeout correction on the ``completed`` session).
 - :func:`closeout_session_summaries`: the inbox summaries of closeouts, by
   closeout id, joining the caller's ``(subject_id, class_session_id)``
   select (``academics.service.closeout_session_keys``) into the session
@@ -103,6 +106,10 @@ class ClosingSession:
     state: str
     starts_at: datetime
     tutor_user_id: uuid.UUID | None
+    kind: str
+    scheduled_minutes: int
+    actual_minutes: int | None
+    subject_id: uuid.UUID
 
 
 @dataclass(frozen=True)
@@ -190,21 +197,68 @@ async def closeout_session_context(
 
 
 async def lock_closeout_session(
-    session: AsyncSession, class_session_id: uuid.UUID
+    session: AsyncSession, class_session_id: uuid.UUID, *, share: bool = False
 ) -> ClosingSession:
-    """The session row ``FOR UPDATE`` (re-read); ``RecordNotFoundError``
-    when it is gone."""
-    locked = await lock_sessions(session, [class_session_id])
-    if not locked:
+    """The session row ``FOR UPDATE`` (``FOR SHARE`` with ``share``: #78's
+    approve and request changes read it without writing it), re-read;
+    ``RecordNotFoundError`` when it is gone."""
+    if share:
+        row = cast(
+            ClassSession | None,
+            await session.scalar(
+                select(ClassSession)
+                .where(ClassSession.id == class_session_id)
+                .with_for_update(read=True)
+                .execution_options(populate_existing=True)
+            ),
+        )
+    else:
+        locked = await lock_sessions(session, [class_session_id])
+        row = locked[0] if locked else None
+    if row is None:
         raise RecordNotFoundError()
-    [row] = locked
     return ClosingSession(
         id=row.id,
         version=row.version,
         state=row.state,
         starts_at=row.starts_at.astimezone(UTC),
         tutor_user_id=row.tutor_user_id,
+        kind=row.kind,
+        scheduled_minutes=row.scheduled_minutes,
+        actual_minutes=row.actual_minutes,
+        subject_id=row.subject_id,
     )
+
+
+async def closeout_attendance(
+    session: AsyncSession, class_session_id: uuid.UUID
+) -> tuple[tuple[uuid.UUID, ...], dict[uuid.UUID, AttendanceStatus]]:
+    """The session's participants (sorted by id) and the marked ones'
+    statuses (#78: the approval snapshot, the resubmission's completeness
+    check). One statement, no lock (the caller holds the session row)."""
+    return await _participants_and_statuses(session, class_session_id)
+
+
+async def set_actual_minutes(
+    session: AsyncSession, *, class_session_id: uuid.UUID, actual_minutes: int
+) -> int:
+    """#78 B1: correct a ``completed`` session's ``actual_minutes`` (a
+    closeout correction or resubmission). The row ``FOR UPDATE`` (re-read);
+    its version goes up by exactly one only when the value changes (the
+    row's audit update records it). Returns the session's version.
+    ``RecordNotFoundError`` when it is gone; a session that isn't
+    ``completed`` is :class:`SessionNotCompletableError` (the closeout
+    paths only reach completed sessions)."""
+    locked = await lock_sessions(session, [class_session_id])
+    if not locked:
+        raise RecordNotFoundError()
+    [row] = locked
+    if row.state != SessionState.COMPLETED:
+        raise SessionNotCompletableError(row.state)
+    if row.actual_minutes != actual_minutes:
+        row.actual_minutes = actual_minutes
+        await session.flush()
+    return row.version
 
 
 async def complete_class_session(
@@ -252,16 +306,23 @@ async def complete_class_session(
 
 
 async def closeout_session_summaries(
-    session: AsyncSession, keys: Select[uuid.UUID, uuid.UUID]
+    session: AsyncSession, keys: Select[*tuple[Any, ...]]
 ) -> dict[uuid.UUID, dict[str, Any]]:
     """The approval inbox summary of each closeout (#77 E1), by the
-    ``subject_id`` column of ``keys`` (a select of ``subject_id`` and
-    ``class_session_id``): ``{class_session_id, starts_at, subject_name,
+    ``subject_id`` column of ``keys`` (a select of ``subject_id``,
+    ``class_session_id`` and any further columns, which are passed through
+    into the summary as they are: #78's ``kind_of_review`` and
+    ``approved_minutes``): ``{class_session_id, starts_at, subject_name,
     tutor_display_name, kind, scheduled_minutes, actual_minutes,
-    participant_count}``. No summary text, student names or attendance.
+    participant_count, …}``. No summary text, student names or attendance.
     Three statements: the sessions with their participant counts, the
     subjects, the tutors' names."""
     keyed = keys.subquery()
+    extra = [
+        column
+        for column in keyed.c
+        if column.name not in ("subject_id", "class_session_id")
+    ]
     participant_count = (
         select(func.count())
         .where(ClassSessionParticipant.class_session_id == ClassSession.id)
@@ -270,22 +331,30 @@ async def closeout_session_summaries(
     )
     rows = list(
         await session.execute(
-            select(keyed.c.subject_id, ClassSession, participant_count).join(
-                ClassSession, ClassSession.id == keyed.c.class_session_id
-            )
+            select(
+                keyed.c.subject_id,
+                ClassSession,
+                participant_count.label("participant_count"),
+                *extra,
+            ).join(ClassSession, ClassSession.id == keyed.c.class_session_id)
         )
     )
     if not rows:
         return {}
     subjects = await catalog.subject_references(
-        session, {row.subject_id for _, row, _ in rows}
+        session, {found[1].subject_id for found in rows}
     )
     tutors = await identity.get_account_references(
         session,
-        {row.tutor_user_id for _, row, _ in rows if row.tutor_user_id is not None},
+        {
+            found[1].tutor_user_id
+            for found in rows
+            if found[1].tutor_user_id is not None
+        },
     )
     summaries: dict[uuid.UUID, dict[str, Any]] = {}
-    for subject_id, row, count in rows:
+    for found in rows:
+        subject_id, row, count = found[0], found[1], found[2]
         subject = subjects.get(row.subject_id)
         tutor = None if row.tutor_user_id is None else tutors.get(row.tutor_user_id)
         summaries[subject_id] = {
@@ -297,5 +366,6 @@ async def closeout_session_summaries(
             "scheduled_minutes": row.scheduled_minutes,
             "actual_minutes": row.actual_minutes,
             "participant_count": int(count),
+            **{column.name: found[3 + i] for i, column in enumerate(extra)},
         }
     return summaries

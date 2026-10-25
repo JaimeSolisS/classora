@@ -178,7 +178,12 @@
   "closeout_tutor_only": "Only the class's tutor submits its closeout.",
   "closeout_already_submitted": "This class's closeout was already submitted.",
   "closeout_attendance_incomplete": "Mark every student's attendance before submitting the closeout.",
-  "closeout_review_unavailable": "Closeouts can't be reviewed yet.",
+  "closeout_review_route_required": "Review this closeout on its session page.",
+  "closeout_not_submitted": "This closeout isn't waiting for review any more. Reload to see where it stands.",
+  "closeout_with_tutor": "Changes were requested: the tutor is editing this closeout. Reload to see where it stands.",
+  "closeout_under_review": "This closeout is already under review.",
+  "closeout_self_review": "You can't review your own closeout.",
+  "closeout_unchanged": "Nothing changed. Change the minutes or the summary, or cancel.",
   "session_not_closable": "This class can't be closed out in its current state.",
   "session_not_started": "The closeout opens when the class starts.",
   "summary_required": "Fill in the required parts of the summary."

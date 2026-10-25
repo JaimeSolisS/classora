@@ -142,7 +142,8 @@ export const AVAILABILITY_CHANGE: ApprovalRequestItem = {
   },
 };
 
-/** A tutor's session closeout (#77 G4): no decisions until #78. */
+/** A tutor's session closeout (#77 G4, #78 G2): reviewed on the session
+ * page, so no inbox decisions. */
 export const SESSION_CLOSEOUT: ApprovalRequestItem = {
   ...PENDING_REGISTRATION,
   id: '00000000-0000-4000-8000-0000000000f1',
@@ -161,6 +162,20 @@ export const SESSION_CLOSEOUT: ApprovalRequestItem = {
     scheduled_minutes: 60,
     actual_minutes: 55,
     participant_count: 3,
+    kind_of_review: 'first',
+    approved_minutes: null,
   },
   allowed_actions: [],
+};
+
+/** #78 G2: a tutor's correction request of an approved closeout. */
+export const SESSION_CLOSEOUT_CORRECTION: ApprovalRequestItem = {
+  ...SESSION_CLOSEOUT,
+  id: '00000000-0000-4000-8000-0000000000f3',
+  subject: {
+    ...(SESSION_CLOSEOUT.subject as Record<string, unknown>),
+    actual_minutes: 50,
+    kind_of_review: 'correction',
+    approved_minutes: 55,
+  },
 };

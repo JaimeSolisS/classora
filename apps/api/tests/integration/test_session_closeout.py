@@ -7,8 +7,9 @@ Success for individual, group and course sessions (the session
 pending approval request, the audit rows), the all-absent no-show, the D2
 order step by step (incl. the rollback after a ``summary_required``), the
 states, the D4 consequences of ``completed``, the handler that refuses
-decisions until #78, the inbox visibility and summary budget, the summary
-visibility (E5), the IDOR cases (H2) and the C3 statement budget.
+decisions outside the closeout routes (#78), the inbox visibility and
+summary budget, the summary visibility (E5), the IDOR cases (H2) and the C3
+statement budget.
 """
 
 import uuid
@@ -70,7 +71,7 @@ ALREADY = (409, "closeout_already_submitted")
 NOT_CLOSABLE = (409, "session_not_closable")
 NOT_STARTED = (409, "session_not_started")
 INCOMPLETE = (409, "closeout_attendance_incomplete")
-REVIEW_UNAVAILABLE = (409, "closeout_review_unavailable")
+ROUTE_REQUIRED = (409, "closeout_review_route_required")
 
 SUMMARY = {
     "topics": "Fracciones equivalentes",
@@ -276,6 +277,10 @@ def test_the_body_is_a_closed_allow_list(module_seeded_url, client):
         "subject",
         "tutor",
         "can_submit",
+        "can_review",
+        "can_correct",
+        "can_resubmit",
+        "can_request_correction",
         "block",
         "attendance",
         "closeout",
@@ -290,6 +295,13 @@ def test_the_body_is_a_closed_allow_list(module_seeded_url, client):
         "submitted_by",
         "submitted_at",
         "approval_request_id",
+        # #78 E1, AM2.
+        "version",
+        "review",
+        "approval",
+        "revisions",
+        "corrections",
+        "attendance_changed_since_approval",
     }
     assert set(body["closeout"]["summary"]) == {
         "topics",
@@ -678,7 +690,8 @@ def test_the_family_schedule_shows_the_completed_session(module_seeded_url, clie
 
 
 @pytest.mark.parametrize("action", ["approve", "reject", "request-changes"])
-def test_the_inbox_cannot_decide_yet(module_seeded_url, client, owner, action):
+def test_the_inbox_cannot_decide(module_seeded_url, client, owner, action):
+    """#78 E2, E3: decisions go through the closeout routes."""
     url = module_seeded_url
     body = submitted(client, lesson(url))
     request_id = body["closeout"]["approval_request_id"]
@@ -693,7 +706,10 @@ def test_the_inbox_cannot_decide_yet(module_seeded_url, client, owner, action):
         {} if action == "approve" else {"reason": "Revisión"},
     )
 
-    assert code_of(response) == REVIEW_UNAVAILABLE
+    assert code_of(response) == ROUTE_REQUIRED
+    assert response.json()["details"] == {
+        "review_path": f"/schedule/sessions/{body['class_session_id']}"
+    }
     [request] = approval_rows(url, body["closeout"]["id"])
     assert request.status == "pending"
 
@@ -736,6 +752,9 @@ def test_who_sees_the_inbox_item(module_seeded_url, client, role, visible):
         "scheduled_minutes": 60,
         "actual_minutes": 55,
         "participant_count": 2,
+        # #78 C4.
+        "kind_of_review": "first",
+        "approved_minutes": None,
     }
     listed = get(
         client,
@@ -951,7 +970,8 @@ def test_a_duplicate_closeout_row_is_refused(module_seeded_url, client):
         run_sql(
             url,
             "INSERT INTO session_closeouts (class_session_id, tutor_user_id,"
-            " status, submitted_at) VALUES (:s, :u, 'submitted', now())",
+            " status, submitted_at, last_submitted_at)"
+            " VALUES (:s, :u, 'submitted', now(), now())",
             {"s": made.id, "u": made.tutor.id},
         )
 

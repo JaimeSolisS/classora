@@ -12,10 +12,14 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.academics.models import CLOSEOUT_SUBMITTED, SessionCloseout
+from app.modules.academics.models import (
+    CLOSEOUT_SUBMITTED,
+    SessionCloseout,
+    SessionCloseoutApproval,
+)
 from app.modules.academics.schemas import CloseoutSummary, CloseoutSummaryInput
 
 
@@ -34,29 +38,50 @@ async def closeout_for_session(
 
 
 async def closeouts_by_id(
-    session: AsyncSession, closeout_ids: Collection[uuid.UUID]
+    session: AsyncSession, closeout_ids: Collection[uuid.UUID], *, fresh: bool = False
 ) -> dict[uuid.UUID, SessionCloseout]:
     """The closeouts with these ids (unknown ids left out). One statement,
-    none for an empty collection."""
+    none for an empty collection. ``fresh`` re-reads rows already in the
+    session (no lock)."""
     if not closeout_ids:
         return {}
-    rows = await session.scalars(
-        select(SessionCloseout).where(SessionCloseout.id.in_(set(closeout_ids)))
-    )
+    statement = select(SessionCloseout).where(SessionCloseout.id.in_(set(closeout_ids)))
+    if fresh:
+        statement = statement.execution_options(populate_existing=True)
+    rows = await session.scalars(statement)
     return {row.id: row for row in rows}
 
 
 def closeout_session_keys(
     closeout_ids: Collection[uuid.UUID],
-) -> Select[uuid.UUID, uuid.UUID]:
-    """A select of ``(subject_id, class_session_id)`` for these closeouts,
-    for a caller that joins it into its own read (the approval inbox
-    summaries read the sessions in the same statement, #77 E1). Not
-    executed here."""
-    return select(
-        SessionCloseout.id.label("subject_id"),
-        SessionCloseout.class_session_id.label("class_session_id"),
-    ).where(SessionCloseout.id.in_(set(closeout_ids)))
+) -> Select[uuid.UUID, uuid.UUID, str, int | None]:
+    """A select of ``(subject_id, class_session_id, kind_of_review,
+    approved_minutes)`` for these closeouts, for a caller that joins it into
+    its own read (the approval inbox summaries read the sessions in the same
+    statement, #77 E1; the caller passes the columns after the first two
+    through). ``kind_of_review`` follows
+    :func:`~app.modules.academics.closeout_rules.kind_of_review` (#78 C4):
+    ``correction`` with a current approval revision, ``resubmission`` after
+    changes were requested (the reason stays until an approval), else
+    ``first``; ``approved_minutes`` is the current revision's. Not executed
+    here."""
+    return (
+        select(
+            SessionCloseout.id.label("subject_id"),
+            SessionCloseout.class_session_id.label("class_session_id"),
+            case(
+                (SessionCloseout.current_approval_id.is_not(None), "correction"),
+                (SessionCloseout.review_reason.is_not(None), "resubmission"),
+                else_="first",
+            ).label("kind_of_review"),
+            SessionCloseoutApproval.approved_minutes.label("approved_minutes"),
+        )
+        .outerjoin(
+            SessionCloseoutApproval,
+            SessionCloseoutApproval.id == SessionCloseout.current_approval_id,
+        )
+        .where(SessionCloseout.id.in_(set(closeout_ids)))
+    )
 
 
 async def create_session_closeout(
@@ -80,6 +105,7 @@ async def create_session_closeout(
         homework=summary.homework,
         next_steps=summary.next_steps,
         submitted_at=submitted_at,
+        last_submitted_at=submitted_at,
     )
     session.add(row)
     await session.flush()

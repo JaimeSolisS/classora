@@ -187,7 +187,7 @@ def test_build_app_registers_exactly_the_real_types():
     assert change.supports_request_changes is False
     assert change.reason_required_on_reject is True
     assert change.inbox_decisions is False
-    # #77 E1: closeouts; no decisions until #78.
+    # #77 E1, #78 E2: closeouts; decided on the session page, not the inbox.
     closeout = SESSION_CLOSEOUT_HANDLER
     assert closeout.request_type == "academics.session_closeout"
     assert closeout.review_permission == "teaching_hours.approve"

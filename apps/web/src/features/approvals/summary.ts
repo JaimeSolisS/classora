@@ -395,6 +395,9 @@ interface SessionCloseoutSubject {
   scheduled_minutes: number;
   actual_minutes: number | null;
   participant_count: number;
+  /** #78 C4 (absent before #78's API). */
+  kind_of_review?: 'first' | 'resubmission' | 'correction';
+  approved_minutes?: number | null;
 }
 
 function isSessionCloseout(
@@ -424,12 +427,32 @@ export function sessionCloseoutSubject(
     : null;
 }
 
-/** The staff session page a closeout item links to (#77 G4), or null. */
+/** The staff session page's Closeout section a closeout item links to
+ * (#77 G4; #78 G2: the "Review" link), or null. */
 export function sessionCloseoutLink(item: ApprovalRequestItem): string | null {
   const subject = sessionCloseoutSubject(item);
   return subject
-    ? `/schedule/sessions/${encodeURIComponent(subject.class_session_id)}`
+    ? `/schedule/sessions/${encodeURIComponent(subject.class_session_id)}#closeout`
     : null;
+}
+
+/** #78 G2: what a closeout item asks ("New", "Resubmitted", "Correction")
+ * and the minutes approved now (a correction), as text; empty without
+ * them. */
+export function sessionCloseoutReviewLine(
+  item: ApprovalRequestItem,
+  t: TFunction,
+): string {
+  const subject = sessionCloseoutSubject(item);
+  if (!subject?.kind_of_review) {
+    return '';
+  }
+  const kind = t(`approvals.closeout.kinds.${subject.kind_of_review}`);
+  return typeof subject.approved_minutes === 'number'
+    ? `${kind} · ${t('approvals.closeout.approvedMinutes', {
+        minutes: subject.approved_minutes,
+      })}`
+    : kind;
 }
 
 /** Formats an instant for a summary (the center zone, from useFormatters). */

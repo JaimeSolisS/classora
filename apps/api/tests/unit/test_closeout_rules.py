@@ -1,5 +1,5 @@
-"""Session closeout rules (#77 A5, C1, E4, E5, H4): table-driven, no
-database."""
+"""Session closeout rules (#77 A5, C1, E4, E5, H4; #78 A3, E7, C4):
+table-driven, no database."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -11,16 +11,24 @@ from app.modules.academics.closeout_rules import (
     ACTUAL_MINUTES_RANGE,
     COMPLETED,
     CONFIRMED,
+    CORRECTABLE_FIELDS,
     NOT_CLOSABLE_STATES,
+    REVIEW_ACTIONS,
     SUMMARY_MAX,
     CloseoutAccess,
     all_marked_absent,
+    attendance_changed,
     clean_text,
     closeout_access,
     closeout_block,
+    corrected_fields,
+    is_self_review,
+    kind_of_review,
+    review_block,
     sees_summary,
     summary_errors,
 )
+from app.modules.academics.models import CLOSEOUT_STATUSES
 from app.modules.administration.service import ApprovalHandler
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
@@ -202,3 +210,145 @@ def test_the_handler_conforms_to_the_protocol():
     assert handler.supports_request_changes is True
     assert handler.reason_required_on_reject is True
     assert SESSION_CLOSEOUT_HANDLER.inbox_decisions is False
+
+
+# --- #78 A3: the review rules -----------------------------------------------------
+
+
+REVIEW_CASES = [
+    # (status, action, expected)
+    ("submitted", "approve", None),
+    ("submitted", "request_changes", None),
+    ("submitted", "correct", None),
+    ("submitted", "tutor_update", "closeout_under_review"),
+    ("changes_requested", "approve", "closeout_not_submitted"),
+    ("changes_requested", "request_changes", "closeout_not_submitted"),
+    ("changes_requested", "correct", "closeout_with_tutor"),
+    ("changes_requested", "tutor_update", None),
+    ("approved", "approve", "closeout_not_submitted"),
+    ("approved", "request_changes", "closeout_not_submitted"),
+    ("approved", "correct", None),
+    ("approved", "tutor_update", None),
+]
+
+
+@pytest.mark.parametrize(("status", "action", "expected"), REVIEW_CASES)
+def test_review_block(status, action, expected):
+    assert review_block(status, action) == expected
+
+
+def test_every_status_and_action_is_covered():
+    assert set(REVIEW_ACTIONS) == set(CLOSEOUT_STATUSES)
+    assert {(s, a) for s, a, _ in REVIEW_CASES} == {
+        (status, action)
+        for status in CLOSEOUT_STATUSES
+        for action in ("approve", "request_changes", "correct", "tutor_update")
+    }
+    for status, actions in REVIEW_ACTIONS.items():
+        for action in actions:
+            assert review_block(status, action) is None
+
+
+@pytest.mark.parametrize(
+    ("roles", "submitter", "expected"),
+    [
+        ((ADMINISTRATOR, TUTOR), ME, True),
+        ((ACADEMIC_COORDINATOR, TUTOR), ME, True),
+        ((OWNER, TUTOR), ME, False),
+        ((ADMINISTRATOR,), OTHER, False),
+        ((OWNER,), OTHER, False),
+    ],
+)
+def test_is_self_review(roles, submitter, expected):
+    assert is_self_review(principal(ME, *roles), submitter) is expected
+
+
+CURRENT = {
+    "actual_minutes": 55,
+    "topics": "Fracciones",
+    "performance": "Bien",
+    "homework": None,
+    "next_steps": "Decimales",
+}
+
+
+@pytest.mark.parametrize(
+    ("proposed", "expected"),
+    [
+        ({}, []),
+        ({"actual_minutes": 55, "topics": "Fracciones"}, []),
+        ({"actual_minutes": 50}, ["actual_minutes"]),
+        ({"homework": "Ejercicios"}, ["homework"]),
+        ({"topics": None}, ["topics"]),
+        (
+            {"next_steps": "X", "actual_minutes": 0, "performance": "Regular"},
+            ["actual_minutes", "performance", "next_steps"],
+        ),
+    ],
+)
+def test_corrected_fields(proposed, expected):
+    assert corrected_fields(CURRENT, proposed) == expected
+    assert set(expected) <= set(CORRECTABLE_FIELDS)
+
+
+A = uuid.uuid4()
+B = uuid.uuid4()
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "live", "expected"),
+    [
+        ({}, {}, False),
+        ({str(A): "present"}, {A: "present"}, False),
+        ({str(A): "present"}, {A: "late"}, True),
+        ({str(A): "present"}, {A: "present", B: "absent"}, True),
+        ({str(A): "present", str(B): "absent"}, {A: "present"}, True),
+    ],
+)
+def test_attendance_changed(snapshot, live, expected):
+    assert attendance_changed(snapshot, live) is expected
+
+
+@pytest.mark.parametrize(
+    ("has_approval", "changes_requested_before", "expected"),
+    [
+        (False, False, "first"),
+        (False, True, "resubmission"),
+        (True, False, "correction"),
+        (True, True, "correction"),
+    ],
+)
+def test_kind_of_review(has_approval, changes_requested_before, expected):
+    assert (
+        kind_of_review(
+            has_approval=has_approval, changes_requested_before=changes_requested_before
+        )
+        == expected
+    )
+
+
+def test_the_review_notification_params():
+    # #78 F1: ids, the start, the subject name and the approved minutes only.
+    from app.modules.administration.notifications import validated_params
+    from app.workflows.session_closeout_review import register_closeout_notifications
+
+    register_closeout_notifications()
+    base = {
+        "class_session_id": str(A),
+        "starts_at": "2031-03-05T17:30:00Z",
+        "subject_name": "Matemáticas",
+    }
+    for code in ("academics.closeout_approved", "academics.closeout_corrected"):
+        assert validated_params(
+            code, base | {"approved_minutes": 50, "reason": "x"}
+        ) == base | {"approved_minutes": 50}
+        assert (
+            validated_params(code, base | {"approved_minutes": None})[
+                "approved_minutes"
+            ]
+            is None
+        )
+    assert (
+        validated_params("academics.closeout_changes_requested", base | {"reason": "x"})
+        == base
+    )
