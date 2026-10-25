@@ -9,8 +9,9 @@ Roles and delegations refer to the seeded ``roles`` and ``permissions`` rows:
 apply the identity reference seeds before :func:`persist_user`.
 
 :data:`DEMO_ACCOUNTS` lists the local-only demo accounts, one per role
-(ADR-0007 D12, #195), and :class:`DemoAccountGenerator` creates one of them
-(``identity.demo_owner`` … ``identity.demo_guardian``). The demo Owner
+(ADR-0007 D12, #195) plus a second tutor (#303), and
+:class:`DemoAccountGenerator` creates one of them (``identity.demo_owner`` …
+``identity.demo_tutor2``). The demo Owner
 (:data:`DEMO_OWNER_USERNAME` / :data:`DEMO_OWNER_PASSWORD`, #23) is also the
 E2E sign-in fixture.
 """
@@ -25,6 +26,7 @@ import factory
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz import Principal
 from app.core.config import get_settings
 from app.modules.identity import service as identity_service
 from app.modules.identity.models import (
@@ -116,7 +118,7 @@ async def persist_user(
     return user
 
 
-# --- The demo accounts (ADR-0007 D12, amended by #195) -------------------------------
+# --- The demo accounts (ADR-0007 D12, amended by #195 and #303) -----------------------
 
 # Local development placeholders, never real credentials: the demo accounts
 # exist only in local stacks (APP_ENV=local), including the E2E stack.
@@ -129,6 +131,7 @@ DEMO_OWNER_PASSWORD = "classora-demo-owner"
 DEMO_TUTOR_USERNAME = "demo.tutor"
 DEMO_STUDENT_USERNAME = "demo.student"
 DEMO_GUARDIAN_USERNAME = "demo.guardian"
+DEMO_TUTOR2_USERNAME = "demo.tutor2"
 DEMO_ACCOUNT_APP_ENVS = frozenset({"local"})
 DEMO_ACCOUNT_LANGUAGE = "es"
 DEMO_ACCOUNT_THEME = "system"
@@ -165,8 +168,14 @@ DEMO_ACCOUNTS: tuple[DemoAccount, ...] = (
     DemoAccount(
         DEMO_GUARDIAN_USERNAME, "Demo Guardian", "classora-demo-guardian", GUARDIAN
     ),
+    # #303 E1 (a): the cohort's tutor and the substitute. The display name
+    # avoids "Demo Tutor", so the E2E lookups of demo.tutor never match it.
+    DemoAccount(
+        DEMO_TUTOR2_USERNAME, "Demo Second Tutor", "classora-demo-tutor2", TUTOR
+    ),
 )
-"""Every demo account, in ``make seed-demo`` order (#195 A1)."""
+"""Every demo account, in ``make seed-demo`` order (#195 A1; ``demo.tutor2``
+last, #303 A1)."""
 
 DEMO_OWNER = DEMO_ACCOUNTS[0]
 
@@ -190,6 +199,21 @@ async def demo_user_id(
     if user_id is None:
         raise DemoPrerequisiteMissingError(f"{username} must exist before {generator}")
     return user_id
+
+
+async def demo_principal(
+    session: AsyncSession, username: str, generator: str
+) -> Principal:
+    """The principal of the active demo account ``username``; raises
+    :class:`DemoPrerequisiteMissingError` naming ``generator`` without it
+    (#303)."""
+    user_id = await demo_user_id(session, username, generator)
+    principal = await identity_service.load_principal(session, user_id)
+    if principal is None:
+        raise DemoPrerequisiteMissingError(
+            f"{username} must be active before {generator}"
+        )
+    return principal
 
 
 class DemoAccountGenerator:

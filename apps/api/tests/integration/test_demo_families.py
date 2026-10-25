@@ -280,7 +280,8 @@ def test_a_second_run_writes_no_family(migrated_url, env_for, capsys):
 
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
     assert table_counts(migrated_url) == SEEDED_COUNTS
-    assert count(migrated_url, "users") == 7
+    # The eight demo accounts (#303: demo.tutor2).
+    assert count(migrated_url, "users") == 8
 
 
 def test_dev_writes_no_family(migrated_url, env_for, capsys):
@@ -381,7 +382,7 @@ def test_the_same_seed_gives_the_same_demo_data(
 
     first = families_snapshot(migrated_url)
     assert first == families_snapshot(other_migrated_url)
-    assert len(first["users"]) == 7
+    assert len(first["users"]) == 8  # #303: demo.tutor2
     assert len(first["students"]) == 5
     assert len(first["guardians"]) == 4
     assert len(first["links"]) == 7

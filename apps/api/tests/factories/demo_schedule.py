@@ -84,6 +84,7 @@ MATH_PRIMARY = ("Matemáticas", "Primaria")
 SPANISH_PRIMARY = ("Español", "Primaria")
 MATH_SECONDARY = ("Matemáticas", "Secundaria")
 ENGLISH_SECONDARY = ("Inglés", "Secundaria")
+CIENCIAS_SECONDARY = ("Ciencias", "Secundaria")
 
 GROUP_NAME = "Club de Matemáticas"
 DECLINE_NOTE = "No disponible ese día"
@@ -350,35 +351,44 @@ class DemoScheduleGenerator:
         self, session: AsyncSession, student_user_id: uuid.UUID
     ) -> dict[StudentKey, uuid.UUID]:
         """S, Sib, A and B (#299 D2), looked up, never created."""
-        s = await session.scalar(
-            select(Student.id).where(Student.user_id == student_user_id)
+        return await demo_students(session, student_user_id, self.name)
+
+
+async def demo_students(
+    session: AsyncSession, student_user_id: uuid.UUID, generator: str
+) -> dict[StudentKey, uuid.UUID]:
+    """S, Sib, A and B (#299 D2), looked up, never created; raises
+    :class:`DemoPrerequisiteMissingError` naming ``generator`` without them
+    (also used by the #303 generators)."""
+    s = await session.scalar(
+        select(Student.id).where(Student.user_id == student_user_id)
+    )
+    if s is None:
+        raise DemoPrerequisiteMissingError(
+            f"the {DEMO_STUDENT_USERNAME} profile must exist before {generator}"
         )
-        if s is None:
-            raise DemoPrerequisiteMissingError(
-                f"the {DEMO_STUDENT_USERNAME} profile must exist before {self.name}"
-            )
-        family = select(FamilyStudent.family_id).where(FamilyStudent.student_id == s)
-        siblings = list(
-            await session.scalars(
-                select(FamilyStudent.student_id)
-                .where(FamilyStudent.family_id.in_(family))
-                .where(FamilyStudent.student_id != s)
-            )
+    family = select(FamilyStudent.family_id).where(FamilyStudent.student_id == s)
+    siblings = list(
+        await session.scalars(
+            select(FamilyStudent.student_id)
+            .where(FamilyStudent.family_id.in_(family))
+            .where(FamilyStudent.student_id != s)
         )
-        # The family with a mother and a father (#195 B: the only father).
-        pair = list(
-            await session.scalars(
-                select(Student.id)
-                .join(StudentGuardian, StudentGuardian.student_id == Student.id)
-                .where(StudentGuardian.relationship == "father")
-                .order_by(Student.given_names, Student.id)
-            )
+    )
+    # The family with a mother and a father (#195 B: the only father).
+    pair = list(
+        await session.scalars(
+            select(Student.id)
+            .join(StudentGuardian, StudentGuardian.student_id == Student.id)
+            .where(StudentGuardian.relationship == "father")
+            .order_by(Student.given_names, Student.id)
         )
-        if len(siblings) != 1 or len(pair) != 2:
-            raise DemoPrerequisiteMissingError(
-                f"the families.demo_families students must exist before {self.name}"
-            )
-        return {"S": s, "Sib": siblings[0], "A": pair[0], "B": pair[1]}
+    )
+    if len(siblings) != 1 or len(pair) != 2:
+        raise DemoPrerequisiteMissingError(
+            f"the families.demo_families students must exist before {generator}"
+        )
+    return {"S": s, "Sib": siblings[0], "A": pair[0], "B": pair[1]}
 
 
 async def _already_scheduled(

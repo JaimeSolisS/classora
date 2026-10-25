@@ -1,4 +1,5 @@
-"""The demo accounts, one per role (#195 A, C, E2-E4, E9; ADR-0007 D12)."""
+"""The demo accounts, one per role plus a second tutor (#195 A, C, E2-E4, E9;
+#303 A1, E8; ADR-0007 D12)."""
 
 import asyncio
 from typing import Any
@@ -41,6 +42,8 @@ STUDENTS_VISIBLE = {
     "demo.tutor": 3,
     "demo.student": 1,
     "demo.guardian": 2,
+    # #303: S and A, the cohort's students.
+    "demo.tutor2": 2,
 }
 """C5: the ``GET /api/v1/students`` total of each account after the seed."""
 
@@ -89,6 +92,7 @@ def test_the_accounts_are_the_documented_ones():
         ("demo.tutor", "classora-demo-tutor", "tutor", "Demo Tutor"),
         ("demo.student", "classora-demo-student", "student", "Demo Student"),
         ("demo.guardian", "classora-demo-guardian", "guardian", "Demo Guardian"),
+        ("demo.tutor2", "classora-demo-tutor2", "tutor", "Demo Second Tutor"),
     ]
     assert all(len(a.password) >= 12 for a in DEMO_ACCOUNTS)
 
@@ -122,8 +126,8 @@ def test_a_second_run_creates_no_account(migrated_url, env_for, capsys):
     assert demo.main([]) == 0
 
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
-    assert count(migrated_url, "users") == 7
-    assert count(migrated_url, "user_roles") == 7
+    assert count(migrated_url, "users") == 8
+    assert count(migrated_url, "user_roles") == 8
 
 
 def test_dev_creates_no_account(migrated_url, env_for, capsys):

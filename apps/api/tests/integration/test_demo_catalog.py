@@ -16,13 +16,15 @@ from tests.factories.scheduling import persist_classroom
 from tests.factories.staff import DemoTutorGenerator
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import (
-    DEMO_TABLE_COUNTS,
+    ALL_TABLE_COUNTS,
+    FAMILIES_GENERATOR,
     FIRST_RUN_LINES,
     FROZEN_NOW,
     UntouchedSession,
     count,
     demo_env,
     demo_table_counts,
+    generators_through,
     migrate,
 )
 
@@ -102,7 +104,8 @@ def test_a_first_run_writes_the_catalog(migrated_url, env_for, clock, capsys):
         "2026-11-10",
         True,
     )
-    assert demo_table_counts(migrated_url) == DEMO_TABLE_COUNTS
+    # The full run: the #299 rows plus the #303 rows in the shared tables.
+    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
 
 
 async def _run(url: str, *steps: Any) -> list[int | GeneratorSkipped]:
@@ -154,7 +157,7 @@ def test_an_existing_aula_1_means_0_rows_and_the_tutor_then_rolls_back(
             return 1
 
     generators = [
-        *demo.DEMO_GENERATORS[:8],
+        *generators_through(FAMILIES_GENERATOR),
         AddAula1(),
         Recording(DemoCatalogGenerator()),
         DemoTutorGenerator(),

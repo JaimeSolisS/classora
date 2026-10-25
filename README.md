@@ -385,7 +385,8 @@ the demo data as it is; to start over, run
 `docker compose down -v`, then `make dev`, `make migrate` and `make seed-demo`.
 
 The reference data currently consists of the user roles and their
-permissions. The demo data consists of one demo account per role:
+permissions. The demo data consists of one demo account per role, plus a
+second tutor:
 
 | Username | Password | Role |
 |---|---|---|
@@ -394,6 +395,7 @@ permissions. The demo data consists of one demo account per role:
 | `demo.coordinator` | `classora-demo-coordinator` | Academic coordinator |
 | `demo.finance` | `classora-demo-finance` | Finance staff |
 | `demo.tutor` | `classora-demo-tutor` | Tutor |
+| `demo.tutor2` | `classora-demo-tutor2` | Tutor |
 | `demo.student` | `classora-demo-student` | Student |
 | `demo.guardian` | `classora-demo-guardian` | Parent/Guardian |
 
@@ -413,10 +415,20 @@ demo data:
   date skipped for the holiday), a Saturday group, one offer waiting in
   `demo.tutor`'s My offers, one declined offer waiting for reassignment on
   Approvals, and one unassigned session.
+- **Courses**: a course template (8 sessions, three modules, two assessments)
+  and a cohort taught by `demo.tutor2`, with `demo.student` and another
+  student enrolled; it shows in My courses for them, their guardian and the
+  tutor.
+- **Requests and changes**: `demo.guardian`'s pending session request and
+  reschedule request, `demo.tutor`'s pending time-off request (all three on
+  Approvals), one class `demo.tutor2` took over as a substitute, and one
+  cancelled course class.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
-to get a fresh schedule. The pending offer expires after the scheduling
+to get a fresh schedule. A database seeded before the courses and requests
+were added keeps its schedule and skips them (`make seed-demo` says so) until
+you reset the same way. The pending offer expires after the scheduling
 policy's 48 hours and then also waits on Approvals. With classes scheduled, the
 center time zone can no longer be changed. `make bootstrap-owner` (below) is
 refused once any Owner exists, so locally use either the demo Owner or
