@@ -257,7 +257,8 @@ unless a bullet says otherwise.
   (also reviewed on their own page), tutor availability changes that
   affect scheduled classes and tutors' session closeouts (reviewed on the
   session page);
-  staff approve or reject them. Approving an account request
+  staff approve or reject them (session closeouts are approved or sent back
+  for changes on the session page, never rejected). Approving an account request
   never enrolls anyone.
 
 **Notifications**

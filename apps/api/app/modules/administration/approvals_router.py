@@ -14,9 +14,12 @@ one.
   and ``POST …/request-changes`` (``{reason}``).
 
 Decision order: ``401`` → ``csrf_failed`` / ``privacy_notice_required`` →
-``422`` (the body) → ``404`` → ``409 approval_action_unsupported`` → ``409
+``422`` (the body) → ``404`` → for a type decided on its own page that says
+so (session closeouts, #312): its own ``409`` (``closeout_review_route_required``)
+whatever the request's status → ``409 approval_action_unsupported`` → ``409
 approval_transition_invalid`` → ``422`` on ``reason`` → the type's own errors
-(for example ``409 guardian_consent_required`` from a registration).
+(for example ``409 guardian_consent_required`` from a registration). The
+decisions pass ``via_inbox=True``; no other caller does.
 """
 
 import uuid
@@ -57,7 +60,10 @@ DECISION_RESPONSES: dict[int | str, dict[str, Any]] = {
         " (approval_transition_invalid), its type doesn't support it"
         " (approval_action_unsupported), or the type's own check refused it"
         " (for a registration: registration_already_decided,"
-        " guardian_consent_required, student_profile_required)."
+        " guardian_consent_required, student_profile_required). A type decided"
+        " on its own page answers its own 409 first: a session closeout always"
+        " answers closeout_review_route_required with details.review_path,"
+        " whatever its status."
     ),
     422: problem_response_doc(
         "The body is not valid, or the reason is missing where the action needs"
@@ -158,7 +164,11 @@ async def approve_approval_request(
     the same transaction (a registration: the account becomes active with the
     requested role; confirm the person's identity first, out of band)."""
     return await approvals.decide_approval_request(
-        uow.session, principal=principal, request_id=request_id, action="approve"
+        uow.session,
+        principal=principal,
+        request_id=request_id,
+        action="approve",
+        via_inbox=True,
     )
 
 
@@ -177,6 +187,7 @@ async def reject_approval_request(
         request_id=request_id,
         action="reject",
         reason=body.reason if body is not None else None,
+        via_inbox=True,
     )
 
 
@@ -195,4 +206,5 @@ async def request_changes_approval_request(
         request_id=request_id,
         action="request_changes",
         reason=body.reason if body is not None else None,
+        via_inbox=True,
     )

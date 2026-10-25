@@ -21,7 +21,10 @@ approval_transition_invalid``.
 **Decision order** (:func:`decide_approval_request`): the row ``FOR UPDATE``
 → ``404 not_found`` when it's missing, its type is unregistered or the caller
 lacks the type's review permission (hidden looks like missing, as the #21
-record policies) → ``409 approval_action_unsupported`` (``request-changes`` on
+record policies) → only through the generic inbox routes (``via_inbox``), for
+a type decided on its own page (``inbox_decisions = False``) whose handler
+defines ``inbox_route_error``: the error it returns, whatever the request's
+status (#312) → ``409 approval_action_unsupported`` (``request-changes`` on
 a type without it) → ``409 approval_transition_invalid`` → ``422`` on
 ``reason`` → the handler → status, ``resolved_*``, ``reason`` and ``version``
 → flush.
@@ -47,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.authz import PERMISSION_CODE_PATTERN, Principal, RecordNotFoundError
+from app.core.errors import AppError
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.administration.errors import (
     ApprovalActionUnsupportedError,
@@ -144,6 +148,19 @@ class ApprovalHandler(Protocol):
     refuse, and never commit. ``summaries`` returns display data by subject
     id (JSON values, no secrets) in a fixed number of statements; a missing
     subject is left out.
+
+    Optional attributes, read with ``getattr`` (absent = the default):
+
+    - ``inbox_decisions`` (``True``): ``False`` when the type's items are
+      decided on their own page (see :func:`_inbox_decisions`).
+    - ``inbox_route_error`` (#312): ``async (session, request:
+      ApprovalRequestView) -> AppError``, meaningful only with
+      ``inbox_decisions = False``. A generic inbox decision
+      (``via_inbox=True``) raises what it returns right after the ``404``
+      check, before the action and status checks, so the inbox answers the
+      type's "decide it on its page" error whatever the request's status. It
+      must not change anything. Without it the generic routes follow the
+      usual order (the handler's own ``409`` reaches only pending items).
     """
 
     @property
@@ -485,13 +502,20 @@ async def decide_approval_request(
     request_id: uuid.UUID,
     action: ApprovalAction,
     reason: str | None = None,
+    via_inbox: bool = False,
 ) -> ApprovalRequestItem:
     """Approve, reject or request changes, in the order of the module
-    docstring; returns the updated item."""
+    docstring; returns the updated item. ``via_inbox`` is set only by the
+    generic inbox routes (#312): a type's own pages, which resolve the item
+    through this function, keep the default."""
     request = await _locked(session, request_id)
     handler = _handlers.get(request.request_type)
     if handler is None or not principal.has(handler.review_permission):
         raise RecordNotFoundError()
+    if via_inbox:
+        route_error = _inbox_route_error(handler)
+        if route_error is not None:
+            raise await route_error(session, _view(request))
     if action == "request_changes" and not handler.supports_request_changes:
         raise ApprovalActionUnsupportedError()
     target = DECISION_TARGETS[action]
@@ -522,9 +546,23 @@ async def decide_approval_request(
 def _inbox_decisions(handler: ApprovalHandler) -> bool:
     """Whether the inbox offers the type's decisions (#60 E1). A handler may
     set ``inbox_decisions = False`` when its items are decided on their own
-    page (the generic routes then answer the handler's ``409``); the items
-    then list no ``allowed_actions``. Optional: absent means ``True``."""
+    page (the generic routes then answer the handler's ``409``, or its
+    ``inbox_route_error`` for any status, #312); the items then list no
+    ``allowed_actions``. Optional: absent means ``True``."""
     return bool(getattr(handler, "inbox_decisions", True))
+
+
+def _inbox_route_error(
+    handler: ApprovalHandler,
+) -> Callable[[AsyncSession, ApprovalRequestView], Awaitable[AppError]] | None:
+    """The handler's optional ``inbox_route_error`` hook (#312), only for a
+    type decided on its own page; ``None`` otherwise."""
+    if _inbox_decisions(handler):
+        return None
+    hook: Callable[[AsyncSession, ApprovalRequestView], Awaitable[AppError]] | None = (
+        getattr(handler, "inbox_route_error", None)
+    )
+    return hook
 
 
 def allowed_actions(

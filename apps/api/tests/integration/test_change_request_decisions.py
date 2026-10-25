@@ -760,6 +760,14 @@ def test_the_generic_inbox_decisions_point_to_the_review_page(scene):
     assert approval_of(scene.url, request["id"]).status == "pending"
     assert request_row(scene.url, request["id"]).status == "pending"
 
+    # #312 B5: no inbox_route_error hook, so a decided item keeps the core's
+    # status check through the generic routes.
+    assert code_of(reject(scene, request["id"])) == OK
+    for action, body in (("approve", None), ("reject", {"reason": "No"})):
+        response = generic(action, body)
+        assert code_of(response) == (409, "approval_transition_invalid")
+    assert approval_of(scene.url, request["id"]).status == "rejected"
+
 
 def test_the_inbox_summary(scene):
     request = late_cancellation(scene)

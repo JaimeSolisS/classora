@@ -8,6 +8,12 @@ import type {
   SubstitutionCreated,
   SubstitutionItem,
 } from './api';
+import type { SessionCloseoutView } from '@/features/tutor-portal/closeout/api';
+import {
+  CORRECTION_SUBMITTED,
+  STAFF_APPROVED,
+  STAFF_CHANGES_REQUESTED,
+} from '@/features/tutor-portal/closeout/fixtures';
 
 // The staff session page's sample data (#52 H4): an unassigned session
 // after a decline, its offer history, and the offer a 201 returns.
@@ -259,5 +265,36 @@ export const CANCELLED_SESSION: ClassSessionDetail = {
   cancellation: {
     cancelled_at: '2026-10-22T10:00:00Z',
     reason: 'Cierre por mantenimiento.',
+  },
+};
+
+// #312 A4/A5: a tutor's note left over from an earlier correction request,
+// after a decision (the API keeps `tutor_note`; the section hides it).
+const LEFTOVER_REVIEW = {
+  last_submitted_at: CORRECTION_SUBMITTED.closeout!.review.last_submitted_at,
+  tutor_note: CORRECTION_SUBMITTED.closeout!.review.tutor_note,
+};
+
+export const APPROVED_WITH_OLD_NOTE: SessionCloseoutView = {
+  ...STAFF_APPROVED,
+  closeout: {
+    ...STAFF_APPROVED.closeout!,
+    review: { ...STAFF_APPROVED.closeout!.review, ...LEFTOVER_REVIEW },
+  },
+};
+
+export const CHANGES_REQUESTED_WITH_OLD_NOTE: SessionCloseoutView = {
+  ...STAFF_CHANGES_REQUESTED,
+  closeout: {
+    ...STAFF_CHANGES_REQUESTED.closeout!,
+    review: { ...STAFF_CHANGES_REQUESTED.closeout!.review, ...LEFTOVER_REVIEW },
+  },
+};
+
+export const SUBMITTED_WITHOUT_NOTE: SessionCloseoutView = {
+  ...CORRECTION_SUBMITTED,
+  closeout: {
+    ...CORRECTION_SUBMITTED.closeout!,
+    review: { ...CORRECTION_SUBMITTED.closeout!.review, tutor_note: null },
   },
 };

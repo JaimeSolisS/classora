@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { toLanguage } from '@/i18n/language';
+import { formatInstant } from '@/lib/time';
 import {
   APPROVED_RECORD,
   ATTENDANCE_CHANGED,
@@ -10,7 +12,6 @@ import {
   FINANCE_SUBMITTED,
   NO_CLOSEOUT,
   REVIEWABLE,
-  STAFF_APPROVED,
   STAFF_CHANGES_REQUESTED,
   STAFF_SUBMITTED,
   WAITING,
@@ -20,11 +21,13 @@ import { ApproveCloseoutDialog } from './ApproveCloseoutDialog';
 import { CloseoutSection } from './CloseoutSection';
 import { CorrectCloseoutDialog } from './CorrectCloseoutDialog';
 import { RequestChangesDialog } from './RequestChangesDialog';
+import { APPROVED_WITH_OLD_NOTE } from './fixtures';
 
 // The staff session page's Closeout section (#77 H7, #78 I8): submitted (a
 // reviewer sees the summary and, with the API's flags, Approve / Request
 // changes / Correct), changes requested with the reason, approved with the
-// history, a correction request with the tutor's reason, attendance changed
+// history (and a leftover tutor's note that stays hidden, #312), a
+// correction request with the tutor's dated reason, attendance changed
 // since approval (Re-approve), Finance (summary and reasons hidden), no
 // closeout recorded, waiting for the tutor and loading; the three dialogs
 // at 390 px and 1280 px. No request: the decisions are stubs. Axe runs in
@@ -102,14 +105,21 @@ export const ChangesRequested: Story = {
   },
 };
 
+// #312: the fixture keeps a tutor's note from an earlier correction request;
+// after the decision the section doesn't show it.
 export const Approved: Story = {
-  args: { state: { status: 'ready', closeout: STAFF_APPROVED }, review },
+  args: {
+    state: { status: 'ready', closeout: APPROVED_WITH_OLD_NOTE },
+    review,
+  },
   play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
     await expect(
-      within(canvasElement).getByText(
-        i18n.t('closeout.review.history.heading'),
-      ),
+      canvas.getByText(i18n.t('closeout.review.history.heading')),
     ).toBeInTheDocument();
+    await expect(
+      canvas.queryByText(/Salimos 5 minutos antes/),
+    ).not.toBeInTheDocument();
   },
 };
 
@@ -120,6 +130,19 @@ export const ApprovedPhone: Story = {
 
 export const CorrectionSubmitted: Story = {
   args: { state: { status: 'ready', closeout: CORRECTION_SUBMITTED }, review },
+  play: async ({ canvasElement }) => {
+    // #312: the tutor's reason, dated with the submission under review.
+    const label = i18n.t('closeout.review.tutorNote', {
+      when: formatInstant('2026-11-12T15:00:00Z', {
+        timeZone: ZONE,
+        language: toLanguage(i18n.resolvedLanguage),
+        style: 'dateTime',
+      }),
+    });
+    await expect(
+      within(canvasElement).getByText(`${label}:`),
+    ).toBeInTheDocument();
+  },
 };
 
 export const AttendanceChanged: Story = {

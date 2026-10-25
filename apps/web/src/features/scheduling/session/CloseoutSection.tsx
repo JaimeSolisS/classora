@@ -136,10 +136,16 @@ export function CloseoutSection({
                 {badge.reason}
               </p>
             ) : null}
-            {record.review.tutor_note ? (
+            {/* #312: only with the submission under review; a decision
+                hides it (the row and the audit event keep it). */}
+            {record.review.status === 'submitted' &&
+            record.review.tutor_note ? (
               <p className="text-sm break-words whitespace-pre-line">
                 <span className="font-medium">
-                  {t('closeout.review.tutorNote')}:
+                  {t('closeout.review.tutorNote', {
+                    when: when(record.review.last_submitted_at),
+                  })}
+                  :
                 </span>{' '}
                 {record.review.tutor_note}
               </p>

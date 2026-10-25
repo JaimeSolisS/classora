@@ -48,9 +48,10 @@ The ``academics.session_closeout`` approval handler
 (:data:`SESSION_CLOSEOUT_HANDLER`, registered by ``app.wiring``): reviewers
 hold ``teaching_hours.approve``; ``inbox_decisions = False``; the generic
 approve, reject and request changes answer ``409
-closeout_review_route_required`` unless the #78 closeout routes already
-decided the closeout (see the handler). ``summaries``: the session facts in
-three statements, no summary text, student names or attendance.
+closeout_review_route_required`` whatever the request's status
+(``inbox_route_error``, #312); the actions keep the same check for internal
+calls (see the handler). ``summaries``: the session facts in three
+statements, no summary text, student names or attendance.
 """
 
 import uuid
@@ -360,7 +361,12 @@ class SessionCloseoutApprovalHandler:
     and always for ``reject`` (closeouts have no reject), they raise ``409
     closeout_review_route_required`` with ``details.review_path`` and the
     item stays as it was. The closeout is read without a lock (the review
-    routes hold it; the generic routes fail before touching it)."""
+    routes hold it; the generic routes fail before touching it).
+
+    **Generic inbox routes (#312):** ``inbox_route_error`` returns that same
+    error for every request status, so the core answers it right after its
+    ``404`` check (``via_inbox``), before its own status checks. The action
+    guards above stay as defence in depth for internal calls."""
 
     request_type: Final = SESSION_CLOSEOUT_TYPE
     review_permission: Final = academics.TEACHING_HOURS_APPROVE
@@ -369,22 +375,44 @@ class SessionCloseoutApprovalHandler:
     inbox_decisions: Final = False
     """E2: the inbox lists no decisions, only the "Review" link."""
 
+    async def _route_error(
+        self,
+        session: AsyncSession,
+        request: administration.ApprovalRequestView,
+        status: str | None,
+    ) -> academics.CloseoutReviewRouteRequiredError | None:
+        closeout = await academics.closeouts_by_id(
+            session, [request.subject_id], fresh=True
+        )
+        found = closeout.get(request.subject_id)
+        if found is None or status is None or found.status != status:
+            return academics.CloseoutReviewRouteRequiredError(
+                review_path(found.class_session_id)
+                if found is not None
+                else "/approvals"
+            )
+        return None
+
     async def _require(
         self,
         session: AsyncSession,
         request: administration.ApprovalRequestView,
         status: str | None,
     ) -> None:
-        closeout = await academics.closeouts_by_id(
-            session, [request.subject_id], fresh=True
-        )
-        found = closeout.get(request.subject_id)
-        if found is None or status is None or found.status != status:
-            raise academics.CloseoutReviewRouteRequiredError(
-                review_path(found.class_session_id)
-                if found is not None
-                else "/approvals"
-            )
+        error = await self._route_error(session, request, status)
+        if error is not None:
+            raise error
+
+    async def inbox_route_error(
+        self,
+        session: AsyncSession,
+        request: administration.ApprovalRequestView,
+    ) -> academics.CloseoutReviewRouteRequiredError:
+        """#312: the generic routes' answer for any request status (the
+        closeout read without a lock; ``/approvals`` when it's missing)."""
+        error = await self._route_error(session, request, None)
+        assert error is not None  # noqa: S101  (status None always refuses)
+        return error
 
     async def approve(
         self,

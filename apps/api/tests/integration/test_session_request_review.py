@@ -800,6 +800,13 @@ def test_the_inbox_resolves_only_through_the_review_routes(
     assert item["subject"]["class_session_id"] == (
         str(request_row(module_seeded_url, request_id).class_session_id)
     )
+    # #312 B5: no inbox_route_error hook, so a decided item keeps the core's
+    # status check through the generic routes.
+    for action, body in (("approve", {}), ("reject", {"reason": "No"})):
+        refused = post(
+            client, owner_cookie, f"{APPROVALS}/{approval.id}/{action}", body
+        )
+        assert code_of(refused) == (409, "approval_transition_invalid")
 
 
 @pytest.mark.parametrize(

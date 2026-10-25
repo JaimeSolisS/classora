@@ -3013,7 +3013,7 @@
       "approvedBadge": "Approved · {{minutes}} min by {{name}}, {{when}}",
       "approvedShort": "Approved · {{minutes}} min",
       "reviewReason": "Reviewer's reason",
-      "tutorNote": "Tutor's reason",
+      "tutorNote": "Tutor's reason (sent {{when}})",
       "approve": "Approve",
       "requestChanges": "Request changes",
       "correct": "Correct",

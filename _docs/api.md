@@ -165,7 +165,7 @@ Codes in use today:
 | `session_not_closable` | 409 | Submitting the closeout of a session that isn't `confirmed`; `details.state` (see Session closeout). |
 | `session_not_started` | 409 | Submitting a closeout before the session starts (`starts_at > now`; see Session closeout). |
 | `closeout_attendance_incomplete` | 409 | Submitting a closeout while a participant has no attendance mark; `details.missing_student_ids` (sorted). Nothing changes (see Session closeout). |
-| `closeout_review_route_required` | 409 | The inbox's generic approve, reject or request changes of an `academics.session_closeout` item: closeouts are decided on the staff session page (M5-11, #78); `details.review_path`; the item stays as it was (see Session closeout). |
+| `closeout_review_route_required` | 409 | The inbox's generic approve, reject or request changes of an `academics.session_closeout` item, whatever the item's status (#312): closeouts are decided on the staff session page (M5-11, #78); `details.review_path`; the item stays as it was (see Session closeout). |
 | `closeout_not_submitted` | 409 | Approving or requesting changes of a closeout that isn't `submitted` (see Session closeout). |
 | `closeout_with_tutor` | 409 | A staff correction while the closeout is `changes_requested`: the tutor owns it until they resubmit (see Session closeout). |
 | `closeout_under_review` | 409 | The tutor's `PUT …/closeout` while it is `submitted` (see Session closeout). |
@@ -715,7 +715,12 @@ M8-01 (#118); the web app has a basic list at `/approvals`.
   `404 not_found` exactly like a missing one (the #21 record-policy rule).
 - **Decision order:** `401` → `csrf_failed` / `privacy_notice_required` →
   body `422` → the row is locked `FOR UPDATE` → `404` (missing, unregistered
-  type, or no review permission) → `409 approval_action_unsupported` → `409
+  type, or no review permission) → for a type decided on its own page
+  (`inbox_decisions = false`) whose handler defines the optional
+  `inbox_route_error` hook (#312; today only `academics.session_closeout`):
+  that type's own `409`, whatever the request's status (the generic routes
+  alone pass `via_inbox`; the type's own pages, which resolve the item
+  through the same core, don't) → `409 approval_action_unsupported` → `409
   approval_transition_invalid` → `422 validation_error` on `["body",
   "reason"]` (required for `request-changes`, and for `reject` when the type
   says so; trimmed, at most 1000 characters) → the type's handler → status,
@@ -4165,10 +4170,13 @@ approved closeout; `approved_minutes`: the current approval revision's, or
 page). Finance, tutors and families get `404` on the item. The inbox shows
 a "Review" link to `/schedule/sessions/:id#closeout` and no decisions: the
 generic approve, reject and request changes answer `409
-closeout_review_route_required` with `details.review_path` and change
-nothing (the handler accepts `approve` / `request_changes` only when the
-closeout routes below already moved the closeout to that status in the same
-transaction; closeouts have no reject).
+closeout_review_route_required` with `details.review_path` for any status
+of the item (`pending`, `changes_requested` or `approved`; before the
+transition and reason checks, after the `404`; #312) and change nothing.
+The handler's own actions keep the same guard for internal calls: they
+accept `approve` / `request_changes` only when the closeout routes below
+already moved the closeout to that status in the same transaction;
+closeouts have no reject.
 
 **Data** (revision 0050): `session_closeouts` (`class_session_id` unique,
 `tutor_user_id`, `status` CHECK, the four summary columns `NULL` or 1-2000
