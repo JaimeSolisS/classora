@@ -67,7 +67,9 @@ export interface TemplateEditorProps {
   /** Saves (create or replace); rejects with the error to show. */
   onSave: (values: TemplateFormValues) => Promise<void>;
   /** Refetches the template after a version conflict. */
-  onReload: () => Promise<void>;
+  /** Refetches the template after a version conflict; resolves with the
+   * template read (when there is one). */
+  onReload: () => Promise<EvaluationTemplate | undefined | void>;
   /** Stories: an error to show. */
   initialError?: unknown;
   /** Arrived from a create: "Template saved.". */
@@ -156,9 +158,23 @@ export function TemplateEditor({
       currentLocation.pathname !== nextLocation.pathname,
   );
 
+  // #308 QA D3/D4: after Reload, Name takes focus once the form shows the
+  // template that was read: here, right after the reset, when the reload
+  // brought a new version (the version it waits for is kept in a ref).
+  const focusNameOnVersion = useRef<number | null>(null);
+  const shownVersion = useRef<number | null>(null);
+
   useEffect(() => {
     reset(defaultValues);
-  }, [defaultValues, reset]);
+    shownVersion.current = template?.version ?? null;
+    if (
+      focusNameOnVersion.current !== null &&
+      shownVersion.current === focusNameOnVersion.current
+    ) {
+      focusNameOnVersion.current = null;
+      setFocusTo((current) => ({ n: (current?.n ?? 0) + 1, to: 'name' }));
+    }
+  }, [defaultValues, reset, template?.version]);
 
   useEffect(() => {
     if (!focusTo) {
@@ -325,7 +341,15 @@ export function TemplateEditor({
               onRetry={() => {
                 setError(null);
                 // #308 QA D3: the alert and its Reload are gone: Name.
-                void onReload().then(() => focusNext('name'));
+                void onReload().then((fresh) => {
+                  if (fresh && fresh.version !== shownVersion.current) {
+                    // Focus once the form is reset to that version (above).
+                    focusNameOnVersion.current = fresh.version;
+                  } else {
+                    // Already shown (or nothing new): no reset follows.
+                    focusNext('name');
+                  }
+                });
               }}
             />
           ) : (

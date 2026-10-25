@@ -122,9 +122,7 @@ export function TemplateEditPage() {
           template={detail.data}
           subjects={subjects}
           initiallySaved={justCreated}
-          onReload={async () => {
-            await detail.refetch();
-          }}
+          onReload={async () => (await detail.refetch()).data}
           onSave={async (values) => {
             try {
               const saved = await replaceEvaluationTemplate(
