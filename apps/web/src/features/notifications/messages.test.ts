@@ -335,12 +335,23 @@ describe('closeout review notifications (#78 F1)', () => {
     );
   });
 
+  it('renders the on-behalf submission in both languages (#301b F1)', () => {
+    expect(text('en', 'academics.closeout_submitted_on_behalf')).toBe(
+      'Your closeout of the Matemáticas class on Jan 8, 2031, 4:00 PM was submitted on your behalf.',
+    );
+    expect(text('es', 'academics.closeout_submitted_on_behalf')).toBe(
+      'Se envió en tu nombre el cierre de la clase de Matemáticas del 8 ene 2031, 16:00.',
+    );
+  });
+
   it('links each type to the closeout', () => {
     const recipient = { userId: '00000000-0000-4000-8000-0000000000aa' };
     for (const type of [
       'academics.closeout_approved',
       'academics.closeout_corrected',
       'academics.closeout_changes_requested',
+      // #301b F1.
+      'academics.closeout_submitted_on_behalf',
     ]) {
       expect(NOTIFICATION_LINKS[type]?.(closeout, recipient)).toBe(
         `/my-schedule/sessions/${closeout.class_session_id}/closeout`,

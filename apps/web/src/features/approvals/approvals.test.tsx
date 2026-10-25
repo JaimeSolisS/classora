@@ -19,7 +19,11 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import type { ApprovalRequestItem } from './api';
-import { AVAILABILITY_CHANGE, SESSION_CLOSEOUT } from './fixtures';
+import {
+  AVAILABILITY_CHANGE,
+  SESSION_CLOSEOUT,
+  SESSION_CLOSEOUT_ON_BEHALF,
+} from './fixtures';
 
 // #40 F1–F5: the /approvals page, its navigation item and route access, the
 // filters in the URL, the per-type summary, the decisions (reject body,
@@ -515,5 +519,18 @@ describe('session closeouts (#77 G4)', () => {
     expect(
       [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
     ).toEqual([]);
+  });
+
+  it('marks an on-behalf submission as text, with the same link (#301b E4)', async () => {
+    stub(COORDINATOR, { [LIST]: () => page([SESSION_CLOSEOUT_ON_BEHALF]) });
+    app = await renderApp('/approvals');
+
+    expect(main().textContent).toContain('New · On behalf');
+    const link = [...main().querySelectorAll('a')].find(
+      (anchor) => anchor.textContent === 'Review',
+    );
+    expect(link?.getAttribute('href')).toBe(
+      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2#closeout',
+    );
   });
 });

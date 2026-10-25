@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addMonths,
   DEFAULT_CENTER_TIME_ZONE,
+  formatElapsed,
   formatUtcOffset,
   hasOffsetChange,
   isoWeekday,
@@ -321,5 +322,34 @@ describe('isoWeekday (#54b)', () => {
     expect(isoWeekday('2026-11-15')).toBe(7);
     // A DST change day in Tijuana is still a Sunday.
     expect(isoWeekday('2026-03-08')).toBe(7);
+  });
+});
+
+describe('formatElapsed (#301b)', () => {
+  const ENDED = '2026-11-09T17:00:00Z';
+  const at = (ms: number) => new Date(Date.parse(ENDED) + ms);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+
+  it.each([
+    ['en', 0, '1 minute ago'],
+    ['en', 59 * MINUTE, '59 minutes ago'],
+    ['en', 60 * MINUTE, '1 hour ago'],
+    ['en', 3 * HOUR + 59 * MINUTE, '3 hours ago'],
+    ['en', 47 * HOUR + 59 * MINUTE, '47 hours ago'],
+    ['en', 48 * HOUR, '2 days ago'],
+    ['en', 30 * 24 * HOUR, '30 days ago'],
+    ['es', 0, 'hace 1 minuto'],
+    ['es', 59 * MINUTE, 'hace 59 minutos'],
+    ['es', 60 * MINUTE, 'hace 1 hora'],
+    ['es', 3 * HOUR, 'hace 3 horas'],
+    ['es', 47 * HOUR, 'hace 47 horas'],
+    ['es', 48 * HOUR, 'hace 2 días'],
+  ] as const)('%s, %d ms later: %s', (language, elapsed, expected) => {
+    expect(formatElapsed(ENDED, at(elapsed), language)).toBe(expected);
+  });
+
+  it('never reads a future end as negative', () => {
+    expect(formatElapsed(ENDED, at(-5 * MINUTE), 'en')).toBe('1 minute ago');
   });
 });

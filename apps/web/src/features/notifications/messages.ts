@@ -254,6 +254,8 @@ export const NOTIFICATION_LINKS: Readonly<
   'academics.closeout_approved': closeoutLink,
   'academics.closeout_corrected': closeoutLink,
   'academics.closeout_changes_requested': closeoutLink,
+  // #301b F1: a reviewer closed out the tutor's class on their behalf.
+  'academics.closeout_submitted_on_behalf': closeoutLink,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

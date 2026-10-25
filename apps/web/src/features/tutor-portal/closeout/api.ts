@@ -7,7 +7,9 @@ import { api, apiCall } from '@/app/api';
 // staff session page reuses fetchCloseout and adds the review decisions
 // (#78: approve, request changes, correct, each with the closeout's
 // version). #305: the tutor's resubmission and correction request (the
-// same PUT, with the closeout's version).
+// same PUT, with the closeout's version). #301b: a reviewer's closeout on
+// the tutor's behalf (POST, the session's version) and takeover (PUT, the
+// closeout's version).
 
 export type SessionCloseoutView = components['schemas']['SessionCloseoutView'];
 export type SessionCloseoutRecord =
@@ -26,6 +28,9 @@ export type CloseoutCorrectionBody =
 export type CloseoutSummaryInput =
   components['schemas']['CloseoutSummaryInput'];
 export type CloseoutResubmitBody = components['schemas']['CloseoutResubmit'];
+export type CloseoutOnBehalfBody =
+  components['schemas']['CloseoutOnBehalfSubmit'];
+export type CloseoutTakeOverBody = components['schemas']['CloseoutTakeOver'];
 
 export const CLOSEOUT_KEY = ['closeout'] as const;
 
@@ -113,6 +118,38 @@ export function correctCloseout(
 ): Promise<SessionCloseoutView> {
   return apiCall(() =>
     api.POST('/api/v1/class-sessions/{class_session_id}/closeout/corrections', {
+      params: sessionPath(sessionId),
+      body,
+    }),
+  );
+}
+
+/**
+ * #301 C1: a reviewer closes out an ended class for its tutor (the
+ * session's version), with a reason.
+ */
+export function submitCloseoutOnBehalf(
+  sessionId: string,
+  body: CloseoutOnBehalfBody,
+): Promise<SessionCloseoutView> {
+  return apiCall(() =>
+    api.POST('/api/v1/class-sessions/{class_session_id}/closeout/on-behalf', {
+      params: sessionPath(sessionId),
+      body,
+    }),
+  );
+}
+
+/**
+ * #301 D1: a reviewer takes over a closeout sent back to its tutor (the
+ * closeout's version) and resubmits it on the tutor's behalf.
+ */
+export function takeOverCloseout(
+  sessionId: string,
+  body: CloseoutTakeOverBody,
+): Promise<SessionCloseoutView> {
+  return apiCall(() =>
+    api.PUT('/api/v1/class-sessions/{class_session_id}/closeout/on-behalf', {
       params: sessionPath(sessionId),
       body,
     }),

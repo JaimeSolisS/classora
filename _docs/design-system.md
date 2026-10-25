@@ -155,6 +155,11 @@ Rules for every user-visible string, date and amount in `apps/web`
   browser's zone. In components, `useFormatters()` (`src/lib/formatters.ts`)
   binds the active language and the center zone, and follows a zone change
   (a settings save refreshes the session).
+- **Elapsed time:** `formatElapsed(instant, now, language)` gives relative
+  text with `Intl.RelativeTimeFormat` ("3 hours ago" / "hace 3 horas"):
+  whole minutes under an hour (at least 1), whole hours under 48 hours, then
+  whole days. Pass the time of the read as `now` (the overdue closeouts
+  list, #301b).
 - **Local to instant:** `localDateTimeToInstant(localDate, 'HH:mm', timeZone)`
   and `localDayBounds(localDate, timeZone)` (end exclusive, so 23- and 25-hour
   days work). DST follows Temporal's `'compatible'` rule: a time in a
@@ -395,6 +400,28 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   newest 10 with "Load more", "Mark all as read", and per item the message
   (from i18n keys), the time in the center zone and the word "Unread" or
   "Read" (never colour alone). Activating an item marks it read.
+- **`OverdueCloseoutsView`** (`features/scheduling/overdue`, #301b): a list
+  page whose table scrolls inside its own container (the #311 pattern for
+  hand-written tables): the wrapper is the only horizontal scroller, with
+  `role="region"`, `aria-labelledby` the page `h1`, `tabIndex={0}`, a
+  `focus-visible` ring and `relative` (so an `sr-only` header cell can't
+  widen the page). The table's `min-width` keeps its columns readable; at
+  320 and 390 px it scrolls in the region and the page never scrolls
+  sideways. A state that can't act is a bordered text badge ("Can't
+  submit"), never colour alone. Repeated row links carry an accessible name
+  with the row's subject and date ("Open session: Matemáticas, …"). The
+  filters (a `SearchPicker`, two labelled `type="date"` inputs with the
+  range error on "To", a removable chip, "Clear filters") stack in one
+  column below `sm`.
+- **`CloseoutOnBehalfDialog`** (`features/scheduling/session`, #301b): a
+  reviewer's "Close out on behalf of {tutor}" or "Take over and resubmit".
+  The minutes and summary fields are `CloseoutFields`, shared with
+  `CorrectCloseoutDialog`; a required reason with a live counter follows.
+  An attendance line says how many students are marked; while any is
+  unmarked it names them, Submit sends nothing and focus moves to the line
+  (`role="alert"` once a submit was attempted). Server errors keep the
+  typed values: field errors go on the fields (focus on the first), a
+  changed closeout or session shows its message with "Reload".
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

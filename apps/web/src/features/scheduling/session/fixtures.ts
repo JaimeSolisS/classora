@@ -10,9 +10,15 @@ import type {
 } from './api';
 import type { SessionCloseoutView } from '@/features/tutor-portal/closeout/api';
 import {
+  ATTENDANCE_UNMARKED,
+  CHANGES_REQUESTED_RECORD,
   CORRECTION_SUBMITTED,
+  ON_BEHALF,
+  REVIEWABLE,
   STAFF_APPROVED,
   STAFF_CHANGES_REQUESTED,
+  STAFF_SUBMITTED,
+  WAITING,
 } from '@/features/tutor-portal/closeout/fixtures';
 
 // The staff session page's sample data (#52 H4): an unassigned session
@@ -297,4 +303,84 @@ export const SUBMITTED_WITHOUT_NOTE: SessionCloseoutView = {
     ...CORRECTION_SUBMITTED.closeout!,
     review: { ...CORRECTION_SUBMITTED.closeout!.review, tutor_note: null },
   },
+};
+
+// --- #301b on behalf ------------------------------------------------------
+
+/** A reviewer on an ended class without a closeout: "Close out on behalf". */
+export const WAITING_CAN_SUBMIT_ON_BEHALF: SessionCloseoutView = {
+  ...WAITING,
+  can_submit_on_behalf: true,
+};
+
+/** The same with one of two students unmarked (Bruno Gómez). */
+export const WAITING_INCOMPLETE: SessionCloseoutView = {
+  ...WAITING_CAN_SUBMIT_ON_BEHALF,
+  attendance: {
+    total: 2,
+    marked: 1,
+    all_absent: false,
+    missing_student_ids: [ATTENDANCE_UNMARKED.items[1]!.student.id],
+  },
+};
+
+/** Everyone absent: the summary is optional. */
+export const WAITING_ALL_ABSENT: SessionCloseoutView = {
+  ...WAITING_CAN_SUBMIT_ON_BEHALF,
+  attendance: {
+    total: 2,
+    marked: 2,
+    all_absent: true,
+    missing_student_ids: [],
+  },
+};
+
+const ON_BEHALF_RECORD = {
+  ...STAFF_SUBMITTED.closeout!,
+  submitted_at: ON_BEHALF.submitted_at,
+  review: {
+    ...STAFF_SUBMITTED.closeout!.review,
+    last_submitted_at: ON_BEHALF.submitted_at,
+  },
+  on_behalf: ON_BEHALF,
+};
+
+/** Another reviewer on an on-behalf submission: Approve and Correct only. */
+export const ON_BEHALF_REVIEWER: SessionCloseoutView = {
+  ...REVIEWABLE,
+  can_request_changes: false,
+  closeout: ON_BEHALF_RECORD,
+};
+
+/** Finance: the marker without the reason. */
+export const ON_BEHALF_FINANCE: SessionCloseoutView = {
+  ...STAFF_SUBMITTED,
+  closeout: {
+    ...ON_BEHALF_RECORD,
+    summary: null,
+    summary_hidden: true,
+    on_behalf: { ...ON_BEHALF, reason: null },
+  },
+};
+
+/**
+ * A takeover's result while under review: the reviewer's old reason is
+ * still in the read (unchanged from #78), and the section hides it.
+ */
+export const ON_BEHALF_AFTER_TAKEOVER: SessionCloseoutView = {
+  ...ON_BEHALF_REVIEWER,
+  closeout: {
+    ...ON_BEHALF_RECORD,
+    version: 3,
+    review: {
+      ...ON_BEHALF_RECORD.review,
+      reason: CHANGES_REQUESTED_RECORD.review.reason,
+    },
+  },
+};
+
+/** A closeout sent back to a tutor who can't act: "Take over". */
+export const CHANGES_REQUESTED_CAN_TAKE_OVER: SessionCloseoutView = {
+  ...STAFF_CHANGES_REQUESTED,
+  can_take_over: true,
 };

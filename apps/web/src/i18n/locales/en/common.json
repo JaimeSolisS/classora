@@ -411,7 +411,8 @@
         "resubmission": "Resubmitted",
         "correction": "Correction"
       },
-      "approvedMinutes": "Approved now: {{minutes}} min"
+      "approvedMinutes": "Approved now: {{minutes}} min",
+      "onBehalf": "On behalf"
     }
   },
   "users": {
@@ -1477,7 +1478,8 @@
       "scheduling_reassignment_needed": "{{tutor_name}}'s availability changed: {{session_count}} classes need another tutor, the first on {{first_starts_at}}.",
       "academics_closeout_approved": "Your closeout of the {{subject_name}} class on {{starts_at}} was approved: {{approved_minutes}} min.",
       "academics_closeout_corrected": "A reviewer corrected your closeout of the {{subject_name}} class on {{starts_at}}.",
-      "academics_closeout_changes_requested": "Changes were requested to your closeout of the {{subject_name}} class on {{starts_at}}."
+      "academics_closeout_changes_requested": "Changes were requested to your closeout of the {{subject_name}} class on {{starts_at}}.",
+      "academics_closeout_submitted_on_behalf": "Your closeout of the {{subject_name}} class on {{starts_at}} was submitted on your behalf."
     }
   },
   "scheduling": {
@@ -2116,6 +2118,44 @@
       "cancellationReasons": {
         "family_request": "Cancelled at the family’s request",
         "tutor_request": "Cancelled at the tutor’s request"
+      }
+    },
+    "overdue": {
+      "title": "Overdue closeouts",
+      "intro": "Classes that have ended without a closeout, oldest first.",
+      "back": "Back to schedule",
+      "link": "Overdue closeouts",
+      "linkCount": "Overdue closeouts ({{total}})",
+      "columns": {
+        "date": "Date and time",
+        "ended": "Ended",
+        "subject": "Subject",
+        "tutor": "Tutor",
+        "kind": "Class type",
+        "participants": "Students",
+        "attendance": "Attendance",
+        "action": "Actions"
+      },
+      "when": "{{when}} – {{end}}",
+      "ended": "Ended {{elapsed}}",
+      "cantSubmit": "Can't submit",
+      "participants_one": "{{count}} student",
+      "participants_other": "{{count}} students",
+      "attendance": "{{marked}} of {{total}} marked",
+      "open": "Open session",
+      "openFor": "Open session: {{subject}}, {{when}}",
+      "empty": "Every class that has ended has a closeout.",
+      "emptyFiltered": "No overdue closeouts match these filters.",
+      "filters": {
+        "label": "Filters",
+        "tutor": "Tutor",
+        "from": "From",
+        "to": "To",
+        "rangeInvalid": "“To” can't be before “From”.",
+        "clear": "Clear filters",
+        "chip": "Tutor: {{name}}",
+        "remove": "Remove filter: Tutor {{name}}",
+        "selected": "Selected tutor"
       }
     }
   },
@@ -3095,7 +3135,31 @@
       "correctionNotice": "Correction submitted. Approved {{minutes}} min stays in force until it is reviewed.",
       "unchanged": "Nothing changed. Change the minutes or the summary, or cancel.",
       "badge": "Changes requested",
-      "fix": "Fix closeout"
+      "fix": "Fix closeout",
+      "onBehalf": "Submitted on your behalf by {{name}}, {{when}}",
+      "onBehalfReason": "Reason: {{reason}}"
+    },
+    "onBehalf": {
+      "action": "Close out on behalf of {{tutor}}",
+      "takeOver": "Take over and resubmit",
+      "description": "Enter what {{tutor}} would have submitted. The closeout goes to review as submitted on their behalf, and {{tutor}} is notified.",
+      "takeOverExplain": "The closeout goes back to review as submitted on {{tutor}}'s behalf.",
+      "attendance": "Attendance: {{marked}} of {{total}} marked",
+      "complete": "{{marked}} of {{total}} marked.",
+      "markRest": "Mark the rest in Attendance above:",
+      "moreStudents_one": "{{count}} more student",
+      "moreStudents_other": "{{count}} more students",
+      "reason": "Why are you closing this out on the tutor's behalf?",
+      "submit": "Submit closeout",
+      "takeOverSubmit": "Resubmit",
+      "submitting": "Submitting…",
+      "marker": "Submitted on behalf of {{tutor}} by {{name}}, {{when}}",
+      "reasonLine": "Reason: {{reason}}",
+      "reasonHidden": "Reason visible to academic reviewers",
+      "notices": {
+        "submitted": "Closeout submitted on behalf of {{tutor}}.",
+        "takenOver": "Closeout taken over and sent back to review."
+      }
     }
   }
 }

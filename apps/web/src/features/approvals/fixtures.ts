@@ -179,3 +179,13 @@ export const SESSION_CLOSEOUT_CORRECTION: ApprovalRequestItem = {
     approved_minutes: 55,
   },
 };
+
+/** #301b E4: a closeout a reviewer submitted on the tutor's behalf. */
+export const SESSION_CLOSEOUT_ON_BEHALF: ApprovalRequestItem = {
+  ...SESSION_CLOSEOUT,
+  id: '00000000-0000-4000-8000-0000000000f4',
+  subject: {
+    ...(SESSION_CLOSEOUT.subject as Record<string, unknown>),
+    on_behalf_by_display_name: 'Laura Méndez',
+  },
+};

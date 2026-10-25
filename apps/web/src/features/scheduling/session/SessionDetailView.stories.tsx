@@ -403,6 +403,8 @@ export const CompletedWithSectionsNarrow320: Story = {
           onApprove: fn(() => Promise.resolve()),
           onRequestChanges: fn(() => Promise.resolve()),
           onCorrect: fn(() => Promise.resolve()),
+          onSubmitOnBehalf: fn(() => Promise.resolve()),
+          onTakeOver: fn(() => Promise.resolve()),
           onReload: fn(),
         }}
       />

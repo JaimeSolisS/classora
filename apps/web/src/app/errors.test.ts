@@ -145,6 +145,10 @@ const API_CODES = [
   'session_not_closable',
   'session_not_started',
   'summary_required',
+  'session_not_ended',
+  'closeout_on_behalf_own_session',
+  'closeout_submitted_on_behalf',
+  'closeout_not_with_tutor',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

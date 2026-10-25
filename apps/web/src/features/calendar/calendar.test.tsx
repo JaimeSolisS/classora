@@ -528,6 +528,90 @@ describe('the Schedule page', () => {
     expect((await lazy!()).Component).toBe(CalendarPage);
   });
 
+  // #301b B1, B2: the overdue closeouts link for academic reviewers only.
+  describe('the overdue closeouts link (#301b B)', () => {
+    const OVERDUE = 'GET /api/v1/closeouts/overdue';
+    const REVIEWER: SessionUserBody = {
+      ...TEST_USER,
+      roles: ['academic_coordinator'],
+      permissions: ['schedule.view', 'teaching_hours.approve'],
+    };
+
+    function overdueLink(): HTMLAnchorElement | undefined {
+      return [
+        ...app!.container.querySelectorAll<HTMLAnchorElement>(
+          'main a[href="/schedule/overdue-closeouts"]',
+        ),
+      ][0];
+    }
+
+    function overdueUrls(): URL[] {
+      return api.fetch.mock.calls
+        .map(([request]) => new URL(request.url))
+        .filter((url) => url.pathname === '/api/v1/closeouts/overdue');
+    }
+
+    it('shows the count from one limit=1 read', async () => {
+      stub(REVIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      api.set({
+        [OVERDUE]: () =>
+          jsonResponse(200, { items: [], total: 7, limit: 1, offset: 0 }),
+      });
+      app = await renderApp('/schedule', ROUTES);
+      await calendarLoaded();
+
+      expect(overdueLink()?.textContent).toBe('Overdue closeouts (7)');
+      const urls = overdueUrls();
+      expect(urls).toHaveLength(1);
+      expect(urls[0]!.searchParams.get('limit')).toBe('1');
+    });
+
+    it('shows the link without a count while loading or after an error', async () => {
+      stub(REVIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      app = await renderApp('/schedule', ROUTES);
+      await calendarLoaded();
+      expect(overdueLink()?.textContent).toBe('Overdue closeouts');
+      app.unmount();
+
+      stub(REVIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      api.set({
+        [OVERDUE]: () =>
+          jsonResponse(500, {
+            type: 'about:blank',
+            title: 'Error',
+            status: 500,
+            code: 'internal_error',
+            request_id: 'req-500',
+          }),
+      });
+      app = await renderApp('/schedule', ROUTES);
+      await calendarLoaded();
+      await settle();
+      expect(overdueLink()?.textContent).toBe('Overdue closeouts');
+      expect(app.container.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('shows a count of 0', async () => {
+      stub(REVIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      api.set({
+        [OVERDUE]: () =>
+          jsonResponse(200, { items: [], total: 0, limit: 1, offset: 0 }),
+      });
+      app = await renderApp('/schedule', ROUTES);
+      await calendarLoaded();
+      expect(overdueLink()?.textContent).toBe('Overdue closeouts (0)');
+    });
+
+    it('is not rendered, and nothing is read, for Finance', async () => {
+      stub(VIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      app = await renderApp('/schedule', ROUTES);
+      await calendarLoaded();
+
+      expect(overdueLink()).toBeUndefined();
+      expect(overdueUrls()).toHaveLength(0);
+    });
+  });
+
   it('denies the page without schedule.view', async () => {
     stub({ ...TEST_USER, permissions: [] }, () =>
       jsonResponse(200, { items: [], truncated: false }),

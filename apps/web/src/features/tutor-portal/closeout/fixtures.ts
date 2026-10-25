@@ -93,7 +93,7 @@ export function closeoutView(
     can_correct: false,
     can_resubmit: false,
     can_request_correction: false,
-    // #301 (API only; the web reads them in #317).
+    // #301 (read by the web from #317).
     can_request_changes: false,
     can_submit_on_behalf: false,
     can_take_over: false,
@@ -213,6 +213,8 @@ export const CORRECTION: CloseoutCorrectionItem = {
 export const REVIEWABLE = closeoutView({
   ...STAFF_SUBMITTED,
   can_review: true,
+  // #301b E2: Request changes follows its own flag.
+  can_request_changes: true,
   can_correct: true,
 });
 
@@ -357,4 +359,29 @@ export const TUTOR_RESUBMITTED = closeoutView({
       last_submitted_at: '2026-11-10T15:00:00Z',
     },
   },
+});
+
+// --- #301b on behalf ------------------------------------------------------
+
+export const ON_BEHALF = {
+  by: { display_name: 'Laura Méndez' },
+  reason: 'El tutor dejó el centro antes de enviar el cierre.',
+  submitted_at: '2026-11-10T16:00:00Z',
+};
+
+/** The tutor's view of a closeout submitted on their behalf (E5). */
+export const TUTOR_ON_BEHALF_SUBMITTED = closeoutView({
+  ...SUBMITTED,
+  closeout: {
+    ...RECORD,
+    submitted_at: ON_BEHALF.submitted_at,
+    review: { ...RECORD.review, last_submitted_at: ON_BEHALF.submitted_at },
+    on_behalf: ON_BEHALF,
+  },
+});
+
+/** The tutor's view once it was approved (the correction request stays). */
+export const TUTOR_ON_BEHALF_APPROVED = closeoutView({
+  ...TUTOR_APPROVED,
+  closeout: { ...APPROVED_RECORD, on_behalf: ON_BEHALF },
 });

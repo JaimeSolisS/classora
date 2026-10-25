@@ -223,7 +223,11 @@ unless a bullet says otherwise.
   correction adds a new approval instead of changing the old one. Tutors
   see the reviewer's reason, fix and resubmit a closeout from My schedule,
   and can request a correction after approval, while the approved minutes
-  stay in force until it is reviewed.
+  stay in force until it is reviewed. Reviewers also see the classes that
+  ended without a closeout and can close one out on the tutor's behalf with
+  a reason, or take over a closeout sent back to a tutor who can't act; the
+  tutor, the inbox and the session page show that it was submitted on the
+  tutor's behalf.
 
 **Courses**
 

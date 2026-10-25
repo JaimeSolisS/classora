@@ -168,6 +168,11 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['session_not_closable', 'session_not_closable'],
   ['session_not_started', 'session_not_started'],
   ['summary_required', 'summary_required'],
+  // Closeout on behalf (#301).
+  ['session_not_ended', 'session_not_ended'],
+  ['closeout_on_behalf_own_session', 'closeout_on_behalf_own_session'],
+  ['closeout_submitted_on_behalf', 'closeout_submitted_on_behalf'],
+  ['closeout_not_with_tutor', 'closeout_not_with_tutor'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

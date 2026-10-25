@@ -7,6 +7,7 @@ import { formatInstant } from '@/lib/time';
 import {
   APPROVED_RECORD,
   ATTENDANCE_CHANGED,
+  ATTENDANCE_UNMARKED,
   CORRECTION_SUBMITTED,
   FINANCE_APPROVED,
   FINANCE_SUBMITTED,
@@ -21,7 +22,14 @@ import { ApproveCloseoutDialog } from './ApproveCloseoutDialog';
 import { CloseoutSection } from './CloseoutSection';
 import { CorrectCloseoutDialog } from './CorrectCloseoutDialog';
 import { RequestChangesDialog } from './RequestChangesDialog';
-import { APPROVED_WITH_OLD_NOTE } from './fixtures';
+import {
+  APPROVED_WITH_OLD_NOTE,
+  CHANGES_REQUESTED_CAN_TAKE_OVER,
+  ON_BEHALF_AFTER_TAKEOVER,
+  ON_BEHALF_FINANCE,
+  ON_BEHALF_REVIEWER,
+  WAITING_CAN_SUBMIT_ON_BEHALF,
+} from './fixtures';
 
 // The staff session page's Closeout section (#77 H7, #78 I8): submitted (a
 // reviewer sees the summary and, with the API's flags, Approve / Request
@@ -31,7 +39,10 @@ import { APPROVED_WITH_OLD_NOTE } from './fixtures';
 // since approval (Re-approve), Finance (summary and reasons hidden), no
 // closeout recorded, waiting for the tutor and loading; the three dialogs
 // at 390 px and 1280 px. No request: the decisions are stubs. Axe runs in
-// light and dark (the storybook projects).
+// light and dark (the storybook projects). #301b: waiting with "Close out
+// on behalf", an on-behalf submission for a reviewer (no Request changes,
+// the old request-changes reason of a takeover hidden) and for Finance
+// (reason hidden), and changes requested with "Take over and resubmit".
 
 const VIEWPORTS = {
   phone390: {
@@ -50,6 +61,8 @@ const review = {
   onApprove: fn(() => Promise.resolve()),
   onRequestChanges: fn(() => Promise.resolve()),
   onCorrect: fn(() => Promise.resolve()),
+  onSubmitOnBehalf: fn(() => Promise.resolve()),
+  onTakeOver: fn(() => Promise.resolve()),
   onReload: fn(),
 };
 
@@ -292,4 +305,111 @@ export const CorrectDialogPhone: Story = {
 export const CorrectDialogDesktop: Story = {
   ...correctDialog,
   globals: { viewport: { value: 'desktop1280' } },
+};
+
+// --- #301b on behalf ---------------------------------------------------------
+
+export const WaitingCanSubmitOnBehalf: Story = {
+  args: {
+    state: { status: 'ready', closeout: WAITING_CAN_SUBMIT_ON_BEHALF },
+    review,
+    students: ATTENDANCE_UNMARKED.items,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(
+        i18n.t('closeout.onBehalf.attendance', { marked: 2, total: 2 }),
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('closeout.onBehalf.action', { tutor: 'Carmen Ruiz' }),
+      }),
+    );
+    const dialog = await within(document.body).findByRole('dialog');
+    await expect(
+      within(dialog).getByLabelText(i18n.t('closeout.onBehalf.reason'), {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+const marker = (name: string) =>
+  i18n.t('closeout.onBehalf.marker', {
+    tutor: 'Carmen Ruiz',
+    name,
+    when: formatInstant('2026-11-10T16:00:00Z', {
+      timeZone: ZONE,
+      language: toLanguage(i18n.resolvedLanguage),
+      style: 'dateTime',
+    }),
+  });
+
+// The read still carries the reviewer's old request-changes reason after a
+// takeover (#301 QA note); the section shows it only while changes are
+// requested.
+export const OnBehalfSubmittedReviewer: Story = {
+  args: {
+    state: { status: 'ready', closeout: ON_BEHALF_AFTER_TAKEOVER },
+    review,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(marker('Laura Méndez'))).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', {
+        name: i18n.t('closeout.review.requestChanges'),
+      }),
+    ).toBeNull();
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('closeout.review.approve') }),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByText(/Añade la tarea asignada/),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const OnBehalfSubmittedReviewerPhone: Story = {
+  args: { state: { status: 'ready', closeout: ON_BEHALF_REVIEWER }, review },
+  globals: { viewport: { value: 'phone390' } },
+};
+
+export const OnBehalfFinance: Story = {
+  args: { state: { status: 'ready', closeout: ON_BEHALF_FINANCE } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(marker('Laura Méndez'))).toBeInTheDocument();
+    await expect(
+      canvas.getByText(i18n.t('closeout.onBehalf.reasonHidden')),
+    ).toBeInTheDocument();
+    await expect(canvas.queryByText(/dejó el centro/)).not.toBeInTheDocument();
+  },
+};
+
+export const ChangesRequestedCanTakeOver: Story = {
+  args: {
+    state: { status: 'ready', closeout: CHANGES_REQUESTED_CAN_TAKE_OVER },
+    review,
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole('button', {
+        name: i18n.t('closeout.onBehalf.takeOver'),
+      }),
+    );
+    const dialog = await within(document.body).findByRole('dialog');
+    await expect(
+      within(dialog).getByText(
+        i18n.t('closeout.onBehalf.takeOverExplain', { tutor: 'Carmen Ruiz' }),
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+export const ChangesRequestedCanTakeOverPhone: Story = {
+  args: ChangesRequestedCanTakeOver.args,
+  globals: { viewport: { value: 'phone390' } },
 };

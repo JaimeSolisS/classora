@@ -257,6 +257,17 @@ export const routes: RouteObject[] = [
             element: <ScheduleSessionPage />,
             handle: { permission: 'schedule.manage' },
           },
+          // #301b A1: the classes that ended without a closeout
+          // (code-split; linked from the Schedule page).
+          {
+            path: 'schedule/overdue-closeouts',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/scheduling/overdue/OverdueCloseoutsPage')
+              ).OverdueCloseoutsPage,
+            }),
+            handle: { permission: 'teaching_hours.approve' },
+          },
           // #52 H2: the session page (its offer panel needs schedule.assign).
           {
             path: 'schedule/sessions/:sessionId',

@@ -11,6 +11,10 @@ import type {
 } from '@/features/tutor-portal/closeout/api';
 import { SummaryList } from '@/features/tutor-portal/closeout/CloseoutFlow';
 import { ApproveCloseoutDialog } from './ApproveCloseoutDialog';
+import {
+  CloseoutOnBehalfDialog,
+  type OnBehalfValues,
+} from './CloseoutOnBehalfDialog';
 import { CloseoutHistory } from './CloseoutHistory';
 import { closeoutBadge } from './closeoutReview';
 import { CorrectCloseoutDialog } from './CorrectCloseoutDialog';
@@ -29,6 +33,14 @@ import { RequestChangesDialog } from './RequestChangesDialog';
 // without one; a started confirmed session reads "Waiting for the tutor's
 // closeout". The page renders it for completed and started confirmed
 // sessions only; `#closeout` (the inbox's Review link) scrolls to it.
+//
+// #301b: the waiting state also says how many students are marked, and a
+// reviewer (`can_submit_on_behalf`) gets "Close out on behalf of {tutor}";
+// a closeout sent back to its tutor offers "Take over and resubmit"
+// (`can_take_over`). An on-behalf submission reads "Submitted on behalf of
+// {tutor} by {name}, {when}" with the reason ("Reason visible to academic
+// reviewers" when it is hidden), and Request changes follows its own flag
+// (`can_request_changes`: never on an on-behalf submission).
 
 export type CloseoutSectionState =
   | { status: 'loading' }
@@ -40,21 +52,41 @@ export interface CloseoutReviewActions {
   onApprove: (version: number) => Promise<void>;
   onRequestChanges: (version: number, reason: string) => Promise<void>;
   onCorrect: (body: CloseoutCorrectionBody) => Promise<void>;
+  /** #301b C3: the session's version. */
+  onSubmitOnBehalf: (version: number, values: OnBehalfValues) => Promise<void>;
+  /** #301b D3: the closeout's version. */
+  onTakeOver: (version: number, values: OnBehalfValues) => Promise<void>;
   onReload: () => void;
+}
+
+/** A row of the page's attendance (the unmarked students' names). */
+export interface CloseoutStudent {
+  student: { id: string; display_name: string };
+  status: string | null;
 }
 
 export interface CloseoutSectionProps {
   state: CloseoutSectionState;
   timeZone: string;
   review?: CloseoutReviewActions;
+  /** The page's attendance rows (#301b C2). */
+  students?: readonly CloseoutStudent[];
 }
 
-type Dialog = 'approve' | 'changes' | 'correct' | 'reapprove' | null;
+type Dialog =
+  | 'approve'
+  | 'changes'
+  | 'correct'
+  | 'reapprove'
+  | 'onBehalf'
+  | 'takeover'
+  | null;
 
 export function CloseoutSection({
   state,
   timeZone,
   review,
+  students = [],
 }: CloseoutSectionProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -103,7 +135,49 @@ export function CloseoutSection({
     const { closeout } = state;
     const record = closeout.closeout;
     if (closeout.state === 'confirmed') {
-      body = <p className="text-sm">{t('closeout.section.waiting')}</p>;
+      const tutorName = closeout.tutor?.display_name ?? '';
+      body = (
+        <div className="flex min-w-0 flex-col gap-3">
+          <p className="text-sm">{t('closeout.section.waiting')}</p>
+          <p className="text-sm">
+            {t('closeout.onBehalf.attendance', {
+              marked: closeout.attendance.marked,
+              total: closeout.attendance.total,
+            })}
+          </p>
+          {review && closeout.can_submit_on_behalf ? (
+            <>
+              <div>
+                <Button
+                  type="button"
+                  className="h-auto min-h-9 whitespace-normal"
+                  onClick={(event) => show('onBehalf', event.currentTarget)}
+                >
+                  {t('closeout.onBehalf.action', { tutor: tutorName })}
+                </Button>
+              </div>
+              <CloseoutOnBehalfDialog
+                open={dialog === 'onBehalf'}
+                mode="submit"
+                tutorName={tutorName}
+                scheduledMinutes={closeout.scheduled_minutes}
+                allAbsent={closeout.attendance.all_absent}
+                attendance={closeout.attendance}
+                students={students}
+                onConfirm={async (values) => {
+                  await review.onSubmitOnBehalf(closeout.version, values);
+                  close();
+                }}
+                onCancel={close}
+                onReload={() => {
+                  close();
+                  review.onReload();
+                }}
+              />
+            </>
+          ) : null}
+        </div>
+      );
     } else if (!record) {
       body = <p className="text-sm">{t('closeout.noCloseout')}</p>;
     } else {
@@ -136,6 +210,37 @@ export function CloseoutSection({
                 {badge.reason}
               </p>
             ) : null}
+            {record.on_behalf ? (
+              <>
+                <p className="text-sm break-words">
+                  {t('closeout.onBehalf.marker', {
+                    tutor: record.submitted_by.display_name,
+                    name: record.on_behalf.by.display_name,
+                    when: when(record.on_behalf.submitted_at),
+                  })}
+                </p>
+                <p className="text-sm break-words whitespace-pre-line">
+                  {record.on_behalf.reason === null
+                    ? t('closeout.onBehalf.reasonHidden')
+                    : t('closeout.onBehalf.reasonLine', {
+                        reason: record.on_behalf.reason,
+                      })}
+                </p>
+              </>
+            ) : null}
+            {review &&
+            record.status === 'changes_requested' &&
+            closeout.can_take_over ? (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={(event) => show('takeover', event.currentTarget)}
+                >
+                  {t('closeout.onBehalf.takeOver')}
+                </Button>
+              </div>
+            ) : null}
             {/* #312: only with the submission under review; a decision
                 hides it (the row and the audit event keep it). */}
             {record.review.status === 'submitted' &&
@@ -151,24 +256,27 @@ export function CloseoutSection({
               </p>
             ) : null}
           </div>
-          {review && (closeout.can_review || closeout.can_correct) ? (
+          {review &&
+          (closeout.can_review ||
+            closeout.can_request_changes ||
+            closeout.can_correct) ? (
             <div className="flex flex-wrap gap-2">
               {closeout.can_review ? (
-                <>
-                  <Button
-                    type="button"
-                    onClick={(event) => show('approve', event.currentTarget)}
-                  >
-                    {t('closeout.review.approve')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={(event) => show('changes', event.currentTarget)}
-                  >
-                    {t('closeout.review.requestChanges')}
-                  </Button>
-                </>
+                <Button
+                  type="button"
+                  onClick={(event) => show('approve', event.currentTarget)}
+                >
+                  {t('closeout.review.approve')}
+                </Button>
+              ) : null}
+              {closeout.can_request_changes ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={(event) => show('changes', event.currentTarget)}
+                >
+                  {t('closeout.review.requestChanges')}
+                </Button>
               ) : null}
               {closeout.can_correct ? (
                 <Button
@@ -257,6 +365,27 @@ export function CloseoutSection({
                   review.onReload();
                 }}
               />
+              {closeout.can_take_over ? (
+                <CloseoutOnBehalfDialog
+                  open={dialog === 'takeover'}
+                  mode="takeover"
+                  tutorName={record.submitted_by.display_name}
+                  scheduledMinutes={closeout.scheduled_minutes}
+                  allAbsent={closeout.attendance.all_absent}
+                  attendance={closeout.attendance}
+                  students={students}
+                  record={record}
+                  onConfirm={async (values) => {
+                    await review.onTakeOver(record.version, values);
+                    close();
+                  }}
+                  onCancel={close}
+                  onReload={() => {
+                    close();
+                    review.onReload();
+                  }}
+                />
+              ) : null}
               <CorrectCloseoutDialog
                 key={dialog === 'reapprove' ? 'reapprove' : 'correct'}
                 open={dialog === 'correct' || dialog === 'reapprove'}

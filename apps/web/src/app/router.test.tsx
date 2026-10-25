@@ -82,6 +82,7 @@ describe('route tree', () => {
       'tutors/:userId',
       'schedule',
       'schedule/new',
+      'schedule/overdue-closeouts',
       'schedule/sessions/:sessionId',
       'schedule/series/:seriesId',
       'schedule/requests/:requestId',
@@ -156,19 +157,23 @@ describe('route tree', () => {
     expect(children[26]!.handle).toEqual({ permission: 'schedule.view' });
     // #48 F1.
     expect(children[27]!.handle).toEqual({ permission: 'schedule.manage' });
+    // #301b A1.
+    expect(children[28]!.handle).toEqual({
+      permission: 'teaching_hours.approve',
+    });
     // #52 H2, H1.
-    expect(children[28]!.handle).toEqual({ permission: 'schedule.view' });
-    // #54b B1.
     expect(children[29]!.handle).toEqual({ permission: 'schedule.view' });
+    // #54b B1.
+    expect(children[30]!.handle).toEqual({ permission: 'schedule.view' });
     // #60 H1.
-    expect(children[30]!.handle).toEqual({ permission: 'schedule.manage' });
-    // #62 G1.
     expect(children[31]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[32]!.handle).toEqual({ role: 'tutor' });
+    // #62 G1.
+    expect(children[32]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[33]!.handle).toEqual({ role: 'tutor' });
     // #64 G1.
-    expect(children[33]!.handle).toEqual({ permission: 'course.view' });
-    expect(children[34]!.handle).toEqual({ permission: 'course.manage' });
-    expect(children[35]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[34]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[35]!.handle).toEqual({ permission: 'course.manage' });
+    expect(children[36]!.handle).toEqual({ permission: 'course.view' });
     // #243 A2, #246 B2: the cohorts for course.view, tutors, students and
     // guardians; the create form needs schedule.manage.
     const cohorts = {
@@ -177,13 +182,13 @@ describe('route tree', () => {
         { anyRole: ['tutor', 'student', 'guardian'] },
       ],
     };
-    expect(children[36]!.handle).toEqual(cohorts);
-    expect(children[37]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[38]!.handle).toEqual(cohorts);
+    expect(children[37]!.handle).toEqual(cohorts);
+    expect(children[38]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[39]!.handle).toEqual(cohorts);
     // #37 H3.
-    expect(children[39]!.handle).toEqual({ permission: 'settings.manage' });
-    // #61 F1.
     expect(children[40]!.handle).toEqual({ permission: 'settings.manage' });
+    // #61 F1.
+    expect(children[41]!.handle).toEqual({ permission: 'settings.manage' });
     // #234 A3, #246 B1: staff with schedule.view, students, tutors and
     // guardians; the create form needs schedule.manage.
     const groups = {
@@ -192,29 +197,29 @@ describe('route tree', () => {
         { anyRole: ['student', 'tutor', 'guardian'] },
       ],
     };
-    expect(children[41]!.handle).toEqual(groups);
-    expect(children[42]!.handle).toEqual({ permission: 'schedule.manage' });
-    expect(children[43]!.handle).toEqual(groups);
+    expect(children[42]!.handle).toEqual(groups);
+    expect(children[43]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[44]!.handle).toEqual(groups);
     // #59 F1: guardians and students (the API's record policy decides).
     const requests = { anyRole: ['guardian', 'student'] };
-    expect(children[44]!.handle).toEqual(requests);
     expect(children[45]!.handle).toEqual(requests);
+    expect(children[46]!.handle).toEqual(requests);
     // #67 E1: tutors, students and guardians (the API decides).
-    expect(children[46]!.handle).toEqual({
+    expect(children[47]!.handle).toEqual({
       anyRole: ['tutor', 'student', 'guardian'],
     });
     // #76 G1: tutors only (the API's record policy decides).
-    expect(children[47]!.handle).toEqual({ role: 'tutor' });
-    // #77 G1: tutors only (the API's record policy decides).
     expect(children[48]!.handle).toEqual({ role: 'tutor' });
+    // #77 G1: tutors only (the API's record policy decides).
+    expect(children[49]!.handle).toEqual({ role: 'tutor' });
     // #62b B1: guardians, students and tutors (the API decides).
-    expect(children[49]!.handle).toEqual({
+    expect(children[50]!.handle).toEqual({
       anyRole: ['guardian', 'student', 'tutor'],
     });
-    expect(children[50]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[51]!.id).toBe('privacy-notice');
     expect(children[51]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[52]!.id).toBe('privacy-notice');
+    expect(children[52]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
