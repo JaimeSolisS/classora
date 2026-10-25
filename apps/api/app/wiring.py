@@ -48,6 +48,7 @@ from app.workflows.closeout_on_behalf import register_on_behalf_notifications
 from app.workflows.session_cancellation import on_session_cancelled
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 from app.workflows.session_closeout_review import register_closeout_notifications
+from app.workflows.session_notes import register_note_notifications
 
 
 def register_approval_wiring() -> None:
@@ -74,6 +75,7 @@ def register_approval_wiring() -> None:
     administration_service.register_approval_handler(SESSION_CLOSEOUT_HANDLER)
     register_closeout_notifications()
     register_on_behalf_notifications()
+    register_note_notifications()
     scheduling_service.register_completed_attendance_unlock(
         academics_service.closeout_awaits_tutor
     )

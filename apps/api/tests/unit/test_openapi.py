@@ -106,6 +106,13 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/class-sessions/{class_session_id}/closeout/corrections",
         "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf",
         "/api/v1/closeouts/overdue",
+        # #79 session notes
+        "/api/v1/class-sessions/{class_session_id}/notes",
+        "/api/v1/students/{student_id}/notes",
+        "/api/v1/students/{student_id}/learning-notes",
+        "/api/v1/notes/{note_id}",
+        "/api/v1/notes/{note_id}/publish",
+        "/api/v1/notes/{note_id}/unpublish",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

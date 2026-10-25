@@ -2323,6 +2323,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Session Notes
+         * @description The notes on a session (every author), oldest first, optionally for one
+         *     student. For the session's tutor and staff with academic_note.review.
+         */
+        get: operations["list_session_notes_api_v1_class_sessions__class_session_id__notes_get"];
+        put?: never;
+        /**
+         * Create Session Note
+         * @description Write a note about one student of your session. It is internal:
+         *     families never see it unless you share it. Nobody is notified.
+         */
+        post: operations["create_session_note_api_v1_class_sessions__class_session_id__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Student Notes
+         * @description A student's notes across sessions, newest first. Staff with
+         *     academic_note.review and tutors currently assigned to the student read
+         *     them all; a tutor who taught the student before reads their own,
+         *     read-only.
+         */
+        get: operations["list_student_notes_api_v1_students__student_id__notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/learning-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Learning Notes
+         * @description The notes tutors shared with the family, newest first, optionally for
+         *     one class. For the student and their guardians with access to their
+         *     academic records.
+         */
+        get: operations["list_family_learning_notes_api_v1_students__student_id__learning_notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Note
+         * @description Delete your internal note. It disappears from every list.
+         */
+        delete: operations["delete_note_api_v1_notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Note
+         * @description Change the text of your internal note. The same text changes
+         *     nothing.
+         */
+        patch: operations["edit_note_api_v1_notes__note_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/notes/{note_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Note
+         * @description Share your note with the family: the student and their guardians with
+         *     access to their academic records see it and are notified.
+         */
+        post: operations["publish_note_api_v1_notes__note_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{note_id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish Note
+         * @description Stop sharing a note: it is internal again. Staff with
+         *     academic_note.review give a reason, and the author is notified.
+         */
+        post: operations["unpublish_note_api_v1_notes__note_id__unpublish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -7006,10 +7144,24 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** CursorPage[FamilyLearningNote] */
+        CursorPage_FamilyLearningNote_: {
+            /** Items */
+            items: components["schemas"]["FamilyLearningNote"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** CursorPage[NotificationItem] */
         CursorPage_NotificationItem_: {
             /** Items */
             items: components["schemas"]["NotificationItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CursorPage[SessionNoteView] */
+        CursorPage_SessionNoteView_: {
+            /** Items */
+            items: components["schemas"]["SessionNoteView"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -7242,6 +7394,41 @@ export interface components {
             has_account: boolean;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * FamilyLearningNote
+         * @description A note the tutor shared with the family (#79 F3): a closed
+         *     allow-list (no author id, no internal fields, no other students).
+         */
+        FamilyLearningNote: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Session Starts At
+             * Format: date-time
+             */
+            session_starts_at: string;
+            /** Subject Name */
+            subject_name: string;
+            author: components["schemas"]["NotePerson"];
+            /**
+             * Body
+             * @description Plain text.
+             */
+            body: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
         };
         /**
          * FamilyListItem
@@ -8236,6 +8423,34 @@ export interface components {
         };
         /** @enum {string} */
         MarkerCode: "center_closed" | "tutor_not_qualified" | "overridden" | "reassignment_needed";
+        NoteBody: string;
+        /** NotePerson */
+        NotePerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /** NoteStudent */
+        NoteStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** NoteSubject */
+        NoteSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** @enum {string} */
+        NoteVisibility: "internal" | "family";
         /**
          * NotificationItem
          * @description One of the caller's notifications. The client renders the message from
@@ -8840,7 +9055,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -9670,6 +9885,144 @@ export interface components {
         };
         /** @enum {string} */
         SessionKindCode: "individual" | "group" | "course";
+        /**
+         * SessionNoteCreate
+         * @description `POST /api/v1/class-sessions/{id}/notes` (#79 C1): a note about one
+         *     participant of the session. It is always created internal: families
+         *     never see it until you share it.
+         */
+        SessionNoteCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             * @description A participant of the session.
+             */
+            student_id: string;
+            /** @description The note: plain text, trimmed, 1-4000 characters (body_required / too_long). */
+            body: components["schemas"]["NoteBody"];
+        };
+        /**
+         * SessionNoteEdit
+         * @description `PATCH /api/v1/notes/{id}` (#79 D2): the new text of an internal
+         *     note.
+         */
+        SessionNoteEdit: {
+            /**
+             * Version
+             * @description The note's version, as last read.
+             */
+            version: number;
+            /** @description The note: plain text, trimmed, 1-4000 characters. */
+            body: components["schemas"]["NoteBody"];
+        };
+        /**
+         * SessionNoteList
+         * @description `GET /api/v1/class-sessions/{id}/notes` (#79 E1): oldest first.
+         */
+        SessionNoteList: {
+            /** Items */
+            items: components["schemas"]["SessionNoteView"][];
+        };
+        /**
+         * SessionNoteUnpublish
+         * @description `POST /api/v1/notes/{id}/unpublish` (#79 D4): a reason (trimmed, at
+         *     most 500 characters) is required from anyone but the author.
+         */
+        SessionNoteUnpublish: {
+            /**
+             * Version
+             * @description The note's version, as last read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description Why it stops being shared: 1-500 characters, trimmed; required unless you wrote the note (reason_required / reason_too_long).
+             */
+            reason?: string | null;
+        };
+        /**
+         * SessionNoteVersion
+         * @description `POST /api/v1/notes/{id}/publish` (#79 D3).
+         */
+        SessionNoteVersion: {
+            /**
+             * Version
+             * @description The note's version, as last read.
+             */
+            version: number;
+        };
+        /**
+         * SessionNoteView
+         * @description A tutor's note about one student in one session (#79 C3), for staff
+         *     with academic_note.review and tutors. `visibility`: `internal` notes are
+         *     never shown to families; `family` notes are shared with the student and
+         *     their guardians with academic access. The `can_*` flags say what you may
+         *     do now.
+         */
+        SessionNoteView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The note's version (send it back).
+             */
+            version: number;
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Session Starts At
+             * Format: date-time
+             */
+            session_starts_at: string;
+            subject: components["schemas"]["NoteSubject"];
+            student: components["schemas"]["NoteStudent"];
+            author: components["schemas"]["NotePerson"];
+            /**
+             * Is Own
+             * @description You wrote it.
+             */
+            is_own: boolean;
+            /**
+             * Body
+             * @description Plain text.
+             */
+            body: string;
+            visibility: components["schemas"]["NoteVisibility"];
+            /** Published At */
+            published_at: string | null;
+            published_by: components["schemas"]["NotePerson"] | null;
+            /**
+             * Unpublished At
+             * @description When it last stopped being shared (cleared when shared again).
+             */
+            unpublished_at: string | null;
+            /** Unpublish Reason */
+            unpublish_reason: string | null;
+            /**
+             * Edited
+             * @description The text changed after it was written.
+             */
+            edited: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Publish */
+            can_publish: boolean;
+            /** Can Unpublish */
+            can_unpublish: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+        };
         /**
          * SessionOverride
          * @description The soft conflicts to override and why (#49 B1; ADR-0005). The server
@@ -19006,6 +19359,541 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_session_notes_api_v1_class_sessions__class_session_id__notes_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+            };
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNoteList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose notes you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_session_note_api_v1_class_sessions__class_session_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNoteView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the session's tutor writes notes (note_tutor_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose notes you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Notes go on confirmed or completed sessions only (session_not_notable, details.state). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_student_notes_api_v1_students__student_id__notes_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_SessionNoteView_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose notes you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_learning_notes_api_v1_students__student_id__learning_notes_get: {
+        parameters: {
+            query?: {
+                class_session_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_FamilyLearningNote_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not you or one of your children (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_note_api_v1_notes__note_id__delete: {
+        parameters: {
+            query: {
+                /** @description The note's version, as last read. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such note, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The note changed since it was read (version_conflict) or is shared with the family (note_published: stop sharing it first). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    edit_note_api_v1_notes__note_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionNoteEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNoteView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such note, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The note changed since it was read (version_conflict) or is shared with the family (note_published: stop sharing it first). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    publish_note_api_v1_notes__note_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionNoteVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNoteView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such note, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The note changed since it was read (version_conflict) or is already shared (note_already_published). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    unpublish_note_api_v1_notes__note_id__unpublish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionNoteUnpublish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNoteView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such note, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The note changed since it was read (version_conflict) or isn't shared (note_not_published). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

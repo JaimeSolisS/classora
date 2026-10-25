@@ -426,6 +426,23 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   they are enabled again: `useFocusAfterSend`, shared with
   `CorrectCloseoutDialog`); a changed closeout or session shows its message
   with "Reload".
+- **Session notes** (`features/tutor-portal/notes`, #79): the tutor's
+  `NotesView` (phone-first, reflows at 320 px). A note's visibility is the
+  `NoteBadge`: a bordered badge with an icon **and** text ("Internal: never
+  shown to families" with a lock, "Shared with family on {date}" with a
+  people icon), never colour alone; `NoteText` renders the note as plain
+  text (`whitespace-pre-wrap`, never HTML) with the author, "Edited" and a
+  reviewer's unpublish reason. The composer and the inline edit are a
+  labelled textarea with a hint, a live counter ("12/4000 characters") and
+  the error under the field (focus moves to it on a failed save). "Share
+  with family" always confirms in `ShareNoteDialog`, which quotes the exact
+  text and says who will see it. Actions follow the API's `can_*` flags. A
+  version conflict shows "Note changed elsewhere" with "Reload". The staff
+  `NotesSection` (`features/scheduling/session`) reuses the badge and text;
+  its `StopSharingDialog` requires a reason with a counter. The family's
+  "Notes from the tutor" (`FamilyNotesList`, `features/my-schedule`) renders
+  nothing while loading or when empty and an inline `ErrorAlert` with "Try
+  again" on failure.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

@@ -49,17 +49,17 @@ from app.modules.scheduling.calendar_read import (
 from app.modules.scheduling.errors import StudentConsentRequiredError
 from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
 from app.modules.scheduling.permissions import (
-    ScheduleAccess,
     can_view_tutor_schedule,
     is_schedule_staff,
-    needs_age,
-    student_schedule_access,
 )
 from app.modules.scheduling.requests_policy import (
+    FamilyAccess,
     candidate_student_ids,
+    family_access,
     has_family_role,
     is_own_student,
 )
+from app.modules.scheduling.requests_policy import needs_age as family_needs_age
 from app.modules.scheduling.schedule_schemas import (
     FamilySchedule,
     FamilyScheduleClassroom,
@@ -250,18 +250,20 @@ async def _facts(session: AsyncSession, principal: Principal) -> StudentAccessFa
     return await families.load_access_facts(session, principal, _NO_ASSIGNMENTS)
 
 
-async def _ensure_student_schedule(
+async def ensure_family_student_access(
     session: AsyncSession, principal: Principal, student_id: uuid.UUID
 ) -> None:
-    """``404`` (hidden or unknown) or ``403 student_consent_required`` (a
-    linked guardian of an adult without the consent) unless the caller may
-    see the student's schedule (C1). The pure policy
-    (``permissions.student_schedule_access``) decides; an unknown id is the
-    same ``404``."""
-    if is_schedule_staff(principal):
-        if not await families.student_references(session, [student_id]):
-            raise RecordNotFoundError()
-        return
+    """The family half of the C1 rule, without the staff branch (#79 B3,
+    F1: only family relationships decide): the student themself, a linked
+    guardian (active profile) of a minor, or of an adult who gave that
+    guardian ``guardian_academic_access``. A linked guardian of an adult
+    without it gets ``403 student_consent_required``; anyone else, staff
+    and tutors included, the ``404`` of an unknown id. Facts are loaded on
+    every request; at most 3 statements for one family role (the facts, the
+    student, the zone only for the adult rule), none without a family
+    role."""
+    if not has_family_role(principal):
+        raise RecordNotFoundError()
     facts = await _facts(session, principal)
     student = (await families.student_age_references(session, [student_id])).get(
         student_id
@@ -273,14 +275,29 @@ async def _ensure_student_schedule(
             student.birthdate,
             clock.today_in(await administration.get_center_time_zone(session)),
         )
-        if needs_age(principal, student_id, facts)
+        if family_needs_age(principal, student_id, facts)
         else None
     )
-    access = student_schedule_access(principal, student_id, facts, is_minor=minor)
-    if access is ScheduleAccess.CONSENT_REQUIRED:
+    access = family_access(principal, student_id, facts, is_minor=minor)
+    if access is FamilyAccess.CONSENT_REQUIRED:
         raise StudentConsentRequiredError()
-    if access is not ScheduleAccess.ALLOWED:
+    if access is not FamilyAccess.ALLOWED:
         raise RecordNotFoundError()
+
+
+async def _ensure_student_schedule(
+    session: AsyncSession, principal: Principal, student_id: uuid.UUID
+) -> None:
+    """``404`` (hidden or unknown) or ``403 student_consent_required`` (a
+    linked guardian of an adult without the consent) unless the caller may
+    see the student's schedule (C1): staff with ``schedule.view``, else
+    :func:`ensure_family_student_access`. An unknown id is the same
+    ``404``."""
+    if is_schedule_staff(principal):
+        if not await families.student_references(session, [student_id]):
+            raise RecordNotFoundError()
+        return
+    await ensure_family_student_access(session, principal, student_id)
 
 
 async def family_schedule(

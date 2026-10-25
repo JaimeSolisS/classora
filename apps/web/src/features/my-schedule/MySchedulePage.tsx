@@ -26,6 +26,7 @@ import {
   type MyScheduleState,
 } from './urlState';
 import { entryLabel, resolveWhose, whoseEntries } from './whose';
+import { FamilyNotesSection } from './FamilyNotesSection';
 import { WhoseSchedule } from './WhoseSchedule';
 
 // /my-schedule, "My schedule" (#67 E), for tutors, students and guardians
@@ -130,24 +131,35 @@ export function MyScheduleView({
               timeZone={timeZone}
               today={today}
               renderAction={(entry) => (
-                <RequestChangeAction
-                  key={entry.item.id}
-                  entry={entry}
-                  whose={selected.kind}
-                  studentId={
-                    selected.kind === 'student'
-                      ? selected.student.student_id
-                      : null
-                  }
-                  timeZone={timeZone}
-                  loaders={changeRequestLoaders}
-                  now={now}
-                  onScheduleStale={() =>
-                    void client.invalidateQueries({
-                      queryKey: [...MY_SCHEDULE_KEY, 'schedule'],
-                    })
-                  }
-                />
+                <>
+                  {/* #79 H2: the tutor's shared notes for this student. */}
+                  {selected.kind === 'student' &&
+                  entry.audience === 'family' ? (
+                    <FamilyNotesSection
+                      studentId={selected.student.student_id}
+                      sessionId={entry.item.id}
+                      timeZone={timeZone}
+                    />
+                  ) : null}
+                  <RequestChangeAction
+                    key={entry.item.id}
+                    entry={entry}
+                    whose={selected.kind}
+                    studentId={
+                      selected.kind === 'student'
+                        ? selected.student.student_id
+                        : null
+                    }
+                    timeZone={timeZone}
+                    loaders={changeRequestLoaders}
+                    now={now}
+                    onScheduleStale={() =>
+                      void client.invalidateQueries({
+                        queryKey: [...MY_SCHEDULE_KEY, 'schedule'],
+                      })
+                    }
+                  />
+                </>
               )}
               renderError={(error, retry) =>
                 isConsentRequired(error) && selected.kind === 'student' ? (

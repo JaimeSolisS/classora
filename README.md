@@ -228,6 +228,12 @@ unless a bullet says otherwise.
   a reason, or take over a closeout sent back to a tutor who can't act; the
   tutor, the inbox and the session page show that it was submitted on the
   tutor's behalf.
+- Tutors keep notes about each student in a class from My schedule. Notes
+  are internal and families never see them, until the tutor shares a note:
+  then the student and their guardians with access to their academic records
+  see it in the class details and are notified. Owners, Administrators and
+  Academic Coordinators read every note on the session page and can stop
+  sharing one with a reason.
 
 **Courses**
 
@@ -294,8 +300,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** academic records, billing and payments,
-payroll, reporting and analytics, and deployment. See the
+**Not built yet:** academic records beyond session notes, billing and
+payments, payroll, reporting and analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

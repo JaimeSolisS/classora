@@ -274,6 +274,14 @@ describes the route declarations and the 401/403/404 rule.
   checked on the raw JSON: its key sets, and a leak test that the ids and
   names it must never carry (other participants, the tutor's id) are absent
   from the body text.
+- **Family leak walk** (#79): `tests/integration/test_session_notes_leak.py`
+  calls every `GET` route a student or guardian can reach (from the app's
+  routes and the static matrix) as a minor's guardian, an adult's consenting
+  guardian and both students, with every mapped path parameter, and asserts
+  that no body carries a canary string that a family must never see. A new
+  family-reachable route with a new path parameter name fails the walk until
+  it is added to `PATH_PARAMS`; a new family-facing record adds a canary
+  source to `CANARY_SOURCES` (the module docstring says how).
 - **Injected facts** (#33): a record policy whose facts come from another
   module that doesn't exist yet reads them through one FastAPI dependency the
   tests override. Tutor assignments come from

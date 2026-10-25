@@ -123,6 +123,13 @@ from app.workflows.overdue_closeouts_router import (
 from app.workflows.session_closeout_router import (
     router as session_closeout_router,
 )
+from app.workflows.session_notes_router import note_router as notes_router
+from app.workflows.session_notes_router import (
+    session_router as session_notes_router,
+)
+from app.workflows.session_notes_router import (
+    student_router as student_notes_router,
+)
 from app.workflows.session_requests_router import (
     router as session_request_review_router,
 )
@@ -225,6 +232,9 @@ def build_app(
     app.include_router(attendance_router)
     app.include_router(session_closeout_router)
     app.include_router(overdue_closeouts_router)
+    app.include_router(session_notes_router)
+    app.include_router(student_notes_router)
+    app.include_router(notes_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

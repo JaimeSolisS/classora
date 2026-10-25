@@ -24,6 +24,8 @@ import {
   fetchCloseout,
 } from '@/features/tutor-portal/closeout/api';
 import { tutorCloseoutLink } from '@/features/tutor-portal/closeout/rules';
+import { notesPath } from '@/features/tutor-portal/notes/api';
+import { tutorNotesLink } from '@/features/tutor-portal/notes/rules';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -42,6 +44,8 @@ import { dateText, whoText, type LabelContext } from './labels';
 // opens (shared with the closeout page's cache); changes requested shows a
 // "Changes requested" badge and "Fix closeout" (primary). While loading,
 // on an error or in any other status: "View closeout", nothing else.
+// #79 H2: a tutor's confirmed or completed item links to "Notes" (the
+// session's notes page); a family's shared notes come in the `action` slot.
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
@@ -90,6 +94,7 @@ export function EntryDialog({
     entry?.audience === 'tutor'
       ? tutorCloseoutLink(entry.item, now(), closeoutStatus)
       : null;
+  const notesLink = entry?.audience === 'tutor' && tutorNotesLink(entry.item);
   return (
     <Dialog
       open={entry !== null}
@@ -156,7 +161,7 @@ export function EntryDialog({
               </Row>
             ) : null}
           </dl>
-          {closeoutLink || attendanceLink ? (
+          {closeoutLink || attendanceLink || notesLink ? (
             <div className="flex flex-wrap items-center gap-3">
               {closeoutLink === 'fix' ? (
                 <span className="rounded-md border border-border px-2 py-0.5 text-sm font-medium">
@@ -187,6 +192,14 @@ export function EntryDialog({
                   {attendanceLink === 'take'
                     ? t('attendance.take')
                     : t('attendance.view')}
+                </Link>
+              ) : null}
+              {notesLink ? (
+                <Link
+                  to={notesPath(entry.item.id)}
+                  className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {t('notes.open')}
                 </Link>
               ) : null}
             </div>

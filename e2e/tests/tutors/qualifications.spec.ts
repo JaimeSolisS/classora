@@ -65,9 +65,17 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // (light and dark). The cancelled session doesn't block the revocation
 // either.
 //
+// #79 I8 (before #62b): the tutor, on a phone, opens that session's notes
+// from My schedule, writes an internal note and a second one that they
+// share (the dialog shows its text). The guardian's bell has the shared-note
+// notification and its link opens My schedule on the class's date; the
+// class's details show "Notes from the tutor" with the shared text only, and
+// the guardian's GET …/learning-notes never contains the internal text. Axe
+// on the notes page, the share dialog and the guardian's dialog.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
-// guardian), 0 redemptions and 2 self-registrations (createApprovedTutor and
+// guardian; #79 reuses them), 0 redemptions and 2 self-registrations (createApprovedTutor and
 // the guardian's createApprovedAccount). Every `make e2e` starts from an
 // empty database, so names are unique per run.
 
@@ -776,6 +784,123 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         ),
       );
       expect(await axeViolations(parent.page)).toEqual([]);
+
+      // #79 I8: the tutor (phone) opens the class's notes from My schedule,
+      // writes an internal note, then writes and shares a second one; the
+      // guardian's bell links to My schedule, the class's details show only
+      // the shared note, and the family route never returns the internal
+      // text.
+      const childId = new URL(parent.page.url()).searchParams.get('for')!;
+      const internalText = `E2E internal ${suffix}`;
+      const sharedText = `E2E shared ${suffix}`;
+      const tutorPage = tutor.page.url();
+      const tutorSize = tutor.page.viewportSize();
+      await tutor.page.setViewportSize(PHONE);
+      await tutor.page.goto(`/my-schedule?date=${day.date}`);
+      await expect(calendarOf(tutor.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await calendarOf(tutor.page)
+        .getByRole('button', {
+          name: sessionName(common.mySchedule.states.confirmed, studentName),
+        })
+        .click();
+      await tutor.page
+        .getByRole('dialog', { name: physics })
+        .getByRole('link', { name: common.notes.open, exact: true })
+        .click();
+      await expect(tutor.page).toHaveURL(
+        /\/my-schedule\/sessions\/[0-9a-f-]{36}\/notes$/,
+      );
+      const notesMain = tutor.page.getByRole('main');
+      await expect(
+        notesMain.getByRole('heading', { level: 1, name: common.notes.title }),
+      ).toBeVisible();
+      const composerBox = notesMain.getByLabel(
+        fill(common.notes.composer.label, { student: studentName }),
+        { exact: true },
+      );
+      const saveNote = notesMain.getByRole('button', {
+        name: common.notes.composer.save,
+      });
+      await composerBox.fill(internalText);
+      await saveNote.click();
+      const internalItem = notesMain
+        .getByRole('listitem')
+        .filter({ hasText: internalText });
+      await expect(internalItem).toContainText(common.notes.badges.internal);
+      await composerBox.fill(sharedText);
+      await saveNote.click();
+      const sharedItem = notesMain
+        .getByRole('listitem')
+        .filter({ hasText: sharedText });
+      await expect(sharedItem).toContainText(common.notes.badges.internal);
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await sharedItem
+        .getByRole('button', { name: common.notes.actions.share })
+        .click();
+      const shareDialog = tutor.page.getByRole('dialog', {
+        name: common.notes.share.title,
+      });
+      await expect(shareDialog).toContainText(sharedText);
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await shareDialog
+        .getByRole('button', { name: common.notes.share.confirm })
+        .click();
+      await expect(shareDialog).toBeHidden();
+      await expect(sharedItem).toContainText(
+        common.notes.badges.shared.split('{{date}}')[0]!,
+      );
+      await expect(internalItem).toContainText(common.notes.badges.internal);
+      if (tutorSize) {
+        await tutor.page.setViewportSize(tutorSize);
+      }
+      await tutor.page.goto(tutorPage);
+
+      // The guardian (desktop width, the bell is in the header).
+      if (parentViewport) {
+        await parent.page.setViewportSize(parentViewport);
+      }
+      await parent.page.reload();
+      await parentBell.click();
+      await parentPanel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escapeText(
+              common.notifications.types.academics_learning_note_published.split(
+                '{{starts_at}}',
+              )[0]!,
+            )}`,
+          ),
+        })
+        .click();
+      await expect(parent.page).toHaveURL(
+        `/my-schedule?view=list&date=${day.date}`,
+      );
+      await whose.selectOption({ label: studentName });
+      await expect(calendarOf(parent.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await classes.click();
+      const noteDetails = parent.page.getByRole('dialog', { name: physics });
+      await expect(
+        noteDetails.getByRole('heading', { name: common.notes.family.title }),
+      ).toBeVisible();
+      await expect(noteDetails).toContainText(sharedText);
+      await expect(noteDetails).not.toContainText(internalText);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await parent.page.keyboard.press('Escape');
+      await expect(noteDetails).toBeHidden();
+      const learning = await api(
+        parent.page,
+        `/api/v1/students/${childId}/learning-notes`,
+      );
+      expect(learning.status).toBe(200);
+      expect(JSON.stringify(learning.body)).toContain(sharedText);
+      expect(JSON.stringify(learning.body)).not.toContain(internalText);
+      await parent.page.setViewportSize(PHONE);
 
       // #62b E1: the guardian asks to cancel that session (on the phone).
       await classes.click();

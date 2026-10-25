@@ -111,6 +111,14 @@ and :func:`set_actual_minutes` (``app.workflows.session_closeout_review``);
 #301 adds the overdue list :func:`sessions_awaiting_closeout`
 (``app.workflows.closeout_on_behalf``).
 
+Session notes (#79, :mod:`~app.modules.scheduling.note_context`): the
+session facts :func:`note_session` (``FOR SHARE`` on a create),
+:func:`is_participant` and the unexecuted :func:`note_session_columns`
+(with the #67 family-visible condition for the family list), composed
+with ``academics`` by ``app.workflows.session_notes``; the family half of
+the #67 student rule, :func:`ensure_family_student_access` (no staff
+branch), guards the family note route.
+
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
 :func:`reconcile_series_closures` per series before the extension; the
@@ -485,6 +493,12 @@ from app.modules.scheduling.materialize import (
 from app.modules.scheduling.materialize import (
     revalidate_references as revalidate_references,
 )
+from app.modules.scheduling.note_context import NoteSession as NoteSession
+from app.modules.scheduling.note_context import is_participant as is_participant
+from app.modules.scheduling.note_context import note_session as note_session
+from app.modules.scheduling.note_context import (
+    note_session_columns as note_session_columns,
+)
 from app.modules.scheduling.notifications import (
     register_edit_notifications as register_edit_notifications,
 )
@@ -629,6 +643,9 @@ from app.modules.scheduling.requests import (
 )
 from app.modules.scheduling.requests import (
     withdraw_session_request as withdraw_session_request,
+)
+from app.modules.scheduling.role_schedules import (
+    ensure_family_student_access as ensure_family_student_access,
 )
 from app.modules.scheduling.role_schedules import (
     family_schedule as family_schedule,

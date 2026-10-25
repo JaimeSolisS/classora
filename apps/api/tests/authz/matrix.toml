@@ -590,6 +590,25 @@ json = { version = 1, override = { codes = ["outside_operating_hours"], reason =
 
 [[route]]
 method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+access = "authenticated"
+# #79 E1: the record policy (the session's current tutor, or an
+# academic_note.review holder; anyone else, Finance included, the 404 of an
+# unknown id). The placeholder id is no session: 404 for every role. The
+# 200 and IDOR cases are tested in tests/integration/test_session_notes.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+access = "authenticated"
+# #79 C2: the record policy (the current tutor only; a reviewer 403
+# note_tutor_only after the 404). A valid body; the placeholder id is no
+# session: 404 for every role. The 201, 403, 409 and 422 cases are tested in
+# tests/integration/test_session_notes.py.
+json = { student_id = "00000000-0000-4000-8000-000000000079", body = "Matrix" }
+
+[[route]]
+method = "GET"
 path = "/api/v1/class-sessions/{class_session_id}/offers"
 access = "permission"
 permission = "schedule.view"
@@ -1086,6 +1105,37 @@ reauth = "user.invitation.staff_role"
 reauth_conditional = true
 
 [[route]]
+method = "DELETE"
+path = "/api/v1/notes/{note_id}"
+access = "authenticated"
+# #79 D5: the note record policy (the author). The placeholder id is no
+# note: 404 for every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_session_notes.py.
+query = { version = "1" }
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/notes/{note_id}"
+access = "authenticated"
+# #79 D2: as DELETE, with a valid body.
+json = { version = 1, body = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/publish"
+access = "authenticated"
+# #79 D3: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/unpublish"
+access = "authenticated"
+# #79 D4: the author, or an academic_note.review holder with a reason. As
+# DELETE, with a valid body.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
 method = "GET"
 path = "/api/v1/notifications"
 access = "authenticated"
@@ -1327,6 +1377,25 @@ access = "permission"
 permission = "family.manage"
 allow = ["owner", "administrator"]
 # The placeholder ids are no link: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-notes"
+access = "authenticated"
+# #79 F1: the family route (the student, or a linked guardian of a minor or
+# of a consenting adult; anyone else, staff and tutors included, the 404 of
+# an unknown id). The placeholder id is no student: 404 for every role. The
+# 200 and 403 student_consent_required cases are in
+# tests/integration/test_session_notes.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/notes"
+access = "authenticated"
+# #79 E2: the record policy (reviewers, tutors with the student assigned, a
+# former tutor for their own notes). The placeholder id is no student: 404
+# for every role.
 
 [[route]]
 method = "GET"

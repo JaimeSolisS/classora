@@ -105,6 +105,12 @@ ATTENDANCE_CORRECT = "attendance.correct"
 # the approval inbox (Owner, Administrator, Academic Coordinator; not
 # delegable). #78 adds the decisions.
 TEACHING_HOURS_APPROVE = "teaching_hours.approve"
+# Session notes (#79, owner decision E4 (a)): who reads every tutor note and
+# can stop sharing a family note with a reason (Owner, Administrator,
+# Academic Coordinator; not delegable). Tutors write and read notes through
+# the note record policy (academics/note_rules.py); families read shared
+# notes through their own route.
+ACADEMIC_NOTE_REVIEW = "academic_note.review"
 
 
 @dataclass(frozen=True)
@@ -143,6 +149,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(COURSE_MANAGE),
     PermissionDef(ATTENDANCE_CORRECT),
     PermissionDef(TEACHING_HOURS_APPROVE),
+    PermissionDef(ACADEMIC_NOTE_REVIEW),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -185,6 +192,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 COURSE_MANAGE,
                 ATTENDANCE_CORRECT,
                 TEACHING_HOURS_APPROVE,
+                ACADEMIC_NOTE_REVIEW,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -199,6 +207,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 COURSE_MANAGE,
                 ATTENDANCE_CORRECT,
                 TEACHING_HOURS_APPROVE,
+                ACADEMIC_NOTE_REVIEW,
             }
         ),
         FINANCE_STAFF: frozenset(

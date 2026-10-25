@@ -175,6 +175,13 @@ Codes in use today:
 | `session_not_ended` | 409 | A closeout on the tutor's behalf before the class ends (`ends_at > now`; see Closeout on behalf and overdue closeouts). |
 | `closeout_not_with_tutor` | 409 | A takeover of a closeout that isn't `changes_requested` (see Closeout on behalf and overdue closeouts). |
 | `closeout_submitted_on_behalf` | 409 | Requesting changes of a closeout submitted on the tutor's behalf: correct it instead (see Closeout on behalf and overdue closeouts). |
+| `note_tutor_only` | 403 | `POST /api/v1/class-sessions/{class_session_id}/notes` by an `academic_note.review` holder who isn't the session's current tutor (see Session notes). |
+| `note_author_only` | 403 | Editing, sharing or deleting a note the caller didn't write (a reviewer may only stop sharing it), or stopping sharing one as a tutor who isn't its author (see Session notes). |
+| `note_read_only` | 403 | A write by a tutor whose current assignments no longer include the note's student; their notes stay readable (see Session notes). |
+| `note_published` | 409 | Editing or deleting a note that is shared with the family: stop sharing it first (see Session notes). |
+| `note_already_published` / `note_not_published` | 409 | Sharing a note that is already shared, or stopping sharing one that isn't (see Session notes). |
+| `session_not_notable` | 409 | A note on a session that isn't `confirmed` or `completed`; `details.state` (see Session notes). |
+| `body_required` | 422 | A note left empty once trimmed; on `["body","body"]` (see Session notes). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4436,6 +4443,98 @@ new goes to reviewers (the inbox lists the item).
 (`ON DELETE RESTRICT`) and `on_behalf_reason` (trimmed 1-1000), both or
 neither, never the tutor of record; `class_sessions` gains the partial index
 `ix_class_sessions_confirmed_ends_at (ends_at, id) WHERE state = 'confirmed'`.
+
+### Session notes
+
+Implemented by M5-12 (#79; spec §2 "Internal tutor notes are not
+automatically shared with families", §4, §9, §16, W5.1, W5.3, W5.4;
+architecture §4.1, §4.2) in `academics` (`note_rules.py`: the pure rules and
+record policy; `notes.py`: the `session_notes` rows), the scheduling seam
+`scheduling/note_context.py`, the families seam
+`families.service.academic_notification_recipients` and the workflow
+`app/workflows/session_notes.py` with its routes in
+`app/workflows/session_notes_router.py`. One new permission,
+`academic_note.review` (Owner, Administrator, Academic coordinator; not
+delegable). The tutor UI is `/my-schedule/sessions/:id/notes`; families see
+"Notes from the tutor" in My schedule's class details; reviewers see the
+Notes section on `/schedule/sessions/:id`.
+
+A tutor writes notes about **one participating student in one session**.
+Every note is created `internal`; only an explicit publish makes it `family`
+(no admin approval: progress reports, #83, keep theirs). **Internal notes are
+never returned to families by any endpoint:** the only route that returns
+notes to families is `GET /students/{id}/learning-notes` (shared, live notes
+of family-visible sessions), and the leak walk
+`apps/api/tests/integration/test_session_notes_leak.py` calls every
+family-reachable `GET` route as students and guardians to prove it.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/class-sessions/{class_session_id}/notes` | `authenticated()` + record policy | The session's **current** tutor (holding the `tutor` role). A reviewer gets `403 note_tutor_only`, anyone else the `404` of an unknown id. `201` with `SessionNoteView`. Nobody is notified. |
+| `GET /api/v1/class-sessions/{class_session_id}/notes[?student_id]` | `authenticated()` + record policy | The current tutor or an `academic_note.review` holder; anyone else (Finance included) `404`. The session's live notes, oldest first (a current tutor sees, of a student no longer assigned to them, only their own). `200 SessionNoteList`; at most 6 statements, the same for 1 and 20 notes. |
+| `GET /api/v1/students/{student_id}/notes[?cursor&limit]` | `authenticated()` + record policy | Reviewers and tutors whose current assignments include the student read every note; a tutor who taught the student before reads only their own (read-only), and only when there is one; anyone else, and an unknown id, `404`. Newest first by `(created_at, id)`, `limit` 1-50 (default 20), `CursorPage[SessionNoteView]`; at most 6 statements. |
+| `PATCH /api/v1/notes/{note_id}` | `authenticated()` + record policy | The author, while the note is `internal`. Body `{version, body}`; the same trimmed text changes nothing (`200`, same version). |
+| `POST /api/v1/notes/{note_id}/publish` | `authenticated()` + record policy | The author: `internal` → `family` (`published_at`, `published_by`; the last unpublish fields cleared). Notifies the recipients below (again after an unpublish). |
+| `POST /api/v1/notes/{note_id}/unpublish` | `authenticated()` + record policy | The author (reason optional, nobody notified) or an `academic_note.review` holder (reason required: `422 reason_required`; the author is notified). Body `{version, reason?}` (trimmed, at most 500: `reason_too_long`). `family` → `internal`, with `unpublished_at`, `unpublished_by` and the reason. |
+| `DELETE /api/v1/notes/{note_id}?version=` | `authenticated()` + record policy | The author, while `internal`: soft delete (`204`). Every route then answers `404` for it and the lists leave it out. No recovery UI (M8). |
+| `GET /api/v1/students/{student_id}/learning-notes[?class_session_id&cursor&limit]` | `authenticated()` + record policy | **The family route.** The student themself, a linked guardian (active profile) of a minor, or of an adult who gave that guardian `guardian_academic_access`; a linked guardian of an adult without it `403 student_consent_required` (also on the next request after a revocation); anyone else, staff and tutors included, `404`. Shared, live notes of the student on family-visible sessions (#67), newest first; `class_session_id` narrows to one class (another family's or an unknown class gives an empty list). `CursorPage[FamilyLearningNote]`; at most 6 statements for one family role. |
+
+**Who reads a note** (E3): its author while they hold the `tutor` role
+(always; read-only once the student is no longer one of their current
+assignments, `scheduling.service.student_ids_for_tutor`), any tutor whose
+current assignments include the student (every author's notes, for
+continuity), and `academic_note.review` holders. Anyone else, Finance
+included, gets the `404` of an unknown id. A user with several roles gets the
+union.
+
+**Create order:** `401` → `422` schema (`body_required`, `too_long`, unknown
+fields) → `404` (unknown session, not its current tutor or a reviewer) →
+`403 note_tutor_only` → the session `FOR SHARE` (the policy re-checked on the
+locked row) → `409 session_not_notable` (`details.state`; only `confirmed`,
+at any time, and `completed`) → `422` with `student_not_participant` at
+`["body","student_id"]` (also for an unknown student) → `403 note_read_only`
+(the student isn't a current assignment) → the `internal` row and its audit
+create.
+
+**Write order** (`PATCH`, `publish`, `unpublish`, `DELETE`): `401` → `422`
+schema → `404` (unknown, deleted or unreadable) → `403` `note_author_only` /
+`note_read_only` → (`unpublish` by a non-author: `422 reason_required`) → the
+note `FOR UPDATE` → `409 version_conflict` → `409 note_published` (edit,
+delete), `note_already_published` (publish), `note_not_published`
+(unpublish) → the write (version + 1, the audit diff).
+
+**`SessionNoteView`** (closed allow-list): `{id, version, class_session_id,
+session_starts_at, subject {id, name}, student {id, display_name}, author
+{display_name}, is_own, body, visibility, published_at, published_by
+{display_name} | null, unpublished_at, unpublish_reason, edited, created_at,
+can_edit, can_publish, can_unpublish, can_delete}` (the `can_*` flags from
+the pure rules, for the caller).
+
+**`FamilyLearningNote`** (closed allow-list): `{id, class_session_id,
+session_starts_at, subject_name, author {display_name}, body,
+published_at}`: no author id, visibility, internal timestamps, unpublish
+fields or other students.
+
+**Notifications** (never the text, the reason or the tutor):
+`academics.learning_note_published` `{student_id, class_session_id,
+starts_at}` on each publish, to the student's login and to the accounts of
+linked, **active** guardian profiles with academic access (a minor on the
+center's today, or an adult who gave that guardian the consent), computed at
+publish time; `academics.learning_note_unpublished` `{note_id,
+class_session_id, starts_at}` to the author when a reviewer stops sharing
+their note. Internal notes never notify anyone.
+
+**History:** `session_notes` is audited (the create and update diffs: text,
+visibility, deletion), readable through `audit.view`; edits show `edited`.
+
+**Data** (revision 0053): `session_notes` (`class_session_id`, `student_id`,
+`author_user_id`, `body` 1-4000 trimmed, `visibility` `internal|family`
+default `internal`, `published_at`/`published_by_user_id` set exactly when
+`family`, `unpublished_at`/`unpublished_by_user_id`/`unpublish_reason`,
+`body_updated_at`, `deleted_at`/`deleted_by_user_id` together and only on an
+`internal` note, `version`), every key `ON DELETE RESTRICT`, with partial
+indexes over the live rows on `(student_id, created_at, id)` and
+`(class_session_id)`.
 
 ### Change requests
 

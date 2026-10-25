@@ -190,5 +190,12 @@
   "session_not_ended": "This class hasn't ended yet. Close it out on the tutor's behalf once it ends.",
   "closeout_on_behalf_own_session": "You tutor this class, so you can't close it out on the tutor's behalf.",
   "closeout_submitted_on_behalf": "This closeout was submitted on the tutor's behalf, so it can't be sent back. Correct it instead.",
-  "closeout_not_with_tutor": "The closeout is no longer waiting for the tutor. Reload to see where it stands."
+  "closeout_not_with_tutor": "The closeout is no longer waiting for the tutor. Reload to see where it stands.",
+  "note_tutor_only": "Only the session's tutor writes notes.",
+  "note_author_only": "Only the note's author can do this.",
+  "note_read_only": "This student is no longer assigned to you: their notes are read-only.",
+  "note_published": "This note is shared with the family. Stop sharing it first.",
+  "note_already_published": "This note is already shared with the family. Reload to see it.",
+  "note_not_published": "This note isn't shared with the family. Reload to see it.",
+  "session_not_notable": "Notes can only be written on confirmed or completed classes."
 }

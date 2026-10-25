@@ -173,6 +173,14 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['closeout_on_behalf_own_session', 'closeout_on_behalf_own_session'],
   ['closeout_submitted_on_behalf', 'closeout_submitted_on_behalf'],
   ['closeout_not_with_tutor', 'closeout_not_with_tutor'],
+  // Session notes (#79).
+  ['note_tutor_only', 'note_tutor_only'],
+  ['note_author_only', 'note_author_only'],
+  ['note_read_only', 'note_read_only'],
+  ['note_published', 'note_published'],
+  ['note_already_published', 'note_already_published'],
+  ['note_not_published', 'note_not_published'],
+  ['session_not_notable', 'session_not_notable'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

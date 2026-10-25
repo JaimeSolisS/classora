@@ -10957,6 +10957,778 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/notes": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "Create Session Note",
+        "description": "Write a note about one student of your session. It is internal:\nfamilies never see it unless you share it. Nobody is notified.",
+        "operationId": "create_session_note_api_v1_class_sessions__class_session_id__notes_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionNoteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNoteView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the session's tutor writes notes (note_tutor_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose notes you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Notes go on confirmed or completed sessions only (session_not_notable, details.state). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "List Session Notes",
+        "description": "The notes on a session (every author), oldest first, optionally for one\nstudent. For the session's tutor and staff with academic_note.review.",
+        "operationId": "list_session_notes_api_v1_class_sessions__class_session_id__notes_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNoteList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose notes you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/notes": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "List Student Notes",
+        "description": "A student's notes across sessions, newest first. Staff with\nacademic_note.review and tutors currently assigned to the student read\nthem all; a tutor who taught the student before reads their own,\nread-only.",
+        "operationId": "list_student_notes_api_v1_students__student_id__notes_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_SessionNoteView_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose notes you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/learning-notes": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "List Family Learning Notes",
+        "description": "The notes tutors shared with the family, newest first, optionally for\none class. For the student and their guardians with access to their\nacademic records.",
+        "operationId": "list_family_learning_notes_api_v1_students__student_id__learning_notes_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "class_session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Class Session Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_FamilyLearningNote_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not you or one of your children (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{note_id}": {
+      "patch": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "Edit Note",
+        "description": "Change the text of your internal note. The same text changes\nnothing.",
+        "operationId": "edit_note_api_v1_notes__note_id__patch",
+        "parameters": [
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionNoteEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNoteView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such note, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The note changed since it was read (version_conflict) or is shared with the family (note_published: stop sharing it first).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "Delete Note",
+        "description": "Delete your internal note. It disappears from every list.",
+        "operationId": "delete_note_api_v1_notes__note_id__delete",
+        "parameters": [
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The note's version, as last read.",
+              "title": "Version"
+            },
+            "description": "The note's version, as last read."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such note, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The note changed since it was read (version_conflict) or is shared with the family (note_published: stop sharing it first).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{note_id}/publish": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "Publish Note",
+        "description": "Share your note with the family: the student and their guardians with\naccess to their academic records see it and are notified.",
+        "operationId": "publish_note_api_v1_notes__note_id__publish_post",
+        "parameters": [
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionNoteVersion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNoteView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such note, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The note changed since it was read (version_conflict) or is already shared (note_already_published).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{note_id}/unpublish": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "Unpublish Note",
+        "description": "Stop sharing a note: it is internal again. Staff with\nacademic_note.review give a reason, and the author is notified.",
+        "operationId": "unpublish_note_api_v1_notes__note_id__unpublish_post",
+        "parameters": [
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionNoteUnpublish"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNoteView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the note's author can do this (note_author_only); the student is no longer one of your current assignments (note_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such note, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The note changed since it was read (version_conflict) or isn't shared (note_not_published).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -22906,6 +23678,34 @@
         ],
         "title": "CursorPage[AuditEventListItem]"
       },
+      "CursorPage_FamilyLearningNote_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyLearningNote"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[FamilyLearningNote]"
+      },
       "CursorPage_NotificationItem_": {
         "properties": {
           "items": {
@@ -22933,6 +23733,34 @@
           "next_cursor"
         ],
         "title": "CursorPage[NotificationItem]"
+      },
+      "CursorPage_SessionNoteView_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionNoteView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[SessionNoteView]"
       },
       "DelegablePermissionCode": {
         "type": "string",
@@ -23390,6 +24218,55 @@
         ],
         "title": "FamilyGuardianItem",
         "description": "A guardian profile of the family."
+      },
+      "FamilyLearningNote": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "session_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Starts At"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "author": {
+            "$ref": "#/components/schemas/NotePerson"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Plain text."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "class_session_id",
+          "session_starts_at",
+          "subject_name",
+          "author",
+          "body",
+          "published_at"
+        ],
+        "title": "FamilyLearningNote",
+        "description": "A note the tutor shared with the family (#79 F3): a closed\nallow-list (no author id, no internal fields, no other students)."
       },
       "FamilyListItem": {
         "properties": {
@@ -25443,6 +26320,70 @@
           "reassignment_needed"
         ]
       },
+      "NoteBody": {
+        "type": "string"
+      },
+      "NotePerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "NotePerson"
+      },
+      "NoteStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "NoteStudent"
+      },
+      "NoteSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "NoteSubject"
+      },
+      "NoteVisibility": {
+        "type": "string",
+        "enum": [
+          "internal",
+          "family"
+        ]
+      },
       "NotificationItem": {
         "properties": {
           "id": {
@@ -26740,6 +27681,7 @@
       "PermissionCode": {
         "type": "string",
         "enum": [
+          "academic_note.review",
           "attendance.correct",
           "audit.view",
           "catalog.manage",
@@ -28232,6 +29174,255 @@
           "group",
           "course"
         ]
+      },
+      "SessionNoteCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id",
+            "description": "A participant of the session."
+          },
+          "body": {
+            "$ref": "#/components/schemas/NoteBody",
+            "description": "The note: plain text, trimmed, 1-4000 characters (body_required / too_long)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "body"
+        ],
+        "title": "SessionNoteCreate",
+        "description": "`POST /api/v1/class-sessions/{id}/notes` (#79 C1): a note about one\nparticipant of the session. It is always created internal: families\nnever see it until you share it."
+      },
+      "SessionNoteEdit": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The note's version, as last read."
+          },
+          "body": {
+            "$ref": "#/components/schemas/NoteBody",
+            "description": "The note: plain text, trimmed, 1-4000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "body"
+        ],
+        "title": "SessionNoteEdit",
+        "description": "`PATCH /api/v1/notes/{id}` (#79 D2): the new text of an internal\nnote."
+      },
+      "SessionNoteList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionNoteView"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SessionNoteList",
+        "description": "`GET /api/v1/class-sessions/{id}/notes` (#79 E1): oldest first."
+      },
+      "SessionNoteUnpublish": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The note's version, as last read."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why it stops being shared: 1-500 characters, trimmed; required unless you wrote the note (reason_required / reason_too_long)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "SessionNoteUnpublish",
+        "description": "`POST /api/v1/notes/{id}/unpublish` (#79 D4): a reason (trimmed, at\nmost 500 characters) is required from anyone but the author."
+      },
+      "SessionNoteVersion": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The note's version, as last read."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "SessionNoteVersion",
+        "description": "`POST /api/v1/notes/{id}/publish` (#79 D3)."
+      },
+      "SessionNoteView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The note's version (send it back)."
+          },
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "session_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Starts At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/NoteSubject"
+          },
+          "student": {
+            "$ref": "#/components/schemas/NoteStudent"
+          },
+          "author": {
+            "$ref": "#/components/schemas/NotePerson"
+          },
+          "is_own": {
+            "type": "boolean",
+            "title": "Is Own",
+            "description": "You wrote it."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Plain text."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/NoteVisibility"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotePerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unpublished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpublished At",
+            "description": "When it last stopped being shared (cleared when shared again)."
+          },
+          "unpublish_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpublish Reason"
+          },
+          "edited": {
+            "type": "boolean",
+            "title": "Edited",
+            "description": "The text changed after it was written."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "can_publish": {
+            "type": "boolean",
+            "title": "Can Publish"
+          },
+          "can_unpublish": {
+            "type": "boolean",
+            "title": "Can Unpublish"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "class_session_id",
+          "session_starts_at",
+          "subject",
+          "student",
+          "author",
+          "is_own",
+          "body",
+          "visibility",
+          "published_at",
+          "published_by",
+          "unpublished_at",
+          "unpublish_reason",
+          "edited",
+          "created_at",
+          "can_edit",
+          "can_publish",
+          "can_unpublish",
+          "can_delete"
+        ],
+        "title": "SessionNoteView",
+        "description": "A tutor's note about one student in one session (#79 C3), for staff\nwith academic_note.review and tutors. `visibility`: `internal` notes are\nnever shown to families; `family` notes are shared with the student and\ntheir guardians with academic access. The `can_*` flags say what you may\ndo now."
       },
       "SessionOverride": {
         "properties": {

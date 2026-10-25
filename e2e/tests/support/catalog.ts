@@ -53,6 +53,16 @@ type Common = {
     >;
     whose: { label: string };
   };
+  // #79 I8: the tutor's notes page and the family's dialog section.
+  notes: {
+    title: string;
+    open: string;
+    badges: Record<'internal' | 'shared', string>;
+    composer: Record<'label' | 'save' | 'saved', string>;
+    actions: Record<'share', string>;
+    share: Record<'title' | 'confirm', string>;
+    family: Record<'title', string>;
+  };
   attendance: {
     title: string;
     statuses: Record<'present' | 'late' | 'absent', string>;
@@ -681,6 +691,8 @@ type Common = {
       scheduling_change_request_approved_cancellation_makeup: string;
       // #305: the tutor's closeout sent back.
       academics_closeout_changes_requested: string;
+      // #79 I8: a note the tutor shared with the family.
+      academics_learning_note_published: string;
     };
   };
   courses: {

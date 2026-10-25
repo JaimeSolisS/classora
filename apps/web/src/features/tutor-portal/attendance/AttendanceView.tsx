@@ -115,7 +115,7 @@ function useWhen(timeZone: string) {
   };
 }
 
-function ClassHeader({
+export function ClassHeader({
   attendance,
   timeZone,
 }: {
