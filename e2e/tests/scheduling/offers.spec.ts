@@ -659,6 +659,9 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
 
     // 7. Attendance (#76 H9): the tutor, on a phone, marks the started
     // session from My schedule.
+    // The default (desktop) size, for the bell in step 9b: at 390 px the
+    // header shows only the menu button.
+    const desktop = tutor.page.viewportSize();
     await tutor.page.setViewportSize({ width: 390, height: 844 });
     const lesson = await attendanceSession(tutor.page, tutorId);
     expect(lesson.students).toHaveLength(2);
@@ -805,12 +808,19 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await expect(requestDialog).toBeHidden();
     await expect(review).toContainText(common.closeout.review.changesRequested);
 
+    // The bell is in the header at desktop width only; back to the phone
+    // size for My schedule and the closeout.
+    if (desktop) {
+      await tutor.page.setViewportSize(desktop);
+    }
     await tutor.page.reload();
     await bell.click();
     await expect(panel).toContainText(
       `${textBefore(common.notifications.types.academics_closeout_changes_requested)}${CLOSEOUT_SUBJECT}`,
     );
     await tutor.page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await tutor.page.setViewportSize({ width: 390, height: 844 });
     await tutor.page.goto(
       `/my-schedule?view=list&date=${localDateOf(closing.startsAt)}`,
     );
