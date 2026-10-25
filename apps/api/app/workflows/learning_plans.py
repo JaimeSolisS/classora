@@ -189,16 +189,27 @@ def _readable(relation: Relation, plan: academics.LearningPlan) -> bool:
 
 
 async def _readable_plan(
-    session: AsyncSession, principal: Principal, plan_id: uuid.UUID
+    session: AsyncSession,
+    principal: Principal,
+    plan_id: uuid.UUID,
+    *,
+    write: bool = False,
 ) -> tuple[_Caller, Relation, academics.PlanRow]:
-    """The ``404`` step of every route on one plan (E1)."""
+    """The ``404`` step of every route on one plan (E1). On a ``write`` the
+    family rule isn't checked: a family member never writes, so they get
+    the ``404`` of an unknown id, never ``403 student_consent_required``
+    (the matrix; #81 QA D1)."""
     row = await academics.plan_with_subject(
         session, plan_id, subjects=catalog.subject_name_columns()
     )
     if row is None:
         raise RecordNotFoundError()
     caller = await _caller(session, principal, row.plan.student_id)
-    relation = await _plan_relation(session, caller, row.plan)
+    relation = (
+        caller.relation(row.plan, family=False)
+        if write
+        else await _plan_relation(session, caller, row.plan)
+    )
     if not _readable(relation, row.plan):
         raise RecordNotFoundError()
     return caller, relation, row
@@ -237,7 +248,9 @@ async def _locked(
 ) -> tuple[_Caller, Relation, academics.LearningPlan, str]:
     """C4 / D1 / D3 steps 3-7: readable, allowed, the plan ``FOR UPDATE``,
     the version, the state. Returns the subject's name too."""
-    caller, relation, row = await _readable_plan(session, principal, plan_id)
+    caller, relation, row = await _readable_plan(
+        session, principal, plan_id, write=True
+    )
     _ensure_access(relation)
     plan = await academics.get_plan_for_update(session, plan_id)
     if plan is None:
@@ -723,7 +736,7 @@ async def set_milestone_progress(
     plan_id = await academics.milestone_plan_id(session, milestone_id)
     if plan_id is None:
         raise RecordNotFoundError()
-    _, relation, row = await _readable_plan(session, principal, plan_id)
+    _, relation, row = await _readable_plan(session, principal, plan_id, write=True)
     _ensure_access(relation)
     plan = await academics.get_plan_for_share(session, plan_id)
     if plan is None:

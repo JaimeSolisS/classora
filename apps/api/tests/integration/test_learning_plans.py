@@ -1347,14 +1347,44 @@ def test_an_adult_needs_the_consent_and_a_revocation_applies_at_once(
     assert code_of(get(client, guardian, plans_path(student))) == CONSENT
     assert code_of(get(client, guardian, plan_path(view["id"]))) == CONSENT
     assert code_of(get(client, guardian, plan_path(draft["id"]))) == CONSENT
+    # A family member never writes: every write is the unknown-id 404, never
+    # 403 student_consent_required (the matrix; #81 QA D1).
+
+    def writes_are_hidden() -> None:
+        unknown = uuid.uuid4()
+        for plan in (view, draft):
+            assert_same_not_found(
+                put(client, guardian, plan_path(plan["id"]), replace_body(plan)),
+                put(client, guardian, plan_path(unknown), replace_body(plan)),
+            )
+            assert_same_not_found(
+                transition(client, guardian, plan["id"], 1, "discontinue"),
+                transition(client, guardian, unknown, 1, "discontinue"),
+            )
+            assert_same_not_found(
+                progress(client, guardian, first_milestone(plan)["id"], 1, "done"),
+                progress(client, guardian, unknown, 1, "done"),
+            )
+            assert_same_not_found(
+                delete(client, guardian, plan["id"], 1),
+                delete(client, guardian, unknown, 1),
+            )
+        assert_same_not_found(
+            create(client, guardian, student, view["subject"]["id"]),
+            create(client, guardian, unknown, view["subject"]["id"]),
+        )
+
+    writes_are_hidden()
     give_academic_consent(url, family)
     assert [
         i["id"] for i in ok(get(client, guardian, plans_path(student)))["items"]
     ] == [view["id"]]
     assert ok(get(client, guardian, plan_path(view["id"])))["id"] == view["id"]
+    writes_are_hidden()
     revoke_academic_consent(url, family)
     assert code_of(get(client, guardian, plans_path(student))) == CONSENT
     assert code_of(get(client, guardian, plan_path(view["id"]))) == CONSENT
+    writes_are_hidden()
 
 
 def test_the_recipients_and_params(module_seeded_url, client):
