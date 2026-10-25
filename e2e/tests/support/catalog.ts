@@ -96,7 +96,22 @@ type Common = {
       correctDialog: { reason: string; submit: string };
       approveDialog: { minutes: string; submit: string };
       history: { minutes: string };
+      /** #305: the owner's "Request changes". */
+      requestChanges: string;
+      changesRequested: string;
+      requestDialog: { reason: string; submit: string };
     };
+    /** #305: the tutor's status views and edit modes. */
+    tutorView: Record<
+      | 'changesRequested'
+      | 'underReview'
+      | 'resubmit'
+      | 'resubmitSubmit'
+      | 'resubmittedNotice'
+      | 'badge'
+      | 'fix',
+      string
+    >;
   };
   sessionRequests: {
     status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;
@@ -649,6 +664,8 @@ type Common = {
       scheduling_session_request_rejected: string;
       // #62b E1: the requester's approval.
       scheduling_change_request_approved_cancellation_makeup: string;
+      // #305: the tutor's closeout sent back.
+      academics_closeout_changes_requested: string;
     };
   };
   courses: {

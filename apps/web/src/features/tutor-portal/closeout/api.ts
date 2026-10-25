@@ -6,7 +6,8 @@ import { api, apiCall } from '@/app/api';
 // API's record policy decides; the pages only show what it returns. The
 // staff session page reuses fetchCloseout and adds the review decisions
 // (#78: approve, request changes, correct, each with the closeout's
-// version).
+// version). #305: the tutor's resubmission and correction request (the
+// same PUT, with the closeout's version).
 
 export type SessionCloseoutView = components['schemas']['SessionCloseoutView'];
 export type SessionCloseoutRecord =
@@ -24,6 +25,7 @@ export type CloseoutCorrectionBody =
   components['schemas']['CloseoutCorrection'];
 export type CloseoutSummaryInput =
   components['schemas']['CloseoutSummaryInput'];
+export type CloseoutResubmitBody = components['schemas']['CloseoutResubmit'];
 
 export const CLOSEOUT_KEY = ['closeout'] as const;
 
@@ -51,6 +53,22 @@ export function submitCloseout(
 ): Promise<SessionCloseoutView> {
   return apiCall(() =>
     api.POST('/api/v1/class-sessions/{class_session_id}/closeout', {
+      params: { path: { class_session_id: sessionId } },
+      body,
+    }),
+  );
+}
+
+/**
+ * #305 A5: the tutor's resubmission (changes requested; an optional note)
+ * or correction request (approved; a required reason), through #78's PUT.
+ */
+export function resubmitCloseout(
+  sessionId: string,
+  body: CloseoutResubmitBody,
+): Promise<SessionCloseoutView> {
+  return apiCall(() =>
+    api.PUT('/api/v1/class-sessions/{class_session_id}/closeout', {
       params: { path: { class_session_id: sessionId } },
       body,
     }),

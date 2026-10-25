@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -17,7 +18,11 @@ import {
   tutorAttendanceLink,
 } from '@/features/tutor-portal/attendance/rules';
 import { StatusLabel } from '@/features/tutor-portal/attendance/StatusLabel';
-import { closeoutPath } from '@/features/tutor-portal/closeout/api';
+import {
+  closeoutKey,
+  closeoutPath,
+  fetchCloseout,
+} from '@/features/tutor-portal/closeout/api';
 import { tutorCloseoutLink } from '@/features/tutor-portal/closeout/rules';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
@@ -33,6 +38,10 @@ import { dateText, whoText, type LabelContext } from './labels';
 // started (confirmed or completed) shows the student's own attendance.
 // #77 G2: next to it, a started confirmed item offers "Close out session"
 // (primary) and a completed one "View closeout".
+// #305 C1: a tutor's completed item reads its closeout when the dialog
+// opens (shared with the closeout page's cache); changes requested shows a
+// "Changes requested" badge and "Fix closeout" (primary). While loading,
+// on an error or in any other status: "View closeout", nothing else.
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
@@ -63,10 +72,24 @@ export function EntryDialog({
   now = Date.now,
 }: EntryDialogProps) {
   const { t } = useTranslation();
+  const completedTutorId =
+    entry?.audience === 'tutor' && entry.item.state === 'completed'
+      ? entry.item.id
+      : null;
+  const closeout = useQuery({
+    queryKey: closeoutKey(completedTutorId ?? ''),
+    queryFn: ({ signal }) => fetchCloseout(completedTutorId ?? '', signal),
+    enabled: completedTutorId !== null,
+    retry: false,
+  });
+  const closeoutStatus =
+    completedTutorId !== null ? closeout.data?.closeout?.status : undefined;
   const attendanceLink =
     entry?.audience === 'tutor' ? tutorAttendanceLink(entry.item, now()) : null;
   const closeoutLink =
-    entry?.audience === 'tutor' ? tutorCloseoutLink(entry.item, now()) : null;
+    entry?.audience === 'tutor'
+      ? tutorCloseoutLink(entry.item, now(), closeoutStatus)
+      : null;
   return (
     <Dialog
       open={entry !== null}
@@ -135,18 +158,25 @@ export function EntryDialog({
           </dl>
           {closeoutLink || attendanceLink ? (
             <div className="flex flex-wrap items-center gap-3">
+              {closeoutLink === 'fix' ? (
+                <span className="rounded-md border border-border px-2 py-0.5 text-sm font-medium">
+                  {t('closeout.tutorView.badge')}
+                </span>
+              ) : null}
               {closeoutLink ? (
                 <Link
                   to={closeoutPath(entry.item.id)}
                   className={
-                    closeoutLink === 'submit'
-                      ? buttonVariants({ size: 'sm' })
-                      : 'text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring'
+                    closeoutLink === 'view'
+                      ? 'text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring'
+                      : buttonVariants({ size: 'sm' })
                   }
                 >
                   {closeoutLink === 'submit'
                     ? t('closeout.closeOut')
-                    : t('closeout.view')}
+                    : closeoutLink === 'fix'
+                      ? t('closeout.tutorView.fix')
+                      : t('closeout.view')}
                 </Link>
               ) : null}
               {attendanceLink ? (
