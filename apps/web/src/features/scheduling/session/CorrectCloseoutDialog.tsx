@@ -31,6 +31,7 @@ import {
   summaryDraftOf,
 } from './closeoutReview';
 import { CloseoutFields } from './CloseoutFields';
+import { useFocusAfterSend } from './useFocusAfterSend';
 import { REVIEW_TEXTAREA_CLASS, ReviewFailure } from './ReviewFailure';
 import { REASON_MAX_LENGTH, reasonLength } from './rules';
 
@@ -103,6 +104,7 @@ function CorrectContent({
   const [unchanged, setUnchanged] = useState(false);
   const [failure, setFailure] = useState<unknown>(initialError);
   const [busy, setBusy] = useState(false);
+  const focusAfterSend = useFocusAfterSend(busy);
 
   const minutesProblem = reapprove ? null : minutesError(minutes);
   const fieldErrors: SummaryErrors = reapprove
@@ -160,9 +162,18 @@ function CorrectContent({
         setServerErrors(summary);
         setServerMinutes(onMinutes);
         setServerReason(onReason ? onReason.code : null);
-        if (onReason) {
-          reasonRef.current?.focus();
-        }
+        // The first invalid field, once the fields are enabled again
+        // (#301b QA D1; the same rule as the on-behalf dialog).
+        const field = SUMMARY_FIELDS.find((name) => summary[name]);
+        focusAfterSend(() => {
+          if (onMinutes) {
+            first.current?.focus();
+          } else if (field) {
+            document.getElementById(`${id}-${field}`)?.focus();
+          } else if (onReason) {
+            reasonRef.current?.focus();
+          }
+        });
       } else {
         setFailure(caught);
       }

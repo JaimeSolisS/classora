@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import {
@@ -217,4 +217,82 @@ export const ServerErrorPhone390: Story = {
 export const ServerErrorDesktop1280: Story = {
   ...serverError,
   globals: { viewport: { value: 'desktop1280' } },
+};
+
+// #301b QA D1: a server 422 on a summary field or the minutes moves focus
+// to that field once the send is over (the fields are disabled while it is
+// pending, and a disabled control can't take focus), in a real browser.
+// The timing regression itself is pinned by the closeout.test.tsx D1 tests.
+// The rejection comes a little later, as a real response does, so the
+// pending state (disabled fields) has rendered first.
+function rejects422(path: string[], code: string) {
+  const error = () =>
+    new ApiError({
+      status: 422,
+      code: 'validation_error',
+      fieldErrors: [{ path, code, message: 'x' }],
+      problem: {
+        type: 'about:blank',
+        title: 'Unprocessable Content',
+        status: 422,
+        code: 'validation_error',
+        request_id: 'req-422',
+        errors: [{ path, code, message: 'x' }],
+      },
+    });
+  return fn(
+    () =>
+      new Promise<void>((_, reject) => {
+        window.setTimeout(() => reject(error()), 200);
+      }),
+  );
+}
+
+async function fillAndSubmit(element: HTMLElement) {
+  const box = within(element);
+  for (const [key, value] of [
+    ['closeout.fields.topics', 'Fracciones'],
+    ['closeout.fields.performance', 'Bien'],
+    ['closeout.fields.next_steps', 'Sumas'],
+    ['closeout.onBehalf.reason', 'El tutor dejó el centro.'],
+  ] as const) {
+    await userEvent.type(
+      box.getByLabelText(i18n.t(key), { exact: false }),
+      value,
+    );
+  }
+  await userEvent.click(
+    box.getByRole('button', { name: i18n.t('closeout.onBehalf.submit') }),
+  );
+}
+
+export const ServerSummaryErrorFocus: Story = {
+  args: {
+    onConfirm: rejects422(['body', 'summary', 'performance'], 'too_long'),
+  },
+  play: async () => {
+    const element = await dialog();
+    const box = within(element);
+    await fillAndSubmit(element);
+    const performance = box.getByLabelText(
+      i18n.t('closeout.fields.performance'),
+      { exact: false },
+    );
+    await waitFor(() => expect(performance).toHaveFocus());
+    await expect(performance).toBeEnabled();
+  },
+};
+
+export const ServerMinutesErrorFocus: Story = {
+  args: {
+    onConfirm: rejects422(['body', 'actual_minutes'], 'less_than_equal'),
+  },
+  play: async () => {
+    const element = await dialog();
+    const box = within(element);
+    await fillAndSubmit(element);
+    const minutes = box.getByLabelText(i18n.t('closeout.actualMinutes'));
+    await waitFor(() => expect(minutes).toHaveFocus());
+    await expect(minutes).toHaveAttribute('aria-invalid', 'true');
+  },
 };

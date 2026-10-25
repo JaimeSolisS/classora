@@ -797,6 +797,86 @@ describe('close out on behalf (#301b C)', () => {
   });
 });
 
+// #301b QA D1: a control disabled while the send is pending can't take
+// focus, so the move must wait until the fields are enabled again. Every
+// focus() call is recorded with whether its element was disabled then. In
+// a browser a 0 ms timer can run before React re-enables the fields; jsdom
+// usually renders first, so the tests run timers at once to force that
+// order (a focus moved by a timer would hit the disabled field).
+function recordFocus(): { target: Element; disabled: boolean }[] {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const realSetTimeout = window.setTimeout;
+  vi.spyOn(window, 'setTimeout').mockImplementation(((
+    handler: TimerHandler,
+    delay?: number,
+    ...rest: unknown[]
+  ) => {
+    if (typeof handler === 'function' && !delay) {
+      (handler as (...args: unknown[]) => void)(...rest);
+      return 0;
+    }
+    return realSetTimeout(handler, delay, ...rest);
+  }) as typeof window.setTimeout);
+  const calls: { target: Element; disabled: boolean }[] = [];
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const original = HTMLElement.prototype.focus;
+  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+    this: HTMLElement,
+    options?: FocusOptions,
+  ) {
+    calls.push({
+      target: this,
+      disabled: (this as HTMLInputElement).disabled === true,
+    });
+    original.call(this, options);
+  });
+  return calls;
+}
+
+describe('focus after a server 422 (#301b QA D1)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    [['body', 'summary', 'performance'], 'too_long', 'Performance'],
+    [['body', 'actual_minutes'], 'less_than_equal', null],
+  ] as const)(
+    'focuses %j once it is enabled (on behalf)',
+    async (path, code, label) => {
+      const dialog = await onBehalfDialog(WAITING_CAN_SUBMIT_ON_BEHALF, {
+        [SUBMIT_ON_BEHALF]: () => invalid([...path], code),
+      });
+      fillRequired(dialog);
+      const calls = recordFocus();
+      await click(submitButton(dialog));
+      const target = label
+        ? field(dialog, label)
+        : dialog.querySelector('input')!;
+      await settleUntil(() => document.activeElement === target);
+      const onTarget = calls.filter((call) => call.target === target);
+      expect(onTarget.length).toBeGreaterThan(0);
+      expect(onTarget.every((call) => !call.disabled)).toBe(true);
+    },
+  );
+
+  it('focuses the first invalid field of a correction once it is enabled', async () => {
+    await ready(REVIEWABLE, {
+      [CORRECT]: () => invalid(['body', 'summary', 'homework'], 'too_long'),
+    });
+    await click(buttonNamed(section()!, 'Correct'));
+    const dialog = openDialog()!;
+    setValue(field(dialog, 'Homework'), 'Otra tarea');
+    setValue(field(dialog, 'Reason for the correction'), 'Motivo');
+    const calls = recordFocus();
+    await click(buttonNamed(dialog, 'Save correction'));
+    const target = field(dialog, 'Homework');
+    await settleUntil(() => document.activeElement === target);
+    const onTarget = calls.filter((call) => call.target === target);
+    expect(onTarget.every((call) => !call.disabled)).toBe(true);
+  });
+});
+
 describe('take over a stuck closeout (#301b D)', () => {
   async function takeoverDialog(routes = {}): Promise<HTMLElement> {
     await ready(CHANGES_REQUESTED_CAN_TAKE_OVER, routes);

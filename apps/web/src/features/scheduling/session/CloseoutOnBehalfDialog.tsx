@@ -32,6 +32,7 @@ import {
   onBehalfNeedsReload,
   reasonError,
 } from './closeoutReview';
+import { useFocusAfterSend } from './useFocusAfterSend';
 import { REVIEW_TEXTAREA_CLASS } from './ReviewFailure';
 import { REASON_MAX_LENGTH, reasonLength } from './rules';
 
@@ -136,6 +137,7 @@ function OnBehalfContent({
   } | null>(null);
   const [failure, setFailure] = useState<unknown>(initialError);
   const [busy, setBusy] = useState(false);
+  const focusAfterSend = useFocusAfterSend(busy);
 
   const minutesProblem = minutesError(minutes);
   const fieldErrors: SummaryErrors = {
@@ -235,14 +237,13 @@ function OnBehalfContent({
       const missingNow = missingStudentsOf(caught, students);
       if (missingNow) {
         setServerMissing(missingNow);
-        window.setTimeout(() => completeness.current?.focus(), 0);
+        focusAfterSend(() => completeness.current?.focus());
       } else if (Object.keys(summary).length > 0 || onReason || onMinutes) {
         setServerErrors(summary);
         setServerMinutes(onMinutes);
         setServerReason(onReason ? onReason.code : null);
-        window.setTimeout(
-          () => focusFirstInvalid(summary, onMinutes, Boolean(onReason)),
-          0,
+        focusAfterSend(() =>
+          focusFirstInvalid(summary, onMinutes, Boolean(onReason)),
         );
       } else {
         setFailure(caught);

@@ -420,8 +420,12 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   An attendance line says how many students are marked; while any is
   unmarked it names them, Submit sends nothing and focus moves to the line
   (`role="alert"` once a submit was attempted). Server errors keep the
-  typed values: field errors go on the fields (focus on the first), a
-  changed closeout or session shows its message with "Reload".
+  typed values: field errors go on the fields and focus moves to the first
+  invalid one once the send is over (the fields are disabled while it is
+  pending and a disabled control can't take focus, so the move runs after
+  they are enabled again: `useFocusAfterSend`, shared with
+  `CorrectCloseoutDialog`); a changed closeout or session shows its message
+  with "Reload".
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.
