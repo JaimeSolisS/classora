@@ -226,6 +226,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/class-sessions/{class_session_id}/conflict-overrides",
         "/api/v1/class-sessions/{class_session_id}/substitutions",
         "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw",
+        "/api/v1/class-sessions/{class_session_id}/attendance",
+        "/api/v1/class-sessions/{class_session_id}/attendance/corrections",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

@@ -9837,6 +9837,266 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/attendance": {
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Get Class Session Attendance",
+        "description": "Every participant's attendance (present, late, absent or not marked\nyet), who marked it and when, and each staff correction with its\nreason. For the session's current tutor, or staff with\nschedule.view.",
+        "operationId": "get_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAttendance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose attendance you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Mark Class Session Attendance",
+        "description": "Mark participants present, late or absent once the class has started\n(no deadline while it is confirmed). Unlisted participants keep their\nmark; an identical mark changes nothing. Any change bumps the session's\nversion. The session's state never changes.",
+        "operationId": "mark_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_put",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceMarks"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAttendance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the session's current tutor marks attendance (attendance_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose attendance you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); the session is not confirmed or completed (attendance_not_recordable, details.state) or hasn't started (attendance_not_started); it is completed (attendance_locked: ask the center); or a mark would change a status the center corrected (attendance_corrected, details.student_id). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/attendance/corrections": {
+      "post": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Correct Class Session Attendance",
+        "description": "Correct one participant's attendance with a reason (also a completed\nsession's, or a first mark). The correction is kept with its reason and\naudited; the tutor can no longer change that student's mark. The\nsession's state never changes.",
+        "operationId": "correct_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_corrections_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceCorrectionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAttendance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); or the session is not confirmed or completed (attendance_not_recordable, details.state) or hasn't started (attendance_not_started). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -14437,6 +14697,247 @@
         ],
         "title": "AssignmentOfferPage",
         "description": "A page of the caller's offers (#52 G2)."
+      },
+      "AttendanceBlock": {
+        "type": "string",
+        "enum": [
+          "attendance_not_recordable",
+          "attendance_not_started",
+          "attendance_locked"
+        ]
+      },
+      "AttendanceCorrectionCreate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "student_id",
+          "status",
+          "reason"
+        ],
+        "title": "AttendanceCorrectionCreate",
+        "description": "`POST /api/v1/class-sessions/{id}/attendance/corrections` (#76 D1):\nthe new status of one participant and why (trimmed, 1-1000 characters:\nreason_required / reason_too_long)."
+      },
+      "AttendanceCorrectionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` when staff made the first mark."
+          },
+          "new_status": {
+            "$ref": "#/components/schemas/AttendanceStatus"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "corrected_by": {
+            "$ref": "#/components/schemas/AttendancePerson"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "previous_status",
+          "new_status",
+          "reason",
+          "corrected_by",
+          "created_at"
+        ],
+        "title": "AttendanceCorrectionItem",
+        "description": "One staff correction, with its reason."
+      },
+      "AttendanceItem": {
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/AttendanceStudent"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "marked_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendancePerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "marked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marked At"
+          },
+          "corrected": {
+            "type": "boolean",
+            "title": "Corrected",
+            "description": "Staff corrected this mark; the tutor can no longer change it (attendance_corrected)."
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceCorrectionItem"
+            },
+            "type": "array",
+            "title": "Corrections",
+            "description": "Oldest first."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student",
+          "status",
+          "marked_by",
+          "marked_at",
+          "corrected",
+          "corrections"
+        ],
+        "title": "AttendanceItem",
+        "description": "One participant's attendance (`status` `null`: not marked yet)."
+      },
+      "AttendanceMark": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "status"
+        ],
+        "title": "AttendanceMark",
+        "description": "One participant's mark."
+      },
+      "AttendanceMarks": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "marks": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceMark"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Marks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "marks"
+        ],
+        "title": "AttendanceMarks",
+        "description": "`PUT /api/v1/class-sessions/{id}/attendance` (#76 C1): 1-500 marks,\neach student once (duplicate_student). Unlisted participants keep their\ncurrent mark; a mark can't be cleared."
+      },
+      "AttendancePerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "AttendancePerson",
+        "description": "Who marked or corrected: the display name only."
+      },
+      "AttendanceStatus": {
+        "type": "string",
+        "enum": [
+          "present",
+          "late",
+          "absent"
+        ]
+      },
+      "AttendanceStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "AttendanceStudent",
+        "description": "A participant of the session."
       },
       "AuditChange": {
         "properties": {
@@ -21585,6 +22086,23 @@
                 "type": "null"
               }
             ]
+          },
+          "attendance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "late",
+                  "absent"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance",
+            "description": "This student's attendance in the session (#76 E4); `null` when not marked. Never other students', who marked it or corrections."
           }
         },
         "additionalProperties": false,
@@ -21597,7 +22115,8 @@
           "ends_at",
           "subject",
           "tutor",
-          "classroom"
+          "classroom",
+          "attendance"
         ],
         "title": "FamilyScheduleItem",
         "description": "One session on a student's schedule (#67 C3)."
@@ -24618,6 +25137,7 @@
       "PermissionCode": {
         "type": "string",
         "enum": [
+          "attendance.correct",
           "audit.view",
           "catalog.manage",
           "consent.record",
@@ -25677,6 +26197,80 @@
         ],
         "title": "SeriesRecurrenceDetail",
         "description": "The stored rule's structured fields."
+      },
+      "SessionAttendance": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ScheduleSubject"
+          },
+          "can_mark": {
+            "type": "boolean",
+            "title": "Can Mark"
+          },
+          "can_correct": {
+            "type": "boolean",
+            "title": "Can Correct"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "version",
+          "kind",
+          "state",
+          "starts_at",
+          "ends_at",
+          "subject",
+          "can_mark",
+          "can_correct",
+          "block",
+          "items"
+        ],
+        "title": "SessionAttendance",
+        "description": "A session's attendance (#76 B2): every participant, by display name,\nmarked or not. `can_mark`: you are the current tutor and the tutor may\nmark now; `can_correct`: you hold attendance.correct and a correction is\npossible now; `block`: why attendance can't be written now for you\n(`attendance_not_recordable`, `attendance_not_started`,\n`attendance_locked`), or `null`. Any change bumps the session's\n`version`."
       },
       "SessionCancellation": {
         "properties": {

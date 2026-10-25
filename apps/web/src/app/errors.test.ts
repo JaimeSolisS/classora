@@ -125,6 +125,14 @@ const API_CODES = [
   'change_request_not_pending',
   'change_request_session_changed',
   'change_request_review_route_required',
+  'attendance_tutor_only',
+  'attendance_not_recordable',
+  'attendance_not_started',
+  'attendance_locked',
+  'attendance_corrected',
+  'attendance_unchanged',
+  'student_not_participant',
+  'duplicate_student',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

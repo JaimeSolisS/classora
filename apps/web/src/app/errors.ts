@@ -145,6 +145,15 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'change_request_review_route_required',
     'change_request_review_route_required',
   ],
+  // Attendance (#76).
+  ['attendance_tutor_only', 'attendance_tutor_only'],
+  ['attendance_not_recordable', 'attendance_not_recordable'],
+  ['attendance_not_started', 'attendance_not_started'],
+  ['attendance_locked', 'attendance_locked'],
+  ['attendance_corrected', 'attendance_corrected'],
+  ['attendance_unchanged', 'attendance_unchanged'],
+  ['student_not_participant', 'student_not_participant'],
+  ['duplicate_student', 'duplicate_student'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

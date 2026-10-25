@@ -7,10 +7,11 @@
 #   3. alembic upgrade head      (api image, direct connection; ADR-0003)
 #   4. python -m app.seeds       (api image)
 #   5. demo command, --seed 1    (host, uv; API dev dependencies)
-#   6. headless Chromium         (downloaded on first run only)
-#   7. Playwright
-#   8. on failure: Compose logs -> e2e/test-results/compose.log
-#   9. always: down -v (also after a failure or Ctrl-C), unless E2E_KEEP=1
+#   6. E2E attendance fixture    (host, uv; a started session, #76)
+#   7. headless Chromium         (downloaded on first run only)
+#   8. Playwright
+#   9. on failure: Compose logs -> e2e/test-results/compose.log
+#  10. always: down -v (also after a failure or Ctrl-C), unless E2E_KEEP=1
 #
 # The stack is its own Compose project (classora-e2e: own containers, network,
 # volume and images) on its own host ports, so it runs while `make dev` is up
@@ -106,6 +107,9 @@ compose run --rm api python -m app.seeds
 
 step "generating demo data (--seed 1)"
 (cd apps/api && uv run python -m tests.factories.demo --seed 1)
+
+step "inserting the E2E attendance session"
+(cd apps/api && uv run python -m tests.factories.e2e_attendance)
 
 step "installing headless Chromium (downloaded on first run only)"
 "${PNPM[@]}" --filter @classora/e2e exec playwright install --only-shell chromium

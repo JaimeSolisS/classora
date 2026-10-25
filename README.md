@@ -208,6 +208,11 @@ unless a bullet says otherwise.
   change requests. Staff approve it, approve it as an exception or reject
   it, and the cancellation policy's outcome (on time, late or excused, and
   any makeup allowed) is recorded.
+- Once a class starts, its tutor takes attendance from My schedule on a
+  phone, marking each student present, late or absent. Staff see it on the
+  session page; Owners, Administrators and Academic Coordinators correct a
+  mark with a reason, kept in the session's correction history. Students and
+  guardians see the student's own attendance on My schedule.
 
 **Courses**
 
@@ -272,7 +277,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** attendance, academic records, billing and payments,
+**Not built yet:** academic records, billing and payments,
 payroll, reporting and analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).

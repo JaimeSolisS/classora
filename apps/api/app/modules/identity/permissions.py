@@ -95,6 +95,11 @@ SCHEDULE_ASSIGN = "schedule.assign"
 # cohort's record policies (#65, #67), not through these.
 COURSE_VIEW = "course.view"
 COURSE_MANAGE = "course.manage"
+# Attendance (#76, owner decision E1 (a)): who corrects a session's
+# attendance with a reason (Owner, Administrator, Academic Coordinator; not
+# delegable). Tutors mark and schedule.view holders read through the
+# attendance record policy (scheduling/attendance_rules.py).
+ATTENDANCE_CORRECT = "attendance.correct"
 
 
 @dataclass(frozen=True)
@@ -131,6 +136,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(SCHEDULE_ASSIGN),
     PermissionDef(COURSE_VIEW),
     PermissionDef(COURSE_MANAGE),
+    PermissionDef(ATTENDANCE_CORRECT),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -171,6 +177,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 SCHEDULE_ASSIGN,
                 COURSE_VIEW,
                 COURSE_MANAGE,
+                ATTENDANCE_CORRECT,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -183,6 +190,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 SCHEDULE_ASSIGN,
                 COURSE_VIEW,
                 COURSE_MANAGE,
+                ATTENDANCE_CORRECT,
             }
         ),
         FINANCE_STAFF: frozenset(

@@ -10,6 +10,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { sessionTimeText } from '@/features/calendar/labels';
+import { attendancePath } from '@/features/tutor-portal/attendance/api';
+import {
+  showsFamilyAttendance,
+  tutorAttendanceLink,
+} from '@/features/tutor-portal/attendance/rules';
+import { StatusLabel } from '@/features/tutor-portal/attendance/StatusLabel';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -19,6 +25,9 @@ import { dateText, whoText, type LabelContext } from './labels';
 // links to /offers, where the answer is given. `action` is the page's slot
 // under the details (#62b A1: "Request a change"). Focus is trapped while
 // it is open and goes back to the event on close.
+// #76 G2: a tutor's confirmed item that has started links to "Take
+// attendance", a completed one to "View attendance"; a family item that has
+// started (confirmed or completed) shows the student's own attendance.
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
@@ -27,6 +36,8 @@ export interface EntryDialogProps {
   onReturnFocus: () => void;
   /** Rendered under the details (#62b A1). */
   action?: ReactNode;
+  /** The clock (tests). */
+  now?: () => number;
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -44,8 +55,11 @@ export function EntryDialog({
   onClose,
   onReturnFocus,
   action,
+  now = Date.now,
 }: EntryDialogProps) {
   const { t } = useTranslation();
+  const attendanceLink =
+    entry?.audience === 'tutor' ? tutorAttendanceLink(entry.item, now()) : null;
   return (
     <Dialog
       open={entry !== null}
@@ -105,7 +119,23 @@ export function EntryDialog({
             <Row label={t('scheduling.calendar.dialog.state')}>
               <EntryStateLabel entry={entry} context={context} />
             </Row>
+            {entry.audience === 'family' &&
+            showsFamilyAttendance(entry.item, now()) ? (
+              <Row label={t('attendance.familyRow')}>
+                <StatusLabel status={entry.item.attendance} />
+              </Row>
+            ) : null}
           </dl>
+          {attendanceLink ? (
+            <Link
+              to={attendancePath(entry.item.id)}
+              className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+            >
+              {attendanceLink === 'take'
+                ? t('attendance.take')
+                : t('attendance.view')}
+            </Link>
+          ) : null}
           {entry.audience === 'tutor' && entry.item.state === 'offered' ? (
             <Link
               to="/offers"

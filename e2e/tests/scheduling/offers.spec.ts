@@ -50,9 +50,19 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // The signed-in tutor's bell then has the cancellation. Axe on the page with
 // the substitute panel and with the cancel dialog.
 //
+// Attendance (#76 H9), in the same test and logins: `run.sh` inserts a
+// started confirmed group session of demo.tutor with two students (the
+// subject "E2E Attendance"; tests.factories.e2e_attendance). The signed-in
+// tutor, on a phone (390×844), finds it through their schedule API, opens
+// it from My schedule's list, "Tomar asistencia", marks the first student
+// Presente and the second Retardo, saves and sees both after a reload (axe).
+// The Owner (shared session) corrects the second to Ausente with a reason
+// on the session page and sees the "Corregida" badge and the history (axe).
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
 // the reauthenticated Owner context of createApprovedTutor, #55), no
-// one-time-link redemption, 1 registration (the substitute, #55). It never
+// one-time-link redemption, 1 registration (the substitute, #55); the
+// attendance steps add none (#76). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -60,11 +70,13 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-const TEST_TIMEOUT_MS = 120_000;
+const TEST_TIMEOUT_MS = 150_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
 const LEVEL = 'Primaria';
+/** The subject of the session `run.sh` inserts for attendance (#76). */
+const ATTENDANCE_SUBJECT = 'E2E Attendance';
 /** Every soft rule the demo tutor can break here (unlisted ones are ignored). */
 const OVERRIDE_CODES = [
   'tutor_unavailable',
@@ -161,6 +173,50 @@ async function offerViaApi(
   const body = created.body as { id: string; state: string };
   expect(body.state).toBe('offered');
   return body.id;
+}
+
+interface AttendanceSession {
+  id: string;
+  startsAt: string;
+  students: string[];
+}
+
+/** The started session `run.sh` inserted for demo.tutor (#76 H9). */
+async function attendanceSession(
+  page: Page,
+  tutorId: string,
+): Promise<AttendanceSession> {
+  const to = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const from = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const read = await api(
+    page,
+    `/api/v1/tutors/${tutorId}/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+  expect(read.status, JSON.stringify(read.body)).toBe(200);
+  const items = (
+    read.body as {
+      items: {
+        id: string;
+        starts_at: string;
+        subject: { name: string };
+        participants: { display_name: string }[];
+      }[];
+    }
+  ).items.filter((item) => item.subject.name === ATTENDANCE_SUBJECT);
+  expect(items).toHaveLength(1);
+  const [item] = items;
+  return {
+    id: item!.id,
+    startsAt: item!.starts_at,
+    students: item!.participants.map((p) => p.display_name),
+  };
+}
+
+/** The local date (YYYY-MM-DD) of an instant in the center zone. */
+function localDateOf(instant: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: ZONE }).format(
+    new Date(instant),
+  );
 }
 
 async function signInTutor(browser: Browser) {
@@ -578,6 +634,48 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     );
     await tutor.page.keyboard.press('Escape');
 
+    // 7. Attendance (#76 H9): the tutor, on a phone, marks the started
+    // session from My schedule.
+    await tutor.page.setViewportSize({ width: 390, height: 844 });
+    const lesson = await attendanceSession(tutor.page, tutorId);
+    expect(lesson.students).toHaveLength(2);
+    const [first, second] = lesson.students as [string, string];
+    await tutor.page.goto(
+      `/my-schedule?view=list&date=${localDateOf(lesson.startsAt)}`,
+    );
+    const calendar = tutor.page.getByRole('main').getByRole('region', {
+      name: common.mySchedule.regionLabel,
+    });
+    await expect(calendar).toHaveAttribute('aria-busy', 'false');
+    await calendar
+      .getByRole('button', { name: new RegExp(escape(ATTENDANCE_SUBJECT)) })
+      .click();
+    await tutor.page
+      .getByRole('dialog', { name: ATTENDANCE_SUBJECT })
+      .getByRole('link', { name: common.attendance.take, exact: true })
+      .click();
+    await expect(tutor.page).toHaveURL(
+      new RegExp(`/my-schedule/sessions/${lesson.id}/attendance$`),
+    );
+    const sheet = tutor.page.getByRole('main');
+    const radio = (student: string, status: 'present' | 'late' | 'absent') =>
+      sheet
+        .getByRole('group', { name: student, exact: true })
+        .getByRole('radio', {
+          name: common.attendance.statuses[status],
+          exact: true,
+        });
+    await radio(first, 'present').check();
+    await radio(second, 'late').check();
+    await sheet
+      .getByRole('button', { name: common.attendance.save, exact: true })
+      .click();
+    await expect(sheet.getByText(common.attendance.saved)).toBeVisible();
+    await tutor.page.reload();
+    await expect(radio(first, 'present')).toBeChecked();
+    await expect(radio(second, 'late')).toBeChecked();
+    expect(await axeViolations(tutor.page)).toEqual([]);
+
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
   } finally {
@@ -613,6 +711,48 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   });
   await expect(history).toContainText(common.offers.status.declined);
   await expect(history).toContainText(fill(common.offers.card.note, { note }));
+  expect(await axeViolations(page)).toEqual([]);
+
+  // 8. Attendance (#76 H9): the Owner corrects the second student.
+  const lesson = await attendanceSession(page, tutorId);
+  const second = lesson.students[1]!;
+  const reason = 'Recepción confirmó que no llegó.';
+  await page.goto(`/schedule/sessions/${lesson.id}`);
+  const attendance = page.getByRole('main').getByRole('region', {
+    name: common.attendance.section.heading,
+  });
+  await attendance
+    .getByRole('button', {
+      name: fill(common.attendance.section.correctFor, { name: second }),
+    })
+    .click();
+  const correction = page.getByRole('dialog', {
+    name: common.attendance.correctDialog.title,
+  });
+  await correction
+    .getByLabel(common.attendance.correctDialog.status, { exact: true })
+    .selectOption('absent');
+  await correction
+    .getByLabel(common.attendance.correctDialog.reason, { exact: true })
+    .fill(reason);
+  await correction
+    .getByRole('button', {
+      name: common.attendance.correctDialog.submit,
+      exact: true,
+    })
+    .click();
+  await expect(correction).toBeHidden();
+  const attendanceRow = attendance.getByRole('row').filter({ hasText: second });
+  await expect(attendanceRow).toContainText(
+    common.attendance.section.correctedBadge,
+  );
+  await expect(attendanceRow).toContainText(common.attendance.statuses.absent);
+  await attendanceRow
+    .getByText(fill(common.attendance.history_one, { count: 1 }))
+    .click();
+  await expect(attendanceRow).toContainText(
+    fill(common.attendance.reason, { reason }),
+  );
   expect(await axeViolations(page)).toEqual([]);
   expect(await cspViolations(page)).toEqual([]);
   expect(ownerErrors).toEqual([]);

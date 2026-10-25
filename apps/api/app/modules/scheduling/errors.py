@@ -546,3 +546,59 @@ class ChangeRequestReviewRouteRequiredError(AppError):
 
     def __init__(self, review_path: str) -> None:
         super().__init__(details={"review_path": review_path})
+
+
+# --- Attendance (#76) ---------------------------------------------------------------
+
+
+class AttendanceTutorOnlyError(AppError):
+    """``403 attendance_tutor_only`` (#76 C2 step 4): only the session's
+    current tutor marks attendance; staff correct it with a reason."""
+
+    status = 403
+    code = "attendance_tutor_only"
+    detail = (
+        "Only the session's tutor marks attendance. Staff correct it with a reason."
+    )
+
+
+class AttendanceNotRecordableError(AppError):
+    """``409 attendance_not_recordable`` (#76 A3): the session is neither
+    ``confirmed`` nor ``completed``; ``details`` is ``{"state": <state>}``."""
+
+    status = 409
+    code = "attendance_not_recordable"
+    detail = "Attendance can't be recorded for this session."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})
+
+
+class AttendanceNotStartedError(AppError):
+    """``409 attendance_not_started`` (#76 A3): the session hasn't started."""
+
+    status = 409
+    code = "attendance_not_started"
+    detail = "Attendance opens when the class starts."
+
+
+class AttendanceLockedError(AppError):
+    """``409 attendance_locked`` (#76 A3, E2): the session is ``completed``;
+    the tutor can no longer mark, staff correct it."""
+
+    status = 409
+    code = "attendance_locked"
+    detail = "Attendance is closed. Ask the center to correct it."
+
+
+class AttendanceCorrectedError(AppError):
+    """``409 attendance_corrected`` (#76 C2 step 9): staff corrected this
+    student's mark, so the tutor can't change it; ``details`` is
+    ``{"student_id": <id>}`` (the first one in the body's order)."""
+
+    status = 409
+    code = "attendance_corrected"
+    detail = "The center corrected this attendance. Ask the center to change it."
+
+    def __init__(self, student_id: str) -> None:
+        super().__init__(details={"student_id": student_id})

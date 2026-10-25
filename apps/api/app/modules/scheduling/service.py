@@ -91,6 +91,13 @@ The tutor assignment source of the ``families`` student record policy
 :func:`student_ids_for_tutor` and :data:`TUTOR_ASSIGNMENT_SOURCE`, which
 ``app.wiring`` registers.
 
+Attendance (#76, :mod:`~app.modules.scheduling.attendance`; the pure
+rules in :mod:`~app.modules.scheduling.attendance_rules`):
+:func:`get_session_attendance`, :func:`record_attendance` (the tutor's
+marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
+reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
+#84 and #85).
+
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
 :func:`reconcile_series_closures` per series before the extension; the
@@ -204,6 +211,24 @@ scheduling_conflict`` (:class:`SchedulingConflictError`) or ``422``
 of Work and never commits.
 """
 
+from app.modules.scheduling.attendance import (
+    attendance_statuses as attendance_statuses,
+)
+from app.modules.scheduling.attendance import (
+    correct_attendance as correct_attendance,
+)
+from app.modules.scheduling.attendance import (
+    get_session_attendance as get_session_attendance,
+)
+from app.modules.scheduling.attendance import (
+    record_attendance as record_attendance,
+)
+from app.modules.scheduling.attendance_rules import (
+    ATTENDANCE_STATUSES as ATTENDANCE_STATUSES,
+)
+from app.modules.scheduling.attendance_rules import (
+    attendance_block as attendance_block,
+)
 from app.modules.scheduling.booking import (
     create_class_session as create_class_session,
 )

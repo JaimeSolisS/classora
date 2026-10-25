@@ -13,10 +13,10 @@ then ``truncated``) with their scope predicate:
   participants, students, subjects, classrooms.
 - **family** (:func:`family_schedule`): the sessions the student takes part
   in (``class_session_participants``; group and course sessions too) that
-  are family-visible (:func:`family_visible_condition`). At most 8
-  statements: the facts (one per family role), the student (with the
-  birthdate), the zone (only for the adult rule), sessions, subjects,
-  tutors, classrooms.
+  are family-visible (:func:`family_visible_condition`), each with the
+  student's own attendance status (#76 E4). At most 9 statements: the facts
+  (one per family role), the student (with the birthdate), the zone (only
+  for the adult rule), sessions, subjects, tutors, classrooms, attendance.
 - **family students** (:func:`family_students`): the whose-schedule choices
   of a family caller. At most 4 statements.
 
@@ -39,6 +39,7 @@ from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.families.service import StudentAccessFacts
 from app.modules.identity import service as identity
+from app.modules.scheduling.attendance import student_attendance
 from app.modules.scheduling.calendar_read import (
     ITEM_LIMIT,
     has_participant,
@@ -305,6 +306,7 @@ async def family_schedule(
     rooms = await catalog.classroom_references(
         session, {row.classroom_id for row in rows if row.classroom_id is not None}
     )
+    attendance = await student_attendance(session, student_id, [row.id for row in rows])
     items = []
     for row in rows:
         tutor = tutors.get(row.tutor_user_id) if row.tutor_user_id else None
@@ -325,6 +327,7 @@ async def family_schedule(
                 classroom=(
                     None if room is None else FamilyScheduleClassroom(name=room.name)
                 ),
+                attendance=attendance.get(row.id),
             )
         )
     return FamilySchedule(student_id=student_id, items=items, truncated=truncated)

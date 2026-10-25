@@ -2113,6 +2113,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Class Session Attendance
+         * @description Every participant's attendance (present, late, absent or not marked
+         *     yet), who marked it and when, and each staff correction with its
+         *     reason. For the session's current tutor, or staff with
+         *     schedule.view.
+         */
+        get: operations["get_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_get"];
+        /**
+         * Mark Class Session Attendance
+         * @description Mark participants present, late or absent once the class has started
+         *     (no deadline while it is confirmed). Unlisted participants keep their
+         *     mark; an identical mark changes nothing. Any change bumps the session's
+         *     version. The session's state never changes.
+         */
+        put: operations["mark_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/attendance/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Class Session Attendance
+         * @description Correct one participant's attendance with a reason (also a completed
+         *     session's, or a first mark). The correction is kept with its reason and
+         *     audited; the tutor can no longer change that student's mark. The
+         *     session's state never changes.
+         */
+        post: operations["correct_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -3351,6 +3404,125 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /** @enum {string} */
+        AttendanceBlock: "attendance_not_recordable" | "attendance_not_started" | "attendance_locked";
+        /**
+         * AttendanceCorrectionCreate
+         * @description `POST /api/v1/class-sessions/{id}/attendance/corrections` (#76 D1):
+         *     the new status of one participant and why (trimmed, 1-1000 characters:
+         *     reason_required / reason_too_long).
+         */
+        AttendanceCorrectionCreate: {
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            status: components["schemas"]["AttendanceStatus"];
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * AttendanceCorrectionItem
+         * @description One staff correction, with its reason.
+         */
+        AttendanceCorrectionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** @description `null` when staff made the first mark. */
+            previous_status: components["schemas"]["AttendanceStatus"] | null;
+            new_status: components["schemas"]["AttendanceStatus"];
+            /** Reason */
+            reason: string;
+            corrected_by: components["schemas"]["AttendancePerson"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AttendanceItem
+         * @description One participant's attendance (`status` `null`: not marked yet).
+         */
+        AttendanceItem: {
+            student: components["schemas"]["AttendanceStudent"];
+            status: components["schemas"]["AttendanceStatus"] | null;
+            marked_by: components["schemas"]["AttendancePerson"] | null;
+            /** Marked At */
+            marked_at: string | null;
+            /**
+             * Corrected
+             * @description Staff corrected this mark; the tutor can no longer change it (attendance_corrected).
+             */
+            corrected: boolean;
+            /**
+             * Corrections
+             * @description Oldest first.
+             */
+            corrections: components["schemas"]["AttendanceCorrectionItem"][];
+        };
+        /**
+         * AttendanceMark
+         * @description One participant's mark.
+         */
+        AttendanceMark: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            status: components["schemas"]["AttendanceStatus"];
+        };
+        /**
+         * AttendanceMarks
+         * @description `PUT /api/v1/class-sessions/{id}/attendance` (#76 C1): 1-500 marks,
+         *     each student once (duplicate_student). Unlisted participants keep their
+         *     current mark; a mark can't be cleared.
+         */
+        AttendanceMarks: {
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /** Marks */
+            marks: components["schemas"]["AttendanceMark"][];
+        };
+        /**
+         * AttendancePerson
+         * @description Who marked or corrected: the display name only.
+         */
+        AttendancePerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /** @enum {string} */
+        AttendanceStatus: "present" | "late" | "absent";
+        /**
+         * AttendanceStudent
+         * @description A participant of the session.
+         */
+        AttendanceStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * AuditChange
@@ -6680,6 +6852,11 @@ export interface components {
             subject: components["schemas"]["ScheduleSubject"];
             tutor: components["schemas"]["FamilyScheduleTutor"] | null;
             classroom: components["schemas"]["FamilyScheduleClassroom"] | null;
+            /**
+             * Attendance
+             * @description This student's attendance in the session (#76 E4); `null` when not marked. Never other students', who marked it or corrections.
+             */
+            attendance: ("present" | "late" | "absent") | null;
         };
         /** @enum {string} */
         FamilyScheduleState: "confirmed" | "completed" | "cancelled" | "skipped_closure";
@@ -8110,7 +8287,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -8713,6 +8890,45 @@ export interface components {
             until: string | null;
             /** Count */
             count: number | null;
+        };
+        /**
+         * SessionAttendance
+         * @description A session's attendance (#76 B2): every participant, by display name,
+         *     marked or not. `can_mark`: you are the current tutor and the tutor may
+         *     mark now; `can_correct`: you hold attendance.correct and a correction is
+         *     possible now; `block`: why attendance can't be written now for you
+         *     (`attendance_not_recordable`, `attendance_not_started`,
+         *     `attendance_locked`), or `null`. Any change bumps the session's
+         *     `version`.
+         */
+        SessionAttendance: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /** Version */
+            version: number;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            subject: components["schemas"]["ScheduleSubject"];
+            /** Can Mark */
+            can_mark: boolean;
+            /** Can Correct */
+            can_correct: boolean;
+            block: components["schemas"]["AttendanceBlock"] | null;
+            /** Items */
+            items: components["schemas"]["AttendanceItem"][];
         };
         /**
          * SessionCancellation
@@ -17267,6 +17483,206 @@ export interface operations {
                 };
             };
             /** @description The session changed since it was read (version_conflict); or it is completed, cancelled or skipped for a closure (class_session_not_cancellable, details.reason = state, details.state) or has begun (details.reason = started). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAttendance"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose attendance you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    mark_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceMarks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAttendance"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the session's current tutor marks attendance (attendance_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose attendance you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); the session is not confirmed or completed (attendance_not_recordable, details.state) or hasn't started (attendance_not_started); it is completed (attendance_locked: ask the center); or a mark would change a status the center corrected (attendance_corrected, details.student_id). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    correct_class_session_attendance_api_v1_class_sessions__class_session_id__attendance_corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAttendance"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); or the session is not confirmed or completed (attendance_not_recordable, details.state) or hasn't started (attendance_not_started). Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

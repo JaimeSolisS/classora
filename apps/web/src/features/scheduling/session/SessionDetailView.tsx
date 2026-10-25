@@ -30,6 +30,8 @@ import type {
 // system code.
 // #63 H3: an open reassignment flag shows "Needs reassignment: the tutor's
 // availability changed" with whose and when.
+// #76 G3: the page passes the attendance section for confirmed and
+// completed sessions.
 
 export interface SessionNotice {
   id: number;
@@ -62,6 +64,8 @@ export interface SessionDetailViewProps {
   actions?: ReactNode;
   /** The substitutions section (#55), or nothing. */
   substitutions?: ReactNode;
+  /** The attendance section (#76 G3: confirmed or completed), or nothing. */
+  attendance?: ReactNode;
   /**
    * A page-level notice that survives the panels' remount (#55 H1 / QA D1):
    * a refused write's message (`alert`; the page reloads the session) or a
@@ -94,6 +98,7 @@ export function SessionDetailView({
   series,
   actions,
   substitutions,
+  attendance,
   notice,
   changeRequestLink,
 }: SessionDetailViewProps) {
@@ -333,6 +338,7 @@ export function SessionDetailView({
       {cancellation ? null : actions}
       {cancellation ? null : offerPanel}
       {substitutions}
+      {attendance}
       <section
         aria-labelledby={`${id}-history`}
         className="flex flex-col gap-3"

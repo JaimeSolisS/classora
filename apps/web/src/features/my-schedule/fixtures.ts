@@ -68,6 +68,7 @@ export function familyItem(
     subject: MATH,
     tutor: { display_name: 'Carmen Ruiz' },
     classroom: { name: 'Aula 2' },
+    attendance: null,
     ...overrides,
   };
 }
