@@ -3070,7 +3070,7 @@
       "approvedBadge": "Aprobado · {{minutes}} min por {{name}}, {{when}}",
       "approvedShort": "Aprobado · {{minutes}} min",
       "reviewReason": "Motivo del revisor",
-      "tutorNote": "Motivo del tutor",
+      "tutorNote": "Motivo del tutor (enviado el {{when}})",
       "approve": "Aprobar",
       "requestChanges": "Solicitar cambios",
       "correct": "Corregir",

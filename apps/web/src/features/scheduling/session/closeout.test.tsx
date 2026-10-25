@@ -35,7 +35,12 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import { CREATED } from '../create/fixtures';
-import { CONFIRMED_SESSION } from './fixtures';
+import {
+  APPROVED_WITH_OLD_NOTE,
+  CHANGES_REQUESTED_WITH_OLD_NOTE,
+  CONFIRMED_SESSION,
+  SUBMITTED_WITHOUT_NOTE,
+} from './fixtures';
 
 // #77 H6, G3: the staff session page's Closeout section (the submitted
 // closeout with the minutes difference as text, the summary or "Summary
@@ -467,14 +472,26 @@ describe('the review statuses and history (#78 G1)', () => {
     expect(content).toContain('Reason: Terminó 5 minutos antes');
   });
 
-  it("shows a correction request with the tutor's reason (AM3)", async () => {
+  it("shows a correction request with the tutor's dated reason (AM3, #312)", async () => {
     await ready(CORRECTION_SUBMITTED);
     const content = section()!.textContent ?? '';
     expect(content).toContain('Correction submitted');
+    // last_submitted_at 2026-11-12T15:00:00Z in the center zone (UTC-6).
     expect(content).toContain(
-      "Tutor's reason: Salimos 5 minutos antes por un simulacro.",
+      "Tutor's reason (sent Nov 12, 2026, 9:00 AM): Salimos 5 minutos antes por un simulacro.",
     );
     expect(content).toContain('45 of 60 min');
+  });
+
+  it.each([
+    ['approved', APPROVED_WITH_OLD_NOTE],
+    ['changes requested', CHANGES_REQUESTED_WITH_OLD_NOTE],
+    ['submitted without a note', SUBMITTED_WITHOUT_NOTE],
+  ])("hides the tutor's reason when %s (#312)", async (_, view) => {
+    await ready(view);
+    const content = section()!.textContent ?? '';
+    expect(content).not.toContain("Tutor's reason");
+    expect(content).not.toContain('Salimos 5 minutos antes');
   });
 
   it('marks attendance changed since approval as text', async () => {

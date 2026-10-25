@@ -1,13 +1,20 @@
-"""The approval inbox core without a database (#40 B1, B2, D3, E4)."""
+"""The approval inbox core without a database (#40 B1, B2, D3, E4; #312 B7)."""
 
+import inspect
 import uuid
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
 
+from app.core.authz import Principal, RecordNotFoundError
+from app.core.errors import AppError
 from app.main import build_app
 from app.modules.administration import approvals
+from app.modules.administration.errors import (
+    ApprovalActionUnsupportedError,
+    ApprovalTransitionInvalidError,
+)
 from app.modules.administration.models import APPROVAL_STATUSES
 from app.modules.administration.service import (
     register_account_reference_resolver,
@@ -24,6 +31,7 @@ from app.modules.scheduling.service import (
     CHANGE_REQUEST_APPROVAL_HANDLER,
     OCCURRENCE_CONFLICT_HANDLER,
     OFFER_REASSIGNMENT_HANDLER,
+    SESSION_REQUEST_APPROVAL_HANDLER,
 )
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
@@ -234,3 +242,155 @@ def test_the_cli_and_the_worker_register_the_wiring():
         run()
         assert registered_approval_types() == REGISTERED_TYPES
         assert registered_account_reference_resolver() is get_account_references
+
+
+# --- #312 B7: the opt-in inbox route hook ----------------------------------------
+
+
+class RouteRequiredError(AppError):
+    status = 409
+    code = "test_route_required"
+
+
+class FakeRequest:
+    """What ``_locked`` reads: an approved request (final, so the core's own
+    status check would answer ``approval_transition_invalid``)."""
+
+    def __init__(self, request_type: str) -> None:
+        self.id = uuid.uuid4()
+        self.request_type = request_type
+        self.subject_id = uuid.uuid4()
+        self.requester_user_id = uuid.uuid4()
+        self.status = "approved"
+
+
+class FakeSession:
+    def __init__(self, request: FakeRequest) -> None:
+        self.request = request
+
+    async def scalar(self, *args: Any) -> FakeRequest:
+        return self.request
+
+
+class PageDecidedHandler(FakeHandler):
+    inbox_decisions = False
+
+    def __init__(self, request_type: str = "test.page") -> None:
+        super().__init__(request_type)
+        self.seen: list[approvals.ApprovalRequestView] = []
+
+    async def inbox_route_error(
+        self, session: Any, request: approvals.ApprovalRequestView
+    ) -> AppError:
+        self.seen.append(request)
+        return RouteRequiredError()
+
+
+def reviewer() -> Principal:
+    return Principal(
+        user_id=uuid.uuid4(),
+        roles=frozenset({"owner"}),
+        permissions=frozenset({"payroll.finalize"}),
+    )
+
+
+async def decide_fake(
+    handler: Any, action: Any, *, via_inbox: bool, principal: Principal | None = None
+) -> FakeRequest:
+    request = FakeRequest(handler.request_type)
+    await approvals.decide_approval_request(
+        FakeSession(request),  # type: ignore[arg-type]
+        principal=principal or reviewer(),
+        request_id=request.id,
+        action=action,
+        reason="Una razón",
+        via_inbox=via_inbox,
+    )
+    return request  # pragma: no cover  (every case here raises)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("action", ["approve", "reject", "request_changes"])
+async def test_the_hook_answers_only_through_the_inbox(cleanup, action):
+    handler = PageDecidedHandler()
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(RouteRequiredError):
+        await decide_fake(handler, action, via_inbox=True)
+    [view] = handler.seen
+    assert (view.request_type, view.status) == ("test.page", "approved")
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, action, via_inbox=False)
+    assert len(handler.seen) == 1
+
+
+@pytest.mark.anyio
+async def test_the_hook_runs_after_the_visibility_check(cleanup):
+    handler = PageDecidedHandler()
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+    outsider = Principal(
+        user_id=uuid.uuid4(), roles=frozenset(), permissions=frozenset()
+    )
+
+    with pytest.raises(RecordNotFoundError):
+        await decide_fake(handler, "approve", via_inbox=True, principal=outsider)
+    assert handler.seen == []
+
+
+@pytest.mark.anyio
+async def test_the_hook_precedes_the_unsupported_action(cleanup):
+    handler = PageDecidedHandler()
+    handler.supports_request_changes = False
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(RouteRequiredError):
+        await decide_fake(handler, "request_changes", via_inbox=True)
+    with pytest.raises(ApprovalActionUnsupportedError):
+        await decide_fake(handler, "request_changes", via_inbox=False)
+
+
+@pytest.mark.anyio
+async def test_a_page_decided_type_without_the_hook_keeps_the_old_order(cleanup):
+    # The #60 and #62 types: absent hook = unchanged.
+    handler = FakeHandler("test.nohook")
+    handler.inbox_decisions = False  # type: ignore[attr-defined]
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, "approve", via_inbox=True)
+
+
+@pytest.mark.anyio
+async def test_an_inbox_decided_type_ignores_the_hook(cleanup):
+    handler = PageDecidedHandler("test.inbox")
+    handler.inbox_decisions = True  # type: ignore[misc]
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, "approve", via_inbox=True)
+    assert handler.seen == []
+
+
+def test_only_the_closeout_handler_defines_the_hook():
+    build_app()
+    hooked = {
+        request_type
+        for request_type, handler in approvals._handlers.items()
+        if request_type in REGISTERED_TYPES and hasattr(handler, "inbox_route_error")
+    }
+    assert hooked == {"academics.session_closeout"}
+    closeout = SESSION_CLOSEOUT_HANDLER
+    assert approvals._inbox_route_error(closeout) is not None
+    assert approvals._inbox_route_error(SESSION_REQUEST_APPROVAL_HANDLER) is None
+    assert approvals._inbox_route_error(CHANGE_REQUEST_APPROVAL_HANDLER) is None
+    assert inspect.iscoroutinefunction(closeout.inbox_route_error)
+    assert list(inspect.signature(closeout.inbox_route_error).parameters) == [
+        "session",
+        "request",
+    ]

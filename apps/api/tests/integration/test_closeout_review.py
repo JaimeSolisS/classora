@@ -981,31 +981,117 @@ def test_the_review_order(module_seeded_url, client, owner, coordinator):
     assert row.version == 2
 
 
-@pytest.mark.parametrize("action", ["approve", "reject", "request-changes"])
-def test_the_generic_routes_point_to_the_review_page(
-    module_seeded_url, client, owner, action
-):
-    url = module_seeded_url
-    made = lesson(url)
-    body = submitted(client, made)
-    staff = sign_in(client, owner.username)
-    request_id = body["closeout"]["approval_request_id"]
-
-    response = post(
+def in_status(
+    client: TestClient,
+    made: Lesson,
+    status: str,
+    owner: CreatedUser,
+    other: CreatedUser,
+) -> dict[str, Any]:
+    """A closeout whose approval request is in ``status`` (#312 B4)."""
+    if status == "pending":
+        return submitted(client, made)
+    if status == "changes_requested":
+        return sent_back(client, made, owner)
+    body = approved(client, made, other)
+    if status == "approved":
+        return body
+    # "corrected": a staff correction after the approval; the request stays
+    # approved.
+    response = correct_closeout(
         client,
-        staff,
-        f"/api/v1/approval-requests/{request_id}/{action}",
-        {} if action == "approve" else {"reason": REASON},
+        sign_in(client, owner.username),
+        made.id,
+        version_of(body),
+        actual_minutes=50,
+    )
+    assert code_of(response) == OK, response.text
+    corrected: dict[str, Any] = response.json()
+    return corrected
+
+
+def generic(
+    client: TestClient, cookie: Any, request_id: Any, action: str, body: Any
+) -> Response:
+    """The inbox's generic decision routes (#312 B4)."""
+    return post(
+        client, cookie, f"/api/v1/approval-requests/{request_id}/{action}", body
     )
 
-    assert code_of(response) == ROUTE_REQUIRED
-    assert response.json()["details"] == {
-        "review_path": f"/schedule/sessions/{made.id}"
-    }
+
+@pytest.mark.parametrize(
+    "status", ["pending", "changes_requested", "approved", "corrected"]
+)
+def test_the_generic_routes_point_to_the_review_page(
+    module_seeded_url, client, owner, coordinator, status
+):
+    # #312 B4: whatever the request's status (inbox_route_error), before the
+    # core's own action, transition and reason checks.
+    url = module_seeded_url
+    made = lesson(url)
+    body = in_status(client, made, status, owner, coordinator)
+    request_id = body["closeout"]["approval_request_id"]
+    [before] = closeout_rows(url, made.id)
+    [request_before] = approval_rows(url, before.id)
+    assert request_before.status == ("approved" if status == "corrected" else status)
+    staff = sign_in(client, coordinator.username)
+
+    for action, payload in (
+        ("approve", {}),
+        ("reject", {"reason": REASON}),
+        ("request-changes", {"reason": REASON}),
+        # The hook precedes the reason check.
+        ("request-changes", {"reason": "  "}),
+        ("request-changes", {}),
+        ("reject", {}),
+    ):
+        response = generic(client, staff, request_id, action, payload)
+
+        assert code_of(response) == ROUTE_REQUIRED, (action, payload, response.text)
+        assert response.json()["details"] == {
+            "review_path": f"/schedule/sessions/{made.id}"
+        }
+    [after] = closeout_rows(url, made.id)
+    assert (after.status, after.version, after.updated_at) == (
+        before.status,
+        before.version,
+        before.updated_at,
+    )
+    [request_after] = approval_rows(url, after.id)
+    assert (request_after.status, request_after.version, request_after.reason) == (
+        request_before.status,
+        request_before.version,
+        request_before.reason,
+    )
+
+
+@pytest.mark.parametrize("role", [FINANCE_STAFF, TUTOR, "student"])
+def test_the_generic_routes_hide_closeouts_from_non_reviewers(
+    module_seeded_url, client, owner, role
+):
+    # #312 B4: the hook runs after the visibility check.
+    url = module_seeded_url
+    made = lesson(url)
+    body = sent_back(client, made, owner)
+    request_id = body["closeout"]["approval_request_id"]
+    if role == "student":
+        cookie = sign_in(client, student_account(url)[0].username)
+    elif role == TUTOR:
+        cookie = sign_in(client, made.tutor.username)
+    else:
+        cookie = sign_in(client, create_user(url, roles=(role,)).username)
+
+    for action, payload in (
+        ("approve", {}),
+        ("reject", {"reason": REASON}),
+        ("request-changes", {"reason": REASON}),
+    ):
+        unknown = generic(client, cookie, uuid.uuid4(), action, payload)
+        hidden = generic(client, cookie, request_id, action, payload)
+        assert_same_not_found(hidden, unknown)
     [row] = closeout_rows(url, made.id)
-    assert (row.status, row.version) == ("submitted", 1)
     [request] = approval_rows(url, row.id)
-    assert request.status == "pending"
+    assert (row.status, request.status) == ("changes_requested", "changes_requested")
 
 
 # --- E7: self-review ------------------------------------------------------------------

@@ -12703,7 +12703,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). A type decided on its own page answers its own 409 first: a session closeout always answers closeout_review_route_required with details.review_path, whatever its status. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12774,7 +12774,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). A type decided on its own page answers its own 409 first: a session closeout always answers closeout_review_route_required with details.review_path, whatever its status. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12845,7 +12845,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). */
+            /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). A type decided on its own page answers its own 409 first: a session closeout always answers closeout_review_route_required with details.review_path, whatever its status. */
             409: {
                 headers: {
                     [name: string]: unknown;
