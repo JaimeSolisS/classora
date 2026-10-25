@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { STAFF_VIEW } from '@/features/tutor-portal/attendance/fixtures';
+import { STAFF_APPROVED } from '@/features/tutor-portal/closeout/fixtures';
 import { SOFT_CONFLICTS, TUTOR_SUGGESTIONS, TUTORS } from '../create/fixtures';
 import {
   ACCEPTED_SERIES,
@@ -23,7 +25,9 @@ import {
   UNASSIGNED_SESSION,
 } from './fixtures';
 import type { SubstitutionCreated } from './api';
+import { AttendanceSection } from './AttendanceSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
+import { CloseoutSection } from './CloseoutSection';
 import { OfferPanel } from './OfferPanel';
 import { SessionDetailView } from './SessionDetailView';
 import { SubstitutionSection } from './SubstitutionSection';
@@ -35,9 +39,24 @@ import { SubstitutionSection } from './SubstitutionSection';
 // grouped by date, and the pending and accepted series assignment; #55 H4:
 // the "Find a substitute" panel (with suggestions, with a conflict), a
 // pending substitution with its history, the cancel dialog with an error
-// and the cancelled banner; #63 H4: the "Needs reassignment" notice. No
-// request:
-// the panel's calls are stubs. Axe runs in light and dark.
+// and the cancelled banner; #63 H4: the "Needs reassignment" notice; #311:
+// a completed session with its Attendance (Correct buttons) and approved
+// Closeout (with history) sections at 320 px and 390 px, without page
+// scroll. No request: the panel's calls are stubs. Axe runs in light and
+// dark.
+
+const VIEWPORTS = {
+  narrow320: {
+    name: 'Narrow (320 px)',
+    styles: { width: '320px', height: '640px' },
+    type: 'mobile',
+  },
+  phone390: {
+    name: 'Phone (390 px)',
+    styles: { width: '390px', height: '844px' },
+    type: 'mobile',
+  },
+} as const;
 
 const meta = {
   title: 'Scheduling/SessionDetailView',
@@ -50,6 +69,7 @@ const meta = {
     },
     timeZone: 'America/Mexico_City',
   },
+  parameters: { viewport: { options: VIEWPORTS } },
   render: (args) => (
     <main className="p-4">
       <h1 className="mb-4 text-2xl font-semibold">
@@ -352,4 +372,58 @@ export const NeedsReassignment: Story = {
     await expect(heading).toBeVisible();
     await expect(heading.closest('section')).toHaveTextContent('Carmen Ruiz');
   },
+};
+
+// #311 A1/C1: the composition QA saw scroll sideways at 390 px. The table
+// already scrolled in its own wrapper; the page grew because the table's
+// absolutely positioned sr-only "Actions" header (the Correct column) had
+// no positioned ancestor inside the scroller, so it escaped it. With the
+// region `relative`, nothing leaves it.
+export const CompletedWithSectionsNarrow320: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      session: { ...CONFIRMED_SESSION, state: 'completed' },
+      offers: [],
+    },
+    attendance: (
+      <AttendanceSection
+        state={{ status: 'ready', attendance: STAFF_VIEW }}
+        timeZone="America/Mexico_City"
+        canCorrect
+        onCorrect={fn(() => Promise.resolve())}
+        onReload={fn()}
+      />
+    ),
+    closeout: (
+      <CloseoutSection
+        state={{ status: 'ready', closeout: STAFF_APPROVED }}
+        timeZone="America/Mexico_City"
+        review={{
+          onApprove: fn(() => Promise.resolve()),
+          onRequestChanges: fn(() => Promise.resolve()),
+          onCorrect: fn(() => Promise.resolve()),
+          onReload: fn(),
+        }}
+      />
+    ),
+  },
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('closeout.review.history.heading')),
+    ).toBeInTheDocument();
+    const region = canvas.getByRole('region', {
+      name: i18n.t('attendance.section.heading'),
+    });
+    await expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
+    const page = canvasElement.ownerDocument.documentElement;
+    await expect(page.scrollWidth).toBeLessThanOrEqual(page.clientWidth);
+  },
+};
+
+export const CompletedWithSectionsPhone390: Story = {
+  ...CompletedWithSectionsNarrow320,
+  globals: { viewport: { value: 'phone390' } },
 };

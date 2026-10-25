@@ -167,6 +167,65 @@ describe('the attendance section (G3)', () => {
   });
 });
 
+// #311 B2: the table's wrapper is the only horizontal scroller, a region
+// named by the section heading that takes the focus (also read-only, where
+// the rows hold nothing focusable). jsdom can't measure layout: the widths
+// are the Storybook stories' job.
+describe('the attendance scroll region (#311)', () => {
+  const regionName = (region: Element) =>
+    (region.getAttribute('aria-labelledby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+  const attendanceRegions = (name: string) =>
+    [...main().querySelectorAll<HTMLElement>('[role="region"], section')]
+      .filter((element) => element.hasAttribute('aria-labelledby'))
+      .filter((element) => regionName(element) === name);
+
+  it.each([
+    ['en', 'correctable', CORRECTOR, 'Attendance'],
+    ['en', 'read-only', FINANCE, 'Attendance'],
+    ['es', 'correctable', CORRECTOR, 'Asistencia'],
+    ['es', 'read-only', FINANCE, 'Asistencia'],
+  ] as const)(
+    '(%s, %s) wraps the table in a focusable region named by the heading',
+    async (language, _variant, user, name) => {
+      applyLanguage(language);
+      await open(user);
+      await settleUntil(() => text().includes('Bruno Gómez'));
+
+      const [region, ...others] = attendanceRegions(name);
+      expect(others).toHaveLength(0);
+      expect(region!.getAttribute('role')).toBe('region');
+      expect(region!.tabIndex).toBe(0);
+      expect(region!.getAttribute('tabindex')).toBe('0');
+      expect(region!.querySelector('table')).toBeTruthy();
+      const heading = document.getElementById(
+        region!.getAttribute('aria-labelledby')!,
+      )!;
+      expect(heading.tagName).toBe('H2');
+      // The section is no second landmark of the same name (landmark-unique).
+      expect(heading.closest('section')!.hasAttribute('aria-labelledby')).toBe(
+        false,
+      );
+    },
+  );
+
+  it('keeps the section named by its heading when there is no table', async () => {
+    await open(CORRECTOR, {
+      [ATTENDANCE]: () => jsonResponse(200, NOT_STARTED),
+    });
+    await settleUntil(() =>
+      text().includes('Attendance opens when the class starts.'),
+    );
+
+    const [section, ...others] = attendanceRegions('Attendance');
+    expect(others).toHaveLength(0);
+    expect(section!.tagName).toBe('SECTION');
+    expect(main().querySelector('[role="region"][tabindex="0"]')).toBeNull();
+  });
+});
+
 describe('the correction dialog (G3)', () => {
   async function openDialogFor(
     name: string,
