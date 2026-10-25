@@ -54,6 +54,7 @@ type PermissionCode = Literal[
     "settings.manage",
     "student.manage",
     "student.view",
+    "teaching_hours.approve",
     "tutor.manage",
     "tutor.view",
     "user.admin_role.assign",

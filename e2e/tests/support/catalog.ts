@@ -74,6 +74,21 @@ type Common = {
       submit: string;
     };
   };
+  closeout: {
+    title: string;
+    closeOut: string;
+    next: string;
+    actualMinutes: string;
+    minutesOfScheduled: string;
+    fields: Record<
+      'topics' | 'performance' | 'homework' | 'next_steps',
+      string
+    >;
+    submit: string;
+    submitted: string;
+    submittedNotice: string;
+    section: { heading: string };
+  };
   sessionRequests: {
     status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;
     new: {
@@ -580,6 +595,7 @@ type Common = {
       sessionRequest: string;
     };
     reassignment: { openSession: string };
+    closeout: { openSession: string };
     availabilityChange: { affectedTitle: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };

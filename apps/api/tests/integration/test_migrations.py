@@ -71,7 +71,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0049"
+HEAD = "0050"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -128,6 +128,7 @@ AVAILABILITY_CHANGE_TABLES = [
     "tutor_availability_change_requests",
 ]
 ATTENDANCE_TABLES = ["class_session_attendance", "class_session_attendance_corrections"]
+CLOSEOUT_TABLES = ["session_closeouts"]
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -330,6 +331,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *CHANGE_REQUEST_TABLES,
             *AVAILABILITY_CHANGE_TABLES,
             *ATTENDANCE_TABLES,
+            *CLOSEOUT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4341,9 +4343,24 @@ def _of_0049(diff: Any) -> bool:
     return False
 
 
+def _of_0050(diff: Any) -> bool:
+    """A metadata difference that revision 0050 adds: the closeout table
+    (and its index)."""
+    if diff[0] == "add_table":
+        return diff[1].name in CLOSEOUT_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in CLOSEOUT_TABLES
+    return False
+
+
+def _of_0049_on(diff: Any) -> bool:
+    """A metadata difference that revision 0049 or a later one adds."""
+    return _of_0049(diff) or _of_0050(diff)
+
+
 def _of_0048_on(diff: Any) -> bool:
     """A metadata difference that revision 0048 or a later one adds."""
-    return _of_0048(diff) or _of_0049(diff)
+    return _of_0048(diff) or _of_0049_on(diff)
 
 
 def _of_later_revision(diff: Any, tables: list[str]) -> bool:
@@ -7881,7 +7898,7 @@ def test_0048_backfills_first_confirmed_at_and_downgrade_drops_it(fresh_database
     command.upgrade(config, "0048")
 
     assert version_nums(dsn) == ["0048"]
-    assert [d for d in metadata_diff(dsn) if not _of_0049(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0049_on(d)] == []
     found = {
         uuid.UUID(str(row.id)): row.first_confirmed_at
         for row in run_sql(dsn, "SELECT id, first_confirmed_at FROM class_sessions")
@@ -7967,7 +7984,7 @@ def test_0049_adds_the_attendance_tables_and_downgrade_drops_them(fresh_database
     command.upgrade(config, "0049")
 
     assert version_nums(dsn) == ["0049"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0050(d)] == []
     assert public_tables(dsn) - before == set(ATTENDANCE_TABLES)
     world = _attendance_world(dsn)
     [mark] = run_sql(dsn, ATTENDANCE_INSERT, world | {"status": "present"})
@@ -7993,7 +8010,7 @@ def test_0049_adds_the_attendance_tables_and_downgrade_drops_them(fresh_database
         " WHERE proname = 'class_session_attendance_corrections_immutable'",
     )
     assert function.n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0049(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0049_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -8114,3 +8131,125 @@ def test_attendance_rows_are_checked_and_corrections_never_change(fresh_database
         run_sql(
             dsn, "DELETE FROM class_session_attendance WHERE id = :id", {"id": mark.id}
         )
+
+
+# --- 0050: session closeouts (#77 A2) -------------------------------------------------
+
+CLOSEOUT_INSERT = (
+    "INSERT INTO session_closeouts (class_session_id, tutor_user_id, status,"
+    " topics, performance, homework, next_steps, submitted_at)"
+    " VALUES (:s, :u, :status, :topics, :performance, :homework, :next_steps,"
+    " now()) RETURNING id"
+)
+
+
+def _closeout_values(dsn: str) -> dict[str, Any]:
+    subject = _subject_row(dsn)
+    return {
+        "s": _session_row(dsn, subject),
+        "u": _user_row(dsn),
+        "status": "submitted",
+        "topics": "Fracciones",
+        "performance": "Bien",
+        "homework": None,
+        "next_steps": "Decimales",
+    }
+
+
+def test_0050_adds_the_closeout_table_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0049")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0050")
+
+    assert version_nums(dsn) == ["0050"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(CLOSEOUT_TABLES)
+    run_sql(dsn, CLOSEOUT_INSERT, _closeout_values(dsn))
+
+    command.downgrade(config, "0049")
+
+    assert version_nums(dsn) == ["0049"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0050(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_closeout_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    table = "session_closeouts"
+
+    assert _columns(dsn, table) == {
+        **STANDARD_COLUMNS,
+        "class_session_id": ("uuid", "NO", None, None),
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "status": ("character varying", "NO", 20, None),
+        "topics": ("text", "YES", None, None),
+        "performance": ("text", "YES", None, None),
+        "homework": ("text", "YES", None, None),
+        "next_steps": ("text", "YES", None, None),
+        "submitted_at": ("timestamp with time zone", "NO", None, None),
+    }
+    constraints = _constraints(dsn, table)
+    foreign_keys = {
+        f"fk_{table}_class_session_id_class_sessions",
+        f"fk_{table}_tutor_user_id_users",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"uq_{table}_class_session_id",
+        f"ck_{table}_status_valid",
+        f"ck_{table}_topics_length",
+        f"ck_{table}_performance_length",
+        f"ck_{table}_homework_length",
+        f"ck_{table}_next_steps_length",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    # A CHECK, not an enum type: #78 widens it.
+    assert "'submitted'" in constraints[f"ck_{table}_status_valid"]
+    assert set(_indexes(dsn, table)) == {
+        f"pk_{table}",
+        f"uq_{table}_class_session_id",
+        f"ix_{table}_tutor_user_id_submitted_at",
+    }
+
+
+def test_closeout_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _closeout_values(dsn)
+
+    for changes, constraint in (
+        ({"status": "approved"}, "status_valid"),
+        ({"topics": ""}, "topics_length"),
+        ({"performance": "x" * 2001}, "performance_length"),
+        ({"homework": ""}, "homework_length"),
+        ({"next_steps": "x" * 2001}, "next_steps_length"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, CLOSEOUT_INSERT, values | changes)
+    [row] = run_sql(
+        dsn,
+        CLOSEOUT_INSERT,
+        values | {"topics": "x" * 2000, "performance": None, "next_steps": None},
+    )
+    # One closeout per session.
+    with pytest.raises(IntegrityError, match="uq_session_closeouts_class_session_id"):
+        run_sql(dsn, CLOSEOUT_INSERT, values)
+    # A session with a closeout can't be deleted (RESTRICT).
+    with pytest.raises(
+        IntegrityError, match="fk_session_closeouts_class_session_id_class_sessions"
+    ):
+        run_sql(dsn, "DELETE FROM class_sessions WHERE id = :s", {"s": values["s"]})
+    [version] = run_sql(
+        dsn, "SELECT version FROM session_closeouts WHERE id = :id", {"id": row.id}
+    )
+    assert version.version == 1

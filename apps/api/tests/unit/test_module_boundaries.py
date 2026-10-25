@@ -242,6 +242,31 @@ def test_courses_never_imports_scheduling():
     assert scheduling == {"app.modules.courses.service"}
 
 
+def test_academics_imports_only_core_and_never_scheduling_families_or_courses():
+    # #77 A1, E2: academics (session closeouts) uses app.core and its own
+    # files only; app.workflows.session_closeout composes it with
+    # scheduling and administration. Scheduling never imports academics.
+    academics = targets("academics")
+    assert "app.core.authz.Principal" in academics  # the scan found imports
+    assert not {
+        t
+        for t in academics
+        if t.startswith(
+            (
+                "app.modules.scheduling",
+                "app.modules.families",
+                "app.modules.courses",
+            )
+        )
+    }
+    assert not {
+        t
+        for t in academics
+        if t.startswith("app.modules.") and not t.startswith("app.modules.academics.")
+    }
+    assert not {t for t in targets("scheduling") if "academics" in t}
+
+
 # --- The checker on a synthetic tree (B5) ----------------------------------------
 
 FORBIDDEN_SOURCE = """\

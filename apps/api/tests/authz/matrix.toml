@@ -497,6 +497,25 @@ allow = ["owner", "administrator"]
 json = { version = 1, reason = "Matrix" }
 
 [[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+access = "authenticated"
+# #77 C1: the record policy (the session's current tutor, or a schedule.view
+# holder; anyone else the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_session_closeout.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+access = "authenticated"
+# #77 D2: the record policy (the current tutor only; other visible callers
+# 403 closeout_tutor_only after the 404). A valid body; the placeholder id
+# is no session: 404 for every role. The 201, 403, 409 and 422 cases are
+# tested in tests/integration/test_session_closeout.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" } }
+
+[[route]]
 method = "POST"
 path = "/api/v1/class-sessions/{class_session_id}/conflict-overrides"
 access = "permission"

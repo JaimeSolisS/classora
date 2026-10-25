@@ -100,6 +100,11 @@ COURSE_MANAGE = "course.manage"
 # delegable). Tutors mark and schedule.view holders read through the
 # attendance record policy (scheduling/attendance_rules.py).
 ATTENDANCE_CORRECT = "attendance.correct"
+# Teaching hours (#77, owner decision E3 (a); architecture ISSUE-F7): who
+# reviews a tutor's session closeout (the actual minutes and the summary) in
+# the approval inbox (Owner, Administrator, Academic Coordinator; not
+# delegable). #78 adds the decisions.
+TEACHING_HOURS_APPROVE = "teaching_hours.approve"
 
 
 @dataclass(frozen=True)
@@ -137,6 +142,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(COURSE_VIEW),
     PermissionDef(COURSE_MANAGE),
     PermissionDef(ATTENDANCE_CORRECT),
+    PermissionDef(TEACHING_HOURS_APPROVE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -178,6 +184,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 COURSE_VIEW,
                 COURSE_MANAGE,
                 ATTENDANCE_CORRECT,
+                TEACHING_HOURS_APPROVE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -191,6 +198,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 COURSE_VIEW,
                 COURSE_MANAGE,
                 ATTENDANCE_CORRECT,
+                TEACHING_HOURS_APPROVE,
             }
         ),
         FINANCE_STAFF: frozenset(

@@ -1,0 +1,153 @@
+"""Session closeout rules (#77 A5, C1, E4, E5, E7). Pure functions, no I/O.
+
+- :data:`ACTUAL_MINUTES_RANGE` and :data:`SUMMARY_MAX`: the submission
+  bounds (the database CHECK on ``class_sessions.actual_minutes`` stays
+  0–1440).
+- :func:`summary_errors`: ``topics``, ``performance`` and ``next_steps`` are
+  required (``homework`` is optional) unless every participant is
+  ``absent`` (a no-show), when all four are optional.
+- :func:`closeout_block`: why a session can't be closed out now, from plain
+  values (the state is compared as text; ``tests/unit/test_closeout_rules.py``
+  checks the strings against ``scheduling.states.SessionState``), so this
+  module needs no scheduling import (E2).
+- :func:`closeout_access`: the record policy of ``GET`` / ``POST
+  /api/v1/class-sessions/{id}/closeout`` (the session's **current** tutor
+  while they hold the ``tutor`` role, or a ``schedule.view`` holder; anyone
+  else the ``404`` of an unknown id) and :func:`sees_summary` (the tutor and
+  ``teaching_hours.approve`` holders, E5).
+"""
+
+import uuid
+from collections.abc import Mapping
+from datetime import datetime
+from enum import Enum
+from typing import Final, Literal
+
+from app.core.authz import Principal
+
+ACTUAL_MINUTES_RANGE: Final = (0, 720)
+SUMMARY_MAX: Final = 2000
+SUMMARY_FIELDS: Final = ("topics", "performance", "homework", "next_steps")
+REQUIRED_SUMMARY_FIELDS: Final = ("topics", "performance", "next_steps")
+
+SUMMARY_REQUIRED: Final = "summary_required"
+TOO_LONG: Final = "too_long"
+
+type SummaryErrorCode = Literal["summary_required", "too_long"]
+
+# Session states, as text (ADR-0005 D2; the drift test pins them).
+CONFIRMED: Final = "confirmed"
+COMPLETED: Final = "completed"
+NOT_CLOSABLE_STATES: Final = frozenset(
+    {"unassigned", "offered", "conflict", "cancelled", "skipped_closure"}
+)
+
+ALREADY_SUBMITTED: Final = "closeout_already_submitted"
+NOT_CLOSABLE: Final = "session_not_closable"
+NOT_STARTED: Final = "session_not_started"
+TUTOR_ONLY: Final = "closeout_tutor_only"
+
+type CloseoutBlock = Literal[
+    "closeout_already_submitted",
+    "session_not_closable",
+    "session_not_started",
+    "closeout_tutor_only",
+]
+
+TUTOR_ROLE: Final = "tutor"
+SCHEDULE_VIEW: Final = "schedule.view"
+TEACHING_HOURS_APPROVE: Final = "teaching_hours.approve"
+"""The identity catalog's codes (repeated here: ADR-0002)."""
+
+
+def clean_text(value: str | None) -> str | None:
+    """A summary field trimmed; whitespace-only or missing is ``None``."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def summary_errors(
+    summary: Mapping[str, str | None], *, all_absent: bool
+) -> list[tuple[str, SummaryErrorCode]]:
+    """``(field, code)`` per summary field, in :data:`SUMMARY_FIELDS` order:
+    ``too_long`` over :data:`SUMMARY_MAX` characters after trimming,
+    ``summary_required`` for a missing required field unless
+    ``all_absent``."""
+    errors: list[tuple[str, SummaryErrorCode]] = []
+    for field in SUMMARY_FIELDS:
+        value = clean_text(summary.get(field))
+        if value is None:
+            if field in REQUIRED_SUMMARY_FIELDS and not all_absent:
+                errors.append((field, SUMMARY_REQUIRED))
+        elif len(value) > SUMMARY_MAX:
+            errors.append((field, TOO_LONG))
+    return errors
+
+
+def closeout_block(
+    state: str, starts_at: datetime, now: datetime, *, has_closeout: bool
+) -> CloseoutBlock | None:
+    """Why the session can't be closed out now, or ``None`` (A5), in this
+    order: a ``completed`` session or an existing closeout; a state other
+    than ``confirmed``; a session that hasn't started."""
+    if state == COMPLETED or has_closeout:
+        return ALREADY_SUBMITTED
+    if state != CONFIRMED:
+        return NOT_CLOSABLE
+    if starts_at > now:
+        return NOT_STARTED
+    return None
+
+
+def all_marked_absent(statuses: Mapping[uuid.UUID, str], participants: int) -> bool:
+    """Every participant is marked and each is ``absent`` (a no-show)."""
+    return (
+        participants > 0
+        and len(statuses) == participants
+        and all(status == "absent" for status in statuses.values())
+    )
+
+
+class CloseoutAccess(Enum):
+    """Who the caller is for a session's closeout (C1)."""
+
+    TUTOR = "tutor"
+    """The current tutor: reads and submits."""
+    STAFF = "staff"
+    """A ``schedule.view`` holder who isn't the current tutor: reads;
+    ``POST`` answers ``403 closeout_tutor_only``."""
+    HIDDEN = "hidden"
+    """Anyone else: the ``404`` of an unknown id."""
+
+
+def is_current_tutor(principal: Principal, tutor_user_id: uuid.UUID | None) -> bool:
+    """The caller holds the ``tutor`` role and is the session's current
+    tutor (an accepted #55 substitute; never the original tutor after it)."""
+    return (
+        tutor_user_id is not None
+        and TUTOR_ROLE in principal.roles
+        and principal.user_id == tutor_user_id
+    )
+
+
+def closeout_access(
+    principal: Principal, tutor_user_id: uuid.UUID | None
+) -> CloseoutAccess:
+    """C1 (any state): the current tutor first, then a ``schedule.view``
+    holder; otherwise hidden."""
+    if is_current_tutor(principal, tutor_user_id):
+        return CloseoutAccess.TUTOR
+    if principal.has(SCHEDULE_VIEW):
+        return CloseoutAccess.STAFF
+    return CloseoutAccess.HIDDEN
+
+
+def sees_summary(principal: Principal, tutor_user_id: uuid.UUID | None) -> bool:
+    """E5: the summary text is shown to the session's current tutor and to
+    ``teaching_hours.approve`` holders (Owner, Administrator, Academic
+    Coordinator); Finance sees status and minutes only."""
+    return is_current_tutor(principal, tutor_user_id) or principal.has(
+        TEACHING_HOURS_APPROVE
+    )

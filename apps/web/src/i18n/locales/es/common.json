@@ -300,7 +300,8 @@
       "scheduling_occurrence_conflict": "Conflicto en sesión de serie",
       "scheduling_session_request": "Solicitud de sesión",
       "scheduling_change_request": "Solicitud de cambio",
-      "staff_availability_change": "Cambio de disponibilidad"
+      "staff_availability_change": "Cambio de disponibilidad",
+      "academics_session_closeout": "Cierre de clase"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -321,7 +322,10 @@
       "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}",
       "availabilityChange_one": "{{tutor}} · {{change}} · 1 clase afectada",
       "availabilityChange_many": "{{tutor}} · {{change}} · {{count}} clases afectadas",
-      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} clases afectadas"
+      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} clases afectadas",
+      "sessionCloseout_one": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiante",
+      "sessionCloseout_many": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes",
+      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes"
     },
     "list": {
       "title": "Solicitudes",
@@ -404,6 +408,9 @@
       "more_other": "y {{count}} más",
       "openAvailability": "Abrir la disponibilidad del tutor",
       "approveHelp": "Al aprobar se aplica el cambio. Las clases ofrecidas vuelven a quedar sin asignar; las confirmadas conservan su tutor y se marcan como pendientes de reasignación."
+    },
+    "closeout": {
+      "openSession": "Abrir sesión"
     }
   },
   "users": {
@@ -2979,6 +2986,74 @@
       "reasonRequired": "Escribe un motivo.",
       "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres.",
       "unchanged": "El estudiante ya tiene este estado. Elige otro."
+    }
+  },
+  "closeout": {
+    "title": "Cierre de clase",
+    "closeOut": "Cerrar clase",
+    "view": "Ver cierre",
+    "stepsLabel": "Pasos del cierre",
+    "stepOf": "Paso {{step}} de {{total}}",
+    "steps": {
+      "attendance": "Asistencia",
+      "time": "Tiempo de clase",
+      "summary": "Resumen",
+      "review": "Revisión"
+    },
+    "next": "Siguiente",
+    "back": "Atrás",
+    "edit": "Editar",
+    "editStep": "Editar {{step}}",
+    "missing": "Marca primero a estos estudiantes:",
+    "attendanceIncomplete": "Algunos estudiantes aún no tienen asistencia. Marca a todos y continúa.",
+    "actualMinutes": "Minutos reales de clase",
+    "scheduled": "Programado: {{minutes}} min",
+    "minutesRange": "Escribe un número entero de minutos entre {{min}} y {{max}}.",
+    "minutesOfScheduled": "{{actual}} de {{scheduled}} min",
+    "fields": {
+      "topics": "Temas",
+      "performance": "Desempeño",
+      "homework": "Tarea",
+      "next_steps": "Próximos pasos"
+    },
+    "required": "(obligatorio)",
+    "optional": "(opcional)",
+    "allAbsent": "Todos estuvieron ausentes, así que el resumen es opcional.",
+    "empty": "—",
+    "errors": {
+      "summary_required": "Completa esta parte del resumen.",
+      "too_long": "Máximo {{max}} caracteres."
+    },
+    "submit": "Enviar a revisión",
+    "submitting": "Enviando…",
+    "submittedNotice": "Cierre enviado a revisión.",
+    "submitted": "Enviado a revisión",
+    "noCloseout": "Sin cierre registrado",
+    "summaryHidden": "Resumen visible para revisores académicos",
+    "conflict": "La sesión cambió en otro lugar. Recarga para ver la versión más reciente.",
+    "blocked": {
+      "session_not_started": "El cierre se abre cuando empieza la clase, el {{time}}.",
+      "session_not_closable": "Esta clase no se puede cerrar. Estado: {{state}}.",
+      "closeout_tutor_only": "Solo el tutor de la clase envía su cierre."
+    },
+    "leave": {
+      "title": "¿Salir del cierre?",
+      "description": "Lo que escribiste no se ha enviado y se perderá.",
+      "stay": "Quedarme",
+      "leave": "Salir"
+    },
+    "section": {
+      "heading": "Cierre",
+      "waiting": "Esperando el cierre del tutor.",
+      "submittedBy": "Enviado por",
+      "byWhen": "{{name}}, {{when}}",
+      "asScheduled": "lo programado",
+      "more_one": "{{count}} min más de lo programado",
+      "more_many": "{{count}} min más de lo programado",
+      "more_other": "{{count}} min más de lo programado",
+      "less_one": "{{count}} min menos de lo programado",
+      "less_many": "{{count}} min menos de lo programado",
+      "less_other": "{{count}} min menos de lo programado"
     }
   }
 }

@@ -19,7 +19,7 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import type { ApprovalRequestItem } from './api';
-import { AVAILABILITY_CHANGE } from './fixtures';
+import { AVAILABILITY_CHANGE, SESSION_CLOSEOUT } from './fixtures';
 
 // #40 F1–F5: the /approvals page, its navigation item and route access, the
 // filters in the URL, the per-type summary, the decisions (reject body,
@@ -241,6 +241,7 @@ describe('the list (F3)', () => {
       ['scheduling.session_request', 'Session request'],
       ['scheduling.change_request', 'Change request'],
       ['staff.availability_change', 'Availability change'],
+      ['academics.session_closeout', 'Session closeout'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [
@@ -485,5 +486,32 @@ describe('availability changes (#63 H2)', () => {
     expect(alerts(openDialog()!)[0]).toContain(
       'The availability changed since this request was made',
     );
+  });
+});
+
+// #77 G4: a session closeout row summarizes the session, links to the staff
+// session page and has no decision buttons (#78 adds the review).
+describe('session closeouts (#77 G4)', () => {
+  const COORDINATOR: SessionUserBody = {
+    ...TEST_USER,
+    roles: ['academic_coordinator'],
+    permissions: ['schedule.view', 'teaching_hours.approve'],
+  };
+
+  it('the row links to the session and offers no decisions', async () => {
+    stub(COORDINATOR, { [LIST]: () => page([SESSION_CLOSEOUT]) });
+    app = await renderApp('/approvals');
+
+    expect(main().textContent).toContain('Session closeout');
+    expect(main().textContent).toContain('55 of 60 min · 3 students');
+    const link = [...main().querySelectorAll('a')].find(
+      (anchor) => anchor.textContent === 'Open session',
+    );
+    expect(link?.getAttribute('href')).toBe(
+      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2',
+    );
+    expect(
+      [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
+    ).toEqual([]);
   });
 });

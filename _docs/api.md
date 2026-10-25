@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -160,6 +160,13 @@ Codes in use today:
 | `attendance_locked` | 409 | The tutor marks attendance of a `completed` session; only a staff correction can change it (see Attendance). |
 | `attendance_corrected` | 409 | The tutor's mark would change the status of a student whose mark staff corrected (a correction wins); `details.student_id` (see Attendance). |
 | `student_not_participant` / `attendance_unchanged` / `duplicate_student` | 422 | Attendance field errors: a student who isn't in the session (`["body","marks",i,"student_id"]` or `["body","student_id"]`; the same for an unknown student), a correction to the status the student already has (`["body","status"]`), or a student listed twice in one `PUT` (`["body","marks"]`; see Attendance). |
+| `closeout_tutor_only` | 403 | `POST /api/v1/class-sessions/{class_session_id}/closeout` by a caller who may read the session's closeout (`schedule.view`) but isn't its current tutor (see Session closeout). |
+| `closeout_already_submitted` | 409 | Submitting the closeout of a session that is `completed` or already has one (see Session closeout). |
+| `session_not_closable` | 409 | Submitting the closeout of a session that isn't `confirmed`; `details.state` (see Session closeout). |
+| `session_not_started` | 409 | Submitting a closeout before the session starts (`starts_at > now`; see Session closeout). |
+| `closeout_attendance_incomplete` | 409 | Submitting a closeout while a participant has no attendance mark; `details.missing_student_ids` (sorted). Nothing changes (see Session closeout). |
+| `closeout_review_unavailable` | 409 | The inbox's approve, reject or request changes of an `academics.session_closeout` item: the review arrives with M5-11 (#78); the item stays pending. |
+| `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
 | `exception_not_applicable` | 422 | Approving as an exception a change request that is already `excused` (every tutor request); on `["body","exception"]`. |
@@ -4073,6 +4080,87 @@ RESTRICT`, so only a participant can have attendance; `status` CHECK) and
 class_session_id, version, marks)` (#77) and
 `scheduling.service.attendance_statuses(session, class_session_ids) ->
 {(session_id, student_id): status}` (#84, #85).
+
+### Session closeout
+
+Implemented by M5-10 (#77; spec §2 "tutor submits attendance, actual hours
+and summaries", §3 "Attendance, session completion and changes", §7, §16,
+W3.1-2; architecture §4.1, §4.2, ISSUE-F2, ISSUE-F7; ADR-0005 D2) in the new
+`apps/api/app/modules/academics/` module (`closeout_rules.py`: the pure rules
+and the record policy; `closeouts.py`: the `session_closeouts` rows), the
+scheduling seam `scheduling/closeout.py` and the workflow
+`app/workflows/session_closeout.py` with its routes in
+`app/workflows/session_closeout_router.py`. `academics` imports no
+`scheduling`, `families` or `courses` module; `scheduling` never imports
+`academics`. One new permission, `teaching_hours.approve` (Owner,
+Administrator, Academic coordinator; not delegable). The tutor UI is
+`/my-schedule/sessions/:id/closeout`; staff see a read-only Closeout section
+on `/schedule/sessions/:id`.
+
+After a class starts, its **current** tutor submits the closeout: every
+participant's attendance (#76 marks), the actual teaching minutes and a
+structured summary. Submission makes the session `completed`
+(`confirmed → completed`, ADR-0005 D2), stores `class_sessions.actual_minutes`
+(separate from `scheduled_minutes`, ISSUE-F2), writes a `submitted`
+closeout row and creates a pending `academics.session_closeout` item in the
+approval inbox, in one transaction. **Submitted is not approved:** the
+review is M5-11 (#78), and payroll (M7-04) reads approved closeouts only.
+No notification is sent. There is no deadline.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The session's **current** tutor (while holding the `tutor` role; an accepted #55 substitute, never the original tutor after it), or a `schedule.view` holder. Anyone else, in any state, gets the `404 not_found` of an unknown id. `200` with `SessionCloseoutView`; at most 8 statements (6 today), the same for 1 and 20 participants. |
+| `POST /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The current tutor only: other visible callers get `403 closeout_tutor_only`, anyone else `404`. `201` with `SessionCloseoutView`. |
+
+**`SessionCloseoutView`** (closed allow-list): `{class_session_id, version,
+kind, state, starts_at, ends_at, scheduled_minutes, subject {id, name,
+education_level_name}, tutor {display_name} | null, can_submit, block,
+attendance {total, marked, all_absent, missing_student_ids}, closeout: null
+| {id, status, actual_minutes, summary {topics, performance, homework,
+next_steps} | null, summary_hidden, submitted_by {display_name},
+submitted_at, approval_request_id}}`. `can_submit`: the caller is the current
+tutor and the session can be closed out now (also with attendance missing:
+`attendance` says who). `block`: `closeout_already_submitted`,
+`session_not_closable`, `session_not_started`, or `closeout_tutor_only` for
+staff. `closeout` is `null` until one is submitted, also for a `completed`
+session without one (demo data). **Summary visibility:** the summary text
+goes to the current tutor and to `teaching_hours.approve` holders only;
+Finance gets `summary: null`, `summary_hidden: true` with the status and
+minutes. Families see nothing new.
+
+**`POST` body** `{version, actual_minutes, summary {topics?, performance?,
+homework?, next_steps?}}` (`extra="forbid"`): `actual_minutes` 0-720; each
+summary field trimmed (whitespace-only is empty), at most 2000 characters
+(`too_long`). **Order:** `401` → `422` body → `404` (unknown or hidden) →
+`403 closeout_tutor_only` → the session row `FOR UPDATE` (the only lock; the
+policy again on the locked row) → `409 version_conflict` → `409
+closeout_already_submitted` / `session_not_closable` (`details.state`) /
+`session_not_started` → `409 closeout_attendance_incomplete`
+(`details.missing_student_ids`) → `422 summary_required` at
+`summary.topics`, `summary.performance` or `summary.next_steps` (all
+optional when every participant is marked `absent`: a no-show, 0 minutes
+allowed; the transition is rolled back, nothing changes) → the writes: the
+session `completed` with `actual_minutes` (version + 1; the session's audit
+update records both), the closeout row (audited create; `tutor_user_id` =
+the submitter), then the approval request (requester = the tutor). A second
+submit gets `closeout_already_submitted`; two concurrent ones serialize on
+the session row (one `version_conflict`); `uq_session_closeouts_class_session_id`
+is the backstop. After `completed` the tutor's attendance `PUT` gets `409
+attendance_locked`; staff corrections still work.
+
+**Approval type** `academics.session_closeout` (subject = the closeout id;
+`review_permission` `teaching_hours.approve`; `supports_request_changes`;
+a rejection needs a reason; `inbox_decisions = false`). Until #78, approve,
+reject and request changes answer `409 closeout_review_unavailable` and the
+item stays pending. Its `subject`: `{class_session_id, starts_at,
+subject_name, tutor_display_name, kind, scheduled_minutes, actual_minutes,
+participant_count}` (no summary text, student names or attendance; 3
+statements per page). Finance, tutors and families get `404` on the item.
+
+**Data** (revision 0050): `session_closeouts` (`class_session_id` unique,
+`tutor_user_id`, `status` CHECK `submitted` (#78 widens it), the four summary
+columns `NULL` or 1-2000 characters, `submitted_at`, `version`; both keys `ON
+DELETE RESTRICT`; `ix_session_closeouts_tutor_user_id_submitted_at`).
 
 ### Change requests
 

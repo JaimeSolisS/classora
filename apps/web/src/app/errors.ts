@@ -154,6 +154,14 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['attendance_unchanged', 'attendance_unchanged'],
   ['student_not_participant', 'student_not_participant'],
   ['duplicate_student', 'duplicate_student'],
+  // Session closeout (#77).
+  ['closeout_tutor_only', 'closeout_tutor_only'],
+  ['closeout_already_submitted', 'closeout_already_submitted'],
+  ['closeout_attendance_incomplete', 'closeout_attendance_incomplete'],
+  ['closeout_review_unavailable', 'closeout_review_unavailable'],
+  ['session_not_closable', 'session_not_closable'],
+  ['session_not_started', 'session_not_started'],
+  ['summary_required', 'summary_required'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

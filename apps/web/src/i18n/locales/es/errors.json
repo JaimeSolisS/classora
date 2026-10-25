@@ -174,5 +174,12 @@
   "attendance_corrected": "El centro corrigió la asistencia de un estudiante, así que no puedes cambiarla. Pregunta al centro.",
   "attendance_unchanged": "El estudiante ya tiene este estado.",
   "student_not_participant": "Un estudiante no está en esta clase.",
-  "duplicate_student": "Cada estudiante solo puede aparecer una vez."
+  "duplicate_student": "Cada estudiante solo puede aparecer una vez.",
+  "closeout_tutor_only": "Solo el tutor de la clase envía su cierre.",
+  "closeout_already_submitted": "El cierre de esta clase ya se envió.",
+  "closeout_attendance_incomplete": "Marca la asistencia de todos los estudiantes antes de enviar el cierre.",
+  "closeout_review_unavailable": "Los cierres aún no se pueden revisar.",
+  "session_not_closable": "Esta clase no se puede cerrar en su estado actual.",
+  "session_not_started": "El cierre se abre cuando empieza la clase.",
+  "summary_required": "Completa las partes obligatorias del resumen."
 }

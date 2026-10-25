@@ -300,7 +300,8 @@
       "scheduling_occurrence_conflict": "Series session conflict",
       "scheduling_session_request": "Session request",
       "scheduling_change_request": "Change request",
-      "staff_availability_change": "Availability change"
+      "staff_availability_change": "Availability change",
+      "academics_session_closeout": "Session closeout"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -318,7 +319,9 @@
       "changeRequest": "{{kind}} · {{student}} · {{subject}} · {{when}} · {{classification}}",
       "changeRequestReschedule": "{{kind}} · {{student}} · {{subject}} · {{when}} → {{proposed}} · {{classification}}",
       "availabilityChange_one": "{{tutor}} · {{change}} · 1 class affected",
-      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} classes affected"
+      "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} classes affected",
+      "sessionCloseout_one": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} student",
+      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} students"
     },
     "list": {
       "title": "Requests",
@@ -400,6 +403,9 @@
       "more_other": "and {{count}} more",
       "openAvailability": "Open the tutor's availability",
       "approveHelp": "Approving applies the change. Offered classes go back to unassigned; confirmed classes keep their tutor and are marked as needing reassignment."
+    },
+    "closeout": {
+      "openSession": "Open session"
     }
   },
   "users": {
@@ -2925,6 +2931,72 @@
       "reasonRequired": "Give a reason.",
       "reasonTooLong": "The reason can have at most 1000 characters.",
       "unchanged": "The student already has this status. Choose another one."
+    }
+  },
+  "closeout": {
+    "title": "Close out session",
+    "closeOut": "Close out session",
+    "view": "View closeout",
+    "stepsLabel": "Closeout steps",
+    "stepOf": "Step {{step}} of {{total}}",
+    "steps": {
+      "attendance": "Attendance",
+      "time": "Teaching time",
+      "summary": "Summary",
+      "review": "Review"
+    },
+    "next": "Next",
+    "back": "Back",
+    "edit": "Edit",
+    "editStep": "Edit {{step}}",
+    "missing": "Mark these students first:",
+    "attendanceIncomplete": "Some students have no attendance mark yet. Mark everyone, then continue.",
+    "actualMinutes": "Actual teaching minutes",
+    "scheduled": "Scheduled: {{minutes}} min",
+    "minutesRange": "Enter a whole number of minutes from {{min}} to {{max}}.",
+    "minutesOfScheduled": "{{actual}} of {{scheduled}} min",
+    "fields": {
+      "topics": "Topics",
+      "performance": "Performance",
+      "homework": "Homework",
+      "next_steps": "Next steps"
+    },
+    "required": "(required)",
+    "optional": "(optional)",
+    "allAbsent": "Everyone was absent, so the summary is optional.",
+    "empty": "—",
+    "errors": {
+      "summary_required": "Fill in this part of the summary.",
+      "too_long": "At most {{max}} characters."
+    },
+    "submit": "Submit for review",
+    "submitting": "Submitting…",
+    "submittedNotice": "Closeout submitted for review.",
+    "submitted": "Submitted for review",
+    "noCloseout": "No closeout recorded",
+    "summaryHidden": "Summary visible to academic reviewers",
+    "conflict": "Session changed elsewhere. Reload to see the latest version.",
+    "blocked": {
+      "session_not_started": "Closeout opens when the class starts at {{time}}.",
+      "session_not_closable": "This class can't be closed out. State: {{state}}.",
+      "closeout_tutor_only": "Only the class's tutor submits its closeout."
+    },
+    "leave": {
+      "title": "Leave the closeout?",
+      "description": "What you typed hasn't been submitted and will be lost.",
+      "stay": "Stay",
+      "leave": "Leave"
+    },
+    "section": {
+      "heading": "Closeout",
+      "waiting": "Waiting for the tutor's closeout.",
+      "submittedBy": "Submitted by",
+      "byWhen": "{{name}}, {{when}}",
+      "asScheduled": "as scheduled",
+      "more_one": "{{count}} min more than scheduled",
+      "more_other": "{{count}} min more than scheduled",
+      "less_one": "{{count}} min less than scheduled",
+      "less_other": "{{count}} min less than scheduled"
     }
   }
 }

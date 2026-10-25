@@ -2166,6 +2166,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/closeout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Class Session Closeout
+         * @description A session's closeout: whether it can be submitted now, how complete
+         *     the attendance is and, once submitted, the actual minutes, the summary
+         *     (for the tutor and academic reviewers only), who submitted it and its
+         *     inbox item. For the session's current tutor, or staff with
+         *     schedule.view.
+         */
+        get: operations["get_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_get"];
+        put?: never;
+        /**
+         * Submit Class Session Closeout
+         * @description Close out a class once it has started: with every participant's
+         *     attendance marked, store the actual teaching minutes and the summary.
+         *     The session becomes completed and a pending item goes to the approval
+         *     inbox (Owners, Administrators, Academic Coordinators). Submitted hours
+         *     are not approved.
+         */
+        post: operations["submit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -5395,6 +5427,99 @@ export interface components {
             availability?: components["schemas"]["AvailabilityWindow"][] | null;
         };
         /**
+         * CloseoutAttendance
+         * @description How complete the session's attendance is (the marks themselves are
+         *     on `GET …/attendance`).
+         */
+        CloseoutAttendance: {
+            /**
+             * Total
+             * @description Participants.
+             */
+            total: number;
+            /**
+             * Marked
+             * @description Participants with a mark.
+             */
+            marked: number;
+            /**
+             * All Absent
+             * @description Every participant is marked absent: the summary is optional.
+             */
+            all_absent: boolean;
+            /**
+             * Missing Student Ids
+             * @description Participants without a mark, sorted.
+             */
+            missing_student_ids: string[];
+        };
+        /** @enum {string} */
+        CloseoutBlockCode: "closeout_already_submitted" | "session_not_closable" | "session_not_started" | "closeout_tutor_only";
+        /**
+         * CloseoutPerson
+         * @description A person by display name only.
+         */
+        CloseoutPerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * CloseoutSessionSubject
+         * @description The session's subject with its level's name.
+         */
+        CloseoutSessionSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /** @constant */
+        CloseoutStatus: "submitted";
+        /**
+         * CloseoutSummary
+         * @description The structured summary as stored (`null`: left empty).
+         */
+        CloseoutSummary: {
+            /**
+             * Topics
+             * @description Topics covered.
+             */
+            topics: string | null;
+            /**
+             * Performance
+             * @description How the class went.
+             */
+            performance: string | null;
+            /**
+             * Homework
+             * @description Homework set (optional).
+             */
+            homework: string | null;
+            /**
+             * Next Steps
+             * @description Next steps.
+             */
+            next_steps: string | null;
+        };
+        /**
+         * CloseoutSummaryInput
+         * @description The structured summary as the tutor submits it. `topics`,
+         *     `performance` and `next_steps` are required unless every participant is
+         *     marked absent; `homework` is optional. Each field is trimmed, at most
+         *     2000 characters.
+         */
+        CloseoutSummaryInput: {
+            topics?: components["schemas"]["SummaryText"];
+            performance?: components["schemas"]["SummaryText"];
+            homework?: components["schemas"]["SummaryText"];
+            next_steps?: components["schemas"]["SummaryText"];
+        };
+        /**
          * ClosureCheck
          * @description Whether the center is closed on a local date
          *     (``GET /api/v1/closures/check``): the active closures that contain it.
@@ -8287,7 +8412,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -8370,7 +8495,7 @@ export interface components {
             conflicts?: components["schemas"]["SchedulingConflict"][];
             /** Details */
             details?: {
-                [key: string]: string;
+                [key: string]: string | string[];
             };
         };
         /**
@@ -8957,6 +9082,101 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * SessionCloseoutRecord
+         * @description A submitted closeout. Submitted hours are not approved: approval is a
+         *     later review. `summary` is `null` with `summary_hidden: true` for
+         *     staff who may see the minutes but not the lesson content.
+         */
+        SessionCloseoutRecord: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["CloseoutStatus"];
+            /**
+             * Actual Minutes
+             * @description The actual teaching minutes (stored on the session).
+             */
+            actual_minutes: number | null;
+            summary: components["schemas"]["CloseoutSummary"] | null;
+            /** Summary Hidden */
+            summary_hidden: boolean;
+            submitted_by: components["schemas"]["CloseoutPerson"];
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /**
+             * Approval Request Id
+             * @description The pending item in the approval inbox.
+             */
+            approval_request_id: string | null;
+        };
+        /**
+         * SessionCloseoutSubmit
+         * @description `POST /api/v1/class-sessions/{id}/closeout` (#77 D1): the session's
+         *     version, the actual teaching minutes (0-720) and the structured
+         *     summary. Every participant's attendance must be marked first.
+         */
+        SessionCloseoutSubmit: {
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+            /**
+             * Actual Minutes
+             * @description Actual teaching minutes, 0-720.
+             */
+            actual_minutes: number;
+            summary: components["schemas"]["CloseoutSummaryInput"];
+        };
+        /**
+         * SessionCloseoutView
+         * @description A session's closeout (#77 C2). `can_submit`: you are the current
+         *     tutor and the session can be closed out now (even with attendance
+         *     missing: `attendance` lists who). `block`: why it can't
+         *     (`session_not_started`, `session_not_closable`,
+         *     `closeout_already_submitted`, or `closeout_tutor_only` for staff), or
+         *     `null`. `closeout` is `null` until one is submitted, also for a
+         *     completed session without one.
+         */
+        SessionCloseoutView: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Version
+             * @description The session's version (send it back).
+             */
+            version: number;
+            kind: components["schemas"]["SessionKindCode"];
+            state: components["schemas"]["SessionStateCode"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            subject: components["schemas"]["CloseoutSessionSubject"];
+            tutor: components["schemas"]["CloseoutPerson"] | null;
+            /** Can Submit */
+            can_submit: boolean;
+            block: components["schemas"]["CloseoutBlockCode"] | null;
+            attendance: components["schemas"]["CloseoutAttendance"];
+            closeout: components["schemas"]["SessionCloseoutRecord"] | null;
         };
         /** @enum {string} */
         SessionKindCode: "individual" | "group" | "course";
@@ -9919,6 +10139,7 @@ export interface components {
              */
             warnings: components["schemas"]["SchedulingWarning"][];
         };
+        SummaryText: string | null;
         /**
          * TeachingLimitsDetail
          * @description A tutor's teaching limits (#197), in minutes; null is no limit (no
@@ -17683,6 +17904,135 @@ export interface operations {
                 };
             };
             /** @description The session changed since it was read (version_conflict); or the session is not confirmed or completed (attendance_not_recordable, details.state) or hasn't started (attendance_not_started). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose closeout you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    submit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCloseoutSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the session's current tutor submits its closeout (closeout_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or not one whose closeout you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); its closeout was already submitted (closeout_already_submitted); it isn't confirmed (session_not_closable, details.state); it hasn't started (session_not_started); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -133,6 +133,13 @@ const API_CODES = [
   'attendance_unchanged',
   'student_not_participant',
   'duplicate_student',
+  'closeout_tutor_only',
+  'closeout_already_submitted',
+  'closeout_attendance_incomplete',
+  'closeout_review_unavailable',
+  'session_not_closable',
+  'session_not_started',
+  'summary_required',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

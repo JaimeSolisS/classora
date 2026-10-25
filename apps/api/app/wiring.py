@@ -19,7 +19,9 @@ approval type, its two decision notification types and the
 (``app.workflows.availability_change``), its two decision notification
 types, ``scheduling.reassignment_needed`` and the scheduling implementation
 of the ``staff`` availability impact seam; #67 D2: the ``scheduling`` tutor
-assignment source of the ``families`` student record policy) are wired
+assignment source of the ``families`` student record policy; #77: the
+``academics.session_closeout`` approval type,
+``app.workflows.session_closeout``) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
@@ -39,6 +41,7 @@ from app.modules.staff.service import (
 )
 from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.session_cancellation import on_session_cancelled
+from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 
 
 def register_approval_wiring() -> None:
@@ -62,6 +65,7 @@ def register_approval_wiring() -> None:
         scheduling_service.CHANGE_REQUEST_APPROVAL_HANDLER
     )
     administration_service.register_approval_handler(AVAILABILITY_CHANGE_HANDLER)
+    administration_service.register_approval_handler(SESSION_CLOSEOUT_HANDLER)
     register_availability_notifications()
     scheduling_service.register_reassignment_notifications()
     register_availability_impact_source(scheduling_service.AVAILABILITY_IMPACT_SOURCE)

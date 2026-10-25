@@ -45,8 +45,8 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * both contexts: 0 more), scheduling/offers.spec.ts 2
  * (`demo.tutor`, a #195 demo account, #52; and the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
- * role change, #55; the #76 attendance steps reuse both contexts and the
- * shared Owner session: 0 more) = 48 attempts, 2 failures for
+ * role change, #55; the #76 attendance and #77 closeout steps reuse both
+ * contexts and the shared Owner session: 0 more) = 48 attempts, 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example
  * courses/cohorts.spec.ts, #243). Keep the total well under both limits;
  * never add a setting that disables the limits.

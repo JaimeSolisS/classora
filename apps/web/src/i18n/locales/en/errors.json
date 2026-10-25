@@ -174,5 +174,12 @@
   "attendance_corrected": "The center corrected a student's attendance, so you can't change it. Ask the center.",
   "attendance_unchanged": "The student already has this status.",
   "student_not_participant": "A student isn't in this class.",
-  "duplicate_student": "Each student can be listed only once."
+  "duplicate_student": "Each student can be listed only once.",
+  "closeout_tutor_only": "Only the class's tutor submits its closeout.",
+  "closeout_already_submitted": "This class's closeout was already submitted.",
+  "closeout_attendance_incomplete": "Mark every student's attendance before submitting the closeout.",
+  "closeout_review_unavailable": "Closeouts can't be reviewed yet.",
+  "session_not_closable": "This class can't be closed out in its current state.",
+  "session_not_started": "The closeout opens when the class starts.",
+  "summary_required": "Fill in the required parts of the summary."
 }

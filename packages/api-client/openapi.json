@@ -10097,6 +10097,172 @@
         }
       }
     },
+    "/api/v1/class-sessions/{class_session_id}/closeout": {
+      "get": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Get Class Session Closeout",
+        "description": "A session's closeout: whether it can be submitted now, how complete\nthe attendance is and, once submitted, the actual minutes, the summary\n(for the tutor and academic reviewers only), who submitted it and its\ninbox item. For the session's current tutor, or staff with\nschedule.view.",
+        "operationId": "get_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_get",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose closeout you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Submit Class Session Closeout",
+        "description": "Close out a class once it has started: with every participant's\nattendance marked, store the actual teaching minutes and the summary.\nThe session becomes completed and a pending item goes to the approval\ninbox (Owners, Administrators, Academic Coordinators). Submitted hours\nare not approved.",
+        "operationId": "submit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCloseoutSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the session's current tutor submits its closeout (closeout_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or not one whose closeout you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session changed since it was read (version_conflict); its closeout was already submitted (closeout_already_submitted); it isn't confirmed (session_not_closable, details.state); it hasn't started (session_not_started); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -19022,6 +19188,180 @@
         "title": "ClassroomUpdate",
         "description": "A change to a classroom with the ``version`` the caller loaded. Fields\nnot sent stay unchanged; ``availability``, when sent, replaces all the\nroom's windows (``[]`` clears them)."
       },
+      "CloseoutAttendance": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Participants."
+          },
+          "marked": {
+            "type": "integer",
+            "title": "Marked",
+            "description": "Participants with a mark."
+          },
+          "all_absent": {
+            "type": "boolean",
+            "title": "All Absent",
+            "description": "Every participant is marked absent: the summary is optional."
+          },
+          "missing_student_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Missing Student Ids",
+            "description": "Participants without a mark, sorted."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total",
+          "marked",
+          "all_absent",
+          "missing_student_ids"
+        ],
+        "title": "CloseoutAttendance",
+        "description": "How complete the session's attendance is (the marks themselves are\non `GET …/attendance`)."
+      },
+      "CloseoutBlockCode": {
+        "type": "string",
+        "enum": [
+          "closeout_already_submitted",
+          "session_not_closable",
+          "session_not_started",
+          "closeout_tutor_only"
+        ]
+      },
+      "CloseoutPerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "CloseoutPerson",
+        "description": "A person by display name only."
+      },
+      "CloseoutSessionSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name"
+        ],
+        "title": "CloseoutSessionSubject",
+        "description": "The session's subject with its level's name."
+      },
+      "CloseoutStatus": {
+        "type": "string",
+        "const": "submitted"
+      },
+      "CloseoutSummary": {
+        "properties": {
+          "topics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topics",
+            "description": "Topics covered."
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performance",
+            "description": "How the class went."
+          },
+          "homework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Homework",
+            "description": "Homework set (optional)."
+          },
+          "next_steps": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Steps",
+            "description": "Next steps."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "topics",
+          "performance",
+          "homework",
+          "next_steps"
+        ],
+        "title": "CloseoutSummary",
+        "description": "The structured summary as stored (`null`: left empty)."
+      },
+      "CloseoutSummaryInput": {
+        "properties": {
+          "topics": {
+            "$ref": "#/components/schemas/SummaryText"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/SummaryText"
+          },
+          "homework": {
+            "$ref": "#/components/schemas/SummaryText"
+          },
+          "next_steps": {
+            "$ref": "#/components/schemas/SummaryText"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CloseoutSummaryInput",
+        "description": "The structured summary as the tutor submits it. `topics`,\n`performance` and `next_steps` are required unless every participant is\nmarked absent; `homework` is optional. Each field is trimmed, at most\n2000 characters."
+      },
       "ClosureCheck": {
         "properties": {
           "date": {
@@ -25156,6 +25496,7 @@
           "settings.manage",
           "student.manage",
           "student.view",
+          "teaching_hours.approve",
           "tutor.manage",
           "tutor.view",
           "user.admin_role.assign",
@@ -25296,7 +25637,17 @@
           },
           "details": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             },
             "title": "Details",
             "type": "object"
@@ -26316,6 +26667,200 @@
         ],
         "title": "SessionClassroom",
         "description": "The session's classroom (an inactive room stays shown as such)."
+      },
+      "SessionCloseoutRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CloseoutStatus"
+          },
+          "actual_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Minutes",
+            "description": "The actual teaching minutes (stored on the session)."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseoutSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary_hidden": {
+            "type": "boolean",
+            "title": "Summary Hidden"
+          },
+          "submitted_by": {
+            "$ref": "#/components/schemas/CloseoutPerson"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submitted At"
+          },
+          "approval_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Request Id",
+            "description": "The pending item in the approval inbox."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "actual_minutes",
+          "summary",
+          "summary_hidden",
+          "submitted_by",
+          "submitted_at",
+          "approval_request_id"
+        ],
+        "title": "SessionCloseoutRecord",
+        "description": "A submitted closeout. Submitted hours are not approved: approval is a\nlater review. `summary` is `null` with `summary_hidden: true` for\nstaff who may see the minutes but not the lesson content."
+      },
+      "SessionCloseoutSubmit": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version, as last read."
+          },
+          "actual_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 0.0,
+            "title": "Actual Minutes",
+            "description": "Actual teaching minutes, 0-720."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CloseoutSummaryInput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "actual_minutes",
+          "summary"
+        ],
+        "title": "SessionCloseoutSubmit",
+        "description": "`POST /api/v1/class-sessions/{id}/closeout` (#77 D1): the session's\nversion, the actual teaching minutes (0-720) and the structured\nsummary. Every participant's attendance must be marked first."
+      },
+      "SessionCloseoutView": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The session's version (send it back)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKindCode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionStateCode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/CloseoutSessionSubject"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseoutPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_submit": {
+            "type": "boolean",
+            "title": "Can Submit"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseoutBlockCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/CloseoutAttendance"
+          },
+          "closeout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionCloseoutRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "version",
+          "kind",
+          "state",
+          "starts_at",
+          "ends_at",
+          "scheduled_minutes",
+          "subject",
+          "tutor",
+          "can_submit",
+          "block",
+          "attendance",
+          "closeout"
+        ],
+        "title": "SessionCloseoutView",
+        "description": "A session's closeout (#77 C2). `can_submit`: you are the current\ntutor and the session can be closed out now (even with attendance\nmissing: `attendance` lists who). `block`: why it can't\n(`session_not_started`, `session_not_closable`,\n`closeout_already_submitted`, or `closeout_tutor_only` for staff), or\n`null`. `closeout` is `null` until one is submitted, also for a\ncompleted session without one."
       },
       "SessionKindCode": {
         "type": "string",
@@ -28309,6 +28854,16 @@
         ],
         "title": "SuggestedSlot",
         "description": "One free time: every hard and soft rule passes (#50 B4)."
+      },
+      "SummaryText": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "TeachingLimitsDetail": {
         "properties": {
