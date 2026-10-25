@@ -4560,7 +4560,12 @@ evaluations with templates, grading criteria, scores and tutor feedback",
 routes in `app/workflows/evaluations_router.py` and bodies in
 `app/workflows/evaluation_schemas.py`. One new permission,
 `evaluation.manage` (Owner, Administrator, Academic coordinator; not
-delegable). No web pages yet (#308, M5-13b).
+delegable). The web pages are #308 (M5-13b, `apps/web/src/features/academics/`):
+`/academics/evaluation-templates` (the template routes), `/students/:id/history`
+(the academic history and the working list), `/students/:id/evaluations/new`
+(the evaluation context and the create), `/evaluations/:id` (one evaluation and
+its writes) and the family's `/my-history` (`/schedule/family-students` and the
+academic history).
 
 Tutors record evaluations of a student from a **template** (its name, kind,
 version and criteria are **copied** onto the evaluation: editing or

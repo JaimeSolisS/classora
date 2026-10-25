@@ -73,9 +73,19 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // the guardian's GET …/learning-notes never contains the internal text. Axe
 // on the notes page, the share dialog and the guardian's dialog.
 //
+// #308 G3 (after #79, before #62b): the Owner creates an evaluation
+// template through the API and finds it on /academics/evaluation-templates;
+// the tutor (phone) sees "Academic history of {child}" and no "Evaluate"
+// in the class's details (it hasn't started), saves a draft and finalizes a
+// second evaluation from "New evaluation" (no class link); the guardian's
+// bell opens /my-history?student=…, which shows the final one in today's
+// school year (read from GET /academic-periods) and the chronological view,
+// never the draft; the family's API reads agree. Axe on the template list,
+// the form and the history.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
-// guardian; #79 reuses them), 0 redemptions and 2 self-registrations (createApprovedTutor and
+// guardian; #79 and #308 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
 // the guardian's createApprovedAccount). Every `make e2e` starts from an
 // empty database, so names are unique per run.
 
@@ -326,7 +336,8 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
   const ownerErrors = watchConsole(page);
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await createSubjectViaApi(page, LEVEL, physics);
+  // #308 G3: the template's subject.
+  const physicsId = await createSubjectViaApi(page, LEVEL, physics);
   await createSubjectViaApi(page, LEVEL, chemistry);
   const tutorId = await createApprovedTutor(
     page,
@@ -901,6 +912,234 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       expect(JSON.stringify(learning.body)).toContain(sharedText);
       expect(JSON.stringify(learning.body)).not.toContain(internalText);
       await parent.page.setViewportSize(PHONE);
+
+      // #308 G3: evaluations. The Owner creates a template (API) and finds
+      // it in the list; the tutor (phone) opens the class's details: no
+      // "Evaluate" (the class hasn't started, E4), "Academic history" →
+      // "New evaluation", saves a draft, then a second evaluation that they
+      // finalize. The guardian's bell (desktop width: the header shows only
+      // ☰ at 390 px) opens the child's history, which shows the final one
+      // in today's school year and never the draft.
+      const templateName = `Evaluación E2E ${suffix}`;
+      const draftText = `E2E draft ${suffix}`;
+      const finalText = `E2E final ${suffix}`;
+      const ownerMe = await api(page, '/api/v1/auth/me');
+      const template = await api(page, '/api/v1/evaluation-templates', {
+        method: 'POST',
+        json: {
+          name: templateName,
+          kind: 'diagnostic',
+          subject_id: physicsId,
+          criteria: [
+            { title: 'Comprensión', max_score: '10' },
+            { title: 'Resolución', max_score: '10' },
+          ],
+        },
+        headers: { 'X-CSRF-Token': csrfTokenOf(ownerMe) },
+      });
+      expect(template.status).toBe(201);
+      await page.goto('/academics/evaluation-templates');
+      await expect(
+        main.getByRole('heading', {
+          level: 1,
+          name: common.academics.templates.title,
+        }),
+      ).toBeVisible();
+      await expect(
+        main.getByRole('link', { name: templateName }),
+      ).toBeVisible();
+      expect(await axeViolations(page)).toEqual([]);
+
+      const evaluationsPage = tutor.page.url();
+      const evaluationsSize = tutor.page.viewportSize();
+      await tutor.page.setViewportSize(PHONE);
+      await tutor.page.goto(`/my-schedule?date=${day.date}`);
+      await expect(calendarOf(tutor.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await calendarOf(tutor.page)
+        .getByRole('button', {
+          name: sessionName(common.mySchedule.states.confirmed, studentName),
+        })
+        .click();
+      const classDetails = tutor.page.getByRole('dialog', { name: physics });
+      const historyLink = classDetails.getByRole('link', {
+        name: fill(common.academics.entry.historyOf, { name: studentName }),
+      });
+      await expect(historyLink).toBeVisible();
+      await expect(
+        classDetails.getByRole('link', {
+          name: fill(common.academics.entry.evaluateName, {
+            name: studentName,
+          }),
+        }),
+      ).toHaveCount(0);
+      await historyLink.click();
+      await expect(tutor.page).toHaveURL(`/students/${childId}/history`);
+      const tutorMain = tutor.page.getByRole('main');
+      await tutorMain
+        .getByRole('link', { name: common.academics.history.newEvaluation })
+        .click();
+      await expect(tutor.page).toHaveURL(
+        `/students/${childId}/evaluations/new`,
+      );
+      const scores = tutorMain.getByLabel(
+        common.academics.evaluations.fields.score,
+        { exact: true },
+      );
+      const startEvaluation = async () => {
+        await tutorMain
+          .getByLabel(common.academics.evaluations.fields.template, {
+            exact: true,
+          })
+          .selectOption({
+            label: fill(common.academics.evaluations.templateOption, {
+              name: templateName,
+              kind: common.academics.kinds.diagnostic,
+              subject: physics,
+            }),
+          });
+        await expect(scores).toHaveCount(2);
+      };
+      const saveDraft = async (feedback: string) => {
+        await tutorMain
+          .getByLabel(common.academics.evaluations.fields.feedback, {
+            exact: true,
+          })
+          .fill(feedback);
+        await tutorMain
+          .getByRole('button', {
+            name: common.academics.evaluations.actions.saveDraft,
+          })
+          .click();
+        await expect(tutor.page).toHaveURL(/\/evaluations\/[0-9a-f-]{36}$/);
+        await expect(tutorMain.getByRole('status')).toContainText(
+          common.academics.evaluations.notices.draftSaved,
+        );
+      };
+      await startEvaluation();
+      await scores.nth(0).fill('8');
+      await saveDraft(draftText);
+      await expect(tutorMain).toContainText(
+        common.academics.evaluations.status.draft,
+      );
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await tutor.page.goto(`/students/${childId}/evaluations/new`);
+      await startEvaluation();
+      await scores.nth(0).fill('8');
+      await scores.nth(1).fill('9.5');
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await saveDraft(finalText);
+      await tutorMain
+        .getByRole('button', {
+          name: common.academics.evaluations.actions.finalize,
+          exact: true,
+        })
+        .click();
+      const finalizeDialog = tutor.page.getByRole('dialog', {
+        name: common.academics.evaluations.finalize.title,
+      });
+      await expect(finalizeDialog).toContainText(
+        fill(common.academics.evaluations.finalize.description, {
+          student: studentName,
+        }),
+      );
+      await finalizeDialog
+        .getByRole('button', {
+          name: common.academics.evaluations.finalize.confirm,
+        })
+        .click();
+      await expect(finalizeDialog).toBeHidden();
+      await expect(tutorMain.getByRole('status')).toContainText(
+        common.academics.evaluations.notices.finalized,
+      );
+      await expect(tutorMain).toContainText(
+        common.academics.evaluations.status.final,
+      );
+      // The merged contract sends decimals as strings with two places.
+      await expect(tutorMain).toContainText(
+        fill(common.academics.evaluations.read.total, {
+          total: '17.50',
+          max: '20.00',
+          percent: '87.50',
+        }),
+      );
+      if (evaluationsSize) {
+        await tutor.page.setViewportSize(evaluationsSize);
+      }
+      await tutor.page.goto(evaluationsPage);
+
+      // The guardian (desktop width, the bell is in the header).
+      if (parentViewport) {
+        await parent.page.setViewportSize(parentViewport);
+      }
+      await parent.page.reload();
+      await parentBell.click();
+      await parentPanel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escapeText(
+              common.notifications.types.academics_evaluation_finalized.split(
+                '{{evaluated_on}}',
+              )[0]!,
+            )}`,
+          ),
+        })
+        .click();
+      await expect(parent.page).toHaveURL(`/my-history?student=${childId}`);
+      await parent.page.setViewportSize(PHONE);
+      const historyMain = parent.page.getByRole('main');
+      await expect(
+        historyMain.getByRole('heading', {
+          level: 1,
+          name: common.academics.history.title,
+        }),
+      ).toBeVisible();
+      const periods = await api(
+        page,
+        `/api/v1/academic-periods?period_type=school_year&on=${centerToday()}`,
+      );
+      expect(periods.status).toBe(200);
+      const [schoolYear] = (periods.body as { items: { name: string }[] })
+        .items;
+      expect(schoolYear).toBeDefined();
+      const yearSection = historyMain.getByRole('region', {
+        name: new RegExp(`^${escape(schoolYear!.name)} \\(`),
+      });
+      await expect(
+        yearSection.getByRole('heading', { level: 3, name: physics }),
+      ).toBeVisible();
+      await expect(
+        yearSection.getByRole('article').filter({ hasText: finalText }),
+      ).toHaveCount(1);
+      await expect(historyMain).not.toContainText(draftText);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await historyMain
+        .getByRole('button', { name: common.academics.history.views.list })
+        .click();
+      await expect(
+        historyMain.getByRole('article').filter({ hasText: finalText }),
+      ).toHaveCount(1);
+      await expect(historyMain).not.toContainText(draftText);
+      const familyHistory = await api(
+        parent.page,
+        `/api/v1/students/${childId}/academic-history`,
+      );
+      expect(familyHistory.status).toBe(200);
+      expect(JSON.stringify(familyHistory.body)).toContain(finalText);
+      expect(JSON.stringify(familyHistory.body)).not.toContain(draftText);
+      const familyWorking = await api(
+        parent.page,
+        `/api/v1/students/${childId}/evaluations`,
+      );
+      expect(familyWorking.status).toBe(404);
+      await parent.page.goto(`/my-schedule?date=${day.date}`);
+      await whose.selectOption({ label: studentName });
+      await expect(calendarOf(parent.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
 
       // #62b E1: the guardian asks to cancel that session (on the phone).
       await classes.click();

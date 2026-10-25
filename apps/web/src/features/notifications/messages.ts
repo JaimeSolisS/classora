@@ -239,6 +239,23 @@ function notesLink(params: NotificationItem['params']): string {
   return typeof id === 'string' && id ? notesPath(id) : '/my-schedule';
 }
 
+/** The family's academic history of the student (#308 F2); /my-history
+ * without an id. */
+function myHistory(params: NotificationItem['params']): string {
+  const id = params.student_id;
+  return typeof id === 'string' && id
+    ? `/my-history?student=${encodeURIComponent(id)}`
+    : '/my-history';
+}
+
+/** The voided evaluation's page (#308 F2); home without an id. */
+function voidedEvaluation(params: NotificationItem['params']): string {
+  const id = params.evaluation_id;
+  return typeof id === 'string' && id
+    ? `/evaluations/${encodeURIComponent(id)}`
+    : '/';
+}
+
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
@@ -269,8 +286,10 @@ export const NOTIFICATION_LINKS: Readonly<
   // date; a reviewer's unpublish opens the tutor's notes page.
   'academics.learning_note_published': mySchedule,
   'academics.learning_note_unpublished': notesLink,
-  // #80 H1: academics.evaluation_finalized and academics.evaluation_voided
-  // have no link until #308 (M5-13b) adds the history and evaluation pages.
+  // #308 F2: a finalized evaluation opens the family's academic history of
+  // the student; a void opens the author's evaluation.
+  'academics.evaluation_finalized': myHistory,
+  'academics.evaluation_voided': voidedEvaluation,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

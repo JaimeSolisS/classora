@@ -156,6 +156,38 @@ const API_CODES = [
   'note_already_published',
   'note_not_published',
   'session_not_notable',
+  // #308 C8, B2: the evaluation and template codes.
+  'evaluation_tutor_only',
+  'evaluation_author_only',
+  'evaluation_read_only',
+  'duplicate_name',
+  'session_not_evaluable',
+  'evaluation_final',
+  'evaluation_not_draft',
+  'evaluation_not_final',
+  'evaluation_voided',
+  'evaluation_incomplete',
+  'score_out_of_range',
+  'score_precision',
+  'decimal_invalid',
+  'change_reason_required',
+  'score_required',
+  'reason_required',
+  'evaluated_on_in_future',
+  'evaluated_on_invalid',
+  'subject_required',
+  'subject_mismatch',
+  'class_session_invalid',
+  'course_assessment_unknown',
+  'course_assessment_requires_course_session',
+  'criterion_unknown',
+  'duplicate_criterion',
+  'criteria_required',
+  'max_score_out_of_range',
+  'kind_immutable',
+  'too_long',
+  'name_required',
+  'title_required',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -168,6 +200,11 @@ const STATUS_CODES = [
 ];
 const CLIENT_CODES = ['network_error', 'unexpected_response'];
 const ALL_CODES = [...API_CODES, ...STATUS_CODES, ...CLIENT_CODES];
+// #308: codes whose catalog key differs (i18next reads `_many` as a plural
+// suffix, so `criteria_too_many` can't be a key).
+const RENAMED_CODES: Record<string, string> = {
+  criteria_too_many: 'criteria_limit',
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -199,8 +236,17 @@ describe('cohort enrollment codes (#66 I3)', () => {
 
 describe('errorMessageKey', () => {
   it('maps exactly the listed codes', () => {
-    expect([...MAPPED_ERROR_CODES].sort()).toEqual([...ALL_CODES].sort());
+    expect([...MAPPED_ERROR_CODES].sort()).toEqual(
+      [...ALL_CODES, ...Object.keys(RENAMED_CODES)].sort(),
+    );
   });
+
+  it.each(Object.entries(RENAMED_CODES))(
+    'maps %s to the key %s',
+    (code, key) => {
+      expect(errorMessageKey(new ApiError({ code, status: 422 }))).toBe(key);
+    },
+  );
 
   it.each(ALL_CODES)('maps %s to its own key', (code) => {
     expect(errorMessageKey(new ApiError({ code, status: 400 }))).toBe(code);
@@ -241,7 +287,13 @@ describe('errorMessageKey', () => {
 });
 
 describe('error messages in both languages', () => {
-  const KEYS = [...ALL_CODES, 'client_error', 'server_error', 'generic'];
+  const KEYS = [
+    ...ALL_CODES,
+    ...Object.values(RENAMED_CODES),
+    'client_error',
+    'server_error',
+    'generic',
+  ];
 
   it.each(KEYS)(
     '%s has a real message in es and en, different per language',

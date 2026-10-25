@@ -362,7 +362,7 @@ describe('closeout review notifications (#78 F1)', () => {
 });
 
 // #80 H1: the evaluation notifications name the evaluation's local date,
-// never a score, a reason or an id, and have no link until #308.
+// never a score, a reason or an id; #308 F2 links them.
 
 describe('evaluation notifications (#80 H1)', () => {
   const finalized = {
@@ -412,10 +412,25 @@ describe('evaluation notifications (#80 H1)', () => {
     });
   });
 
-  it('only become read when activated (no page until #308)', () => {
+  // #308 F2: the finalized one opens the family's history of the student,
+  // the voided one the evaluation; without an id, the fallbacks.
+  it('link to the history and the evaluation (#308 F2)', () => {
+    const recipient = { userId: 'u-1' };
+    const finalizedLink = NOTIFICATION_LINKS['academics.evaluation_finalized']!;
+    const voidedLink = NOTIFICATION_LINKS['academics.evaluation_voided']!;
+    expect(finalizedLink(finalized, recipient)).toBe(
+      `/my-history?student=${finalized.student_id}`,
+    );
+    expect(finalizedLink({}, recipient)).toBe('/my-history');
     expect(
-      NOTIFICATION_LINKS['academics.evaluation_finalized'],
-    ).toBeUndefined();
-    expect(NOTIFICATION_LINKS['academics.evaluation_voided']).toBeUndefined();
+      voidedLink(
+        {
+          student_id: finalized.student_id,
+          evaluation_id: finalized.evaluation_id,
+        },
+        recipient,
+      ),
+    ).toBe(`/evaluations/${finalized.evaluation_id}`);
+    expect(voidedLink({}, recipient)).toBe('/');
   });
 });
