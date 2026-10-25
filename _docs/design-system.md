@@ -437,7 +437,11 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   the error under the field (focus moves to it on a failed save). "Share
   with family" always confirms in `ShareNoteDialog`, which quotes the exact
   text and says who will see it. Actions follow the API's `can_*` flags. A
-  version conflict shows "Note changed elsewhere" with "Reload". The staff
+  version conflict shows "Note changed elsewhere" with "Reload". Focus:
+  cancelling a dialog returns it to its trigger (the notes heading if the
+  trigger is gone); a done action moves it to the `role="status"` message
+  and a refused one to the failure; leaving the inline edit returns it to
+  "Edit". The staff
   `NotesSection` (`features/scheduling/session`) reuses the badge and text;
   its `StopSharingDialog` requires a reason with a counter. The family's
   "Notes from the tutor" (`FamilyNotesList`, `features/my-schedule`) renders

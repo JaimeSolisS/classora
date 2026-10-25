@@ -16,7 +16,7 @@ import {
   TEST_USER,
   type ApiStub,
 } from '@/test/api-stub';
-import { alerts, click, openDialog } from '@/test/dom';
+import { alerts, click, openDialog, pressEscape } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -367,6 +367,114 @@ async function renderAlone(
   await settle();
   return app.container;
 }
+
+describe('focus after the dialogs and actions (#79 QA D1)', () => {
+  const focused = () => document.activeElement;
+  const statusEl = () => main().querySelector<HTMLElement>('[role="status"]');
+  const itemButton = (index: number, name: string) =>
+    buttonNamed([...main().querySelectorAll('li')][index]!, name);
+
+  it.each(['Escape', 'Cancel'])(
+    'returns focus to Share with family after %s',
+    async (how) => {
+      await open([INTERNAL]);
+      const share = itemButton(0, 'Share with family');
+      share.focus();
+      await click(share);
+      expect(openDialog()).not.toBeNull();
+      if (how === 'Escape') {
+        await pressEscape();
+      } else {
+        await click(buttonNamed(openDialog()!, 'Cancel'));
+      }
+      await settleUntil(() => focused() === itemButton(0, 'Share with family'));
+      expect(openDialog()).toBeNull();
+    },
+  );
+
+  it.each(['Escape', 'Cancel'])(
+    'returns focus to Delete after %s',
+    async (how) => {
+      await open([INTERNAL]);
+      const remove = itemButton(0, 'Delete');
+      remove.focus();
+      await click(remove);
+      if (how === 'Escape') {
+        await pressEscape();
+      } else {
+        await click(buttonNamed(openDialog()!, 'Cancel'));
+      }
+      await settleUntil(() => focused() === itemButton(0, 'Delete'));
+    },
+  );
+
+  it('moves focus to the notice after a confirmed share', async () => {
+    await open([INTERNAL]);
+    api.set({
+      [`POST /api/v1/notes/${NOTE_ID}/publish`]: () =>
+        jsonResponse(200, SHARED),
+    });
+    await click(itemButton(0, 'Share with family'));
+    await click(buttonNamed(openDialog()!, 'Share with family'));
+    await settleUntil(
+      () => statusEl()?.textContent === 'Note shared with the family.',
+    );
+    await settleUntil(() => focused() === statusEl());
+  });
+
+  it('moves focus to the notice after a confirmed delete', async () => {
+    await open([INTERNAL]);
+    api.set({ [`DELETE /api/v1/notes/${NOTE_ID}`]: noContent });
+    await click(itemButton(0, 'Delete'));
+    await click(buttonNamed(openDialog()!, 'Delete note'));
+    await settleUntil(() => statusEl()?.textContent === 'Note deleted.');
+    await settleUntil(() => focused() === statusEl());
+  });
+
+  it("moves focus to the notice after the tutor's Stop sharing", async () => {
+    await open([SHARED]);
+    api.set({
+      [`POST /api/v1/notes/${SHARED_ID}/unpublish`]: () =>
+        jsonResponse(200, INTERNAL),
+    });
+    await click(itemButton(0, 'Stop sharing'));
+    await settleUntil(
+      () => statusEl()?.textContent === 'Note no longer shared.',
+    );
+    await settleUntil(() => focused() === statusEl());
+  });
+
+  it('moves focus to the notice after saving a note', async () => {
+    await open();
+    api.set({ [CREATE]: () => jsonResponse(201, INTERNAL) });
+    setValue(composer(), 'Traer calculadora');
+    const save = buttonNamed(main(), 'Save internal note');
+    save.focus();
+    await click(save);
+    await settleUntil(() => statusEl()?.textContent === 'Note saved.');
+    await settleUntil(() => focused() === statusEl());
+  });
+
+  it('moves focus to the failure when a write is refused', async () => {
+    await open([SHARED]);
+    api.set({
+      [`POST /api/v1/notes/${SHARED_ID}/unpublish`]: () =>
+        problem(409, 'version_conflict'),
+    });
+    await click(itemButton(0, 'Stop sharing'));
+    await settleUntil(() =>
+      Boolean(focused()?.querySelector('[role="alert"]')),
+    );
+    expect(focused()?.textContent).toContain('Note changed elsewhere.');
+  });
+
+  it('returns focus to Edit when the inline edit is cancelled', async () => {
+    await open([INTERNAL]);
+    await click(itemButton(0, 'Edit'));
+    await click(itemButton(0, 'Cancel'));
+    await settleUntil(() => focused() === itemButton(0, 'Edit'));
+  });
+});
 
 describe('My schedule (H2)', () => {
   it.each([

@@ -48,6 +48,11 @@ import {
 // the author and "Load more"). Note text is always plain text. A write
 // refused because the note changed shows "Note changed elsewhere" with
 // Reload; the page maps the not-found codes.
+// Focus (#79 QA D1): closing a dialog without confirming returns focus to
+// the button that opened it (the notes heading if it is gone); a done
+// action (save, edit, share, stop sharing, delete) moves it to the page's
+// status message, a refused one to the failure; leaving the inline edit
+// returns it to "Edit".
 
 export type NotesListState<T> =
   | { status: 'loading' }
@@ -326,8 +331,8 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-/** A confirmation (share, delete): one request per confirm; focus returns
- * to the trigger. */
+/** A confirmation (share, delete): one request per confirm. The view moves
+ * focus when it closes (the trigger on cancel, the outcome on confirm). */
 function ConfirmDialog({
   open,
   title,
@@ -351,7 +356,10 @@ function ConfirmDialog({
       }}
     >
       {open ? (
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="sm:max-w-lg"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
@@ -436,12 +444,23 @@ function NoteItem({
   timeZone: string;
   actions: NoteActions;
   onFailure: (error: unknown) => void;
-  onShareRequest: (note: SessionNote) => void;
-  onDeleteRequest: (note: SessionNote) => void;
+  onShareRequest: (note: SessionNote, trigger: HTMLElement) => void;
+  onDeleteRequest: (note: SessionNote, trigger: HTMLElement) => void;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+
+  // #79 QA D1: leaving the inline edit returns focus to "Edit" (a saved
+  // edit then moves it on to the page's notice).
+  useEffect(() => {
+    if (!editing && wasEditing.current) {
+      editButton.current?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing]);
   return (
     <li className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3">
       <div>
@@ -475,6 +494,7 @@ function NoteItem({
               type="button"
               size="sm"
               variant="outline"
+              ref={editButton}
               onClick={() => setEditing(true)}
             >
               {t('notes.actions.edit')}
@@ -484,7 +504,7 @@ function NoteItem({
             <Button
               type="button"
               size="sm"
-              onClick={() => onShareRequest(note)}
+              onClick={(event) => onShareRequest(note, event.currentTarget)}
             >
               {t('notes.actions.share')}
             </Button>
@@ -515,7 +535,7 @@ function NoteItem({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => onDeleteRequest(note)}
+              onClick={(event) => onDeleteRequest(note, event.currentTarget)}
             >
               {t('notes.actions.delete')}
             </Button>
@@ -544,6 +564,40 @@ export function NotesView({
   const [notice, setNotice] = useState<string | null>(null);
   const [sharing, setSharing] = useState<SessionNote | null>(initialSharing);
   const [deleting, setDeleting] = useState<SessionNote | null>(null);
+  // #79 QA D1: where focus goes once a dialog closes or an action is done.
+  const trigger = useRef<HTMLElement | null>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  const failureRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [focusTarget, setFocusTarget] = useState<{
+    id: number;
+    to: 'notice' | 'failure' | 'trigger';
+  } | null>(null);
+
+  /** Moves focus after the render that shows the target (and after a
+   * dialog has closed): the notice, the failure, or the dialog's trigger
+   * (the notes heading when the trigger is gone). */
+  function focusNext(to: 'notice' | 'failure' | 'trigger') {
+    setFocusTarget((current) => ({ id: (current?.id ?? 0) + 1, to }));
+  }
+
+  useEffect(() => {
+    if (!focusTarget) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const target =
+        focusTarget.to === 'notice'
+          ? noticeRef.current
+          : focusTarget.to === 'failure'
+            ? failureRef.current
+            : trigger.current?.isConnected
+              ? trigger.current
+              : null;
+      (target ?? headingRef.current)?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusTarget]);
   const students = session.items.map((item) => item.student);
   const student = students.find((s) => s.id === studentId) ?? students[0];
   const name = student?.display_name ?? '';
@@ -551,11 +605,13 @@ export function NotesView({
   function done(text: string) {
     setFailure(null);
     setNotice(text);
+    focusNext('notice');
   }
 
   function failed(error: unknown) {
     setNotice(null);
     setFailure(error);
+    focusNext('failure');
   }
 
   const wrapped: NoteActions = {
@@ -587,8 +643,14 @@ export function NotesView({
             timeZone={timeZone}
             actions={wrapped}
             onFailure={failed}
-            onShareRequest={setSharing}
-            onDeleteRequest={setDeleting}
+            onShareRequest={(note, from) => {
+              trigger.current = from;
+              setSharing(note);
+            }}
+            onDeleteRequest={(note, from) => {
+              trigger.current = from;
+              setDeleting(note);
+            }}
           />
         ))}
       </ul>
@@ -619,38 +681,50 @@ export function NotesView({
         </div>
       ) : null}
       {notice ? (
-        <p role="status" className="text-sm font-medium">
+        <p
+          ref={noticeRef}
+          role="status"
+          tabIndex={-1}
+          className="text-sm font-medium outline-none"
+        >
           {notice}
         </p>
       ) : null}
       {failure ? (
-        needsReload(failure) ? (
-          <div
-            role="alert"
-            className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive p-3 text-sm text-destructive"
-          >
-            <span>{t('notes.changed')}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setFailure(null);
-                actions.onReload();
-              }}
+        <div ref={failureRef} tabIndex={-1} className="outline-none">
+          {needsReload(failure) ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive p-3 text-sm text-destructive"
             >
-              {t('notes.reload')}
-            </Button>
-          </div>
-        ) : (
-          <ErrorAlert error={failure} />
-        )
+              <span>{t('notes.changed')}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setFailure(null);
+                  actions.onReload();
+                }}
+              >
+                {t('notes.reload')}
+              </Button>
+            </div>
+          ) : (
+            <ErrorAlert error={failure} />
+          )}
+        </div>
       ) : null}
       <section
         aria-labelledby={`${id}-notes`}
         className="flex min-w-0 flex-col gap-3"
       >
-        <h2 id={`${id}-notes`} className="text-lg font-semibold break-words">
+        <h2
+          id={`${id}-notes`}
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-lg font-semibold break-words outline-none"
+        >
           {t('notes.forStudent', { student: name })}
         </h2>
         {list}
@@ -723,7 +797,10 @@ export function NotesView({
       </section>
       <ShareNoteDialog
         note={sharing}
-        onCancel={() => setSharing(null)}
+        onCancel={() => {
+          setSharing(null);
+          focusNext('trigger');
+        }}
         onConfirm={async (note) => {
           try {
             await actions.onShare(note);
@@ -743,7 +820,10 @@ export function NotesView({
         busyLabel={t('notes.deleteDialog.deleting')}
         cancelLabel={t('notes.deleteDialog.cancel')}
         destructive
-        onCancel={() => setDeleting(null)}
+        onCancel={() => {
+          setDeleting(null);
+          focusNext('trigger');
+        }}
         onConfirm={async () => {
           if (!deleting) {
             return;
