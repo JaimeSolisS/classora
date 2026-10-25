@@ -1487,7 +1487,9 @@
       "academics_closeout_approved": "Se aprobó tu cierre de la clase de {{subject_name}} del {{starts_at}}: {{approved_minutes}} min.",
       "academics_closeout_corrected": "Un revisor corrigió tu cierre de la clase de {{subject_name}} del {{starts_at}}.",
       "academics_closeout_changes_requested": "Se solicitaron cambios en tu cierre de la clase de {{subject_name}} del {{starts_at}}.",
-      "academics_closeout_submitted_on_behalf": "Se envió en tu nombre el cierre de la clase de {{subject_name}} del {{starts_at}}."
+      "academics_closeout_submitted_on_behalf": "Se envió en tu nombre el cierre de la clase de {{subject_name}} del {{starts_at}}.",
+      "academics_learning_note_published": "El tutor compartió una nota sobre la clase del {{starts_at}}.",
+      "academics_learning_note_unpublished": "Un revisor dejó de compartir tu nota sobre la clase del {{starts_at}}."
     }
   },
   "scheduling": {
@@ -3219,6 +3221,99 @@
         "submitted": "Cierre enviado en nombre de {{tutor}}.",
         "takenOver": "Tomaste el cierre y volvió a revisión."
       }
+    }
+  },
+  "notes": {
+    "title": "Notas de la clase",
+    "back": "Volver a Mi horario",
+    "open": "Notas",
+    "studentPicker": "Alumno",
+    "forStudent": "Notas sobre {{student}} en esta clase",
+    "empty": "Aún no hay notas sobre {{student}} en esta clase.",
+    "loading": "Cargando notas…",
+    "badges": {
+      "internal": "Interna: nunca se muestra a las familias",
+      "shared": "Compartida con la familia el {{date}}"
+    },
+    "edited": "Editada",
+    "byline": "{{name}}, {{when}}",
+    "unpublishReason": "Se dejó de compartir: {{reason}}",
+    "readOnly": "Solo lectura: este alumno ya no está asignado a ti.",
+    "composer": {
+      "label": "Nueva nota sobre {{student}}",
+      "hint": "Interna: las familias nunca la ven a menos que la compartas.",
+      "counter": "{{length}}/{{max}} caracteres",
+      "save": "Guardar nota interna",
+      "saving": "Guardando…",
+      "saved": "Nota guardada."
+    },
+    "validation": {
+      "bodyRequired": "Escribe la nota.",
+      "tooLong": "Máximo {{max}} caracteres.",
+      "reasonRequired": "Indica un motivo.",
+      "reasonTooLong": "Máximo {{max}} caracteres."
+    },
+    "actions": {
+      "edit": "Editar",
+      "editLabel": "Editar la nota",
+      "save": "Guardar cambios",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "share": "Compartir con la familia",
+      "stopSharing": "Dejar de compartir",
+      "delete": "Eliminar"
+    },
+    "share": {
+      "title": "¿Compartir esta nota con la familia?",
+      "description": "{{student}} y los tutores legales con acceso a su expediente académico la verán y recibirán un aviso.",
+      "text": "La nota que verán",
+      "confirm": "Compartir con la familia",
+      "sharing": "Compartiendo…",
+      "cancel": "Cancelar"
+    },
+    "deleteDialog": {
+      "title": "¿Eliminar esta nota?",
+      "description": "Desaparece de todas las listas.",
+      "confirm": "Eliminar nota",
+      "deleting": "Eliminando…",
+      "cancel": "Cancelar"
+    },
+    "notices": {
+      "edited": "Nota actualizada.",
+      "shared": "Nota compartida con la familia.",
+      "stopped": "La nota ya no se comparte.",
+      "deleted": "Nota eliminada."
+    },
+    "changed": "La nota cambió en otro lugar.",
+    "reload": "Recargar",
+    "history": {
+      "title": "Notas anteriores sobre {{student}}",
+      "empty": "No hay notas anteriores.",
+      "session": "{{subject}}, {{when}}",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más…"
+    },
+    "family": {
+      "title": "Notas del tutor",
+      "loading": "Cargando notas del tutor…",
+      "byline": "{{name}}, {{date}}"
+    },
+    "staff": {
+      "title": "Notas",
+      "empty": "No hay notas en esta clase.",
+      "student": "Sobre {{student}}",
+      "stopSharing": "Dejar de compartir",
+      "dialog": {
+        "title": "¿Dejar de compartir esta nota?",
+        "description": "La familia dejará de verla. El tutor recibe un aviso y ve tu motivo.",
+        "reason": "Motivo",
+        "required": "(obligatorio)",
+        "counter": "{{length}}/{{max}} caracteres",
+        "confirm": "Dejar de compartir",
+        "sending": "Dejando de compartir…",
+        "cancel": "Cancelar"
+      },
+      "done": "La nota ya no se comparte con la familia."
     }
   }
 }

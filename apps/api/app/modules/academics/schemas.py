@@ -1,4 +1,5 @@
-"""Session closeout bodies owned by academics (#77 C2, D1; #78 C1-C3, D1).
+"""Session closeout bodies owned by academics (#77 C2, D1; #78 C1-C3, D1)
+and the session note bodies and views (#79 C1, C3, D1, F3).
 
 Closed allow-lists (``extra="forbid"``). The summary fields are trimmed;
 whitespace-only counts as empty (``None``); over 2000 characters after
@@ -7,7 +8,9 @@ attendance (E4), so that check runs after the session lock
 (:func:`~app.modules.academics.closeout_rules.summary_errors`).
 """
 
-from typing import Annotated, Any
+import uuid
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -19,6 +22,7 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
+from app.modules.academics import note_rules
 from app.modules.academics.closeout_rules import (
     ACTUAL_MINUTES_RANGE,
     REASON_MAX,
@@ -200,3 +204,141 @@ class CloseoutTakeOver(_OnBehalf):
     replacement of the minutes and the summary), with a reason."""
 
     version: int = Field(description="The closeout's version, as last read.")
+
+
+# --- Session notes (#79 C1, C3, D1, F3) ---------------------------------------------
+
+
+def _note_body(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    body = value.strip()
+    if not body:
+        raise PydanticCustomError("body_required", "Write the note.")
+    if len(body) > note_rules.BODY_MAX:
+        raise PydanticCustomError(
+            "too_long", "At most {max} characters.", {"max": note_rules.BODY_MAX}
+        )
+    return body
+
+
+def _unpublish_reason(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    reason = note_rules.clean(value)
+    if reason is not None and len(reason) > note_rules.UNPUBLISH_REASON_MAX:
+        raise PydanticCustomError(
+            "reason_too_long",
+            "The reason is at most {max} characters.",
+            {"max": note_rules.UNPUBLISH_REASON_MAX},
+        )
+    return reason
+
+
+type NoteBody = Annotated[str, BeforeValidator(_note_body)]
+type NoteVisibility = Literal["internal", "family"]
+
+
+class SessionNoteCreate(_Closed):
+    """`POST /api/v1/class-sessions/{id}/notes` (#79 C1): a note about one
+    participant of the session. It is always created internal: families
+    never see it until you share it."""
+
+    student_id: uuid.UUID = Field(description="A participant of the session.")
+    body: NoteBody = Field(
+        description="The note: plain text, trimmed, 1-4000 characters"
+        " (body_required / too_long)."
+    )
+
+
+class SessionNoteEdit(_Closed):
+    """`PATCH /api/v1/notes/{id}` (#79 D2): the new text of an internal
+    note."""
+
+    version: int = Field(description="The note's version, as last read.")
+    body: NoteBody = Field(
+        description="The note: plain text, trimmed, 1-4000 characters."
+    )
+
+
+class SessionNoteVersion(_Closed):
+    """`POST /api/v1/notes/{id}/publish` (#79 D3)."""
+
+    version: int = Field(description="The note's version, as last read.")
+
+
+class SessionNoteUnpublish(_Closed):
+    """`POST /api/v1/notes/{id}/unpublish` (#79 D4): a reason (trimmed, at
+    most 500 characters) is required from anyone but the author."""
+
+    version: int = Field(description="The note's version, as last read.")
+    reason: Annotated[str | None, BeforeValidator(_unpublish_reason)] = Field(
+        default=None,
+        description="Why it stops being shared: 1-500 characters, trimmed;"
+        " required unless you wrote the note (reason_required /"
+        " reason_too_long).",
+    )
+
+
+class NotePerson(_Closed):
+    display_name: str
+
+
+class NoteSubject(_Closed):
+    id: uuid.UUID
+    name: str
+
+
+class NoteStudent(_Closed):
+    id: uuid.UUID
+    display_name: str
+
+
+class SessionNoteView(_Closed):
+    """A tutor's note about one student in one session (#79 C3), for staff
+    with academic_note.review and tutors. `visibility`: `internal` notes are
+    never shown to families; `family` notes are shared with the student and
+    their guardians with academic access. The `can_*` flags say what you may
+    do now."""
+
+    id: uuid.UUID
+    version: int = Field(description="The note's version (send it back).")
+    class_session_id: uuid.UUID
+    session_starts_at: datetime
+    subject: NoteSubject
+    student: NoteStudent
+    author: NotePerson
+    is_own: bool = Field(description="You wrote it.")
+    body: str = Field(description="Plain text.")
+    visibility: NoteVisibility
+    published_at: datetime | None
+    published_by: NotePerson | None
+    unpublished_at: datetime | None = Field(
+        description="When it last stopped being shared (cleared when shared again)."
+    )
+    unpublish_reason: str | None
+    edited: bool = Field(description="The text changed after it was written.")
+    created_at: datetime
+    can_edit: bool
+    can_publish: bool
+    can_unpublish: bool
+    can_delete: bool
+
+
+class SessionNoteList(_Closed):
+    """`GET /api/v1/class-sessions/{id}/notes` (#79 E1): oldest first."""
+
+    items: list[SessionNoteView]
+
+
+class FamilyLearningNote(_Closed):
+    """A note the tutor shared with the family (#79 F3): a closed
+    allow-list (no author id, no internal fields, no other students)."""
+
+    id: uuid.UUID
+    class_session_id: uuid.UUID
+    session_starts_at: datetime
+    subject_name: str
+    author: NotePerson
+    body: str = Field(description="Plain text.")
+    published_at: datetime

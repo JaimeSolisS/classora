@@ -26,9 +26,21 @@ widened :func:`is_self_review`, the bodies :class:`CloseoutOnBehalfSubmit`
 and :class:`CloseoutTakeOver` and their errors;
 ``app.workflows.closeout_on_behalf`` composes them.
 
+Session notes (#79, :mod:`~app.modules.academics.notes`, the pure rules in
+:mod:`~app.modules.academics.note_rules`): the ``session_notes`` row
+(:class:`SessionNote`), :func:`create_note`, :func:`note_by_id`,
+:func:`get_note_for_update`, :func:`update_note_body`,
+:func:`publish_note`, :func:`unpublish_note`, :func:`soft_delete_note` and
+the lists :func:`notes_for_session`, :func:`notes_for_student` and
+:func:`family_notes_for_student` (the only family read: shared, live
+notes); the rules module itself (:data:`note_rules`) and the errors.
+``app.workflows.session_notes`` composes them with ``scheduling``,
+``families`` and ``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
+from app.modules.academics import note_rules as note_rules
 from app.modules.academics.closeout_review import (
     ApprovalSnapshot as ApprovalSnapshot,
 )
@@ -142,10 +154,32 @@ from app.modules.academics.errors import (
     CloseoutWithTutorError as CloseoutWithTutorError,
 )
 from app.modules.academics.errors import (
+    NoteAlreadyPublishedError as NoteAlreadyPublishedError,
+)
+from app.modules.academics.errors import (
+    NoteAuthorOnlyError as NoteAuthorOnlyError,
+)
+from app.modules.academics.errors import NoteFieldError as NoteFieldError
+from app.modules.academics.errors import (
+    NoteNotPublishedError as NoteNotPublishedError,
+)
+from app.modules.academics.errors import (
+    NotePublishedError as NotePublishedError,
+)
+from app.modules.academics.errors import (
+    NoteReadOnlyError as NoteReadOnlyError,
+)
+from app.modules.academics.errors import (
+    NoteTutorOnlyError as NoteTutorOnlyError,
+)
+from app.modules.academics.errors import (
     SessionNotClosableError as SessionNotClosableError,
 )
 from app.modules.academics.errors import (
     SessionNotEndedError as SessionNotEndedError,
+)
+from app.modules.academics.errors import (
+    SessionNotNotableError as SessionNotNotableError,
 )
 from app.modules.academics.errors import (
     SessionNotStartedError as SessionNotStartedError,
@@ -159,6 +193,33 @@ from app.modules.academics.models import (
 )
 from app.modules.academics.models import (
     SessionCloseoutCorrection as SessionCloseoutCorrection,
+)
+from app.modules.academics.models import SessionNote as SessionNote
+from app.modules.academics.notes import NotePage as NotePage
+from app.modules.academics.notes import NoteRow as NoteRow
+from app.modules.academics.notes import create_note as create_note
+from app.modules.academics.notes import (
+    family_notes_for_student as family_notes_for_student,
+)
+from app.modules.academics.notes import (
+    get_note_for_update as get_note_for_update,
+)
+from app.modules.academics.notes import note_by_id as note_by_id
+from app.modules.academics.notes import (
+    notes_for_session as notes_for_session,
+)
+from app.modules.academics.notes import (
+    notes_for_student as notes_for_student,
+)
+from app.modules.academics.notes import publish_note as publish_note
+from app.modules.academics.notes import (
+    soft_delete_note as soft_delete_note,
+)
+from app.modules.academics.notes import (
+    unpublish_note as unpublish_note,
+)
+from app.modules.academics.notes import (
+    update_note_body as update_note_body,
 )
 from app.modules.academics.schemas import CloseoutApprove as CloseoutApprove
 from app.modules.academics.schemas import CloseoutCorrection as CloseoutCorrection

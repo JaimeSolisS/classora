@@ -27,9 +27,19 @@
   (the fields changed, the minutes before and after, the reason, the
   revision it created when the closeout was approved).
 
-``session_closeouts`` is audited (the create and update diffs are its
-record). The two append-only tables are not: a trigger rejects ``UPDATE``,
-``DELETE`` and ``TRUNCATE`` (42501), and their named events
+- ``session_notes`` (#79 A1): a tutor's note about one participating
+  student in one class session (``class_session_id`` + ``student_id``,
+  E1), ``internal`` by default and ``family`` only after an explicit
+  publish (``published_at`` / ``published_by_user_id``, set together with
+  the visibility; the last unpublish keeps ``unpublished_at``,
+  ``unpublished_by_user_id`` and an optional ``unpublish_reason`` until the
+  next publish). The text is stored trimmed (1–4000); ``body_updated_at``
+  marks an edit. A soft-deleted note (``deleted_at`` /
+  ``deleted_by_user_id``, together) is always ``internal``.
+
+``session_closeouts`` and ``session_notes`` are audited (the create and
+update diffs are their record). The two append-only tables are not: a
+trigger rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named events
 (``academics.closeout_approved``, ``academics.closeout_corrected``) are
 their audit record. Every foreign key is ``ON DELETE RESTRICT``.
 """
@@ -47,12 +57,13 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
-from app.core.models import Model, VersionedMixin
+from app.core.models import Model, SoftDeleteMixin, VersionedMixin
 
 SUMMARY_MAX_LENGTH: Final = 2000
 REASON_MAX_LENGTH: Final = 1000
@@ -288,4 +299,99 @@ class SessionCloseoutCorrection(Model):
     )
     corrected_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+
+# --- Session notes (#79) ----------------------------------------------------------
+
+NOTE_BODY_MAX: Final = 4000
+NOTE_UNPUBLISH_REASON_MAX: Final = 500
+NOTE_INTERNAL: Final = "internal"
+NOTE_FAMILY: Final = "family"
+NOTE_VISIBILITIES: Final = (NOTE_INTERNAL, NOTE_FAMILY)
+
+
+class SessionNote(Audited, SoftDeleteMixin, VersionedMixin, Model):
+    """A tutor's note about one student in one class session (#79 A1, A2).
+    Its audit create and update diffs (text, visibility, deletion) are the
+    note's history (E8)."""
+
+    __tablename__ = "session_notes"
+    __table_args__ = (
+        CheckConstraint(
+            f"char_length(body) BETWEEN 1 AND {NOTE_BODY_MAX} AND body = btrim(body)",
+            name="body_valid",
+        ),
+        CheckConstraint(_in("visibility", NOTE_VISIBILITIES), name="visibility_valid"),
+        CheckConstraint(
+            "(visibility = 'family') = (published_at IS NOT NULL"
+            " AND published_by_user_id IS NOT NULL)",
+            name="published_together",
+        ),
+        CheckConstraint(
+            "(unpublished_at IS NULL) = (unpublished_by_user_id IS NULL)",
+            name="unpublished_together",
+        ),
+        CheckConstraint(
+            "unpublish_reason IS NULL OR (unpublished_at IS NOT NULL"
+            f" AND char_length(unpublish_reason) BETWEEN 1"
+            f" AND {NOTE_UNPUBLISH_REASON_MAX}"
+            " AND unpublish_reason = btrim(unpublish_reason))",
+            name="unpublish_reason_valid",
+        ),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="deleted_together",
+        ),
+        CheckConstraint(
+            "deleted_at IS NULL OR visibility = 'internal'",
+            name="deleted_internal",
+        ),
+        # A student's history, newest first (E2, F2: read backwards), and a
+        # session's notes (E1); deleted notes are never read.
+        Index(
+            "ix_session_notes_student_id_created_at",
+            "student_id",
+            "created_at",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_session_notes_class_session_id",
+            "class_session_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("class_sessions.id", ondelete="RESTRICT")
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    body: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(
+        String(10), server_default=text("'internal'")
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    published_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    unpublished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    unpublished_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    unpublish_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

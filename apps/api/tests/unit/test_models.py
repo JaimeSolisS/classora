@@ -63,7 +63,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # tutor_availability_change_requests, M4-18; class_session_attendance and
     # class_session_attendance_corrections, M5-09), academics
     # (session_closeouts, M5-10; session_closeout_approvals and
-    # session_closeout_corrections, M5-11), then
+    # session_closeout_corrections, M5-11; session_notes, M5-12), then
     # courses (course_templates, _subjects, _modules, _assessments and
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
@@ -103,6 +103,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "session_closeouts",
         "session_closeout_approvals",
         "session_closeout_corrections",
+        "session_notes",
         "users",
         "roles",
         "permissions",

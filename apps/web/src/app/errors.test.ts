@@ -149,6 +149,13 @@ const API_CODES = [
   'closeout_on_behalf_own_session',
   'closeout_submitted_on_behalf',
   'closeout_not_with_tutor',
+  'note_tutor_only',
+  'note_author_only',
+  'note_read_only',
+  'note_published',
+  'note_already_published',
+  'note_not_published',
+  'session_not_notable',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

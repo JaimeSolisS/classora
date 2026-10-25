@@ -40,6 +40,11 @@ import {
   submitCloseoutOnBehalf,
   takeOverCloseout,
 } from '@/features/tutor-portal/closeout/api';
+import {
+  fetchSessionNotes,
+  sessionNotesKey,
+  unpublishNote,
+} from '@/features/tutor-portal/notes/api';
 import { OVERDUE_CLOSEOUTS_KEY } from '../overdue/api';
 import { APPROVALS_QUERY_KEY } from '@/features/approvals/api';
 import { changeRequestPath } from '../change-requests/rules';
@@ -53,6 +58,7 @@ import {
   type CloseoutSectionState,
 } from './CloseoutSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
+import { NotesSection, type NotesSectionState } from './NotesSection';
 import { OfferPanel } from './OfferPanel';
 import {
   canCancel,
@@ -93,6 +99,8 @@ import { SubstitutionSection } from './SubstitutionSection';
 // (read-only). #301b: reviewers close it out on the tutor's behalf or take
 // over one sent back to the tutor (the overdue list and the calendar
 // reload too).
+// #79 H3: holders of academic_note.review see the session's notes and stop
+// sharing a family note with a reason (Finance never sees the section).
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -105,6 +113,7 @@ export function SessionPage() {
   const canOverride = useCan('schedule.override');
   const canManage = useCan('schedule.manage');
   const canCorrectAttendance = useCan('attendance.correct');
+  const canReviewNotes = useCan('academic_note.review');
   const [cancelling, setCancelling] = useState(false);
   const client = useQueryClient();
   const [offered, setOffered] = useState<{
@@ -148,6 +157,11 @@ export function SessionPage() {
     queryKey: closeoutKey(sessionId),
     queryFn: ({ signal }) => fetchCloseout(sessionId, signal),
     enabled: showCloseout,
+  });
+  const notes = useQuery({
+    queryKey: sessionNotesKey(sessionId),
+    queryFn: ({ signal }) => fetchSessionNotes(sessionId, signal),
+    enabled: canReviewNotes,
   });
   const showPanel = canAssign && session.data?.state === 'unassigned';
   const showSubstitute = session.data
@@ -426,6 +440,33 @@ export function SessionPage() {
       students={attendance.data?.items ?? []}
     />
   ) : null;
+  let notesState: NotesSectionState;
+  if (notes.isError) {
+    notesState = {
+      status: 'error',
+      error: notes.error,
+      onRetry: () => void notes.refetch(),
+    };
+  } else if (!notes.data) {
+    notesState = { status: 'loading' };
+  } else {
+    notesState = { status: 'ready', notes: notes.data.items };
+  }
+  const notesSection = canReviewNotes ? (
+    <NotesSection
+      state={notesState}
+      timeZone={timeZone}
+      onStopSharing={async (note, reason) => {
+        await unpublishNote(note, reason);
+        await client.invalidateQueries({
+          queryKey: sessionNotesKey(sessionId),
+        });
+      }}
+      onReload={() =>
+        void client.invalidateQueries({ queryKey: sessionNotesKey(sessionId) })
+      }
+    />
+  ) : null;
   const actions =
     showCancel && detail ? (
       <div>
@@ -477,6 +518,7 @@ export function SessionPage() {
         substitutions={substitutionSection}
         attendance={attendanceSection}
         closeout={closeoutSection}
+        notes={notesSection}
         notice={notice}
         changeRequestLink={
           canManage

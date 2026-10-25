@@ -68,6 +68,8 @@ export interface SessionDetailViewProps {
   attendance?: ReactNode;
   /** The closeout section (#77 G3: completed or started), or nothing. */
   closeout?: ReactNode;
+  /** The notes section (#79 H3: academic_note.review holders), or nothing. */
+  notes?: ReactNode;
   /**
    * A page-level notice that survives the panels' remount (#55 H1 / QA D1):
    * a refused write's message (`alert`; the page reloads the session) or a
@@ -102,6 +104,7 @@ export function SessionDetailView({
   substitutions,
   attendance,
   closeout,
+  notes,
   notice,
   changeRequestLink,
 }: SessionDetailViewProps) {
@@ -343,6 +346,7 @@ export function SessionDetailView({
       {substitutions}
       {attendance}
       {closeout}
+      {notes}
       <section
         aria-labelledby={`${id}-history`}
         className="flex flex-col gap-3"

@@ -446,6 +446,17 @@ export const routes: RouteObject[] = [
             }),
             handle: { role: 'tutor' },
           },
+          // #79 H1: the tutor's notes about a session's students
+          // (code-split; the API's record policy decides: the current tutor).
+          {
+            path: 'my-schedule/sessions/:sessionId/notes',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/tutor-portal/notes/NotesPage')
+              ).NotesPage,
+            }),
+            handle: { role: 'tutor' },
+          },
           // #62b B1: My change requests (code-split): guardians, students
           // and tutors; the API's record policy decides.
           {

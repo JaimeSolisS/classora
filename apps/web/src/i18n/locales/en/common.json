@@ -1479,7 +1479,9 @@
       "academics_closeout_approved": "Your closeout of the {{subject_name}} class on {{starts_at}} was approved: {{approved_minutes}} min.",
       "academics_closeout_corrected": "A reviewer corrected your closeout of the {{subject_name}} class on {{starts_at}}.",
       "academics_closeout_changes_requested": "Changes were requested to your closeout of the {{subject_name}} class on {{starts_at}}.",
-      "academics_closeout_submitted_on_behalf": "Your closeout of the {{subject_name}} class on {{starts_at}} was submitted on your behalf."
+      "academics_closeout_submitted_on_behalf": "Your closeout of the {{subject_name}} class on {{starts_at}} was submitted on your behalf.",
+      "academics_learning_note_published": "The tutor shared a note about the class on {{starts_at}}.",
+      "academics_learning_note_unpublished": "A reviewer stopped sharing your note about the class on {{starts_at}}."
     }
   },
   "scheduling": {
@@ -3160,6 +3162,99 @@
         "submitted": "Closeout submitted on behalf of {{tutor}}.",
         "takenOver": "Closeout taken over and sent back to review."
       }
+    }
+  },
+  "notes": {
+    "title": "Session notes",
+    "back": "Back to My schedule",
+    "open": "Notes",
+    "studentPicker": "Student",
+    "forStudent": "Notes about {{student}} in this class",
+    "empty": "No notes about {{student}} in this class yet.",
+    "loading": "Loading notes…",
+    "badges": {
+      "internal": "Internal: never shown to families",
+      "shared": "Shared with family on {{date}}"
+    },
+    "edited": "Edited",
+    "byline": "{{name}}, {{when}}",
+    "unpublishReason": "Stopped sharing: {{reason}}",
+    "readOnly": "Read only: this student is no longer assigned to you.",
+    "composer": {
+      "label": "New note about {{student}}",
+      "hint": "Internal: families never see it unless you share it.",
+      "counter": "{{length}}/{{max}} characters",
+      "save": "Save internal note",
+      "saving": "Saving…",
+      "saved": "Note saved."
+    },
+    "validation": {
+      "bodyRequired": "Write the note.",
+      "tooLong": "At most {{max}} characters.",
+      "reasonRequired": "Give a reason.",
+      "reasonTooLong": "At most {{max}} characters."
+    },
+    "actions": {
+      "edit": "Edit",
+      "editLabel": "Edit the note",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "share": "Share with family",
+      "stopSharing": "Stop sharing",
+      "delete": "Delete"
+    },
+    "share": {
+      "title": "Share this note with the family?",
+      "description": "{{student}} and guardians with access to their academic records will see it and be notified.",
+      "text": "The note they will see",
+      "confirm": "Share with family",
+      "sharing": "Sharing…",
+      "cancel": "Cancel"
+    },
+    "deleteDialog": {
+      "title": "Delete this note?",
+      "description": "It disappears from every list.",
+      "confirm": "Delete note",
+      "deleting": "Deleting…",
+      "cancel": "Cancel"
+    },
+    "notices": {
+      "edited": "Note updated.",
+      "shared": "Note shared with the family.",
+      "stopped": "Note no longer shared.",
+      "deleted": "Note deleted."
+    },
+    "changed": "Note changed elsewhere.",
+    "reload": "Reload",
+    "history": {
+      "title": "Earlier notes about {{student}}",
+      "empty": "No earlier notes.",
+      "session": "{{subject}}, {{when}}",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more…"
+    },
+    "family": {
+      "title": "Notes from the tutor",
+      "loading": "Loading notes from the tutor…",
+      "byline": "{{name}}, {{date}}"
+    },
+    "staff": {
+      "title": "Notes",
+      "empty": "No notes on this session.",
+      "student": "About {{student}}",
+      "stopSharing": "Stop sharing",
+      "dialog": {
+        "title": "Stop sharing this note?",
+        "description": "The family will no longer see it. The tutor is notified and sees your reason.",
+        "reason": "Reason",
+        "required": "(required)",
+        "counter": "{{length}}/{{max}} characters",
+        "confirm": "Stop sharing",
+        "sending": "Stopping…",
+        "cancel": "Cancel"
+      },
+      "done": "Note no longer shared with the family."
     }
   }
 }

@@ -62,6 +62,14 @@ gives other modules, per student, the login user of the student and those
 of its linked guardians (no access check; the caller decides what the
 family may be told).
 
+**Academic notification recipients** (#79 B3):
+:func:`academic_notification_recipients` gives the users a family
+notification about the student's **academic records** may go to: the
+student's own login and the accounts of the guardians whose **active**
+profile is linked to the student and who have academic access (a minor on
+``today``, or an adult who gave **that** guardian
+``guardian_academic_access``). No other access check.
+
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
 ``administration.service.center_today(session)`` (the center's time zone
 setting, #37); #35 uses both.
@@ -77,6 +85,7 @@ from typing import Any, Final
 
 from sqlalchemy import (
     ColumnElement,
+    exists,
     func,
     select,
 )
@@ -109,6 +118,7 @@ from app.modules.families.facts import (
     load_access_facts,
 )
 from app.modules.families.models import (
+    ConsentRecord,
     Guardian,
     Student,
     StudentEmergencyContact,
@@ -116,6 +126,7 @@ from app.modules.families.models import (
 )
 from app.modules.families.permissions import (
     FAMILY_MANAGE,
+    GUARDIAN_ACADEMIC_ACCESS,
     AccessLevel,
     StudentAccessFacts,
     can_view_student,
@@ -146,6 +157,7 @@ __all__ = [
     "FamilyScheduleFacts",
     "StudentAccessFacts",
     "StudentAgeReference",
+    "academic_notification_recipients",
     "add_family_guardian",
     "add_family_student",
     "create_family",
@@ -299,6 +311,51 @@ async def student_notification_recipients(
         if user_id is not None:
             found.setdefault(student_id, set()).add(user_id)
     return {student_id: sorted(users) for student_id, users in found.items()}
+
+
+async def academic_notification_recipients(
+    session: AsyncSession, student_id: uuid.UUID, *, today: date
+) -> list[uuid.UUID]:
+    """#79 B3: the users told about the student's academic records: the
+    student's own login (if any) and the accounts of guardians whose
+    profile is active and linked to the student, when the student is a
+    minor on ``today`` (the center's date) or gave that guardian an active
+    ``guardian_academic_access`` consent. Each user once, sorted. Two
+    statements (one for an unknown student)."""
+    student = (
+        await session.execute(
+            select(Student.user_id, Student.birthdate).where(Student.id == student_id)
+        )
+    ).first()
+    if student is None:
+        return []
+    found: set[uuid.UUID] = set()
+    if student.user_id is not None:
+        found.add(student.user_id)
+    minor = is_minor(student.birthdate, today)
+    consented = (
+        exists()
+        .where(
+            ConsentRecord.student_id == StudentGuardian.student_id,
+            ConsentRecord.guardian_id == StudentGuardian.guardian_id,
+            ConsentRecord.scope == GUARDIAN_ACADEMIC_ACCESS,
+            ConsentRecord.revoked_at.is_(None),
+        )
+        .correlate(StudentGuardian)
+    )
+    guardians = await session.execute(
+        select(Guardian.user_id, consented)
+        .join(StudentGuardian, StudentGuardian.guardian_id == Guardian.id)
+        .where(
+            StudentGuardian.student_id == student_id,
+            Guardian.is_active.is_(True),
+            Guardian.user_id.is_not(None),
+        )
+    )
+    for user_id, has_consent in guardians:
+        if user_id is not None and (minor or has_consent):
+            found.add(user_id)
+    return sorted(found)
 
 
 # --- Search expressions ----------------------------------------------------------

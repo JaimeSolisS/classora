@@ -71,7 +71,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0052"
+HEAD = "0053"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -130,6 +130,7 @@ AVAILABILITY_CHANGE_TABLES = [
 ATTENDANCE_TABLES = ["class_session_attendance", "class_session_attendance_corrections"]
 CLOSEOUT_TABLES = ["session_closeouts"]
 CLOSEOUT_REVIEW_TABLES = ["session_closeout_approvals", "session_closeout_corrections"]
+NOTE_TABLES = ["session_notes"]
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
     "review_reason",
@@ -345,6 +346,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ATTENDANCE_TABLES,
             *CLOSEOUT_TABLES,
             *CLOSEOUT_REVIEW_TABLES,
+            *NOTE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4396,9 +4398,24 @@ def _of_0052(diff: Any) -> bool:
     return False
 
 
+def _of_0053(diff: Any) -> bool:
+    """A metadata difference that revision 0053 adds: the session_notes
+    table and its indexes (#79 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in NOTE_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in NOTE_TABLES
+    return False
+
+
+def _of_0052_on(diff: Any) -> bool:
+    """A metadata difference that revision 0052 or a later one adds."""
+    return _of_0052(diff) or _of_0053(diff)
+
+
 def _of_0051_on(diff: Any) -> bool:
     """A metadata difference that revision 0051 or a later one adds."""
-    return _of_0051(diff) or _of_0052(diff)
+    return _of_0051(diff) or _of_0052_on(diff)
 
 
 def _of_0050_on(diff: Any) -> bool:
@@ -8376,7 +8393,7 @@ def test_0051_adds_the_review_objects_and_downgrade_drops_them(fresh_database_ur
     command.upgrade(config, "0051")
 
     assert version_nums(dsn) == ["0051"]
-    assert [d for d in metadata_diff(dsn) if not _of_0052(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0052_on(d)] == []
     assert public_tables(dsn) - before == set(CLOSEOUT_REVIEW_TABLES)
     # last_submitted_at is backfilled from submitted_at.
     [row] = run_sql(
@@ -8647,7 +8664,7 @@ def test_0052_adds_the_on_behalf_objects_and_downgrade_drops_them(fresh_database
     command.upgrade(config, "0052")
 
     assert version_nums(dsn) == ["0052"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0053(d)] == []
     assert public_tables(dsn) == before
     assert OVERDUE_INDEX in _indexes(dsn, "class_sessions")
     assert (
@@ -8665,7 +8682,7 @@ def test_0052_adds_the_on_behalf_objects_and_downgrade_drops_them(fresh_database
     command.downgrade(config, "0051")
 
     assert version_nums(dsn) == ["0051"]
-    assert [d for d in metadata_diff(dsn) if not _of_0052(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0052_on(d)] == []
     assert OVERDUE_INDEX not in _indexes(dsn, "class_sessions")
     assert not {
         name for name in _constraints(dsn, "session_closeouts") if "on_behalf" in name
@@ -8708,3 +8725,172 @@ def test_closeout_on_behalf_rows_are_checked(fresh_database_url):
     ):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": staff})
     run_sql(dsn, statement, closeout | {"by": None, "reason": None})
+
+
+# --- 0053: session notes (#79 A1) -----------------------------------------------------
+
+NOTE_INSERT = (
+    "INSERT INTO session_notes (class_session_id, student_id, author_user_id,"
+    " body, visibility, published_at, published_by_user_id, unpublished_at,"
+    " unpublished_by_user_id, unpublish_reason, deleted_at, deleted_by_user_id)"
+    " VALUES (:s, :st, :u, :body, :visibility, :published_at, :published_by,"
+    " :unpublished_at, :unpublished_by, :reason, :deleted_at, :deleted_by)"
+    " RETURNING id, visibility, version"
+)
+
+
+def _note_values(dsn: str) -> dict[str, Any]:
+    student = _student_row(dsn)
+    session = _session_row(dsn, _subject_row(dsn))
+    run_sql(
+        dsn,
+        "INSERT INTO class_session_participants (class_session_id, student_id)"
+        " VALUES (:s, :st)",
+        {"s": session, "st": student},
+    )
+    return {
+        "s": session,
+        "st": student,
+        "u": _user_row(dsn),
+        "body": "Trajo la calculadora",
+        "visibility": "internal",
+        "published_at": None,
+        "published_by": None,
+        "unpublished_at": None,
+        "unpublished_by": None,
+        "reason": None,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+
+
+def test_0053_adds_the_notes_table_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0052")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0053")
+
+    assert version_nums(dsn) == ["0053"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(NOTE_TABLES)
+    run_sql(dsn, NOTE_INSERT, _note_values(dsn))
+
+    command.downgrade(config, "0052")
+
+    assert version_nums(dsn) == ["0052"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0053(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_session_notes_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    table = "session_notes"
+    timestamp = ("timestamp with time zone", "YES", None, None)
+
+    assert _columns(dsn, table) == {
+        **STANDARD_COLUMNS,
+        "class_session_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "NO", None, None),
+        "author_user_id": ("uuid", "NO", None, None),
+        "body": ("text", "NO", None, None),
+        "visibility": ("character varying", "NO", 10, "'internal'::character varying"),
+        "published_at": timestamp,
+        "published_by_user_id": ("uuid", "YES", None, None),
+        "unpublished_at": timestamp,
+        "unpublished_by_user_id": ("uuid", "YES", None, None),
+        "unpublish_reason": ("text", "YES", None, None),
+        "body_updated_at": timestamp,
+        "deleted_at": timestamp,
+        "deleted_by_user_id": ("uuid", "YES", None, None),
+    }
+    constraints = _constraints(dsn, table)
+    foreign_keys = {
+        f"fk_{table}_class_session_id_class_sessions",
+        f"fk_{table}_student_id_students",
+        f"fk_{table}_author_user_id_users",
+        f"fk_{table}_published_by_user_id_users",
+        f"fk_{table}_unpublished_by_user_id_users",
+        f"fk_{table}_deleted_by_user_id_users",
+    }
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"ck_{table}_body_valid",
+        f"ck_{table}_visibility_valid",
+        f"ck_{table}_published_together",
+        f"ck_{table}_unpublished_together",
+        f"ck_{table}_unpublish_reason_valid",
+        f"ck_{table}_deleted_together",
+        f"ck_{table}_deleted_internal",
+        *foreign_keys,
+    }
+    for name in foreign_keys:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    indexes = _indexes(dsn, table)
+    assert set(indexes) == {
+        f"pk_{table}",
+        "ix_session_notes_student_id_created_at",
+        "ix_session_notes_class_session_id",
+    }
+    for name in (
+        "ix_session_notes_student_id_created_at",
+        "ix_session_notes_class_session_id",
+    ):
+        assert "WHERE (deleted_at IS NULL)" in indexes[name]
+
+
+def test_session_note_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _note_values(dsn)
+    actor = values["u"]
+    published = {
+        "visibility": "family",
+        "published_at": datetime.now(UTC),
+        "published_by": actor,
+    }
+    unpublished = {"unpublished_at": datetime.now(UTC), "unpublished_by": actor}
+    deleted = {"deleted_at": datetime.now(UTC), "deleted_by": actor}
+
+    for changes, constraint in (
+        ({"body": ""}, "body_valid"),
+        ({"body": " padded "}, "body_valid"),
+        ({"body": "x" * 4001}, "body_valid"),
+        ({"visibility": "public"}, "visibility_valid"),
+        ({"visibility": "family"}, "published_together"),
+        (
+            {"published_at": datetime.now(UTC), "published_by": actor},
+            "published_together",
+        ),
+        (published | {"published_by": None}, "published_together"),
+        ({"unpublished_at": datetime.now(UTC)}, "unpublished_together"),
+        ({"reason": "Dato médico"}, "unpublish_reason_valid"),
+        (unpublished | {"reason": " x "}, "unpublish_reason_valid"),
+        (unpublished | {"reason": "x" * 501}, "unpublish_reason_valid"),
+        ({"deleted_at": datetime.now(UTC)}, "deleted_together"),
+        (published | deleted, "deleted_internal"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, NOTE_INSERT, values | changes)
+    [note] = run_sql(dsn, NOTE_INSERT, values | {"body": "x" * 4000})
+    assert (note.visibility, note.version) == ("internal", 1)
+    run_sql(dsn, NOTE_INSERT, values | published)
+    run_sql(dsn, NOTE_INSERT, values | unpublished | {"reason": "x" * 500})
+    run_sql(dsn, NOTE_INSERT, values | unpublished | deleted)
+    # Visibility defaults to internal.
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO session_notes (class_session_id, student_id, author_user_id,"
+        " body) VALUES (:s, :st, :u, 'Hola') RETURNING visibility",
+        values,
+    )
+    assert row.visibility == "internal"
+    # A referenced author can't be deleted.
+    with pytest.raises(IntegrityError, match="fk_session_notes_author_user_id_users"):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", values)

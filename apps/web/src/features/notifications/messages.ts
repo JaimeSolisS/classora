@@ -2,6 +2,7 @@ import type { i18n as I18n, TFunction } from 'i18next';
 import { toLanguage } from '@/i18n/language';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
 import { closeoutPath } from '@/features/tutor-portal/closeout/api';
+import { notesPath } from '@/features/tutor-portal/notes/api';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -230,6 +231,13 @@ function closeoutLink(params: NotificationItem['params']): string {
   return typeof id === 'string' && id ? closeoutPath(id) : '/my-schedule';
 }
 
+/** The tutor's notes page of the session (#79 H4); My schedule without an
+ * id. */
+function notesLink(params: NotificationItem['params']): string {
+  const id = params.class_session_id;
+  return typeof id === 'string' && id ? notesPath(id) : '/my-schedule';
+}
+
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
@@ -256,6 +264,10 @@ export const NOTIFICATION_LINKS: Readonly<
   'academics.closeout_changes_requested': closeoutLink,
   // #301b F1: a reviewer closed out the tutor's class on their behalf.
   'academics.closeout_submitted_on_behalf': closeoutLink,
+  // #79 H4: a shared note opens the family's My schedule on the class's
+  // date; a reviewer's unpublish opens the tutor's notes page.
+  'academics.learning_note_published': mySchedule,
+  'academics.learning_note_unpublished': notesLink,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

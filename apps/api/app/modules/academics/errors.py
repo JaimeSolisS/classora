@@ -203,3 +203,104 @@ class CloseoutSubmittedOnBehalfError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# --- Session notes (#79) ----------------------------------------------------------
+# ``details`` carry codes only, never note text.
+
+
+class NoteTutorOnlyError(AppError):
+    """``403 note_tutor_only`` (#79 C2 step 4): a reviewer who isn't the
+    session's current tutor doesn't write notes."""
+
+    status = 403
+    code = "note_tutor_only"
+    detail = "Only the session's tutor writes notes."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class NoteAuthorOnlyError(AppError):
+    """``403 note_author_only`` (#79 D1 step 4): only the note's author
+    edits, shares or deletes it (a reviewer may stop sharing it)."""
+
+    status = 403
+    code = "note_author_only"
+    detail = "Only the note's author can do this."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class NoteReadOnlyError(AppError):
+    """``403 note_read_only`` (#79 E3): the student is no longer one of the
+    tutor's current assignments; their notes stay readable, read-only."""
+
+    status = 403
+    code = "note_read_only"
+    detail = "This student is no longer assigned to you: notes are read-only."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class NotePublishedError(AppError):
+    """``409 note_published`` (#79 D2, D5): a shared note is read-only and
+    can't be deleted; stop sharing it first."""
+
+    status = 409
+    code = "note_published"
+    detail = "This note is shared with the family: stop sharing it first."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class NoteAlreadyPublishedError(AppError):
+    """``409 note_already_published`` (#79 D3)."""
+
+    status = 409
+    code = "note_already_published"
+    detail = "This note is already shared with the family."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class NoteNotPublishedError(AppError):
+    """``409 note_not_published`` (#79 D4)."""
+
+    status = 409
+    code = "note_not_published"
+    detail = "This note isn't shared with the family."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionNotNotableError(AppError):
+    """``409 session_not_notable`` (#79 E5): notes go on confirmed or
+    completed sessions only; ``details`` is ``{"state": <state>}``."""
+
+    status = 409
+    code = "session_not_notable"
+    detail = "Notes can't be written on this session."
+
+    def __init__(self, state: str) -> None:
+        super().__init__(details={"state": state})
+
+
+class NoteFieldError(AppError):
+    """``422 validation_error`` with one field error (#79 C2 step 7, D4):
+    ``student_not_participant`` at ``body.student_id`` (also for an unknown
+    student) or ``reason_required`` at ``body.reason``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, field: str, code: str, message: str) -> None:
+        super().__init__(
+            errors=[{"path": ["body", field], "code": code, "message": message}]
+        )

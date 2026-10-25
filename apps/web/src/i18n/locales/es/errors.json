@@ -190,5 +190,12 @@
   "session_not_ended": "Esta clase todavía no termina. Ciérrala en nombre del tutor cuando termine.",
   "closeout_on_behalf_own_session": "Impartes esta clase, así que no puedes cerrarla en nombre del tutor.",
   "closeout_submitted_on_behalf": "Este cierre se envió en nombre del tutor, así que no se puede devolver. Corrígelo en su lugar.",
-  "closeout_not_with_tutor": "El cierre ya no está esperando al tutor. Recarga para ver su estado."
+  "closeout_not_with_tutor": "El cierre ya no está esperando al tutor. Recarga para ver su estado.",
+  "note_tutor_only": "Solo el tutor de la clase escribe notas.",
+  "note_author_only": "Solo quien escribió la nota puede hacer esto.",
+  "note_read_only": "Este alumno ya no está asignado a ti: sus notas son de solo lectura.",
+  "note_published": "Esta nota está compartida con la familia. Primero deja de compartirla.",
+  "note_already_published": "Esta nota ya está compartida con la familia. Recarga para verla.",
+  "note_not_published": "Esta nota no está compartida con la familia. Recarga para verla.",
+  "session_not_notable": "Solo se escriben notas en clases confirmadas o completadas."
 }

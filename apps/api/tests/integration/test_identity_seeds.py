@@ -71,9 +71,9 @@ async def test_first_run_seeds_the_catalog(engine, head_url):
     results = await runner.run_reference_seeds(engine)
 
     assert results[:3] == [
-        ("identity.permissions", UpsertResult(inserted=30, updated=0)),
+        ("identity.permissions", UpsertResult(inserted=31, updated=0)),
         ("identity.roles", UpsertResult(inserted=7, updated=0)),
-        ("identity.role_permissions", UpsertResult(inserted=75, updated=0)),
+        ("identity.role_permissions", UpsertResult(inserted=78, updated=0)),
     ]
     assert await mapping(head_url) == dict(ROLE_PERMISSIONS)
     delegable = await run_sql_async(
@@ -173,7 +173,7 @@ async def test_codes_removed_from_the_catalog_stay_in_their_tables(engine, head_
     results = await runner.run_reference_seeds(engine)
 
     assert [result for _, result in results[:3]] == [UpsertResult(0, 0, 0)] * 3
-    assert await counts(head_url) == (31, 7, 75)
+    assert await counts(head_url) == (32, 7, 78)
 
 
 class FailingRolePermissions(RolePermissionsSeed):
@@ -227,9 +227,9 @@ def test_make_seed_prints_counts_only(head_url, monkeypatch, capsys):
     out = capsys.readouterr().out
     lines = [line for line in out.splitlines() if line.startswith("identity.")]
     assert lines == [
-        "identity.permissions: 30 inserted, 0 updated",
+        "identity.permissions: 31 inserted, 0 updated",
         "identity.roles: 7 inserted, 0 updated",
-        "identity.role_permissions: 75 inserted, 0 updated",
+        "identity.role_permissions: 78 inserted, 0 updated",
         "identity.permissions: 0 inserted, 0 updated",
         "identity.roles: 0 inserted, 0 updated",
         "identity.role_permissions: 0 inserted, 0 updated",
