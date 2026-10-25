@@ -30,6 +30,8 @@ import {
 } from '@/features/guardians/api';
 import { FamilyLine } from '@/features/families/FamilyLine';
 import { StudentGuardiansSection } from '@/features/guardians/StudentGuardiansSection';
+import { useLearningPlanWriter } from '@/features/learning-plans/access';
+import { studentPlansPath } from '@/features/learning-plans/api';
 import { useFormatters } from '@/lib/formatters';
 import {
   fetchStudent,
@@ -74,6 +76,9 @@ export function StudentDetailPage() {
     canReview ||
     (session.status === 'signedIn' &&
       (session.user.roles as readonly string[]).includes('tutor'));
+  // #310 A3: learning_plan.manage holders and tutor-role users open the
+  // student's learning plans (the API decides what they hold).
+  const showsPlans = useLearningPlanWriter();
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -125,6 +130,7 @@ export function StudentDetailPage() {
       student={detail.data}
       canManage={canManage}
       showsHistory={showsHistory}
+      showsPlans={showsPlans}
       initiallySaved={arrivedSaved}
       onSetActive={setActive}
       onReload={async () => {
@@ -171,6 +177,8 @@ interface StudentDetailViewProps {
   canManage: boolean;
   /** #308 A3: link the academic history (evaluation.manage or tutor). */
   showsHistory?: boolean;
+  /** #310 A3: link the learning plans (learning_plan.manage or tutor). */
+  showsPlans?: boolean;
   /** Arrived from a save: announce "Changes saved.". */
   initiallySaved?: boolean;
   /** Deactivates (false) or reactivates (true); rejects with the error. */
@@ -205,6 +213,7 @@ export function StudentDetailView({
   student,
   canManage,
   showsHistory = false,
+  showsPlans = false,
   initiallySaved = false,
   onSetActive,
   onReload,
@@ -257,14 +266,24 @@ export function StudentDetailView({
           <StudentAgeBadge minor={student.is_minor} />
         </p>
         <FamilyLine family={student.family} />
-        {showsHistory ? (
-          <p>
-            <Link
-              to={`/students/${student.id}/history`}
-              className={TEXT_LINK_CLASS}
-            >
-              {t('academics.history.title')}
-            </Link>
+        {showsHistory || showsPlans ? (
+          <p className="flex flex-wrap gap-x-4 gap-y-2">
+            {showsHistory ? (
+              <Link
+                to={`/students/${student.id}/history`}
+                className={TEXT_LINK_CLASS}
+              >
+                {t('academics.history.title')}
+              </Link>
+            ) : null}
+            {showsPlans ? (
+              <Link
+                to={studentPlansPath(student.id)}
+                className={TEXT_LINK_CLASS}
+              >
+                {t('learningPlans.title')}
+              </Link>
+            ) : null}
           </p>
         ) : null}
         {canManage ? (

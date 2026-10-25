@@ -229,5 +229,19 @@
   "note_published": "Esta nota está compartida con la familia. Primero deja de compartirla.",
   "note_already_published": "Esta nota ya está compartida con la familia. Recarga para verla.",
   "note_not_published": "Esta nota no está compartida con la familia. Recarga para verla.",
-  "session_not_notable": "Solo se escriben notas en clases confirmadas o completadas."
+  "session_not_notable": "Solo se escriben notas en clases confirmadas o completadas.",
+  "plan_subject_not_assigned": "Solo puedes cambiar planes de las materias que le das a este estudiante.",
+  "plan_read_only": "Ya no puedes cambiar este plan.",
+  "plan_closed": "Este plan está cerrado: ya no puede cambiar.",
+  "plan_not_draft": "Este plan ya no es un borrador.",
+  "plan_not_active": "Este plan no está activo.",
+  "active_plan_exists": "Esta materia ya tiene un plan activo para este estudiante.",
+  "objectives_required": "Agrega al menos un objetivo.",
+  "objectives_limit": "Un plan puede tener como máximo 10 objetivos.",
+  "milestones_required": "Cada objetivo necesita al menos un hito.",
+  "milestones_limit": "Hay demasiados hitos (como máximo 10 por objetivo y 50 por plan).",
+  "target_before_start": "La fecha meta no puede ser anterior a la fecha de inicio.",
+  "due_on_invalid": "Esta fecha límite es demasiado antigua. Elige una posterior.",
+  "objective_unknown": "Este plan ya no tiene ese objetivo. Recárgalo.",
+  "milestone_unknown": "Este plan ya no tiene ese hito. Recárgalo."
 }

@@ -4725,7 +4725,13 @@ the workflow `app/workflows/learning_plans.py` with its routes in
 `app/workflows/learning_plans_router.py` and bodies in
 `app/workflows/learning_plan_schemas.py`. One new permission,
 `learning_plan.manage` (Owner, Administrator, Academic coordinator; not
-delegable). The web pages are #310 (M5-14b).
+delegable). The web pages are #310 (M5-14b, `apps/web/src/features/learning-plans/`):
+`/students/:id/learning-plans` (the list and its create hints),
+`/students/:id/learning-plans/new` (the create), `/learning-plans/:id` (one
+plan, its transitions, the milestone progress and the draft delete),
+`/learning-plans/:id/edit` (the replace) and the family's
+`/my-learning-plans[/:id]` (`/schedule/family-students`, the list and one
+plan).
 
 A **plan** belongs to one student and one subject: a title, an optional goal
 description, `starts_on` / `target_on` local dates, 1-10 ordered

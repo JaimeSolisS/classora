@@ -53,8 +53,9 @@ from `tokens.css` and checks them in both themes:
   `muted-foreground`/`background`, `accent-foreground`/`accent`,
   `destructive-foreground`/`destructive`, `destructive`/`background` (error
   text), `primary`/`background` (link text).
-- At least 3:1 (SC 1.4.11, non-text): `input`/`background` and
-  `ring`/`background`.
+- At least 3:1 (SC 1.4.11, non-text): `input`/`background`,
+  `ring`/`background` and `primary`/`muted` (the `ProgressMeter` fill on its
+  track, #310).
 
 ### Spacing, typography and radius
 
@@ -474,6 +475,27 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   is plain text (`whitespace-pre-line break-words`). An entry kind the view
   doesn't know is skipped. Staff and tutors get a "Details" link per
   entry; families don't.
+- **`ProgressMeter`** (`features/learning-plans`, #310): a native
+  `<progress>` (`max` = total, `value` = done) labelled by the text next to
+  it, "{done} of {total} milestones done · {percent} %", which is always
+  shown: the bar never stands alone. The percent is the API's string as
+  sent; the client never computes progress. The fill (`primary`) on its
+  track (`muted`, bordered with `input`) meets 3:1 in both themes. Status
+  and "Overdue" / "Complete" markers are text (with a decorative icon),
+  never colour only.
+- **Nested ordered editor** (the learning plan editor, #310; the #64 and
+  #308 template editors are the one-level case): each item is a `fieldset`
+  with a `legend` ("Objective 2", "Milestone 2.1"); "Move up", "Move down"
+  and "Remove" are named with the position and title; a child moves only
+  within its parent (the first and last child's buttons are disabled).
+  Counters are always visible ("Objectives 2 of 10", "{n} of 50 milestones
+  in this plan"); an "Add" at its limit is disabled with the reason linked
+  by `aria-describedby`, as is "Remove" on the last item. Add focuses the
+  new item's title; Move keeps focus on the moved item's button (the other
+  one at an end); Remove focuses the matching "Add"; removing saved
+  progress asks first, and Cancel or Escape returns focus to "Remove".
+  "Reload" after a conflict asks before discarding typed changes, then
+  remounts the editor on the fresh version and focuses the heading.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

@@ -52,6 +52,9 @@ const TEXT_PAIRS: [ColorToken, ColorToken][] = [
 const NON_TEXT_PAIRS: [ColorToken, ColorToken][] = [
   ['input', 'background'],
   ['ring', 'background'],
+  // The ProgressMeter (#310 B5): the fill (primary) against its track
+  // (muted); the track's border is the input/background pair above.
+  ['primary', 'muted'],
 ];
 
 function parseBlock(selector: string): Map<string, string> {
