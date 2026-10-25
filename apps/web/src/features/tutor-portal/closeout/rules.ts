@@ -1,5 +1,6 @@
 import { ApiError } from '@/app/api';
 import type { SessionAttendance } from '@/features/tutor-portal/attendance/api';
+import type { SessionCloseoutView } from './api';
 
 // The closeout flow's pure rules (#77 G1, G2), mirroring the API's
 // (academics/closeout_rules.py): the minutes range, the summary fields and
@@ -122,18 +123,68 @@ export function serverSummaryErrors(error: unknown): SummaryErrors {
   return errors;
 }
 
-/** G2: a tutor's entry links to the closeout once it can be submitted or read. */
-export type CloseoutLink = 'submit' | 'view' | null;
+/**
+ * G2: a tutor's entry links to the closeout once it can be submitted or
+ * read; #305 C1: a completed one whose closeout came back with changes
+ * requested (the dialog's lazy closeout read) links to "Fix closeout".
+ */
+export type CloseoutLink = 'submit' | 'view' | 'fix' | null;
 
 export function tutorCloseoutLink(
   item: { state: string; starts_at: string },
   now: number,
+  closeoutStatus?: string | null,
 ): CloseoutLink {
   if (item.state === 'completed') {
-    return 'view';
+    return closeoutStatus === 'changes_requested' ? 'fix' : 'view';
   }
   if (item.state === 'confirmed' && Date.parse(item.starts_at) <= now) {
     return 'submit';
   }
   return null;
+}
+
+/** #305 A2: an edit mode's summary draft, prefilled (null → empty). */
+export function summaryDraftOf(
+  summary: Partial<Record<SummaryField, string | null>> | null,
+): SummaryDraft {
+  return {
+    topics: summary?.topics ?? '',
+    performance: summary?.performance ?? '',
+    homework: summary?.homework ?? '',
+    next_steps: summary?.next_steps ?? '',
+  };
+}
+
+export const NOTE_MAX = 1000;
+
+/**
+ * #305 A5: the reviewer note's (resubmit, optional) or the correction
+ * reason's (required) error code, trimmed 1-1000.
+ */
+export function noteError(
+  note: string,
+  required: boolean,
+): 'reason_required' | 'reason_too_long' | null {
+  const length = note.trim().length;
+  if (length === 0) {
+    return required ? 'reason_required' : null;
+  }
+  return length > NOTE_MAX ? 'reason_too_long' : null;
+}
+
+/** #305 A1: the edit modes of a recorded closeout. */
+export type EditMode = 'resubmit' | 'correction';
+
+/** Whether the GET's flags allow an edit mode. */
+export function editAllowed(
+  closeout: SessionCloseoutView,
+  mode: EditMode | null | undefined,
+): mode is EditMode {
+  if (!closeout.closeout || !mode) {
+    return false;
+  }
+  return mode === 'resubmit'
+    ? closeout.can_resubmit
+    : closeout.can_request_correction;
 }

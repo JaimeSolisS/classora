@@ -12,6 +12,14 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import type { AttendanceMark } from '@/features/tutor-portal/attendance/api';
@@ -27,15 +35,20 @@ import {
   EMPTY_SUMMARY,
   MINUTES_MAX,
   MINUTES_MIN,
+  NOTE_MAX,
   SUMMARY_FIELDS,
   SUMMARY_MAX,
   allAbsent,
+  editAllowed,
   isRequired,
   minutesError,
+  noteError,
   serverSummaryErrors,
   summaryBody,
+  summaryDraftOf,
   summaryErrors,
   unmarkedNames,
+  type EditMode,
   type SummaryDraft,
   type SummaryErrors,
   type SummaryField,
@@ -58,6 +71,17 @@ import {
 //   page asks before leaving with typed text (`onDirtyChange`). Server
 //   errors map back: version conflict → Reload; attendance incomplete →
 //   step 1 with the names; a 422 → the fields.
+// #305: a recorded closeout shows its review status as a view with a
+// heading ("Submitted for review", "Correction under review", "Changes
+// requested by the reviewer" with the reason, "Approved · n min"), driven
+// only by the API's GET; the view's action ("Edit and resubmit" when
+// `can_resubmit`, "Request a correction" when `can_request_correction`)
+// opens the same 4 steps in place as an edit mode, prefilled from the
+// closeout (minutes, summary). Step 1 is #76's form (editable in
+// `resubmit`, read-only in `correction`, as the attendance GET says);
+// step 4 adds an optional "Note for the reviewer" (resubmit) or a
+// required "Reason for the correction". Cancel returns to the view (asking
+// first when something was typed).
 
 export type CloseoutFlowState =
   | { status: 'loading' }
@@ -67,7 +91,11 @@ export type CloseoutFlowState =
 export interface CloseoutSubmission {
   actual_minutes: number;
   summary: Partial<Record<SummaryField, string>>;
+  /** #305: the note (resubmit) or the reason (correction), trimmed. */
+  reason?: string;
 }
+
+type FlowMode = 'submit' | EditMode;
 
 export interface CloseoutFlowProps {
   state: CloseoutFlowState;
@@ -86,6 +114,19 @@ export interface CloseoutFlowProps {
   initialStep?: Step;
   /** A prefilled summary (stories). */
   initialSummary?: SummaryDraft;
+  /** #305: the edit mode shown in place of the status view (null: the view). */
+  editMode?: EditMode | null;
+  /** Opens an edit mode, or returns to the view (null). */
+  onEditModeChange?: (mode: EditMode | null) => void;
+  /** #305: resubmits or requests a correction; rejects with the error. */
+  onResubmit?: (
+    submission: CloseoutSubmission,
+    mode: EditMode,
+  ) => Promise<void>;
+  /** An alert over the status view (#305 B1: already under review). */
+  viewAlert?: string | null;
+  /** A typed note or reason (stories). */
+  initialNote?: string;
 }
 
 export type Step = 1 | 2 | 3 | 4;
@@ -115,7 +156,9 @@ function useWhen(timeZone: string) {
 }
 
 export function CloseoutFlow(props: CloseoutFlowProps) {
-  const { state, timeZone } = props;
+  const { state, timeZone, editMode, onEditModeChange, viewAlert } = props;
+  // Cancel returns focus to the view's heading (#305 F2).
+  const [focusView, setFocusView] = useState(false);
   if (state.status === 'loading') {
     return <LoadingState rows={4} />;
   }
@@ -123,16 +166,46 @@ export function CloseoutFlow(props: CloseoutFlowProps) {
     return <ErrorAlert error={state.error} onRetry={state.onRetry} />;
   }
   const { closeout } = state;
+  let body: ReactNode;
+  if (closeout.closeout && editAllowed(closeout, editMode)) {
+    body = (
+      <Steps
+        key={editMode}
+        {...props}
+        closeout={closeout}
+        mode={editMode}
+        onCancel={() => {
+          setFocusView(true);
+          onEditModeChange?.(null);
+        }}
+      />
+    );
+  } else if (closeout.closeout) {
+    body = (
+      <CloseoutStatusView
+        closeout={closeout}
+        timeZone={timeZone}
+        alert={viewAlert}
+        focusHeading={focusView}
+        onEdit={
+          onEditModeChange
+            ? (mode) => {
+                setFocusView(false);
+                onEditModeChange(mode);
+              }
+            : undefined
+        }
+      />
+    );
+  } else if (closeout.can_submit) {
+    body = <Steps {...props} closeout={closeout} mode="submit" />;
+  } else {
+    body = <BlockMessage closeout={closeout} timeZone={timeZone} />;
+  }
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <SessionHeader closeout={closeout} timeZone={timeZone} />
-      {closeout.closeout ? (
-        <CloseoutReadOnly closeout={closeout} />
-      ) : closeout.can_submit ? (
-        <Steps {...props} closeout={closeout} />
-      ) : (
-        <BlockMessage closeout={closeout} timeZone={timeZone} />
-      )}
+      {body}
     </div>
   );
 }
@@ -233,47 +306,129 @@ export function SummaryList({
   );
 }
 
-export function CloseoutReadOnly({
+/**
+ * #305: a recorded closeout's status view (the table in the issue), only
+ * from the GET: the heading, the reviewer's reason or the approval, the
+ * minutes and summary, and the action the flags allow.
+ */
+export function CloseoutStatusView({
   closeout,
+  timeZone,
+  alert,
+  focusHeading = false,
+  onEdit,
 }: {
   closeout: SessionCloseoutView;
+  timeZone: string;
+  alert?: string | null;
+  focusHeading?: boolean;
+  onEdit?: (mode: EditMode) => void;
 }) {
   const { t } = useTranslation();
+  const { language } = useWhen(timeZone);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusHeading) {
+      heading.current?.focus();
+    }
+  }, [focusHeading]);
   const record = closeout.closeout;
   if (!record) {
     return <p className="text-sm font-medium">{t('closeout.noCloseout')}</p>;
   }
-  // #78 G4: the review statuses as text (the edit modes are #305's).
-  let status: string;
+  const approval = record.approval;
+  const inForce = approval
+    ? t('closeout.tutorView.inForce', { minutes: approval.approved_minutes })
+    : null;
+  let title: string;
+  let lines: ReactNode = null;
+  let action: EditMode | null = null;
   if (record.status === 'changes_requested') {
-    status = record.review.reason
-      ? t('closeout.review.tutor.changesRequested', {
-          reason: record.review.reason,
-        })
-      : t('closeout.review.tutor.changesRequestedNoReason');
-  } else if (record.status === 'approved' && record.approval) {
-    status = t('closeout.review.tutor.approved', {
-      minutes: record.approval.approved_minutes,
+    title = t('closeout.tutorView.changesRequested');
+    lines = (
+      <>
+        {record.review.reason ? (
+          <p className="text-sm break-words whitespace-pre-line">
+            {record.review.reason}
+          </p>
+        ) : null}
+        {inForce ? <p className="text-sm">{inForce}</p> : null}
+      </>
+    );
+    action = closeout.can_resubmit ? 'resubmit' : null;
+  } else if (record.status === 'approved' && approval) {
+    title = t('closeout.tutorView.approved', {
+      minutes: approval.approved_minutes,
     });
-  } else if (record.approval) {
-    status = t('closeout.review.tutor.correctionSubmitted');
+    lines = (
+      <p className="text-sm">
+        {t('closeout.tutorView.approvedBy', {
+          name: approval.approved_by.display_name,
+          date: formatLocalDate(toLocalDate(approval.approved_at, timeZone), {
+            language,
+            style: 'long',
+          }),
+        })}
+      </p>
+    );
+    action = closeout.can_request_correction ? 'correction' : null;
+  } else if (approval) {
+    title = t('closeout.tutorView.correctionUnderReview');
+    lines = (
+      <>
+        <p className="text-sm">{inForce}</p>
+        {record.review.tutor_note ? (
+          <p className="text-sm break-words whitespace-pre-line">
+            {t('closeout.tutorView.yourReason', {
+              reason: record.review.tutor_note,
+            })}
+          </p>
+        ) : null}
+      </>
+    );
   } else {
-    status = t('closeout.submitted');
+    title = t('closeout.tutorView.underReview');
   }
   return (
     <section className="flex min-w-0 flex-col gap-4">
-      <p className="rounded-md border border-border p-3 text-sm font-medium break-words whitespace-pre-line">
-        {status}
-      </p>
-      <dl className="grid gap-1 text-sm">
-        <dt className="font-medium">{t('closeout.actualMinutes')}</dt>
-        <dd>
-          {t('closeout.minutesOfScheduled', {
-            actual: record.actual_minutes ?? 0,
-            scheduled: closeout.scheduled_minutes,
-          })}
-        </dd>
-      </dl>
+      {alert ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive p-3 text-sm font-medium"
+        >
+          {alert}
+        </p>
+      ) : null}
+      <div className="flex min-w-0 flex-col gap-2 rounded-md border border-border p-3">
+        <h3
+          ref={heading}
+          tabIndex={-1}
+          className="text-base font-semibold break-words outline-none"
+        >
+          {title}
+        </h3>
+        {lines}
+        {action && onEdit ? (
+          <div>
+            <Button type="button" onClick={() => onEdit(action)}>
+              {action === 'resubmit'
+                ? t('closeout.tutorView.resubmit')
+                : t('closeout.tutorView.requestCorrection')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {record.status !== 'approved' ? (
+        <dl className="grid gap-1 text-sm">
+          <dt className="font-medium">{t('closeout.actualMinutes')}</dt>
+          <dd>
+            {t('closeout.minutesOfScheduled', {
+              actual: record.actual_minutes ?? 0,
+              scheduled: closeout.scheduled_minutes,
+            })}
+          </dd>
+        </dl>
+      ) : null}
       {record.summary ? (
         <SummaryList summary={record.summary} />
       ) : (
@@ -314,40 +469,77 @@ function Steps({
   onSaveAttendance,
   onReload,
   onSubmit,
+  onResubmit,
   onDirtyChange,
   initialStep = 1,
-  initialSummary = EMPTY_SUMMARY,
-}: CloseoutFlowProps & { closeout: SessionCloseoutView }) {
+  initialSummary,
+  initialNote = '',
+  mode,
+  onCancel,
+}: CloseoutFlowProps & {
+  closeout: SessionCloseoutView;
+  mode: FlowMode;
+  onCancel?: () => void;
+}) {
   const { t } = useTranslation();
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
+  const noteField = useRef<HTMLTextAreaElement>(null);
+  const editing = mode !== 'submit';
+  // The baseline the dirty check compares against (#305 A2): the scheduled
+  // minutes and an empty summary for a new closeout, the closeout's own
+  // values in an edit mode.
+  const [baseline] = useState(() => ({
+    minutes: String(
+      editing
+        ? (closeout.closeout?.actual_minutes ?? closeout.scheduled_minutes)
+        : closeout.scheduled_minutes,
+    ),
+    summary: editing
+      ? summaryDraftOf(closeout.closeout?.summary ?? null)
+      : EMPTY_SUMMARY,
+  }));
   const [step, setStep] = useState<Step>(initialStep);
-  const [minutes, setMinutes] = useState(String(closeout.scheduled_minutes));
+  const [minutes, setMinutes] = useState(baseline.minutes);
   const [minutesTouched, setMinutesTouched] = useState(false);
-  const [summary, setSummary] = useState<SummaryDraft>(initialSummary);
+  const [summary, setSummary] = useState<SummaryDraft>(
+    initialSummary ?? baseline.summary,
+  );
   const [summaryTouched, setSummaryTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<SummaryErrors>({});
+  const [note, setNote] = useState(initialNote);
+  const [noteProblem, setNoteProblem] = useState<
+    'reason_required' | 'reason_too_long' | null
+  >(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
   const [incomplete, setIncomplete] = useState(false);
-  const moved = useRef(false);
+  const [unchanged, setUnchanged] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  // Entering an edit mode moves focus to the step heading (#305 F2).
+  const moved = useRef(editing);
 
   const ready = attendance.status === 'ready' ? attendance.attendance : null;
-  const missing = ready ? unmarkedNames(ready) : [];
+  // A correction's attendance is read-only (#305 A4): nothing to complete.
+  const missing = ready && mode !== 'correction' ? unmarkedNames(ready) : [];
   const absent = ready ? allAbsent(ready) : closeout.attendance.all_absent;
   const clientErrors = summaryErrors(summary, absent);
   const fieldErrors: SummaryErrors = { ...serverErrors, ...clientErrors };
   const minutesProblem = minutesError(minutes);
   const dirty =
-    SUMMARY_FIELDS.some((field) => summary[field].trim() !== '') ||
-    minutes.trim() !== String(closeout.scheduled_minutes);
+    SUMMARY_FIELDS.some(
+      (field) => summary[field].trim() !== baseline.summary[field].trim(),
+    ) ||
+    minutes.trim() !== baseline.minutes ||
+    note.trim() !== '';
 
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
 
   useEffect(() => {
-    // Announce the new step to screen readers (not on the first render).
+    // Announce the new step to screen readers (not on the first render of
+    // a new closeout).
     if (moved.current) {
       heading.current?.focus();
     }
@@ -356,7 +548,16 @@ function Steps({
 
   function go(next: Step) {
     setFailure(null);
+    setUnchanged(false);
     setStep(next);
+  }
+
+  function cancel() {
+    if (dirty) {
+      setConfirmCancel(true);
+    } else {
+      onCancel?.();
+    }
   }
 
   function nextFromTime() {
@@ -378,14 +579,31 @@ function Steps({
     if (busy) {
       return;
     }
+    const submission: CloseoutSubmission = {
+      actual_minutes: Number(minutes.trim()),
+      summary: summaryBody(summary),
+    };
+    if (editing) {
+      const problem = noteError(note, mode === 'correction');
+      setNoteProblem(problem);
+      if (problem) {
+        noteField.current?.focus();
+        return;
+      }
+      if (note.trim() !== '') {
+        submission.reason = note.trim();
+      }
+    }
     setBusy(true);
     setFailure(null);
     setIncomplete(false);
+    setUnchanged(false);
     try {
-      await onSubmit({
-        actual_minutes: Number(minutes.trim()),
-        summary: summaryBody(summary),
-      });
+      if (editing) {
+        await onResubmit?.(submission, mode);
+      } else {
+        await onSubmit(submission);
+      }
     } catch (caught) {
       if (caught instanceof ApiError) {
         if (caught.code === 'closeout_attendance_incomplete') {
@@ -396,6 +614,22 @@ function Steps({
         }
         if (caught.code === 'closeout_already_submitted') {
           onReload();
+          return;
+        }
+        if (caught.code === 'closeout_unchanged') {
+          setUnchanged(true);
+          return;
+        }
+        const reasonField = caught.fieldErrors.find(
+          (item) => item.path[1] === 'reason',
+        );
+        if (editing && reasonField) {
+          setNoteProblem(
+            reasonField.code === 'reason_too_long'
+              ? 'reason_too_long'
+              : 'reason_required',
+          );
+          noteField.current?.focus();
           return;
         }
         if (caught.status === 422) {
@@ -417,6 +651,22 @@ function Steps({
   const conflict =
     failure instanceof ApiError && failure.code === 'version_conflict';
   const minutesId = `${id}-minutes`;
+  const noteId = `${id}-note`;
+  const noteLength = note.trim().length;
+  const cancelButton = editing ? (
+    <Button type="button" variant="outline" disabled={busy} onClick={cancel}>
+      {t('closeout.tutorView.cancel')}
+    </Button>
+  ) : null;
+  let submitLabel = t('closeout.submit');
+  let submittingLabel = t('closeout.submitting');
+  if (mode === 'resubmit') {
+    submitLabel = t('closeout.tutorView.resubmitSubmit');
+    submittingLabel = t('closeout.tutorView.resubmitting');
+  } else if (mode === 'correction') {
+    submitLabel = t('closeout.tutorView.correctionSubmit');
+    submittingLabel = t('closeout.tutorView.correctionSubmitting');
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -476,7 +726,8 @@ function Steps({
               </ul>
             </div>
           ) : null}
-          <div>
+          <div className="flex flex-wrap gap-2">
+            {cancelButton}
             <Button
               type="button"
               disabled={!ready || missing.length > 0}
@@ -533,6 +784,7 @@ function Steps({
             />
           </div>
           <div className="flex flex-wrap gap-2">
+            {cancelButton}
             <Button type="button" variant="outline" onClick={() => go(1)}>
               {t('closeout.back')}
             </Button>
@@ -579,7 +831,7 @@ function Steps({
                       return rest;
                     });
                   }}
-                  className="w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1.5 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring aria-invalid:border-destructive md:text-sm dark:bg-input/30"
+                  className={TEXTAREA_CLASS}
                 />
                 <FieldError
                   id={`${fieldId}-error`}
@@ -606,6 +858,7 @@ function Steps({
             );
           })}
           <div className="flex flex-wrap gap-2">
+            {cancelButton}
             <Button type="button" variant="outline" onClick={() => go(2)}>
               {t('closeout.back')}
             </Button>
@@ -622,6 +875,14 @@ function Steps({
           onSubmit={(event) => void submit(event)}
           className="flex min-w-0 flex-col gap-4"
         >
+          {unchanged ? (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive p-3 text-sm font-medium"
+            >
+              {t('closeout.tutorView.unchanged')}
+            </p>
+          ) : null}
           <ReviewSection
             title={t('closeout.steps.attendance')}
             onEdit={() => go(1)}
@@ -675,7 +936,74 @@ function Steps({
               }}
             />
           </ReviewSection>
+          {editing ? (
+            <div className="flex min-w-0 flex-col gap-2">
+              <label htmlFor={noteId} className="text-sm font-medium">
+                {mode === 'correction'
+                  ? t('closeout.tutorView.reason')
+                  : t('closeout.tutorView.note')}{' '}
+                <span className="font-normal text-muted-foreground">
+                  {mode === 'correction'
+                    ? t('closeout.required')
+                    : t('closeout.optional')}
+                </span>
+              </label>
+              <p
+                id={`${noteId}-hint`}
+                className="text-sm text-muted-foreground"
+              >
+                {mode === 'correction'
+                  ? t('closeout.tutorView.reasonHint')
+                  : t('closeout.tutorView.noteHint')}
+              </p>
+              <textarea
+                id={noteId}
+                ref={noteField}
+                rows={3}
+                value={note}
+                required={mode === 'correction'}
+                aria-required={mode === 'correction'}
+                aria-invalid={noteProblem ? true : undefined}
+                aria-describedby={[
+                  `${noteId}-hint`,
+                  noteProblem ? `${noteId}-error` : undefined,
+                  `${noteId}-counter`,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  setNoteProblem(null);
+                }}
+                className={TEXTAREA_CLASS}
+              />
+              <FieldError
+                id={`${noteId}-error`}
+                message={
+                  noteProblem === 'reason_too_long'
+                    ? t('closeout.tutorView.reasonTooLong')
+                    : noteProblem
+                      ? t('closeout.tutorView.reasonRequired')
+                      : undefined
+                }
+              />
+              <p
+                id={`${noteId}-counter`}
+                className={
+                  noteLength > NOTE_MAX
+                    ? 'text-sm text-destructive'
+                    : 'text-sm text-muted-foreground'
+                }
+              >
+                {t('scheduling.substitution.counter', {
+                  length: noteLength,
+                  max: NOTE_MAX,
+                })}
+              </p>
+            </div>
+          ) : null}
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap gap-2 border-t border-border bg-background px-4 py-3">
+            {cancelButton}
             <Button
               type="button"
               variant="outline"
@@ -686,17 +1014,51 @@ function Steps({
             </Button>
             <Button type="submit" disabled={busy}>
               {busy ? (
-                <Spinner label={t('closeout.submitting')} showLabel />
+                <Spinner label={submittingLabel} showLabel />
               ) : (
-                t('closeout.submit')
+                submitLabel
               )}
             </Button>
           </div>
         </form>
       ) : null}
+      {editing ? (
+        <Dialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('closeout.leave.title')}</DialogTitle>
+              <DialogDescription>
+                {t('closeout.leave.description')}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmCancel(false)}
+              >
+                {t('closeout.leave.stay')}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  setConfirmCancel(false);
+                  onCancel?.();
+                }}
+              >
+                {t('closeout.leave.leave')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
+
+const TEXTAREA_CLASS =
+  'w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1.5 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30';
 
 function ReviewSection({
   title,

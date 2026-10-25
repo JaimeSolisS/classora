@@ -1,11 +1,11 @@
 import { ApiError } from '@/app/api';
 import type {
   CloseoutCorrectionBody,
-  CloseoutSummary,
   SessionCloseoutRecord,
 } from '@/features/tutor-portal/closeout/api';
 import {
   SUMMARY_FIELDS,
+  summaryDraftOf,
   type SummaryDraft,
   type SummaryField,
 } from '@/features/tutor-portal/closeout/rules';
@@ -45,15 +45,8 @@ export function closeoutBadge(record: SessionCloseoutRecord): CloseoutBadge {
     : { kind: 'submitted' };
 }
 
-/** The draft of the Correct dialog, prefilled from the record. */
-export function summaryDraftOf(summary: CloseoutSummary | null): SummaryDraft {
-  return {
-    topics: summary?.topics ?? '',
-    performance: summary?.performance ?? '',
-    homework: summary?.homework ?? '',
-    next_steps: summary?.next_steps ?? '',
-  };
-}
+/** The draft of the Correct dialog, prefilled from the record (shared). */
+export { summaryDraftOf };
 
 /** The reason's error code, or null (1-1000 characters once trimmed). */
 export function reasonError(

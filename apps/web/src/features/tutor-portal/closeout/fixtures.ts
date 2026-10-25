@@ -20,7 +20,10 @@ import type {
 // review states (a reviewer on a submitted closeout, changes requested,
 // approved with its history, a correction request under review, attendance
 // changed since approval, Finance's redacted history) and the tutor's
-// read-only views of them.
+// views of them; #305: the tutor's edit modes (attendance editable while
+// changes are requested, locked after approval), the correction under
+// review, changes requested on a correction (a long reason), a non-
+// submitter without flags and the view after a resubmission.
 
 export { SESSION_ID, ZONE } from '@/features/tutor-portal/attendance/fixtures';
 
@@ -288,4 +291,65 @@ export const TUTOR_APPROVED = closeoutView({
   ...SUBMITTED,
   can_request_correction: true,
   closeout: APPROVED_RECORD,
+});
+
+// --- #305 tutor edit modes ---------------------------------------------------
+
+/** The tutor's attendance while changes are requested (editable, AM1). */
+export const ATTENDANCE_COMPLETED: SessionAttendance = {
+  ...ATTENDANCE_MARKED,
+  state: 'completed',
+};
+
+/** The tutor's attendance of an approved closeout (read-only). */
+export const ATTENDANCE_LOCKED: SessionAttendance = {
+  ...ATTENDANCE_COMPLETED,
+  can_mark: false,
+  block: 'attendance_locked',
+};
+
+/** The tutor's own correction request under review (no action). */
+export const TUTOR_CORRECTION_SUBMITTED = closeoutView({
+  ...SUBMITTED,
+  closeout: CORRECTION_SUBMITTED.closeout,
+});
+
+/** Changes requested on a correction request: the approval stays in force. */
+export const TUTOR_CHANGES_REQUESTED_ON_CORRECTION = closeoutView({
+  ...SUBMITTED,
+  can_resubmit: true,
+  closeout: {
+    ...APPROVED_RECORD,
+    version: 5,
+    status: 'changes_requested',
+    actual_minutes: 45,
+    review: {
+      status: 'changes_requested',
+      reason: `Indica el motivo del simulacro. ${'Explica con detalle. '.repeat(45)}`,
+      last_submitted_at: '2026-11-12T15:00:00Z',
+      tutor_note: 'Salimos 5 minutos antes por un simulacro.',
+    },
+  },
+});
+
+/** A staff member who also tutors, on changes requested: no flag. */
+export const NOT_SUBMITTER_CHANGES_REQUESTED = closeoutView({
+  ...TUTOR_CHANGES_REQUESTED,
+  can_resubmit: false,
+});
+
+/** After a resubmission (58 min): under review again. */
+export const TUTOR_RESUBMITTED = closeoutView({
+  ...SUBMITTED,
+  closeout: {
+    ...CHANGES_REQUESTED_RECORD,
+    version: 3,
+    status: 'submitted',
+    actual_minutes: 58,
+    review: {
+      ...CHANGES_REQUESTED_RECORD.review,
+      status: 'submitted',
+      last_submitted_at: '2026-11-10T15:00:00Z',
+    },
+  },
 });

@@ -65,17 +65,23 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // 390×844, opens it from My schedule, "Cerrar clase", marks the student
 // Presente, sets 55 minutes, fills Topics, Performance and Next steps
 // (axe on the summary step), submits and sees "Enviado a revisión", also
-// after a reload (axe). The Owner (shared session) finds the item in the
-// approval inbox ("Nuevo"), opens it with "Revisar" and sees the Closeout
-// section with 55 of 60 minutes (axe). Closeout review (#78 I9): the Owner
-// corrects the minutes to 50 with a reason (the history shows 55 → 50),
-// approves ("Aprobado · 50 min", axe) and the inbox no longer lists it as
-// pending.
+// after a reload (axe). Resubmission (#305 G3), still in the tutor's
+// block: the Owner (shared session) requests changes with a reason on the
+// session page; the tutor's bell has the message, the My schedule dialog
+// shows "Cambios solicitados" and "Corregir cierre", the closeout page the
+// reason (axe); "Editar y reenviar" (attendance editable), 58 minutes,
+// Homework, "Reenviar" → "Cierre reenviado a revisión." and 58 of 60 min
+// (axe). The Owner finds the item in the approval inbox ("Reenviado"),
+// opens it with "Revisar" and sees the Closeout section with 58 of 60
+// minutes (axe). Closeout review (#78 I9): the Owner corrects the minutes
+// to 50 with a reason (the history shows 58 → 50), approves ("Aprobado ·
+// 50 min", axe) and the inbox no longer lists it as pending.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
 // the reauthenticated Owner context of createApprovedTutor, #55), no
 // one-time-link redemption, 1 registration (the substitute, #55); the
-// attendance, closeout and review steps add none (#76, #77, #78). It never
+// attendance, closeout, review and resubmission steps add none (#76, #77,
+// #78, #305). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -653,6 +659,9 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
 
     // 7. Attendance (#76 H9): the tutor, on a phone, marks the started
     // session from My schedule.
+    // The default (desktop) size, for the bell in step 9b: at 390 px the
+    // header shows only the menu button.
+    const desktop = tutor.page.viewportSize();
     await tutor.page.setViewportSize({ width: 390, height: 844 });
     const lesson = await attendanceSession(tutor.page, tutorId);
     expect(lesson.students).toHaveLength(2);
@@ -770,6 +779,109 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     ).toBeVisible();
     expect(await axeViolations(tutor.page)).toEqual([]);
 
+    // 9b. Closeout resubmission (#305 G3), still in the tutor block: the
+    // Owner (shared page) requests changes on the session page; the tutor
+    // sees the bell message, the My schedule badge and "Corregir cierre",
+    // the reviewer's reason, then edits (attendance editable, 58 min,
+    // homework) and resubmits.
+    const changesReason = 'Añade la tarea asignada.';
+    await page.goto(`/schedule/sessions/${closing.id}`);
+    const review = page.getByRole('main').getByRole('region', {
+      name: common.closeout.section.heading,
+    });
+    await review
+      .getByRole('button', {
+        name: common.closeout.review.requestChanges,
+        exact: true,
+      })
+      .click();
+    const requestDialog = page.getByRole('dialog');
+    await requestDialog
+      .getByLabel(common.closeout.review.requestDialog.reason, { exact: false })
+      .fill(changesReason);
+    await requestDialog
+      .getByRole('button', {
+        name: common.closeout.review.requestDialog.submit,
+        exact: true,
+      })
+      .click();
+    await expect(requestDialog).toBeHidden();
+    await expect(review).toContainText(common.closeout.review.changesRequested);
+
+    // The bell is in the header at desktop width only; back to the phone
+    // size for My schedule and the closeout.
+    if (desktop) {
+      await tutor.page.setViewportSize(desktop);
+    }
+    await tutor.page.reload();
+    await bell.click();
+    await expect(panel).toContainText(
+      `${textBefore(common.notifications.types.academics_closeout_changes_requested)}${CLOSEOUT_SUBJECT}`,
+    );
+    await tutor.page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await tutor.page.setViewportSize({ width: 390, height: 844 });
+    await tutor.page.goto(
+      `/my-schedule?view=list&date=${localDateOf(closing.startsAt)}`,
+    );
+    await expect(agenda).toHaveAttribute('aria-busy', 'false');
+    await agenda
+      .getByRole('button', { name: new RegExp(escape(CLOSEOUT_SUBJECT)) })
+      .click();
+    const entry = tutor.page.getByRole('dialog', { name: CLOSEOUT_SUBJECT });
+    await expect(entry).toContainText(common.closeout.tutorView.badge);
+    await entry
+      .getByRole('link', { name: common.closeout.tutorView.fix, exact: true })
+      .click();
+    await expect(tutor.page).toHaveURL(
+      new RegExp(`/my-schedule/sessions/${closing.id}/closeout$`),
+    );
+    await expect(
+      flow.getByRole('heading', {
+        name: common.closeout.tutorView.changesRequested,
+      }),
+    ).toBeVisible();
+    await expect(flow.getByText(changesReason)).toBeVisible();
+    expect(await axeViolations(tutor.page)).toEqual([]);
+    await flow
+      .getByRole('button', {
+        name: common.closeout.tutorView.resubmit,
+        exact: true,
+      })
+      .click();
+    await expect(
+      flow.getByRole('button', { name: common.attendance.save, exact: true }),
+    ).toBeVisible();
+    await next.click();
+    await flow
+      .getByLabel(common.closeout.actualMinutes, { exact: true })
+      .fill('58');
+    await next.click();
+    await flow
+      .getByLabel(common.closeout.fields.homework, { exact: false })
+      .fill('Ejercicios 1 a 5');
+    await next.click();
+    await flow
+      .getByRole('button', {
+        name: common.closeout.tutorView.resubmitSubmit,
+        exact: true,
+      })
+      .click();
+    await expect(
+      flow.getByText(common.closeout.tutorView.resubmittedNotice),
+    ).toBeVisible();
+    await expect(
+      flow.getByRole('heading', {
+        name: common.closeout.tutorView.underReview,
+      }),
+    ).toBeVisible();
+    await expect(
+      flow.getByText(
+        fill(common.closeout.minutesOfScheduled, { actual: 58, scheduled: 60 }),
+      ),
+    ).toBeVisible();
+    expect(await axeViolations(tutor.page)).toEqual([]);
+
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
   } finally {
@@ -850,8 +962,8 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   expect(await axeViolations(page)).toEqual([]);
 
   // 10. Closeout (#77 H8, #78 G2): the Owner finds the item in the approval
-  // inbox ("Nuevo", no decision buttons) and opens the session's Closeout
-  // section with "Revisar".
+  // inbox (the #305 resubmission: "Reenviado", 58 min, no decision buttons)
+  // and opens the session's Closeout section with "Revisar".
   const closed = await attendanceSession(page, tutorId, CLOSEOUT_SUBJECT);
   await page.goto('/approvals?type=academics.session_closeout');
   const item = page
@@ -859,9 +971,11 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     .getByRole('row')
     .filter({ hasText: CLOSEOUT_SUBJECT });
   await expect(item).toContainText(
-    fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
+    fill(common.closeout.minutesOfScheduled, { actual: 58, scheduled: 60 }),
   );
-  await expect(item).toContainText(common.approvals.closeout.kinds.first);
+  await expect(item).toContainText(
+    common.approvals.closeout.kinds.resubmission,
+  );
   await expect(item.getByRole('button')).toHaveCount(0);
   await item
     .getByRole('link', { name: common.approvals.closeout.review })
@@ -874,12 +988,12 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   });
   await expect(closeoutSection).toContainText(common.closeout.submitted);
   await expect(closeoutSection).toContainText(
-    fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
+    fill(common.closeout.minutesOfScheduled, { actual: 58, scheduled: 60 }),
   );
   expect(await axeViolations(page)).toEqual([]);
 
   // 11. Closeout review (#78 I9), on the shared Owner session: correct the
-  // minutes 55 → 50 with a reason (the history shows it), approve
+  // minutes 58 → 50 with a reason (the history shows it), approve
   // ("Aprobado · 50 min"), and the inbox no longer lists it as pending.
   await closeoutSection
     .getByRole('button', { name: common.closeout.review.correct, exact: true })
@@ -899,7 +1013,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     .click();
   await expect(correctDialog).toBeHidden();
   await expect(closeoutSection).toContainText(
-    fill(common.closeout.review.history.minutes, { previous: 55, next: 50 }),
+    fill(common.closeout.review.history.minutes, { previous: 58, next: 50 }),
   );
   await closeoutSection
     .getByRole('button', { name: common.closeout.review.approve, exact: true })

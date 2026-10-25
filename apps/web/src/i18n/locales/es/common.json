@@ -3125,13 +3125,34 @@
         "reason": "Motivo: {{reason}}",
         "reasonHidden": "Motivo visible para los revisores académicos",
         "current": "(vigente)"
-      },
-      "tutor": {
-        "changesRequested": "Cambios solicitados: {{reason}}",
-        "changesRequestedNoReason": "Cambios solicitados",
-        "approved": "Aprobado · {{minutes}} min",
-        "correctionSubmitted": "Corrección enviada a revisión"
       }
+    },
+    "tutorView": {
+      "underReview": "Enviado a revisión",
+      "correctionUnderReview": "Corrección en revisión",
+      "inForce": "Los {{minutes}} min aprobados siguen vigentes hasta que se revise.",
+      "yourReason": "Tu motivo: {{reason}}",
+      "changesRequested": "El revisor solicitó cambios",
+      "approved": "Aprobado · {{minutes}} min",
+      "approvedBy": "por {{name}}, {{date}}",
+      "resubmit": "Editar y reenviar",
+      "requestCorrection": "Solicitar una corrección",
+      "cancel": "Cancelar",
+      "resubmitSubmit": "Reenviar",
+      "resubmitting": "Reenviando…",
+      "correctionSubmit": "Solicitar corrección",
+      "correctionSubmitting": "Enviando…",
+      "note": "Nota para el revisor",
+      "noteHint": "El revisor la lee junto con tu cierre.",
+      "reason": "Motivo de la corrección",
+      "reasonHint": "Explica al revisor qué cambió y por qué.",
+      "reasonRequired": "Indica el motivo de la corrección.",
+      "reasonTooLong": "Máximo 1000 caracteres.",
+      "resubmittedNotice": "Cierre reenviado a revisión.",
+      "correctionNotice": "Corrección enviada. Los {{minutes}} min aprobados siguen vigentes hasta que se revise.",
+      "unchanged": "No cambió nada. Cambia los minutos o el resumen, o cancela.",
+      "badge": "Cambios solicitados",
+      "fix": "Corregir cierre"
     }
   }
 }

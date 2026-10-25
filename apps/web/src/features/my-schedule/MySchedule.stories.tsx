@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
+import { closeoutKey } from '@/features/tutor-portal/closeout/api';
+import { TUTOR_CHANGES_REQUESTED } from '@/features/tutor-portal/closeout/fixtures';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
@@ -21,8 +23,11 @@ import type { MyScheduleState } from './urlState';
 
 // "My schedule" (#67 G7): a tutor's List and Week; a family List with every
 // family state; the child selector with a consent-required child; empty,
-// loading, error and truncated; the details dialog; the 320 px layout. The
-// loaders are stubs: no request leaves the story. Axe runs in light and
+// loading, error and truncated; the details dialog; the 320 px layout;
+// #305: a completed entry whose closeout came back with changes requested
+// (the "Changes requested" badge and "Fix closeout"; the closeout read is
+// seeded in the query cache). The loaders are stubs: no request leaves the
+// story. Axe runs in light and
 // dark (the Storybook projects).
 
 interface StoryArgs {
@@ -285,4 +290,50 @@ export const Narrow: Story = {
       }
     }
   },
+};
+
+// #305 C1: the seeded closeout read of the completed entry.
+const COMPLETED = TUTOR_ITEMS.find((item) => item.state === 'completed')!;
+
+export const DetailsDialogChangesRequested: Story = {
+  render: (args) => (
+    <StoryQueryClient
+      data={[
+        [
+          closeoutKey(COMPLETED.id),
+          { ...TUTOR_CHANGES_REQUESTED, class_session_id: COMPLETED.id },
+        ],
+      ]}
+    >
+      <StoryRouter
+        routes={[{ path: '/', element: <MyScheduleStory {...args} /> }]}
+      />
+    </StoryQueryClient>
+  ),
+  play: async ({ canvasElement }) => {
+    const region = await events(canvasElement);
+    region
+      .getByRole('button', {
+        name: new RegExp(escape(i18n.t('mySchedule.states.completed'))),
+      })
+      .click();
+    const dialog = await within(document.body).findByRole('dialog');
+    await expect(
+      within(dialog).getByText(i18n.t('closeout.tutorView.badge')),
+    ).toBeVisible();
+    const fix = within(dialog).getByRole('link', {
+      name: i18n.t('closeout.tutorView.fix'),
+    });
+    await expect(fix).toHaveAttribute(
+      'href',
+      `/my-schedule/sessions/${COMPLETED.id}/closeout`,
+    );
+    const box = fix.getBoundingClientRect();
+    await expect(box.height).toBeGreaterThanOrEqual(24);
+  },
+};
+
+export const DetailsDialogChangesRequestedNarrow320: Story = {
+  ...DetailsDialogChangesRequested,
+  globals: { viewport: { value: 'narrow320' } },
 };

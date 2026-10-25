@@ -6,7 +6,7 @@ import { routes } from '@/app/router';
 import type { SessionUserBody } from '@/features/auth/session';
 import type { ScheduleEntry } from '@/features/my-schedule/api';
 import { EntryDialog } from '@/features/my-schedule/EntryDialog';
-import { tutorItem } from '@/features/my-schedule/fixtures';
+import { familyItem, tutorItem } from '@/features/my-schedule/fixtures';
 import { applyLanguage, i18n } from '@/i18n';
 import {
   meAs,
@@ -15,7 +15,7 @@ import {
   TEST_USER,
   type ApiStub,
 } from '@/test/api-stub';
-import { click, typeInto } from '@/test/dom';
+import { alerts, click, openDialog, typeInto } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -26,24 +26,33 @@ import {
 } from '@/test/render-app';
 import { CloseoutPage } from './CloseoutPage';
 import {
+  APPROVED_RECORD,
   ATTENDANCE_ABSENT,
+  ATTENDANCE_COMPLETED,
+  ATTENDANCE_LOCKED,
   ATTENDANCE_MARKED,
   ATTENDANCE_UNMARKED,
   NO_CLOSEOUT,
   NOT_CLOSABLE,
   NOT_STARTED,
+  NOT_SUBMITTER_CHANGES_REQUESTED,
   OPEN,
   SESSION_ID,
   SUBMITTED,
+  SUMMARY,
   TUTOR_APPROVED,
   TUTOR_CHANGES_REQUESTED,
-  CORRECTION_SUBMITTED,
+  TUTOR_CHANGES_REQUESTED_ON_CORRECTION,
+  TUTOR_CORRECTION_SUBMITTED,
+  TUTOR_RESUBMITTED,
   ZONE,
 } from './fixtures';
 import {
   minutesError,
+  noteError,
   serverSummaryErrors,
   summaryBody,
+  summaryDraftOf,
   summaryErrors,
   tutorCloseoutLink,
   EMPTY_SUMMARY,
@@ -61,6 +70,7 @@ const GET = `GET /api/v1/class-sessions/${SESSION_ID}/closeout`;
 const POST = `POST /api/v1/class-sessions/${SESSION_ID}/closeout`;
 const ATTENDANCE = `GET /api/v1/class-sessions/${SESSION_ID}/attendance`;
 const PUT = `PUT /api/v1/class-sessions/${SESSION_ID}/attendance`;
+const RESUBMIT = `PUT /api/v1/class-sessions/${SESSION_ID}/closeout`;
 
 function eager(list: RouteObject[]): RouteObject[] {
   return list.map((route) => {
@@ -259,6 +269,35 @@ describe('the rules', () => {
     ['skipped_closure', START + 1, null],
   ])('a tutor %s item at %s links to %s', (state, now, expected) => {
     expect(tutorCloseoutLink(item(state), now)).toBe(expected);
+  });
+
+  // #305 C1: the dialog's closeout status (undefined while loading or on
+  // an error) picks between View and Fix.
+  it.each([
+    ['completed', undefined, 'view'],
+    ['completed', null, 'view'],
+    ['completed', 'submitted', 'view'],
+    ['completed', 'approved', 'view'],
+    ['completed', 'changes_requested', 'fix'],
+    ['confirmed', 'changes_requested', 'submit'],
+    ['offered', 'changes_requested', null],
+  ])(
+    'a tutor %s item with closeout %s links to %s',
+    (state, status, expected) => {
+      expect(tutorCloseoutLink(item(state), START + 1, status)).toBe(expected);
+    },
+  );
+
+  it('prefills an edit mode from the closeout and checks the note', () => {
+    expect(summaryDraftOf({ ...SUMMARY, homework: null })).toEqual({
+      ...SUMMARY,
+      homework: '',
+    });
+    expect(summaryDraftOf(null)).toEqual(EMPTY_SUMMARY);
+    expect(noteError('  ', false)).toBeNull();
+    expect(noteError('  ', true)).toBe('reason_required');
+    expect(noteError(` ${'x'.repeat(1000)} `, true)).toBeNull();
+    expect(noteError('x'.repeat(1001), false)).toBe('reason_too_long');
   });
 });
 
@@ -470,20 +509,83 @@ describe('the closeout flow (G1)', () => {
     expect(main().querySelector('ol')).toBeNull();
   });
 
-  // #78 G4: the review statuses as text until #305's edit modes.
+  // #305: the review status views, each with a heading; the action only
+  // when its flag is set.
   it.each([
     [
+      'changes requested',
       TUTOR_CHANGES_REQUESTED,
-      'Changes requested: Añade la tarea asignada y los siguientes pasos con más detalle.',
+      'Changes requested by the reviewer',
+      [
+        'Añade la tarea asignada y los siguientes pasos con más detalle.',
+        '55 of 60 min',
+      ],
+      'Edit and resubmit',
     ],
-    [TUTOR_APPROVED, 'Approved · 50 min'],
-    [CORRECTION_SUBMITTED, 'Correction submitted for review'],
-  ])('shows the review status read-only (%#)', async (data, status) => {
+    [
+      'changes requested on a correction',
+      TUTOR_CHANGES_REQUESTED_ON_CORRECTION,
+      'Changes requested by the reviewer',
+      [
+        'Indica el motivo del simulacro.',
+        'Approved 50 min stays in force until it is reviewed.',
+        '45 of 60 min',
+      ],
+      'Edit and resubmit',
+    ],
+    [
+      'approved',
+      TUTOR_APPROVED,
+      'Approved · 50 min',
+      ['by Laura Méndez, November 11, 2026', 'Fracciones equivalentes'],
+      'Request a correction',
+    ],
+    [
+      'correction under review',
+      TUTOR_CORRECTION_SUBMITTED,
+      'Correction under review',
+      [
+        'Approved 50 min stays in force until it is reviewed.',
+        '45 of 60 min',
+        'Your reason: Salimos 5 minutos antes por un simulacro.',
+      ],
+      null,
+    ],
+    [
+      'under review',
+      TUTOR_RESUBMITTED,
+      'Submitted for review',
+      ['58 of 60 min'],
+      null,
+    ],
+    [
+      'changes requested, not the submitter',
+      NOT_SUBMITTER_CHANGES_REQUESTED,
+      'Changes requested by the reviewer',
+      [],
+      null,
+    ],
+    [
+      'approved, no correction flag',
+      { ...TUTOR_APPROVED, can_request_correction: false },
+      'Approved · 50 min',
+      [],
+      null,
+    ],
+  ])('shows the %s view', async (_, data, heading, lines, action) => {
     await open([data]);
 
-    expect(text()).toContain(status);
+    expect(main().querySelector('h3')?.textContent).toBe(heading);
+    for (const line of lines) {
+      expect(text()).toContain(line);
+    }
     expect(main().querySelector('ol')).toBeNull();
-    expect(main().querySelector('button')).toBeNull();
+    const buttons = [...main().querySelectorAll('button')].map(
+      (b) => b.textContent,
+    );
+    expect(buttons).toEqual(action ? [action] : []);
+    // No attendance request while only the view shows.
+    expect(api.calls(ATTENDANCE)).toHaveLength(0);
   });
 
   it.each([
@@ -524,11 +626,362 @@ describe('the closeout flow (G1)', () => {
   });
 });
 
+function validation(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+}
+
+describe('the edit modes (#305)', () => {
+  const RECORD_VERSION = TUTOR_CHANGES_REQUESTED.closeout!.version;
+
+  async function openResubmit(
+    closeouts: unknown[] = [TUTOR_CHANGES_REQUESTED, TUTOR_RESUBMITTED],
+    attendances: unknown[] = [ATTENDANCE_COMPLETED],
+  ): Promise<void> {
+    await open(closeouts, attendances);
+    await click(buttonNamed(main(), 'Edit and resubmit'));
+    await settleUntil(() => main().querySelector('fieldset') !== null);
+  }
+
+  async function toReview(): Promise<void> {
+    await click(buttonNamed(main(), 'Next'));
+    await click(buttonNamed(main(), 'Next'));
+    await click(buttonNamed(main(), 'Next'));
+    expect(stepHeading()).toBe('Step 4 of 4: Review');
+  }
+
+  const noteField = (label: string) => textarea(label);
+
+  it('resubmits with the closeout version, prefilled values and a note', async () => {
+    await openResubmit();
+    api.set({ [RESUBMIT]: () => jsonResponse(200, TUTOR_RESUBMITTED) });
+
+    // Focus moves to the step heading; attendance is editable (AM1).
+    expect(stepHeading()).toBe('Step 1 of 4: Attendance');
+    expect(document.activeElement).toBe(main().querySelector('h3'));
+    expect(buttonNamed(main(), 'Save attendance')).toBeTruthy();
+    expect(buttonNamed(main(), 'Next').disabled).toBe(false);
+    await click(buttonNamed(main(), 'Next'));
+    expect(minutes().value).toBe('55');
+    typeInto(minutes(), '58');
+    await click(buttonNamed(main(), 'Next'));
+    expect(textarea('Topics').value).toBe(SUMMARY.topics);
+    expect(textarea('Homework').value).toBe(SUMMARY.homework);
+    await click(buttonNamed(main(), 'Next'));
+    expect(text()).toContain('Note for the reviewer (optional)');
+    typeText(noteField('Note for the reviewer'), '  Añadí la tarea.  ');
+    await settle();
+    await click(buttonNamed(main(), 'Resubmit'));
+    await settleUntil(() =>
+      text().includes('Closeout resubmitted for review.'),
+    );
+
+    expect(api.calls(RESUBMIT)[0]?.body).toEqual({
+      version: RECORD_VERSION,
+      actual_minutes: 58,
+      summary: SUMMARY,
+      reason: 'Añadí la tarea.',
+    });
+    const status = main().querySelector('[role="status"]');
+    expect(status?.textContent).toBe('Closeout resubmitted for review.');
+    expect(document.activeElement).toBe(status);
+    expect(main().querySelector('h3')?.textContent).toBe(
+      'Submitted for review',
+    );
+    expect(text()).toContain('58 of 60 min');
+  });
+
+  it('leaves the reason out when the note is empty', async () => {
+    await openResubmit();
+    api.set({ [RESUBMIT]: () => jsonResponse(200, TUTOR_RESUBMITTED) });
+    await toReview();
+    await click(buttonNamed(main(), 'Resubmit'));
+    await settleUntil(() => api.calls(RESUBMIT).length === 1);
+
+    expect(api.calls(RESUBMIT)[0]?.body).toEqual({
+      version: RECORD_VERSION,
+      actual_minutes: 55,
+      summary: SUMMARY,
+    });
+  });
+
+  it('saves attendance through the PUT in resubmit', async () => {
+    await openResubmit(
+      [TUTOR_CHANGES_REQUESTED],
+      [ATTENDANCE_COMPLETED, ATTENDANCE_COMPLETED],
+    );
+    api.set({ [PUT]: () => jsonResponse(200, ATTENDANCE_COMPLETED) });
+    const bruno = [...main().querySelectorAll('fieldset')].find(
+      (f) => f.querySelector('legend')?.textContent === 'Bruno Gómez',
+    );
+    const absent = [...(bruno?.querySelectorAll('label') ?? [])]
+      .find((l) => l.textContent === 'Absent')
+      ?.querySelector('input');
+    await click(absent!);
+    await click(buttonNamed(main(), 'Save attendance'));
+    await settleUntil(() => api.calls(PUT).length === 1);
+
+    expect(api.calls(PUT)[0]?.body).toEqual({
+      version: ATTENDANCE_COMPLETED.version,
+      marks: [
+        {
+          student_id: ATTENDANCE_COMPLETED.items[1]!.student.id,
+          status: 'absent',
+        },
+      ],
+    });
+    await settleUntil(() => api.calls(GET).length >= 2);
+  });
+
+  it('returns to the view when an attendance save finds it locked (B2)', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED, TUTOR_RESUBMITTED]);
+    api.set({ [PUT]: () => problem(409, 'attendance_locked') });
+    const bruno = [...main().querySelectorAll('fieldset')].find(
+      (f) => f.querySelector('legend')?.textContent === 'Bruno Gómez',
+    );
+    const absent = [...(bruno?.querySelectorAll('label') ?? [])]
+      .find((l) => l.textContent === 'Absent')
+      ?.querySelector('input');
+    await click(absent!);
+    await click(buttonNamed(main(), 'Save attendance'));
+    await settleUntil(
+      () => main().querySelector('h3')?.textContent === 'Submitted for review',
+    );
+
+    expect(main().querySelector('ol')).toBeNull();
+  });
+
+  it('shows attendance read-only in a correction and requires the reason', async () => {
+    await open(
+      [TUTOR_APPROVED, TUTOR_CORRECTION_SUBMITTED],
+      [ATTENDANCE_LOCKED],
+    );
+    await click(buttonNamed(main(), 'Request a correction'));
+    await settleUntil(() =>
+      text().includes('Attendance is closed. Ask the center to correct it.'),
+    );
+    api.set({
+      [RESUBMIT]: () => jsonResponse(200, TUTOR_CORRECTION_SUBMITTED),
+    });
+
+    expect(main().querySelector('fieldset')).toBeNull();
+    expect(() => buttonNamed(main(), 'Save attendance')).toThrow();
+    expect(buttonNamed(main(), 'Next').disabled).toBe(false);
+    await click(buttonNamed(main(), 'Next'));
+    expect(minutes().value).toBe(String(APPROVED_RECORD.actual_minutes));
+    typeInto(minutes(), '45');
+    await click(buttonNamed(main(), 'Next'));
+    await click(buttonNamed(main(), 'Next'));
+
+    const reason = noteField('Reason for the correction');
+    expect(reason.getAttribute('aria-required')).toBe('true');
+    await click(buttonNamed(main(), 'Request correction'));
+    expect(api.calls(RESUBMIT)).toHaveLength(0);
+    expect(reason.getAttribute('aria-invalid')).toBe('true');
+    expect(text()).toContain('Give a reason for the correction.');
+    expect(reason.getAttribute('aria-describedby')).toContain(
+      `${reason.id}-error`,
+    );
+    expect(document.activeElement).toBe(reason);
+
+    typeText(reason, '  Salimos antes por un simulacro.  ');
+    await settle();
+    await click(buttonNamed(main(), 'Request correction'));
+    await settleUntil(() => text().includes('Correction submitted.'));
+
+    expect(api.calls(RESUBMIT)[0]?.body).toEqual({
+      version: APPROVED_RECORD.version,
+      actual_minutes: 45,
+      summary: SUMMARY,
+      reason: 'Salimos antes por un simulacro.',
+    });
+    expect(main().querySelector('[role="status"]')?.textContent).toBe(
+      'Correction submitted. Approved 50 min stays in force until it is reviewed.',
+    );
+    expect(main().querySelector('h3')?.textContent).toBe(
+      'Correction under review',
+    );
+  });
+
+  it('cancels without asking when nothing changed, and focuses the view', async () => {
+    await openResubmit();
+    await click(buttonNamed(main(), 'Cancel'));
+
+    expect(openDialog()).toBeNull();
+    const heading = main().querySelector('h3');
+    expect(heading?.textContent).toBe('Changes requested by the reviewer');
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('asks before cancelling typed changes', async () => {
+    await openResubmit();
+    await click(buttonNamed(main(), 'Next'));
+    typeInto(minutes(), '58');
+    await click(buttonNamed(main(), 'Cancel'));
+
+    expect(openDialog()?.textContent).toContain('Leave the closeout?');
+    await click(buttonNamed(openDialog()!, 'Stay'));
+    expect(minutes().value).toBe('58');
+    await click(buttonNamed(main(), 'Cancel'));
+    await click(buttonNamed(openDialog()!, 'Leave'));
+    expect(main().querySelector('h3')?.textContent).toBe(
+      'Changes requested by the reviewer',
+    );
+  });
+
+  it('leaves an untouched edit mode without asking (prefilled baseline)', async () => {
+    await openResubmit();
+    await click(buttonNamed(main(), 'Next'));
+    await click(buttonNamed(main(), 'Next'));
+    const back = [...main().querySelectorAll('a')].find(
+      (a) => a.textContent === 'Back to My schedule',
+    );
+    await click(back!);
+
+    await settleUntil(() => /^\/my-schedule\?/.test(app!.location()));
+    expect(openDialog()).toBeNull();
+  });
+
+  it('asks before leaving an edit mode with changes', async () => {
+    await openResubmit();
+    await click(buttonNamed(main(), 'Next'));
+    typeInto(minutes(), '58');
+    await settle();
+    const back = [...main().querySelectorAll('a')].find(
+      (a) => a.textContent === 'Back to My schedule',
+    );
+    await click(back!);
+
+    expect(openDialog()?.textContent).toContain('Leave the closeout?');
+    expect(app!.location()).toBe(PATH);
+  });
+
+  async function failWith(response: () => Response): Promise<void> {
+    api.set({ [RESUBMIT]: response });
+    await toReview();
+    await click(buttonNamed(main(), 'Resubmit'));
+    await settleUntil(() => api.calls(RESUBMIT).length === 1);
+    await settle();
+  }
+
+  it('offers Reload after a version conflict', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() => problem(409, 'version_conflict'));
+
+    expect(alerts(main()).join(' ')).toContain('Session changed elsewhere');
+    const before = api.calls(GET).length;
+    await click(buttonNamed(main(), 'Reload'));
+    await settleUntil(() => api.calls(GET).length > before);
+  });
+
+  it('reloads to the view when it is already under review', async () => {
+    await openResubmit();
+    await failWith(() => problem(409, 'closeout_under_review'));
+    await settleUntil(
+      () => main().querySelector('h3')?.textContent === 'Submitted for review',
+    );
+
+    expect(alerts(main())).toContain('This closeout is already under review.');
+  });
+
+  it.each([
+    ['reason_required', 'Give a reason for the correction.'],
+    ['reason_too_long', 'At most 1000 characters.'],
+  ])('puts a server %s on the note field', async (code, message) => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() =>
+      validation(422, {
+        type: 'about:blank',
+        title: 'Unprocessable Content',
+        status: 422,
+        code: 'validation_error',
+        request_id: 'r',
+        errors: [{ path: ['body', 'reason'], code, message: 'x' }],
+      }),
+    );
+
+    expect(stepHeading()).toBe('Step 4 of 4: Review');
+    const note = noteField('Note for the reviewer');
+    expect(note.getAttribute('aria-invalid')).toBe('true');
+    expect(text()).toContain(message);
+    expect(document.activeElement).toBe(note);
+  });
+
+  it('shows its own alert when nothing changed', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() => problem(422, 'closeout_unchanged'));
+
+    expect(stepHeading()).toBe('Step 4 of 4: Review');
+    expect(alerts(main())).toEqual([
+      'Nothing changed. Change the minutes or the summary, or cancel.',
+    ]);
+  });
+
+  it('goes back to attendance when it is incomplete', async () => {
+    await openResubmit(
+      [TUTOR_CHANGES_REQUESTED],
+      [ATTENDANCE_COMPLETED, { ...ATTENDANCE_UNMARKED, state: 'completed' }],
+    );
+    await failWith(() => problem(409, 'closeout_attendance_incomplete'));
+    await settleUntil(() => stepHeading() === 'Step 1 of 4: Attendance');
+    await settleUntil(() => text().includes('Mark these students first:'));
+
+    expect(text()).toContain('Some students have no attendance mark yet.');
+  });
+
+  it('maps a summary 422 back onto step 3', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() =>
+      validation(422, {
+        type: 'about:blank',
+        title: 'Unprocessable Content',
+        status: 422,
+        code: 'validation_error',
+        request_id: 'r',
+        errors: [
+          {
+            path: ['body', 'summary', 'topics'],
+            code: 'too_long',
+            message: 'x',
+          },
+        ],
+      }),
+    );
+    await settleUntil(() => stepHeading() === 'Step 3 of 4: Summary');
+
+    expect(textarea('Topics').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('shows the not-found page for a 404', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() => problem(404, 'not_found'));
+    await settleUntil(
+      () => main().querySelector('h1')?.textContent === 'Page not found',
+    );
+  });
+
+  it('shows anything else as an error alert', async () => {
+    await openResubmit([TUTOR_CHANGES_REQUESTED]);
+    await failWith(() => problem(403, 'closeout_tutor_only'));
+
+    expect(stepHeading()).toBe('Step 4 of 4: Review');
+    expect(alerts(main()).join(' ')).toContain(
+      "Only the class's tutor submits its closeout.",
+    );
+  });
+});
+
 describe('the My schedule dialog (G2)', () => {
   const START = Date.parse('2026-11-09T16:00:00Z');
 
-  async function dialog(entry: ScheduleEntry, now: number): Promise<void> {
-    stubApi({ 'GET /api/v1/auth/me': meAs(TUTOR) });
+  async function dialog(
+    entry: ScheduleEntry,
+    now: number,
+    routes: Record<string, () => Response> = {},
+  ): Promise<void> {
+    api = stubApi({ 'GET /api/v1/auth/me': meAs(TUTOR), ...routes });
     const element = createElement(EntryDialog, {
       entry,
       context: {
@@ -554,6 +1007,11 @@ describe('the My schedule dialog (G2)', () => {
     );
   }
 
+  const closeoutGet = (id: string) =>
+    `GET /api/v1/class-sessions/${id}/closeout`;
+  const dialogText = () =>
+    document.querySelector('[role="dialog"]')?.textContent ?? '';
+
   it('offers Close out session on a started confirmed item', async () => {
     const item = tutorItem({ starts_at: '2026-11-09T16:00:00Z' });
     await dialog({ audience: 'tutor', item }, START + 60_000);
@@ -575,5 +1033,67 @@ describe('the My schedule dialog (G2)', () => {
       START - 60_000,
     );
     expect(link()?.textContent).toBe('View closeout');
+  });
+
+  // #305 C1: a tutor's completed item reads its closeout lazily.
+  it('shows the badge and Fix closeout when changes are requested', async () => {
+    const item = tutorItem({ state: 'completed' });
+    await dialog({ audience: 'tutor', item }, START, {
+      [closeoutGet(item.id)]: () =>
+        jsonResponse(200, {
+          ...TUTOR_CHANGES_REQUESTED,
+          class_session_id: item.id,
+        }),
+    });
+    await settleUntil(() => link()?.textContent === 'Fix closeout');
+
+    expect(api.calls(closeoutGet(item.id))).toHaveLength(1);
+    expect(dialogText()).toContain('Changes requested');
+    expect(link()?.getAttribute('href')).toBe(
+      `/my-schedule/sessions/${item.id}/closeout`,
+    );
+    expect(link()?.className).toContain('bg-primary');
+  });
+
+  it.each([
+    ['submitted', () => jsonResponse(200, SUBMITTED)],
+    ['approved', () => jsonResponse(200, TUTOR_APPROVED)],
+    ['no closeout', () => jsonResponse(200, NO_CLOSEOUT)],
+    ['an error', () => problem(500, 'internal_error')],
+  ])('keeps View closeout with %s', async (_, respond) => {
+    const item = tutorItem({ state: 'completed' });
+    await dialog({ audience: 'tutor', item }, START, {
+      [closeoutGet(item.id)]: respond,
+    });
+    await settleUntil(() => api.calls(closeoutGet(item.id)).length === 1);
+    await settle();
+
+    expect(link()?.textContent).toBe('View closeout');
+    expect(dialogText()).not.toContain('Changes requested');
+    expect(alerts(document.querySelector('[role="dialog"]')!)).toEqual([]);
+  });
+
+  it('keeps View closeout while loading', async () => {
+    const item = tutorItem({ state: 'completed' });
+    // No route: the request stays pending.
+    await dialog({ audience: 'tutor', item }, START);
+
+    expect(link()?.textContent).toBe('View closeout');
+    expect(dialogText()).not.toContain('Changes requested');
+  });
+
+  it('reads no closeout for family or not-completed entries', async () => {
+    const confirmed = tutorItem({ starts_at: '2026-11-09T16:00:00Z' });
+    await dialog({ audience: 'tutor', item: confirmed }, START + 60_000);
+    expect(
+      api.requests.filter((r) => r.path.endsWith('/closeout')),
+    ).toHaveLength(0);
+    app?.unmount();
+
+    const family = familyItem({ state: 'completed' });
+    await dialog({ audience: 'family', item: family }, START + 60_000);
+    expect(
+      api.requests.filter((r) => r.path.endsWith('/closeout')),
+    ).toHaveLength(0);
   });
 });

@@ -3068,13 +3068,34 @@
         "reason": "Reason: {{reason}}",
         "reasonHidden": "Reason visible to academic reviewers",
         "current": "(in force)"
-      },
-      "tutor": {
-        "changesRequested": "Changes requested: {{reason}}",
-        "changesRequestedNoReason": "Changes requested",
-        "approved": "Approved · {{minutes}} min",
-        "correctionSubmitted": "Correction submitted for review"
       }
+    },
+    "tutorView": {
+      "underReview": "Submitted for review",
+      "correctionUnderReview": "Correction under review",
+      "inForce": "Approved {{minutes}} min stays in force until it is reviewed.",
+      "yourReason": "Your reason: {{reason}}",
+      "changesRequested": "Changes requested by the reviewer",
+      "approved": "Approved · {{minutes}} min",
+      "approvedBy": "by {{name}}, {{date}}",
+      "resubmit": "Edit and resubmit",
+      "requestCorrection": "Request a correction",
+      "cancel": "Cancel",
+      "resubmitSubmit": "Resubmit",
+      "resubmitting": "Resubmitting…",
+      "correctionSubmit": "Request correction",
+      "correctionSubmitting": "Sending…",
+      "note": "Note for the reviewer",
+      "noteHint": "The reviewer reads it with your closeout.",
+      "reason": "Reason for the correction",
+      "reasonHint": "Tell the reviewer what changed and why.",
+      "reasonRequired": "Give a reason for the correction.",
+      "reasonTooLong": "At most 1000 characters.",
+      "resubmittedNotice": "Closeout resubmitted for review.",
+      "correctionNotice": "Correction submitted. Approved {{minutes}} min stays in force until it is reviewed.",
+      "unchanged": "Nothing changed. Change the minutes or the summary, or cancel.",
+      "badge": "Changes requested",
+      "fix": "Fix closeout"
     }
   }
 }

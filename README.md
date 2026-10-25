@@ -220,7 +220,10 @@ unless a bullet says otherwise.
   Academic Coordinators. From the session page they approve it, send it
   back to the tutor with a reason, or correct the minutes and summary with
   a reason; approvals are kept as an immutable history for payroll, and a
-  correction adds a new approval instead of changing the old one.
+  correction adds a new approval instead of changing the old one. Tutors
+  see the reviewer's reason, fix and resubmit a closeout from My schedule,
+  and can request a correction after approval, while the approved minutes
+  stay in force until it is reviewed.
 
 **Courses**
 

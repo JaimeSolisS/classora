@@ -4221,6 +4221,8 @@ There is no reject and no tutor withdraw.
 | `PUT /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The current tutor who submitted it; staff who aren't get `403 closeout_tutor_only`, anyone else `404`. Body `{version, actual_minutes, summary, reason?}` (a full replacement; `reason` trimmed, at most 1000, required from `approved`). |
 | `PUT /api/v1/class-sessions/{class_session_id}/attendance` (#76) | as before | The tutor may mark a `completed` session again only while its closeout is `changes_requested`; the attendance `GET` reports `can_mark` the same way. |
 
+The tutor web (M5-11b, #305) uses this `PUT` from the closeout page in two edit modes: **resubmit** (`changes_requested`, an optional note for the reviewer as `reason`) and **request a correction** (`approved`, a required `reason`), both sending `closeout.version`; My schedule reads `GET …/closeout` lazily when a tutor opens a completed entry, to show "Changes requested" and "Fix closeout". No contract change.
+
 **Reviewer order** (approve, request changes, corrections): `401` → `403
 permission_denied` (before any read; an unknown id gives the same `403`) →
 `422` body → the closeout `FOR UPDATE` (`404` for an unknown session or one
