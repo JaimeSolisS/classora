@@ -57,6 +57,7 @@ export function AttendanceSection({
     formatInstant(instant, { timeZone, language, style: 'dateTime' });
 
   let body;
+  let scrolls = false;
   if (state.status === 'loading') {
     body = <LoadingState rows={2} />;
   } else if (state.status === 'error') {
@@ -68,8 +69,22 @@ export function AttendanceSection({
   } else {
     const { attendance } = state;
     const showCorrect = canCorrect && attendance.can_correct;
+    // #311: when the table is wider than the section it scrolls inside this
+    // region, never the page. `relative` makes the region the containing
+    // block of the absolutely positioned `sr-only` header ("Actions"), which
+    // otherwise sat outside the scroller and widened the page. Read-only
+    // rows hold nothing focusable, so the region takes the focus (axe
+    // scrollable-region-focusable, WCAG 2.1.1) and is named by the heading;
+    // the section then drops its own name, so there is one "Attendance"
+    // landmark (axe landmark-unique).
+    scrolls = true;
     body = (
-      <div className="min-w-0 overflow-x-auto">
+      <div
+        role="region"
+        aria-labelledby={`${id}-heading`}
+        tabIndex={0}
+        className="relative min-w-0 overflow-x-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring"
+      >
         <table className="w-full min-w-[32rem] text-left text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -148,7 +163,10 @@ export function AttendanceSection({
   }
 
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
+    <section
+      aria-labelledby={scrolls ? undefined : `${id}-heading`}
+      className="flex flex-col gap-3"
+    >
       <h2 id={`${id}-heading`} className="text-lg font-semibold">
         {t('attendance.section.heading')}
       </h2>
