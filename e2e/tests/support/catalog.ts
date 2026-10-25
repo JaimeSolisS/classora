@@ -53,6 +53,27 @@ type Common = {
     >;
     whose: { label: string };
   };
+  attendance: {
+    title: string;
+    statuses: Record<'present' | 'late' | 'absent', string>;
+    save: string;
+    saved: string;
+    take: string;
+    history_one: string;
+    reason: string;
+    section: {
+      heading: string;
+      correctedBadge: string;
+      correctFor: string;
+      correctedNotice: string;
+    };
+    correctDialog: {
+      title: string;
+      status: string;
+      reason: string;
+      submit: string;
+    };
+  };
   sessionRequests: {
     status: Record<'pending' | 'confirmed' | 'rejected' | 'withdrawn', string>;
     new: {

@@ -413,6 +413,17 @@ export const routes: RouteObject[] = [
             }),
             handle: MY_SCHEDULE_ACCESS,
           },
+          // #76 G1: the tutor takes a session's attendance (code-split; the
+          // API's record policy decides: the current tutor only).
+          {
+            path: 'my-schedule/sessions/:sessionId/attendance',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/tutor-portal/attendance/AttendancePage')
+              ).AttendancePage,
+            }),
+            handle: { role: 'tutor' },
+          },
           // #62b B1: My change requests (code-split): guardians, students
           // and tutors; the API's record policy decides.
           {

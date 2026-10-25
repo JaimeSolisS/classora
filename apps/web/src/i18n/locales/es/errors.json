@@ -166,5 +166,13 @@
   "proposal_required": "Propón el nuevo horario.",
   "proposal_not_allowed": "Una cancelación no lleva horario propuesto.",
   "availability_change_stale": "La disponibilidad cambió desde que se hizo esta solicitud; recházala y pide una nueva.",
-  "availability_change_not_pending": "Esta solicitud de cambio ya no está pendiente."
+  "availability_change_not_pending": "Esta solicitud de cambio ya no está pendiente.",
+  "attendance_tutor_only": "Solo el tutor de la clase registra la asistencia. El centro la corrige con un motivo.",
+  "attendance_not_recordable": "No se puede tomar asistencia en esta clase en su estado actual.",
+  "attendance_not_started": "La asistencia se abre cuando empieza la clase.",
+  "attendance_locked": "La asistencia de esta clase está cerrada. Pide al centro que la corrija.",
+  "attendance_corrected": "El centro corrigió la asistencia de un estudiante, así que no puedes cambiarla. Pregunta al centro.",
+  "attendance_unchanged": "El estudiante ya tiene este estado.",
+  "student_not_participant": "Un estudiante no está en esta clase.",
+  "duplicate_student": "Cada estudiante solo puede aparecer una vez."
 }

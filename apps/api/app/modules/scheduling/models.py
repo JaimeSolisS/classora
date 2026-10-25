@@ -179,6 +179,21 @@ lock order) are in :mod:`~app.modules.scheduling.offers`.
   schedules show ``cancelled`` and ``skipped_closure`` sessions only when it
   is set (``states.is_family_visible`` / ``is_tutor_visible``).
 
+- ``class_session_attendance`` (#76 A1, A2): one participant's attendance
+  in one session (``status`` ``present`` | ``late`` | ``absent``), who
+  marked it last and when. A composite foreign key to
+  ``class_session_participants(class_session_id, student_id)`` (``ON DELETE
+  RESTRICT``) keeps it to that session's participants; one row per session
+  and student. ``Audited``; not versioned: the session's ``version`` covers
+  its attendance (as it does its participants).
+- ``class_session_attendance_corrections`` (#76 A1, E3): one staff
+  correction of an attendance row: the previous status (``NULL`` when staff
+  made the first mark), the new one, the trimmed ``reason`` (1-1000
+  characters) and the corrector. **Append-only**: the trigger
+  :data:`ATTENDANCE_CORRECTIONS_IMMUTABLE_TRIGGER` rejects ``UPDATE``,
+  ``DELETE`` and ``TRUNCATE`` (SQLSTATE 42501). Not ``Audited``: the named
+  event ``scheduling.attendance_corrected`` is its record.
+
 Cohorts add their own columns and tables (#65).
 """
 
@@ -192,6 +207,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     SmallInteger,
     String,
@@ -232,6 +248,19 @@ CONFLICT_CODE_MAX_LENGTH: Final = 40
 SERIES_DURATION_MIN: Final = 15
 SERIES_DURATION_MAX: Final = 480
 OVERRIDES_IMMUTABLE_TRIGGER: Final = "class_session_overrides_immutable"
+ATTENDANCE_CORRECTIONS_IMMUTABLE_TRIGGER: Final = (
+    "class_session_attendance_corrections_immutable"
+)
+ATTENDANCE_UNIQUE: Final = "uq_class_session_attendance_session_student"
+ATTENDANCE_PARTICIPANT_FK: Final = "fk_class_session_attendance_participant"
+"""The composite foreign key to ``class_session_participants`` (#76 A1),
+named explicitly: the convention's name would pass PostgreSQL's
+63-character limit (as the two correction keys below)."""
+ATTENDANCE_CORRECTION_ATTENDANCE_FK: Final = "fk_attendance_corrections_attendance_id"
+ATTENDANCE_CORRECTION_USER_FK: Final = "fk_attendance_corrections_corrected_by_user_id"
+ATTENDANCE_STATUS_VALUES: Final = ("present", "late", "absent")
+"""``attendance_rules.ATTENDANCE_STATUSES`` (a unit test compares them)."""
+ATTENDANCE_REASON_MAX_LENGTH: Final = 1000
 GROUP_ENROLLMENTS_WRITE_ONCE_TRIGGER: Final = "group_enrollments_write_once"
 GROUP_NAME_UNIQUE: Final = "uq_class_groups_name"
 GROUP_ENROLLMENT_ACTIVE_UNIQUE: Final = "uq_group_enrollments_active"
@@ -1221,4 +1250,83 @@ class SessionChangeRequest(Audited, VersionedMixin, Model):
     final_makeup_allowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     final_makeup_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+_ATTENDANCE_STATUS_SQL: Final = _quoted(ATTENDANCE_STATUS_VALUES)
+
+
+class ClassSessionAttendance(Audited, Model):
+    """One participant's attendance in one session (#76 A1, A2). Not
+    versioned: the session's ``version`` covers it."""
+
+    __tablename__ = "class_session_attendance"
+    __table_args__ = (
+        CheckConstraint(f"status IN ({_ATTENDANCE_STATUS_SQL})", name="status_valid"),
+        UniqueConstraint("class_session_id", "student_id", name=ATTENDANCE_UNIQUE),
+        ForeignKeyConstraint(
+            ["class_session_id", "student_id"],
+            [
+                "class_session_participants.class_session_id",
+                "class_session_participants.student_id",
+            ],
+            ondelete="RESTRICT",
+            name=ATTENDANCE_PARTICIPANT_FK,
+        ),
+        # #84/#85 read a student's attendance across sessions.
+        Index(
+            "ix_class_session_attendance_student_id_class_session_id",
+            "student_id",
+            "class_session_id",
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(String(10))
+    marked_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ClassSessionAttendanceCorrection(Model):
+    """One staff correction of an attendance row (#76 A1, E3). Append-only
+    (a trigger rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE``); not
+    audited, the ``scheduling.attendance_corrected`` event is its record."""
+
+    __tablename__ = "class_session_attendance_corrections"
+    __table_args__ = (
+        CheckConstraint(
+            f"previous_status IS NULL OR previous_status IN ({_ATTENDANCE_STATUS_SQL})",
+            name="previous_status_valid",
+        ),
+        CheckConstraint(
+            f"new_status IN ({_ATTENDANCE_STATUS_SQL})", name="new_status_valid"
+        ),
+        CheckConstraint(
+            "previous_status IS DISTINCT FROM new_status", name="status_changes"
+        ),
+        CheckConstraint(
+            "char_length(btrim(reason)) BETWEEN 1"
+            f" AND {ATTENDANCE_REASON_MAX_LENGTH} AND reason = btrim(reason)",
+            name="reason_valid",
+        ),
+    )
+
+    attendance_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "class_session_attendance.id",
+            ondelete="RESTRICT",
+            name=ATTENDANCE_CORRECTION_ATTENDANCE_FK,
+        ),
+        index=True,
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(10))
+    reason: Mapped[str] = mapped_column(Text)
+    corrected_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT", name=ATTENDANCE_CORRECTION_USER_FK),
     )

@@ -88,6 +88,7 @@ from app.modules.identity.service import (
     resolve_session_principal,
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
+from app.modules.scheduling.attendance_router import router as attendance_router
 from app.modules.scheduling.change_requests_router import (
     router as change_requests_router,
 )
@@ -215,6 +216,7 @@ def build_app(
     app.include_router(tutors_router)
     app.include_router(courses_router)
     app.include_router(class_sessions_router)
+    app.include_router(attendance_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

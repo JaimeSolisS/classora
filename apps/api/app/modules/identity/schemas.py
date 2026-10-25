@@ -35,6 +35,7 @@ type RoleCode = Literal[
     "tutor",
 ]
 type PermissionCode = Literal[
+    "attendance.correct",
     "audit.view",
     "catalog.manage",
     "consent.record",

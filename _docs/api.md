@@ -154,6 +154,12 @@ Codes in use today:
 | `change_request_not_pending` | 409 | Withdrawing, approving or rejecting a change request that was already approved, rejected or withdrawn. The staff routes add `details.status`; the requester's withdraw body stays closed. |
 | `change_request_session_changed` | 409 | Approving a change request whose session is no longer `confirmed` (staff cancelled it, a closure skipped it, ...; `details.state`); reject it instead. |
 | `change_request_review_route_required` | 409 | The inbox's generic approve or reject of a `scheduling.change_request` item whose request the review routes haven't decided; `details.review_path` is `/schedule/change-requests/<id>`. The item stays pending. |
+| `attendance_tutor_only` | 403 | `PUT /api/v1/class-sessions/{class_session_id}/attendance` by a caller who may read the session's attendance (`schedule.view`) but isn't its current tutor; staff correct with a reason instead (see Attendance). |
+| `attendance_not_recordable` | 409 | Marking or correcting attendance of a session that is neither `confirmed` nor `completed`; `details.state` (see Attendance). |
+| `attendance_not_started` | 409 | Marking or correcting attendance before the session starts (`starts_at > now`; see Attendance). |
+| `attendance_locked` | 409 | The tutor marks attendance of a `completed` session; only a staff correction can change it (see Attendance). |
+| `attendance_corrected` | 409 | The tutor's mark would change the status of a student whose mark staff corrected (a correction wins); `details.student_id` (see Attendance). |
+| `student_not_participant` / `attendance_unchanged` / `duplicate_student` | 422 | Attendance field errors: a student who isn't in the session (`["body","marks",i,"student_id"]` or `["body","student_id"]`; the same for an unknown student), a correction to the status the student already has (`["body","status"]`), or a student listed twice in one `PUT` (`["body","marks"]`; see Attendance). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
 | `exception_not_applicable` | 422 | Approving as an exception a change request that is already `excused` (every tutor request); on `["body","exception"]`. |
@@ -3920,7 +3926,7 @@ still get `403`.
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `GET /api/v1/tutors/{user_id}/schedule?from=…&to=…` | `require("tutor.view")` (Owner, Administrator, Academic coordinator, Tutor) + record policy | The tutor themselves, or a staff role with `schedule.view`. Anyone else, an unknown id and a user who isn't a tutor get the same `404 not_found`. `200` with `TutorSchedule`. At most 7 statements. |
-| `GET /api/v1/students/{student_id}/schedule?from=…&to=…` | `require("student.view")` (every role) + record policy | The student themselves (own profile, whatever its `is_active`), a guardian linked through their **active** profile (a minor; an adult only with that student's `guardian_academic_access` consent naming the guardian, otherwise `403 student_consent_required`), or a staff role with `schedule.view`. An unknown id, an unlinked student, a sibling, a student a tutor only teaches and an inactive guardian profile get the same `404 not_found`. `200` with `FamilySchedule`. At most 8 statements. |
+| `GET /api/v1/students/{student_id}/schedule?from=…&to=…` | `require("student.view")` (every role) + record policy | The student themselves (own profile, whatever its `is_active`), a guardian linked through their **active** profile (a minor; an adult only with that student's `guardian_academic_access` consent naming the guardian, otherwise `403 student_consent_required`), or a staff role with `schedule.view`. An unknown id, an unlinked student, a sibling, a student a tutor only teaches and an inactive guardian profile get the same `404 not_found`. `200` with `FamilySchedule`. At most 9 statements (8 before #76's attendance). |
 | `GET /api/v1/schedule/family-students` | `require("student.view")` (every role) | The whose-schedule choices: `{items: [{student_id, display_name, relation: "self" \| "guardian", is_minor, schedule_access: "allowed" \| "consent_required"}]}`, by display name. Only the caller's own profile (student role) and the students linked to their active guardian profile, never a tutor's or staff member's other students; `{items: []}` without either role. At most 4 statements. |
 
 Order: `401`/`403` → `422` query → `404` / `403 student_consent_required`
@@ -3963,7 +3969,10 @@ hidden from families.
   `TutorSchedule` is `{items, truncated}`.
 - `FamilyScheduleItem`: `{id, kind, state, starts_at, ends_at, subject {id,
   name, education_level_name}, tutor {display_name} | null, classroom {name}
-  | null}`. Never other participants (no ids, names or counts), the tutor's
+  | null, attendance}`. `attendance` (#76 E4) is the path student's own
+  status in the session, `present` | `late` | `absent`, or `null` when not
+  marked; never other students' statuses, who marked it, when, or
+  corrections (one more statement: at most 9). Never other participants (no ids, names or counts), the tutor's
   id, username or contact data, the classroom id, markers, overrides,
   reassignment flags, offer data or the cancellation reason.
   `FamilySchedule` is `{student_id, items, truncated}`.
@@ -3977,6 +3986,93 @@ in one statement. `app/wiring.py` registers it with
 those students (at the `limited` level) in `GET /api/v1/students` and
 `/students/{id}`; the access ends 30 days after the last such session, or as
 soon as a substitution or a decline removes the tutor.
+
+### Attendance
+
+Implemented by M5-09 (#76; spec §2 "tutor submits attendance", §3
+"Attendance, session completion and changes", §4, §16, W3.1, W5.3;
+architecture ISSUE-A3; ADR-0005 D2, D9) in
+`apps/api/app/modules/scheduling/` (`attendance_rules.py`: the pure rules
+and the record policy; `attendance.py`: the reads and writes;
+`attendance_schemas.py`: the closed bodies; `attendance_router.py`). One new
+permission, `attendance.correct` (Owner, Administrator, Academic
+coordinator; not delegable). Marking or correcting attendance **never**
+changes the session's `state`, `actual_minutes` or `first_confirmed_at`:
+closeout (M5-10, #77) does that and reuses
+`scheduling.service.record_attendance`. No notification is sent.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/class-sessions/{class_session_id}/attendance` | `authenticated()` + record policy | The session's **current** tutor (`tutor_user_id`, while the caller holds the `tutor` role: after an accepted #55 substitution only the substitute; a pending substitute isn't the tutor yet), or a holder of `schedule.view` (Owner, Administrator, Academic coordinator, Finance). Anyone else, in any session state, gets the `404 not_found` of an unknown id. `200` with `SessionAttendance`. At most 7 statements (6 today). |
+| `PUT /api/v1/class-sessions/{class_session_id}/attendance` | `authenticated()` + record policy | The current tutor marks. A `schedule.view` holder who isn't the current tutor gets `403 attendance_tutor_only`; anyone else `404`. `200` with `SessionAttendance`. |
+| `POST /api/v1/class-sessions/{class_session_id}/attendance/corrections` | `require("attendance.correct")` | A staff correction with a reason. `201` with `SessionAttendance`. |
+
+**When** (`attendance_rules.attendance_block`, in this order):
+`attendance_not_recordable` for a state other than `confirmed` or
+`completed`; `attendance_not_started` while `starts_at > now`;
+`attendance_locked` for the tutor once the session is `completed`. Staff
+corrections are allowed on `completed` sessions. There is no deadline: a
+tutor can mark a `confirmed` session days later, or while it is still
+running.
+
+**`SessionAttendance`** (closed allow-list): `{class_session_id, version,
+kind, state, starts_at, ends_at, subject {id, name, education_level_name},
+can_mark, can_correct, block, items}`. Each item: `{student {id,
+display_name}, status: "present" | "late" | "absent" | null, marked_by
+{display_name} | null, marked_at | null, corrected, corrections [{id,
+previous_status | null, new_status, reason, corrected_by {display_name},
+created_at}]}`. Items cover **every participant** (unmarked ones have
+`status: null`), by display name (casefolded) then id; corrections oldest
+first. `can_mark`: the caller is the current tutor and the tutor may mark
+now; `can_correct`: the caller holds `attendance.correct` and a correction
+is possible now; `block`: the block code for the caller (the tutor's rules
+for the current tutor, the staff rules otherwise), or `null`. The tutor sees
+the corrections and their reasons too.
+
+**`PUT` body** `{version, marks: [{student_id, status}]}` (1-500 marks,
+`extra="forbid"`; a student listed twice: `422 duplicate_student`). Partial
+marking is allowed (unlisted participants keep their mark); a mark can't be
+cleared. **Order:** `401` → `422` body → `404` (unknown or hidden) → `403
+attendance_tutor_only` → the session row `FOR UPDATE` (the only lock; no
+advisory lock) → `409 version_conflict` → `409 attendance_not_recordable` /
+`attendance_not_started` / `attendance_locked` → `422 validation_error`
+with `student_not_participant` at `marks[i].student_id` (the same body for
+an unknown student and another session's) → `409 attendance_corrected`
+(`details.student_id`) when a mark would change a corrected student's
+status → the writes. A new mark inserts a row (marked by the caller, now),
+a changed one updates `status`, `marked_by` and `marked_at`, an identical
+one is a no-op. The rows are audited (`create` / `update` with the actor).
+
+**`POST` body** `{version, student_id, status, reason}` (`reason` trimmed,
+1-1000 characters: `reason_required` / `reason_too_long`). **Order:** `401`
+→ `403 permission_denied` → `422` body → `404` → the session `FOR UPDATE` →
+`409 version_conflict` → `409 attendance_not_recordable` /
+`attendance_not_started` → `422 student_not_participant`
+(`["body","student_id"]`) → `422 attendance_unchanged` (`["body","status"]`)
+→ in one transaction: the attendance row upserted (marked by the corrector,
+now; a first mark by staff is allowed), one append-only
+`class_session_attendance_corrections` row (`previous_status` `null` for a
+first mark) and the named audit event `scheduling.attendance_corrected`
+`{correction_id, class_session_id, student_id, previous_status, new_status,
+reason}` on the attendance row. A staff member who is also the current
+tutor may use either route; only the correction records a reason.
+
+**Session version:** any attendance change (a mark that changed something,
+or a correction) bumps the session's `version` by exactly one, so a stale
+second writer gets `409 version_conflict`; a fully no-op `PUT` changes
+nothing and writes no audit event.
+
+**Data** (revision 0049): `class_session_attendance` (one row per session
+and participant: a composite foreign key to
+`class_session_participants(class_session_id, student_id)`, `ON DELETE
+RESTRICT`, so only a participant can have attendance; `status` CHECK) and
+`class_session_attendance_corrections` (append-only: `UPDATE`, `DELETE` and
+`TRUNCATE` raise SQLSTATE 42501). Families see a student's own status on
+`GET /api/v1/students/{student_id}/schedule` (see Role-scoped schedules).
+**Seams:** `scheduling.service.record_attendance(session, *, actor,
+class_session_id, version, marks)` (#77) and
+`scheduling.service.attendance_statuses(session, class_session_ids) ->
+{(session_id, student_id): status}` (#84, #85).
 
 ### Change requests
 

@@ -166,5 +166,13 @@
   "proposal_required": "Propose the new time.",
   "proposal_not_allowed": "A cancellation takes no proposed time.",
   "availability_change_stale": "The availability changed since this request was made; reject it and ask for a new one.",
-  "availability_change_not_pending": "This change request is no longer pending."
+  "availability_change_not_pending": "This change request is no longer pending.",
+  "attendance_tutor_only": "Only the class's tutor marks attendance. The center corrects it with a reason.",
+  "attendance_not_recordable": "Attendance can't be taken for this class in its current state.",
+  "attendance_not_started": "Attendance opens when the class starts.",
+  "attendance_locked": "Attendance is closed for this class. Ask the center to correct it.",
+  "attendance_corrected": "The center corrected a student's attendance, so you can't change it. Ask the center.",
+  "attendance_unchanged": "The student already has this status.",
+  "student_not_participant": "A student isn't in this class.",
+  "duplicate_student": "Each student can be listed only once."
 }

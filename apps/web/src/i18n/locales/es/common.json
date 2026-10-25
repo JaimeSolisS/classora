@@ -2917,5 +2917,68 @@
         "notPending": "Esta solicitud ya no está pendiente. La lista se actualizó."
       }
     }
+  },
+  "attendance": {
+    "title": "Asistencia",
+    "back": "Volver a Mi horario",
+    "when": "{{date}}, {{start}}–{{end}} ({{zone}})",
+    "state": "Estado: {{state}}",
+    "statuses": {
+      "present": "Presente",
+      "late": "Retardo",
+      "absent": "Ausente"
+    },
+    "notRecorded": "Sin registrar",
+    "listLabel": "Estudiantes",
+    "savedStatus": "Estado guardado:",
+    "save": "Guardar asistencia",
+    "saving": "Guardando asistencia…",
+    "saved": "Asistencia guardada.",
+    "noChanges": "No hay cambios: primero elige un estado para algún estudiante.",
+    "noStudents": "Esta clase no tiene estudiantes.",
+    "readOnly": "No puedes cambiar esta asistencia.",
+    "corrected": "Corregida por el centro",
+    "reason": "Motivo: {{reason}}",
+    "history_one": "Historial de correcciones ({{count}})",
+    "history_many": "Historial de correcciones ({{count}})",
+    "history_other": "Historial de correcciones ({{count}})",
+    "change": "{{from}} → {{to}}",
+    "correctedBy": "Por {{name}}, {{when}}",
+    "markedBy": "{{name}}, {{when}}",
+    "blocked": {
+      "attendance_not_started": "La asistencia se abre cuando empieza la clase, el {{time}}.",
+      "attendance_locked": "La asistencia está cerrada. Pide al centro que la corrija.",
+      "attendance_not_recordable": "No se puede tomar asistencia en esta clase. Estado: {{state}}."
+    },
+    "conflict": "La asistencia cambió en otro lugar. Recarga para ver lo más reciente.",
+    "reload": "Recargar",
+    "take": "Tomar asistencia",
+    "view": "Ver asistencia",
+    "familyRow": "Asistencia",
+    "section": {
+      "heading": "Asistencia",
+      "notStarted": "La asistencia se abre cuando empieza la clase.",
+      "student": "Estudiante",
+      "status": "Estado",
+      "marked": "Registrada por",
+      "actions": "Acciones",
+      "correctedBadge": "Corregida",
+      "correct": "Corregir",
+      "correctFor": "Corregir asistencia de {{name}}",
+      "correctedNotice": "Asistencia corregida."
+    },
+    "correctDialog": {
+      "title": "Corregir asistencia",
+      "description": "{{name}}: la corrección y su motivo quedan en el historial y en la auditoría. El tutor ya no podrá cambiar esta marca.",
+      "status": "Nuevo estado",
+      "current": "{{status}} (actual)",
+      "reason": "Motivo",
+      "submit": "Guardar corrección",
+      "submitting": "Guardando corrección…",
+      "cancel": "Cancelar",
+      "reasonRequired": "Escribe un motivo.",
+      "reasonTooLong": "El motivo puede tener como máximo 1000 caracteres.",
+      "unchanged": "El estudiante ya tiene este estado. Elige otro."
+    }
   }
 }

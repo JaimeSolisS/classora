@@ -2864,5 +2864,67 @@
         "notPending": "This request is no longer pending. The list is updated."
       }
     }
+  },
+  "attendance": {
+    "title": "Attendance",
+    "back": "Back to My schedule",
+    "when": "{{date}}, {{start}}–{{end}} ({{zone}})",
+    "state": "State: {{state}}",
+    "statuses": {
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent"
+    },
+    "notRecorded": "Not recorded",
+    "listLabel": "Students",
+    "savedStatus": "Saved status:",
+    "save": "Save attendance",
+    "saving": "Saving attendance…",
+    "saved": "Attendance saved.",
+    "noChanges": "Nothing changed: choose a status for a student first.",
+    "noStudents": "This class has no students.",
+    "readOnly": "You can't change this attendance.",
+    "corrected": "Corrected by the center",
+    "reason": "Reason: {{reason}}",
+    "history_one": "Correction history ({{count}})",
+    "history_other": "Correction history ({{count}})",
+    "change": "{{from}} → {{to}}",
+    "correctedBy": "By {{name}}, {{when}}",
+    "markedBy": "{{name}}, {{when}}",
+    "blocked": {
+      "attendance_not_started": "Attendance opens when the class starts at {{time}}.",
+      "attendance_locked": "Attendance is closed. Ask the center to correct it.",
+      "attendance_not_recordable": "Attendance can't be taken for this class. State: {{state}}."
+    },
+    "conflict": "Attendance changed elsewhere. Reload to see the latest marks.",
+    "reload": "Reload",
+    "take": "Take attendance",
+    "view": "View attendance",
+    "familyRow": "Attendance",
+    "section": {
+      "heading": "Attendance",
+      "notStarted": "Attendance opens when the class starts.",
+      "student": "Student",
+      "status": "Status",
+      "marked": "Marked by",
+      "actions": "Actions",
+      "correctedBadge": "Corrected",
+      "correct": "Correct",
+      "correctFor": "Correct attendance of {{name}}",
+      "correctedNotice": "Attendance corrected."
+    },
+    "correctDialog": {
+      "title": "Correct attendance",
+      "description": "{{name}}: the correction and its reason are kept in the history and audited. The tutor can't change this mark afterwards.",
+      "status": "New status",
+      "current": "{{status}} (current)",
+      "reason": "Reason",
+      "submit": "Save correction",
+      "submitting": "Saving correction…",
+      "cancel": "Cancel",
+      "reasonRequired": "Give a reason.",
+      "reasonTooLong": "The reason can have at most 1000 characters.",
+      "unchanged": "The student already has this status. Choose another one."
+    }
   }
 }

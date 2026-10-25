@@ -455,6 +455,36 @@ allow = ["owner", "administrator"]
 json = { version = 1, starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
 
 [[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+access = "authenticated"
+# #76 B1: the record policy (the session's current tutor, or a schedule.view
+# holder; anyone else the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_attendance.py.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+access = "authenticated"
+# #76 C2: the record policy (the current tutor only; other visible callers
+# 403 attendance_tutor_only after the 404). A valid body; the placeholder id
+# is no session: 404 for every role. The 200, 403, 409 and 422 cases are
+# tested in tests/integration/test_attendance.py.
+json = { version = 1, marks = [{ student_id = "00000000-0000-4000-8000-000000000076", status = "present" }] }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/attendance/corrections"
+access = "permission"
+permission = "attendance.correct"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #76 D2 (E1 (a)): a valid body; the placeholder id is no session: 404 for
+# every allowed role. The 201, 409 and 422 cases are tested in
+# tests/integration/test_attendance.py.
+json = { version = 1, student_id = "00000000-0000-4000-8000-000000000076", status = "absent", reason = "Matrix" }
+
+[[route]]
 method = "POST"
 path = "/api/v1/class-sessions/{class_session_id}/cancel"
 access = "permission"

@@ -380,6 +380,13 @@ follows these rules.
   database, DEV or PROD.
 - Every run starts from an empty volume, then runs the migrations, then the
   reference seeds, then the demo command with the fixed seed (`--seed 1`).
+  Then `e2e/scripts/run.sh` runs the E2E attendance fixture
+  (`python -m tests.factories.e2e_attendance`, #76): one started
+  `confirmed` group session of `demo.tutor` with two synthetic students
+  (subject `E2E Attendance`, no room) in the latest free hour before now. It
+  is test data for `e2e/tests/scheduling/offers.spec.ts` only, separate
+  from `make seed-demo`, guarded like the demo command (`local`/`dev`) and
+  idempotent; no other spec may use that subject or session.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a

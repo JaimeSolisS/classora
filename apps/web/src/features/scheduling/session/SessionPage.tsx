@@ -26,7 +26,16 @@ import {
   withdrawSubstitution,
   type SubstitutionCreated,
 } from './api';
+import {
+  attendanceKey,
+  correctAttendance,
+  fetchAttendance,
+} from '@/features/tutor-portal/attendance/api';
 import { changeRequestPath } from '../change-requests/rules';
+import {
+  AttendanceSection,
+  type AttendanceSectionState,
+} from './AttendanceSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
 import {
@@ -60,6 +69,10 @@ import { SubstitutionSection } from './SubstitutionSection';
 // refused because the session changed (409 class_session_not_substitutable
 // / _not_cancellable / version_conflict) shows its message and reloads the
 // session.
+//
+// #76 G3: a confirmed or completed session shows its attendance; holders of
+// attendance.correct correct a mark with a reason (the session and its
+// attendance reload; the session's version changes).
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -71,6 +84,7 @@ export function SessionPage() {
   const canAssign = useCan('schedule.assign');
   const canOverride = useCan('schedule.override');
   const canManage = useCan('schedule.manage');
+  const canCorrectAttendance = useCan('attendance.correct');
   const [cancelling, setCancelling] = useState(false);
   const client = useQueryClient();
   const [offered, setOffered] = useState<{
@@ -96,6 +110,13 @@ export function SessionPage() {
     queryKey: seriesKey(seriesId ?? ''),
     queryFn: ({ signal }) => fetchClassSeries(seriesId ?? '', signal),
     enabled: seriesId !== null,
+  });
+  const showAttendance =
+    session.data?.state === 'confirmed' || session.data?.state === 'completed';
+  const attendance = useQuery({
+    queryKey: attendanceKey(sessionId),
+    queryFn: ({ signal }) => fetchAttendance(sessionId, signal),
+    enabled: showAttendance,
   });
   const showPanel = canAssign && session.data?.state === 'unassigned';
   const now = new Date();
@@ -265,6 +286,45 @@ export function SessionPage() {
       }}
     />
   ) : null;
+  let attendanceState: AttendanceSectionState;
+  if (attendance.isError) {
+    attendanceState = {
+      status: 'error',
+      error: attendance.error,
+      onRetry: () => void attendance.refetch(),
+    };
+  } else if (!attendance.data) {
+    attendanceState = { status: 'loading' };
+  } else {
+    attendanceState = { status: 'ready', attendance: attendance.data };
+  }
+  const attendanceSection = showAttendance ? (
+    <AttendanceSection
+      state={attendanceState}
+      timeZone={timeZone}
+      canCorrect={canCorrectAttendance}
+      onCorrect={async (item, status, reason) => {
+        await correctAttendance(sessionId, {
+          version: attendance.data?.version ?? 0,
+          student_id: item.student.id,
+          status,
+          reason,
+        });
+        await Promise.all([
+          refresh(),
+          client.invalidateQueries({ queryKey: attendanceKey(sessionId) }),
+        ]);
+        window.setTimeout(
+          () => announce(t('attendance.section.correctedNotice'), 'status'),
+          0,
+        );
+      }}
+      onReload={() => {
+        void refresh();
+        void client.invalidateQueries({ queryKey: attendanceKey(sessionId) });
+      }}
+    />
+  ) : null;
   const actions =
     showCancel && detail ? (
       <div>
@@ -314,6 +374,7 @@ export function SessionPage() {
         series={seriesDetail ?? null}
         actions={actions}
         substitutions={substitutionSection}
+        attendance={attendanceSection}
         notice={notice}
         changeRequestLink={
           canManage

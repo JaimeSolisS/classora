@@ -7,8 +7,9 @@ models too; ``tests/integration/test_family_schedule.py`` and
 - a **tutor** item has its students but no markers, override data,
   reassignment flags, cancellation reason or offer details (#67 B4);
 - a **family** item has the tutor's display name only, the classroom's name
-  only, and never other participants, markers, overrides, reassignment
-  flags, offer data or the cancellation reason (#67 C3, E4).
+  only, the path student's own attendance status (#76 E4), and never other
+  participants, markers, overrides, reassignment flags, offer data or the
+  cancellation reason (#67 C3, E4).
 
 Times are instants with an offset (ADR-0004).
 """
@@ -121,6 +122,12 @@ class FamilyScheduleItem(_Closed):
     subject: ScheduleSubject
     tutor: FamilyScheduleTutor | None
     classroom: FamilyScheduleClassroom | None
+    attendance: Literal["present", "late", "absent"] | None = Field(
+        description=(
+            "This student's attendance in the session (#76 E4); `null` when"
+            " not marked. Never other students', who marked it or corrections."
+        )
+    )
 
 
 class FamilySchedule(_Closed):

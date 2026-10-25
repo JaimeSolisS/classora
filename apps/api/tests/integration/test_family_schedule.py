@@ -43,6 +43,7 @@ from tests.factories.families import (
 from tests.factories.scheduling import persist_subject
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
 from tests.integration.catalog_support import count_statements, get, unique_year
+from tests.integration.conftest import run_sql
 from tests.integration.consent_support import adult_profile_for
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
@@ -259,7 +260,9 @@ def test_the_family_item_is_a_closed_allow_list(client, world):
         "subject",
         "tutor",
         "classroom",
+        "attendance",
     }
+    assert item["attendance"] is None
     assert set(item["subject"]) == {"id", "name", "education_level_name"}
     assert item["tutor"] == {"display_name": "Tutora Visible"}
     assert set(item["classroom"]) == {"name"}
@@ -297,6 +300,76 @@ def test_a_group_session_never_leaks_other_students_or_the_tutor_id(
         str(world.family.student_id),
         *(str(c) for c in world.classmates),
     }
+
+
+def mark_attendance(url: str, session_id: Any, marks: dict[Any, str], by: Any) -> None:
+    """Attendance rows (#76) written directly."""
+    for student_id, status in marks.items():
+        run_sql(
+            url,
+            "INSERT INTO class_session_attendance (class_session_id, student_id,"
+            " status, marked_by_user_id, marked_at)"
+            " VALUES (:s, :st, :status, :u, now())",
+            {"s": session_id, "st": student_id, "status": status, "u": by},
+        )
+
+
+def test_the_family_item_shows_only_the_students_own_attendance(
+    module_seeded_url, client, world
+):
+    """#76 E4: in a group session with three marked students, the guardian
+    of M sees M's status only."""
+    first, second = world.classmates
+    mark_attendance(
+        module_seeded_url,
+        world.group_session,
+        {world.family.student_id: "present", first: "late", second: "absent"},
+        world.tutor.id,
+    )
+    cookie = sign_in(client, world.family.user.username)
+
+    response = read_week(client, cookie, world.family.student_id)
+
+    items = {item["id"]: item for item in response.json()["items"]}
+    assert items[world.group_session]["attendance"] == "present"
+    assert items[world.visible["confirmed"]]["attendance"] is None
+    raw = response.text
+    for hidden in ('"late"', '"absent"', str(first), str(second), "marked"):
+        assert hidden not in raw
+
+
+def test_an_adult_shows_attendance_with_consent_and_403_without(
+    module_seeded_url, client
+):
+    url = module_seeded_url
+    with_consent = guardian_with_child(url, adult=True, consent=True)
+    without = guardian_with_child(url, adult=True)
+    tutor = create_user(url, roles=(TUTOR,))
+    shown = stored(
+        url, slot(5, 15), students=(with_consent.student_id,), tutor_user_id=tutor.id
+    )
+    hidden = stored(
+        url, slot(5, 17), students=(without.student_id,), tutor_user_id=tutor.id
+    )
+    mark_attendance(url, shown, {with_consent.student_id: "late"}, tutor.id)
+    mark_attendance(url, hidden, {without.student_id: "absent"}, tutor.id)
+
+    cookie = sign_in(client, with_consent.user.username)
+    [item] = [
+        i
+        for i in read_week(client, cookie, with_consent.student_id).json()["items"]
+        if i["id"] == shown
+    ]
+    assert item["attendance"] == "late"
+    refused = read_week(
+        client, sign_in(client, without.user.username), without.student_id
+    )
+    assert code_of(refused) == FORBIDDEN_CONSENT
+    assert "absent" not in refused.text
+    revoke_academic_consent(url, with_consent)
+    assert code_of(read_week(client, cookie, with_consent.student_id)) == (
+        FORBIDDEN_CONSENT
+    )
 
 
 def _names(world: World) -> Any:
@@ -715,7 +788,8 @@ def _budget_world(url: str, count: int, *, adult: bool = False) -> BudgetFamily:
 
 
 @pytest.mark.parametrize("count", [0, 1, 30])
-def test_the_schedule_takes_at_most_8_statements(module_seeded_url, count):
+def test_the_schedule_takes_at_most_9_statements(module_seeded_url, count):
+    """#67 C5 (8) plus the #76 E4 attendance read."""
     url = module_seeded_url
     family = _budget_world(url, count)
     budget = MONDAY + timedelta(days=14)
@@ -739,7 +813,7 @@ def test_the_schedule_takes_at_most_8_statements(module_seeded_url, count):
     for name, principal in callers.items():
         counts[name], result = count_statements(url, read_as(principal))
         assert len(result.items) == count
-    assert all(value <= 8 for value in counts.values()), counts
+    assert all(value <= 9 for value in counts.values()), counts
 
 
 def test_the_selector_takes_at_most_4_statements(module_seeded_url):
