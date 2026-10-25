@@ -232,6 +232,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/class-sessions/{class_session_id}/closeout/approve",
         "/api/v1/class-sessions/{class_session_id}/closeout/request-changes",
         "/api/v1/class-sessions/{class_session_id}/closeout/corrections",
+        "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf",
+        "/api/v1/closeouts/overdue",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

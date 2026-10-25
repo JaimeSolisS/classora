@@ -117,6 +117,9 @@ from app.workflows.change_requests_router import (
 )
 from app.workflows.cohorts_router import router as cohorts_router
 from app.workflows.groups_router import router as groups_router
+from app.workflows.overdue_closeouts_router import (
+    router as overdue_closeouts_router,
+)
 from app.workflows.session_closeout_router import (
     router as session_closeout_router,
 )
@@ -221,6 +224,7 @@ def build_app(
     app.include_router(class_sessions_router)
     app.include_router(attendance_router)
     app.include_router(session_closeout_router)
+    app.include_router(overdue_closeouts_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

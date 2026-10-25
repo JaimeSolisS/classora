@@ -147,3 +147,59 @@ class CloseoutUnchangedError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# --- On behalf of the tutor (#301) --------------------------------------------------
+
+
+class CloseoutOnBehalfOwnSessionError(AppError):
+    """``403 closeout_on_behalf_own_session`` (#301 E5): a reviewer doesn't
+    close out on behalf a session they tutor themselves (their own hours go
+    through the tutor route)."""
+
+    status = 403
+    code = "closeout_on_behalf_own_session"
+    detail = "You tutor this session: close it out as its tutor."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class SessionNotEndedError(AppError):
+    """``409 session_not_ended`` (#301 E2): a closeout on the tutor's behalf
+    waits until the class has ended."""
+
+    status = 409
+    code = "session_not_ended"
+    detail = "The class hasn't ended yet."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CloseoutNotWithTutorError(AppError):
+    """``409 closeout_not_with_tutor`` (#301 D2 step 8): only a closeout
+    sent back to its tutor (``changes_requested``) is taken over."""
+
+    status = 409
+    code = "closeout_not_with_tutor"
+    detail = "This closeout isn't waiting for its tutor."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CloseoutSubmittedOnBehalfError(AppError):
+    """``409 closeout_submitted_on_behalf`` (#301 E5): a closeout submitted on
+    the tutor's behalf isn't sent back (the tutor may be gone); reviewers
+    correct it and approve."""
+
+    status = 409
+    code = "closeout_submitted_on_behalf"
+    detail = (
+        "This closeout was submitted on the tutor's behalf: correct it instead"
+        " of sending it back."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()

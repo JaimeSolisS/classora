@@ -547,6 +547,28 @@ json = { version = 1, actual_minutes = 50, reason = "Matrix" }
 
 [[route]]
 method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 C2: checked before anything is read. A valid body; the placeholder id
+# is no session: 404 for every allowed role. The 201, 403
+# closeout_on_behalf_own_session, 409 and 422 cases are tested in
+# tests/integration/test_closeout_on_behalf.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" }, reason = "Matrix" }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 D2: as the POST (404: no session, no closeout); the takeover cases are
+# tested in tests/integration/test_closeout_on_behalf.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" }, reason = "Matrix" }
+
+[[route]]
+method = "POST"
 path = "/api/v1/class-sessions/{class_session_id}/closeout/request-changes"
 access = "permission"
 permission = "teaching_hours.approve"
@@ -650,6 +672,15 @@ permission = "catalog.manage"
 allow = ["owner", "administrator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/closeouts/overdue"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 B: 200 for every allowed role; filters, order, budget and the
+# canary names are tested in tests/integration/test_closeout_on_behalf.py.
 
 [[route]]
 method = "GET"

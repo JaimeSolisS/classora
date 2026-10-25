@@ -169,8 +169,12 @@ Codes in use today:
 | `closeout_not_submitted` | 409 | Approving or requesting changes of a closeout that isn't `submitted` (see Session closeout). |
 | `closeout_with_tutor` | 409 | A staff correction while the closeout is `changes_requested`: the tutor owns it until they resubmit (see Session closeout). |
 | `closeout_under_review` | 409 | The tutor's `PUT …/closeout` while it is `submitted` (see Session closeout). |
-| `closeout_self_review` | 403 | Approving, requesting changes of or correcting a closeout the caller submitted, unless they hold the Owner role (see Session closeout). |
+| `closeout_self_review` | 403 | Approving, requesting changes of or correcting a closeout the caller submitted, or approving or correcting one they submitted on the tutor's behalf (#301), unless they hold the Owner role (see Session closeout). |
 | `closeout_unchanged` | 422 | A staff correction or a correction request of an approved closeout that changes nothing (see Session closeout). |
+| `closeout_on_behalf_own_session` | 403 | A closeout on the tutor's behalf (`POST` / `PUT …/closeout/on-behalf`) by the session's or the closeout's own tutor (see Closeout on behalf and overdue closeouts). |
+| `session_not_ended` | 409 | A closeout on the tutor's behalf before the class ends (`ends_at > now`; see Closeout on behalf and overdue closeouts). |
+| `closeout_not_with_tutor` | 409 | A takeover of a closeout that isn't `changes_requested` (see Closeout on behalf and overdue closeouts). |
+| `closeout_submitted_on_behalf` | 409 | Requesting changes of a closeout submitted on the tutor's behalf: correct it instead (see Closeout on behalf and overdue closeouts). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4322,6 +4326,116 @@ a subset of `actual_minutes`, `topics`, `performance`, `homework`,
 field; `closeout_status` `submitted` / `approved` with the revision it
 created), both append-only and not audited (their named events are their
 record). Every key `ON DELETE RESTRICT`.
+
+#### Closeout on behalf and overdue closeouts
+
+Implemented by M5-10b (#301; spec §2, §3 "admins reapprove", §7, §16;
+architecture §4.1, ISSUE-F7). Some classes end without a closeout (the
+tutor left, lost the role or never submitted). Academic reviewers
+(`teaching_hours.approve`: Owner, Administrator, Academic Coordinator; not
+Finance) list them, close one out **on the tutor's behalf** with a reason,
+and **take over** a closeout sent back to a tutor who can't act. The
+closeout stays the tutor's: `tutor_user_id` is the session's current tutor
+(an accepted substitute after #55) and the approval request's requester is
+the tutor, so the inbox, the review and payroll (M7-04) are unchanged.
+Missing attendance is marked first with #76 staff corrections (one each,
+with a reason); the on-behalf body carries no attendance. Code:
+`app/workflows/closeout_on_behalf.py` (routes in `session_closeout_router.py`
+and `overdue_closeouts_router.py`), the rule `academics.closeout_rules.
+on_behalf_block` and `scheduling.service.sessions_awaiting_closeout`. The web
+pages are #317 (M5-10c).
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/closeouts/overdue` | `require("teaching_hours.approve")` | Query `tutor_user_id?` (an unknown id: an empty page), `from?` / `to?` (center-local dates on `starts_at`, inclusive; `to` before `from` → `422 validation_error` with `range_invalid` at `["query","to"]`; no maximum span), `limit` (1-100, default 25), `offset`. `200` with `OffsetPage[OverdueCloseoutItem]`; at most 5 statements whatever the page. |
+| `POST /api/v1/class-sessions/{class_session_id}/closeout/on-behalf` | `require("teaching_hours.approve")` | Body `{version (the session's), actual_minutes, summary, reason}`. `201` with `SessionCloseoutView`. |
+| `PUT /api/v1/class-sessions/{class_session_id}/closeout/on-behalf` | `require("teaching_hours.approve")` | Body `{version (the closeout's), actual_minutes, summary, reason}` (a full replacement). `200` with `SessionCloseoutView`. |
+
+Bodies are closed allow-lists. `actual_minutes` 0-720 and the summary follow
+#77 (each field trimmed, at most 2000, whitespace = empty; `topics`,
+`performance`, `next_steps` required unless every participant is absent).
+`reason` is trimmed, 1-1000 (`reason_required` / `reason_too_long` at
+`["body","reason"]`).
+
+**Overdue** = a `confirmed` session whose `ends_at <= now` (a confirmed
+session never has a closeout: submitting one completes it). No grace
+period and no deadline (#77 E7). Rows are ordered by `ends_at`, then `id`
+(the partial index `ix_class_sessions_confirmed_ends_at`). `completed`
+sessions without a closeout (#299 demo rows), cancelled, offered,
+in-progress and future sessions aren't listed. **`OverdueCloseoutItem`**:
+`{class_session_id, starts_at, ends_at, kind, scheduled_minutes, subject
+{name, education_level_name}, tutor {user_id, display_name, can_submit},
+participant_count, attendance {marked, total}}`. `tutor.can_submit` is true
+when the account is `active` and holds the `tutor` role. No student, group
+or cohort names.
+
+**Submit order:** `401` → `403 permission_denied` (before any read; an
+unknown id gives the same `403`) → `422` body → the session `FOR UPDATE`
+(`404` unknown) → `409 version_conflict` (the session's version) → `403
+closeout_on_behalf_own_session` (the caller is the session's tutor), `409
+closeout_already_submitted` (`completed`, or a closeout exists), `409
+session_not_closable` (`details.state`) or `409 session_not_ended` (`ends_at
+> now`) → the #77 steps: `409 closeout_attendance_incomplete`
+(`details.missing_student_ids`), `422 summary_required` (rolls back), the
+session `completed`, the `submitted` closeout (`tutor_user_id` = the tutor,
+`on_behalf_by_user_id` = the caller, `on_behalf_reason`), the approval
+request (requester = the tutor) → the audit event → the notification.
+#77's submit and this route share one internal function.
+
+**Take-over order:** `401` → `403 permission_denied` → `422` body → the
+closeout `FOR UPDATE` (`404` for an unknown session or one without a
+closeout, the same body) → the session `FOR UPDATE` → `403
+closeout_on_behalf_own_session` (the caller is the closeout's tutor) → `409
+version_conflict` (the closeout's version) → `409 closeout_not_with_tutor`
+(not `changes_requested`) → `409 closeout_attendance_incomplete` → `422
+summary_required` → the writes (the summary, the session's actual minutes,
+`submitted`, `last_submitted_at`, the on-behalf marker, `tutor_note` cleared)
+→ `resubmit_approval_request` (the item back to `pending`) → the audit event
+→ the notification. An unchanged body is allowed (taking ownership is the
+change). `current_approval_id` is never touched: a takeover of a correction
+request leaves the earlier approved revision in force.
+
+**The marker.** `on_behalf_by_user_id` and `on_behalf_reason` describe the
+**latest** submission. The tutor's own `PUT …/closeout` (a correction
+request after approval) clears them; the audit log keeps every earlier one.
+The named audit event `academics.closeout_submitted_on_behalf
+{class_session_id, mode: "submit" | "takeover", reason}` carries the reason;
+the closeout row's create and update diffs record the columns.
+
+**Review rules.** The reviewer who made the latest on-behalf submission
+gets `403 closeout_self_review` on approve and corrections, unless they
+hold the Owner role (the tutor rule of #78 E7, extended). Request changes on
+an on-behalf submission answers `409 closeout_submitted_on_behalf` after the
+version check and changes nothing (the tutor may be gone, and a
+`changes_requested` closeout blocks staff corrections): reviewers correct it
+and approve. Request changes keeps #78's self-review for the tutor of record
+(before the version check). Everything else is #78.
+
+**`GET …/closeout` additions** (still at most 8 statements): top-level
+`can_request_changes` (`can_review`, and not submitted on behalf),
+`can_submit_on_behalf` (a holder, no closeout, and the submit rule above
+passes: ended, `confirmed`, not their own session) and `can_take_over` (a
+holder, `changes_requested`, not the closeout's tutor); `can_review` and
+`can_correct` exclude the on-behalf submitter (Owner excepted).
+`closeout.on_behalf`: `null`, or `{by {display_name}, reason, submitted_at}`
+(`submitted_at` = the closeout's `last_submitted_at`; `reason` is `null` for
+callers who don't see the summary, that is Finance). `closeout.submitted_by`
+stays the tutor of record.
+
+**Inbox summary:** the `academics.session_closeout` `subject` gains
+`on_behalf_by_display_name` (`null` unless the latest submission was made on
+the tutor's behalf; still 3 statements per page).
+
+**Notification** `academics.closeout_submitted_on_behalf` `{class_session_id,
+starts_at, subject_name}` to the closeout's tutor, on both the submit and the
+takeover, in any account state, in the same transaction; never the reason,
+the summary or student data. Later decisions use #78's three types. Nothing
+new goes to reviewers (the inbox lists the item).
+
+**Data** (revision 0052): `session_closeouts` gains `on_behalf_by_user_id`
+(`ON DELETE RESTRICT`) and `on_behalf_reason` (trimmed 1-1000), both or
+neither, never the tutor of record; `class_sessions` gains the partial index
+`ix_class_sessions_confirmed_ends_at (ends_at, id) WHERE state = 'confirmed'`.
 
 ### Change requests
 

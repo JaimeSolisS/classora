@@ -16,6 +16,9 @@ router may not import ``app.workflows`` (ADR-0002).
   ``…/request-changes`` and ``…/corrections`` (#78 C):
   ``require("teaching_hours.approve")`` (Owner, Administrator, Academic
   Coordinator), checked before anything is read.
+- ``POST`` / ``PUT /api/v1/class-sessions/{id}/closeout/on-behalf`` (#301
+  C, D): ``require("teaching_hours.approve")``, checked before anything is
+  read (:mod:`app.workflows.closeout_on_behalf`).
 """
 
 import uuid
@@ -29,9 +32,12 @@ from app.core.uow import UnitOfWorkDep
 from app.modules.academics.schemas import (
     CloseoutApprove,
     CloseoutCorrection,
+    CloseoutOnBehalfSubmit,
     CloseoutRequestChanges,
     CloseoutResubmit,
+    CloseoutTakeOver,
 )
+from app.workflows import closeout_on_behalf as on_behalf
 from app.workflows import session_closeout as workflow
 from app.workflows import session_closeout_review as review
 from app.workflows.session_closeout_schemas import (
@@ -51,9 +57,22 @@ _REVIEW_NOT_FOUND: Final = problem_response_doc(
 )
 _REVIEW_403: Final = problem_response_doc(
     "You lack teaching_hours.approve (permission_denied, checked first); the"
-    " closeout is your own and you aren't the Owner (closeout_self_review);"
-    " a failed Origin or X-CSRF-Token check (csrf_failed);"
-    " privacy_notice_required."
+    " closeout is your own, or you submitted it on the tutor's behalf, and"
+    " you aren't the Owner (closeout_self_review); a failed Origin or"
+    " X-CSRF-Token check (csrf_failed); privacy_notice_required."
+)
+_ON_BEHALF_403: Final = problem_response_doc(
+    "You lack teaching_hours.approve (permission_denied, checked before"
+    " anything is read: the same for an unknown id); you tutor this session"
+    " (closeout_on_behalf_own_session); a failed Origin or X-CSRF-Token check"
+    " (csrf_failed); privacy_notice_required."
+)
+_ON_BEHALF_422: Final = problem_response_doc(
+    "The body is not valid (validation_error): actual_minutes outside 0-720,"
+    " a summary field over 2000 characters (too_long) or a required one left"
+    " empty (summary_required; optional when every participant is absent),"
+    " no reason (reason_required) or one over 1000 characters"
+    " (reason_too_long). Nothing is changed."
 )
 
 
@@ -205,8 +224,10 @@ async def approve_class_session_closeout(
         403: _REVIEW_403,
         404: _REVIEW_NOT_FOUND,
         409: problem_response_doc(
-            "The closeout changed since it was read (version_conflict) or"
-            " isn't waiting for review (closeout_not_submitted)."
+            "The closeout changed since it was read (version_conflict), was"
+            " submitted on the tutor's behalf (closeout_submitted_on_behalf:"
+            " correct it instead) or isn't waiting for review"
+            " (closeout_not_submitted)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): no reason"
@@ -261,6 +282,85 @@ async def correct_class_session_closeout(
     current one (also with no field changed, to re-approve changed
     attendance)."""
     return await review.correct_closeout(
+        uow.session,
+        principal=principal,
+        class_session_id=class_session_id,
+        body=body,
+    )
+
+
+@router.post(
+    "/{class_session_id}/closeout/on-behalf",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: _ON_BEHALF_403,
+        404: problem_response_doc("No such class session (not_found)."),
+        409: problem_response_doc(
+            "The session changed since it was read (version_conflict); its"
+            " closeout was already submitted (closeout_already_submitted);"
+            " it isn't confirmed (session_not_closable, details.state); it"
+            " hasn't ended (session_not_ended); or a participant has no"
+            " attendance mark (closeout_attendance_incomplete,"
+            " details.missing_student_ids: mark them with attendance"
+            " corrections first). Nothing is changed."
+        ),
+        422: _ON_BEHALF_422,
+    },
+)
+async def submit_class_session_closeout_on_behalf(
+    principal: Annotated[Principal, require(TEACHING_HOURS_APPROVE)],
+    class_session_id: uuid.UUID,
+    body: CloseoutOnBehalfSubmit,
+    uow: UnitOfWorkDep,
+) -> SessionCloseoutView:
+    """Close out an ended class on its tutor's behalf, with a reason. The
+    closeout stays the tutor's (for payroll) and goes to the approval inbox;
+    the tutor is notified. You can't approve your own on-behalf submission
+    (the Owner can)."""
+    return await on_behalf.submit_closeout_on_behalf(
+        uow.session,
+        principal=principal,
+        class_session_id=class_session_id,
+        body=body,
+    )
+
+
+@router.put(
+    "/{class_session_id}/closeout/on-behalf",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "You lack teaching_hours.approve (permission_denied, checked"
+            " before anything is read: the same for an unknown id); you are"
+            " the closeout's tutor (closeout_on_behalf_own_session); a failed"
+            " Origin or X-CSRF-Token check (csrf_failed);"
+            " privacy_notice_required."
+        ),
+        404: problem_response_doc(
+            "No such class session, or it has no closeout (not_found)."
+        ),
+        409: problem_response_doc(
+            "The closeout changed since it was read (version_conflict); it"
+            " isn't waiting for its tutor (closeout_not_with_tutor); or a"
+            " participant has no attendance mark"
+            " (closeout_attendance_incomplete, details.missing_student_ids)."
+            " Nothing is changed."
+        ),
+        422: _ON_BEHALF_422,
+    },
+)
+async def take_over_class_session_closeout(
+    principal: Annotated[Principal, require(TEACHING_HOURS_APPROVE)],
+    class_session_id: uuid.UUID,
+    body: CloseoutTakeOver,
+    uow: UnitOfWorkDep,
+) -> SessionCloseoutView:
+    """Take over a closeout sent back to its tutor (changes requested) and
+    resubmit it on the tutor's behalf, with a reason. It goes back to the
+    approval inbox; an earlier approval stays in force. The tutor is
+    notified."""
+    return await on_behalf.take_over_closeout(
         uow.session,
         principal=principal,
         class_session_id=class_session_id,

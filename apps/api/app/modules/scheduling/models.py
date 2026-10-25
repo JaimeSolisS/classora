@@ -416,6 +416,13 @@ class ClassSession(Audited, VersionedMixin, Model):
             " OR first_confirmed_at IS NOT NULL",
             name="confirmed_has_first_confirmed_at",
         ),
+        # #301 B2: the overdue closeouts (confirmed sessions that have ended).
+        Index(
+            "ix_class_sessions_confirmed_ends_at",
+            "ends_at",
+            "id",
+            postgresql_where=text("state = 'confirmed'"),
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))

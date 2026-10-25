@@ -93,6 +93,10 @@ export function closeoutView(
     can_correct: false,
     can_resubmit: false,
     can_request_correction: false,
+    // #301 (API only; the web reads them in #317).
+    can_request_changes: false,
+    can_submit_on_behalf: false,
+    can_take_over: false,
     block: null,
     attendance: {
       total: 2,
@@ -127,6 +131,7 @@ const RECORD: SessionCloseoutRecord = {
   revisions: [],
   corrections: [],
   attendance_changed_since_approval: false,
+  on_behalf: null,
 };
 
 export const SUBMITTED = closeoutView({

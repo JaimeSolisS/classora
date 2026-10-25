@@ -95,7 +95,7 @@ The candidate modules mirror the spec §12 domain inventory:
 | `catalog` | Subjects, education levels, academic periods, classrooms, holidays and closures |
 | `scheduling` | Class sessions, recurrence, enrollment, attendance, substitutions, booking requests, conflict detection |
 | `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria (templates and snapshots: M4-19; cohorts: M4-20) |
-| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes (session closeouts: M5-10; closeout review, approval revisions: M5-11) |
+| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes (session closeouts: M5-10; closeout on behalf, overdue list: M5-10b; closeout review, approval revisions: M5-11) |
 | `billing` | Price catalog, charges, payments, allocations, packages and credits, discounts, refunds, tuition plans, receipts |
 | `payroll` | Compensation rates, teaching hours, payroll periods and lines, adjustments, payments, payslips |
 | `finance` | Expenses, categories, vendors, recurring expense templates |
@@ -516,6 +516,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - `payroll.prepare` goes to Finance. `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2).
 - **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type). The `payment.record` and `payroll.*` parts stay PROPOSED.
 - **Closeout review part ACCEPTED** (#78, owner-delegated, 2026-10-24): `teaching_hours.approve` holders approve, request changes or correct a closeout on the staff session page; closeouts have **no reject**; a reviewer can't approve, send back or correct a closeout they submitted (`403 closeout_self_review`) unless they hold the Owner role; approvals are immutable revisions and a correction supersedes.
+- **Closeout on behalf note** (#301, owner-delegated, 2026-10-25): staff on-behalf closeouts are attributed to the tutor (`tutor_user_id` and the approval requester stay the tutor, for payroll); the on-behalf submitter can't approve or correct them (`403 closeout_self_review`), Owner excepted; an on-behalf submission is corrected, never sent back.
 
 ### 10.7 Identity, security and privacy
 
