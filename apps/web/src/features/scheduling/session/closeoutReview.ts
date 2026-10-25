@@ -105,9 +105,65 @@ const RELOAD_CODES = new Set([
   'version_conflict',
   'closeout_not_submitted',
   'closeout_with_tutor',
+  // #301b E3: a race with an on-behalf submission or with the submitter.
+  'closeout_submitted_on_behalf',
+  'closeout_self_review',
 ]);
 
 /** G1: the decision failed because the closeout changed: offer Reload. */
 export function needsReload(error: unknown): boolean {
   return error instanceof ApiError && RELOAD_CODES.has(error.code);
+}
+
+const ON_BEHALF_RELOAD_CODES = new Set([
+  'version_conflict',
+  'closeout_already_submitted',
+  'session_not_closable',
+  'closeout_not_with_tutor',
+  'closeout_under_review',
+]);
+
+/**
+ * #301b C5, D5: the on-behalf submit or takeover failed because the
+ * session or closeout changed (or is gone, 404): offer Reload.
+ */
+export function onBehalfNeedsReload(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (ON_BEHALF_RELOAD_CODES.has(error.code) || error.status === 404)
+  );
+}
+
+/**
+ * #301b C5: the students named by `409 closeout_attendance_incomplete`
+ * (`details.missing_student_ids`), by display name from the page's
+ * attendance; ids not found there are counted in `unknown`. Null for any
+ * other error.
+ */
+export function missingStudentsOf(
+  error: unknown,
+  items: readonly { student: { id: string; display_name: string } }[],
+): { names: string[]; unknown: number } | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.code !== 'closeout_attendance_incomplete'
+  ) {
+    return null;
+  }
+  const details: unknown = error.problem?.details;
+  const ids =
+    typeof details === 'object' && details !== null
+      ? (details as Record<string, unknown>).missing_student_ids
+      : undefined;
+  const names: string[] = [];
+  let unknown = 0;
+  for (const id of Array.isArray(ids) ? ids : []) {
+    const item = items.find((candidate) => candidate.student.id === id);
+    if (item) {
+      names.push(item.student.display_name);
+    } else {
+      unknown += 1;
+    }
+  }
+  return { names, unknown };
 }

@@ -37,7 +37,10 @@ import {
   correctCloseout,
   fetchCloseout,
   requestCloseoutChanges,
+  submitCloseoutOnBehalf,
+  takeOverCloseout,
 } from '@/features/tutor-portal/closeout/api';
+import { OVERDUE_CLOSEOUTS_KEY } from '../overdue/api';
 import { APPROVALS_QUERY_KEY } from '@/features/approvals/api';
 import { changeRequestPath } from '../change-requests/rules';
 import {
@@ -87,7 +90,9 @@ import { SubstitutionSection } from './SubstitutionSection';
 // attendance.correct correct a mark with a reason (the session and its
 // attendance reload; the session's version changes).
 // #77 G3: a completed or started confirmed session shows its closeout
-// (read-only).
+// (read-only). #301b: reviewers close it out on the tutor's behalf or take
+// over one sent back to the tutor (the overdue list and the calendar
+// reload too).
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -373,6 +378,16 @@ export function SessionPage() {
     ]);
     window.setTimeout(() => announce(notice, 'status'), 0);
   }
+  async function afterOnBehalf(notice: string) {
+    await Promise.all([
+      refresh(),
+      client.invalidateQueries({ queryKey: attendanceKey(sessionId) }),
+      client.invalidateQueries({ queryKey: closeoutKey(sessionId) }),
+      client.invalidateQueries({ queryKey: APPROVALS_QUERY_KEY }),
+      client.invalidateQueries({ queryKey: OVERDUE_CLOSEOUTS_KEY }),
+    ]);
+    window.setTimeout(() => announce(notice, 'status'), 0);
+  }
   const closeoutReview: CloseoutReviewActions = {
     onApprove: async (version) => {
       await approveCloseout(sessionId, version);
@@ -386,6 +401,18 @@ export function SessionPage() {
       await correctCloseout(sessionId, body);
       await afterDecision(t('closeout.review.notices.corrected'));
     },
+    onSubmitOnBehalf: async (version, values) => {
+      await submitCloseoutOnBehalf(sessionId, { version, ...values });
+      await afterOnBehalf(
+        t('closeout.onBehalf.notices.submitted', {
+          tutor: closeout.data?.tutor?.display_name ?? '',
+        }),
+      );
+    },
+    onTakeOver: async (version, values) => {
+      await takeOverCloseout(sessionId, { version, ...values });
+      await afterOnBehalf(t('closeout.onBehalf.notices.takenOver'));
+    },
     onReload: () => {
       void refresh();
       void client.invalidateQueries({ queryKey: closeoutKey(sessionId) });
@@ -396,6 +423,7 @@ export function SessionPage() {
       state={closeoutState}
       timeZone={timeZone}
       review={closeoutReview}
+      students={attendance.data?.items ?? []}
     />
   ) : null;
   const actions =

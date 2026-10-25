@@ -16,6 +16,8 @@ import {
   TUTOR_CHANGES_REQUESTED,
   TUTOR_CHANGES_REQUESTED_ON_CORRECTION,
   TUTOR_CORRECTION_SUBMITTED,
+  TUTOR_ON_BEHALF_APPROVED,
+  TUTOR_ON_BEHALF_SUBMITTED,
   TUTOR_RESUBMITTED,
   ZONE,
 } from './fixtures';
@@ -403,5 +405,42 @@ export const NothingChanged: Story = {
 
 export const NothingChangedNarrow320: Story = {
   ...NothingChanged,
+  globals: { viewport: { value: 'narrow320' } },
+};
+
+// #301b E5: a closeout a reviewer submitted on the tutor's behalf, under
+// review and approved ("Submitted on your behalf by …" and the reason).
+export const OnBehalfSubmitted: Story = {
+  args: { state: { status: 'ready', closeout: TUTOR_ON_BEHALF_SUBMITTED } },
+  play: async ({ canvasElement }) => {
+    await showsHeading(canvasElement, i18n.t('closeout.tutorView.underReview'));
+    await expect(within(canvasElement).getByText(/Laura Méndez/)).toBeVisible();
+  },
+};
+
+export const OnBehalfSubmittedNarrow320: Story = {
+  ...OnBehalfSubmitted,
+  globals: { viewport: { value: 'narrow320' } },
+};
+
+export const OnBehalfApproved: Story = {
+  args: { state: { status: 'ready', closeout: TUTOR_ON_BEHALF_APPROVED } },
+  play: async ({ canvasElement }) => {
+    await showsHeading(
+      canvasElement,
+      i18n.t('closeout.tutorView.approved', { minutes: 50 }),
+    );
+    await expect(
+      within(canvasElement).getByText(
+        i18n.t('closeout.tutorView.onBehalfReason', {
+          reason: 'El tutor dejó el centro antes de enviar el cierre.',
+        }),
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const OnBehalfApprovedNarrow320: Story = {
+  ...OnBehalfApproved,
   globals: { viewport: { value: 'narrow320' } },
 };

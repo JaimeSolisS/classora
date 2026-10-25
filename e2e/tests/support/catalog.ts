@@ -101,6 +101,17 @@ type Common = {
       changesRequested: string;
       requestDialog: { reason: string; submit: string };
     };
+    /** #301b: a reviewer's closeout on the tutor's behalf. */
+    onBehalf: Record<
+      | 'action'
+      | 'attendance'
+      | 'complete'
+      | 'reason'
+      | 'submit'
+      | 'marker'
+      | 'reasonLine',
+      string
+    >;
     /** #305: the tutor's status views and edit modes. */
     tutorView: Record<
       | 'changesRequested'
@@ -191,6 +202,8 @@ type Common = {
       reject: Record<'open' | 'description' | 'reason' | 'submit', string>;
     };
     markers: Record<string, { label: string }>;
+    // #301b: the overdue closeouts page and its Schedule link.
+    overdue: Record<'title' | 'link' | 'linkCount' | 'open', string>;
     session: {
       title: string;
       history: string;
@@ -622,6 +635,8 @@ type Common = {
     closeout: {
       review: string;
       kinds: Record<'first' | 'resubmission' | 'correction', string>;
+      /** #301b. */
+      onBehalf: string;
     };
     availabilityChange: { affectedTitle: string };
     dialog: { reasonRequiredLabel: string };

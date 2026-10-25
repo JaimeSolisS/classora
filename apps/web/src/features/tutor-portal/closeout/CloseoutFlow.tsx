@@ -309,7 +309,9 @@ export function SummaryList({
 /**
  * #305: a recorded closeout's status view (the table in the issue), only
  * from the GET: the heading, the reviewer's reason or the approval, the
- * minutes and summary, and the action the flags allow.
+ * minutes and summary, and the action the flags allow. #301b E5: "Submitted
+ * on your behalf by {name}, {when}" and the reason when a reviewer
+ * submitted it (the API clears it once the tutor resubmits).
  */
 export function CloseoutStatusView({
   closeout,
@@ -325,7 +327,7 @@ export function CloseoutStatusView({
   onEdit?: (mode: EditMode) => void;
 }) {
   const { t } = useTranslation();
-  const { language } = useWhen(timeZone);
+  const { language, when } = useWhen(timeZone);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (focusHeading) {
@@ -408,6 +410,23 @@ export function CloseoutStatusView({
           {title}
         </h3>
         {lines}
+        {record.on_behalf ? (
+          <>
+            <p className="text-sm break-words">
+              {t('closeout.tutorView.onBehalf', {
+                name: record.on_behalf.by.display_name,
+                when: when(record.on_behalf.submitted_at),
+              })}
+            </p>
+            {record.on_behalf.reason !== null ? (
+              <p className="text-sm break-words whitespace-pre-line">
+                {t('closeout.tutorView.onBehalfReason', {
+                  reason: record.on_behalf.reason,
+                })}
+              </p>
+            ) : null}
+          </>
+        ) : null}
         {action && onEdit ? (
           <div>
             <Button type="button" onClick={() => onEdit(action)}>

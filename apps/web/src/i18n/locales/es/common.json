@@ -416,7 +416,8 @@
         "resubmission": "Reenviado",
         "correction": "Corrección"
       },
-      "approvedMinutes": "Aprobado vigente: {{minutes}} min"
+      "approvedMinutes": "Aprobado vigente: {{minutes}} min",
+      "onBehalf": "En nombre del tutor"
     }
   },
   "users": {
@@ -1485,7 +1486,8 @@
       "scheduling_reassignment_needed": "La disponibilidad de {{tutor_name}} cambió: {{session_count}} clases necesitan otro tutor; la primera, el {{first_starts_at}}.",
       "academics_closeout_approved": "Se aprobó tu cierre de la clase de {{subject_name}} del {{starts_at}}: {{approved_minutes}} min.",
       "academics_closeout_corrected": "Un revisor corrigió tu cierre de la clase de {{subject_name}} del {{starts_at}}.",
-      "academics_closeout_changes_requested": "Se solicitaron cambios en tu cierre de la clase de {{subject_name}} del {{starts_at}}."
+      "academics_closeout_changes_requested": "Se solicitaron cambios en tu cierre de la clase de {{subject_name}} del {{starts_at}}.",
+      "academics_closeout_submitted_on_behalf": "Se envió en tu nombre el cierre de la clase de {{subject_name}} del {{starts_at}}."
     }
   },
   "scheduling": {
@@ -2148,6 +2150,45 @@
       "cancellationReasons": {
         "family_request": "Cancelada a petición de la familia",
         "tutor_request": "Cancelada a petición del tutor"
+      }
+    },
+    "overdue": {
+      "title": "Cierres pendientes",
+      "intro": "Clases que terminaron sin cierre, de la más antigua a la más reciente.",
+      "back": "Volver a la agenda",
+      "link": "Cierres pendientes",
+      "linkCount": "Cierres pendientes ({{total}})",
+      "columns": {
+        "date": "Fecha y hora",
+        "ended": "Terminó",
+        "subject": "Materia",
+        "tutor": "Tutor",
+        "kind": "Tipo de clase",
+        "participants": "Estudiantes",
+        "attendance": "Asistencia",
+        "action": "Acciones"
+      },
+      "when": "{{when}} – {{end}}",
+      "ended": "Terminó {{elapsed}}",
+      "cantSubmit": "No puede enviar",
+      "participants_one": "{{count}} estudiante",
+      "participants_many": "{{count}} estudiantes",
+      "participants_other": "{{count}} estudiantes",
+      "attendance": "{{marked}} de {{total}} marcados",
+      "open": "Abrir clase",
+      "openFor": "Abrir clase: {{subject}}, {{when}}",
+      "empty": "Todas las clases terminadas tienen cierre.",
+      "emptyFiltered": "Ningún cierre pendiente coincide con estos filtros.",
+      "filters": {
+        "label": "Filtros",
+        "tutor": "Tutor",
+        "from": "Desde",
+        "to": "Hasta",
+        "rangeInvalid": "“Hasta” no puede ser anterior a “Desde”.",
+        "clear": "Quitar filtros",
+        "chip": "Tutor: {{name}}",
+        "remove": "Quitar filtro: Tutor {{name}}",
+        "selected": "Tutor seleccionado"
       }
     }
   },
@@ -3152,7 +3193,32 @@
       "correctionNotice": "Corrección enviada. Los {{minutes}} min aprobados siguen vigentes hasta que se revise.",
       "unchanged": "No cambió nada. Cambia los minutos o el resumen, o cancela.",
       "badge": "Cambios solicitados",
-      "fix": "Corregir cierre"
+      "fix": "Corregir cierre",
+      "onBehalf": "Enviado en tu nombre por {{name}}, {{when}}",
+      "onBehalfReason": "Motivo: {{reason}}"
+    },
+    "onBehalf": {
+      "action": "Cerrar clase en nombre de {{tutor}}",
+      "takeOver": "Tomar el cierre y reenviar",
+      "description": "Captura lo que {{tutor}} habría enviado. El cierre pasa a revisión como enviado en su nombre y {{tutor}} recibe un aviso.",
+      "takeOverExplain": "El cierre vuelve a revisión como enviado en nombre de {{tutor}}.",
+      "attendance": "Asistencia: {{marked}} de {{total}} marcados",
+      "complete": "{{marked}} de {{total}} marcados.",
+      "markRest": "Marca a los demás en Asistencia, arriba:",
+      "moreStudents_one": "{{count}} estudiante más",
+      "moreStudents_many": "{{count}} estudiantes más",
+      "moreStudents_other": "{{count}} estudiantes más",
+      "reason": "¿Por qué cierras esta clase en nombre del tutor?",
+      "submit": "Enviar cierre",
+      "takeOverSubmit": "Reenviar",
+      "submitting": "Enviando…",
+      "marker": "Enviado en nombre de {{tutor}} por {{name}}, {{when}}",
+      "reasonLine": "Motivo: {{reason}}",
+      "reasonHidden": "Motivo visible para los revisores académicos",
+      "notices": {
+        "submitted": "Cierre enviado en nombre de {{tutor}}.",
+        "takenOver": "Tomaste el cierre y volvió a revisión."
+      }
     }
   }
 }

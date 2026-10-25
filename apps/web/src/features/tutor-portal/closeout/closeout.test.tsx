@@ -41,6 +41,8 @@ import {
   SUBMITTED,
   SUMMARY,
   TUTOR_APPROVED,
+  TUTOR_ON_BEHALF_APPROVED,
+  TUTOR_ON_BEHALF_SUBMITTED,
   TUTOR_CHANGES_REQUESTED,
   TUTOR_CHANGES_REQUESTED_ON_CORRECTION,
   TUTOR_CORRECTION_SUBMITTED,
@@ -500,6 +502,11 @@ describe('the closeout flow (G1)', () => {
     await settleUntil(() => text().includes('Submitted for review'));
   });
 
+  it("shows no on-behalf line on the tutor's own submission (#301b E5)", async () => {
+    await open([TUTOR_RESUBMITTED]);
+    expect(text()).not.toContain('on your behalf');
+  });
+
   it('renders a submitted closeout read-only', async () => {
     await open([SUBMITTED]);
 
@@ -571,6 +578,25 @@ describe('the closeout flow (G1)', () => {
       'Approved · 50 min',
       [],
       null,
+    ],
+    // #301b E5: submitted on the tutor's behalf (no "Fix closeout"), and
+    // approved (a correction can still be requested).
+    [
+      'submitted on behalf',
+      TUTOR_ON_BEHALF_SUBMITTED,
+      'Submitted for review',
+      [
+        'Submitted on your behalf by Laura Méndez, Nov 10, 2026, 10:00 AM',
+        'Reason: El tutor dejó el centro antes de enviar el cierre.',
+      ],
+      null,
+    ],
+    [
+      'approved on behalf',
+      TUTOR_ON_BEHALF_APPROVED,
+      'Approved · 50 min',
+      ['Submitted on your behalf by Laura Méndez'],
+      'Request a correction',
     ],
   ])('shows the %s view', async (_, data, heading, lines, action) => {
     await open([data]);

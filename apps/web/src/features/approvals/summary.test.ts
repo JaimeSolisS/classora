@@ -6,6 +6,7 @@ import {
   AVAILABILITY_CHANGE,
   SESSION_CLOSEOUT,
   SESSION_CLOSEOUT_CORRECTION,
+  SESSION_CLOSEOUT_ON_BEHALF,
 } from './fixtures';
 import {
   approvalSummary,
@@ -205,6 +206,29 @@ describe('academics.session_closeout (#77 G4)', () => {
       ),
     ).toBe('Reenviado');
     expect(sessionCloseoutReviewLine(AVAILABILITY_CHANGE, t)).toBe('');
+  });
+
+  it('adds "On behalf" as text (#301b E4)', () => {
+    const t = i18n.getFixedT('en', 'common');
+    const es = i18n.getFixedT('es', 'common');
+    expect(sessionCloseoutReviewLine(SESSION_CLOSEOUT_ON_BEHALF, t)).toBe(
+      'New · On behalf',
+    );
+    expect(sessionCloseoutReviewLine(SESSION_CLOSEOUT_ON_BEHALF, es)).toBe(
+      'Nuevo · En nombre del tutor',
+    );
+    expect(
+      sessionCloseoutReviewLine(
+        {
+          ...SESSION_CLOSEOUT,
+          subject: {
+            ...(SESSION_CLOSEOUT.subject as Record<string, unknown>),
+            on_behalf_by_display_name: null,
+          },
+        },
+        t,
+      ),
+    ).toBe('New');
   });
 
   it('summarizes the session, the tutor and the minutes', () => {

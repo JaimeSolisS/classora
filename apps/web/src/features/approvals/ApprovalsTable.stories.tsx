@@ -9,6 +9,7 @@ import {
   PENDING_REGISTRATION,
   SESSION_CLOSEOUT,
   SESSION_CLOSEOUT_CORRECTION,
+  SESSION_CLOSEOUT_ON_BEHALF,
 } from './fixtures';
 
 // The approval list (#40 F3, F6): mixed statuses and types, empty, loading
@@ -138,5 +139,37 @@ export const SessionCloseoutRow: Story = {
     await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
       0,
     );
+  },
+};
+
+// #301b E4: a closeout submitted on the tutor's behalf says so as text.
+export const SessionCloseoutOnBehalfRow: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      page: {
+        items: [SESSION_CLOSEOUT_ON_BEHALF],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      },
+    },
+  },
+  render: (args) => (
+    <StoryRouter
+      routes={[{ path: '/', element: <ApprovalsTable {...args} /> }]}
+    />
+  ),
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByText(
+        `${i18n.t('approvals.closeout.kinds.first')} · ${i18n.t(
+          'approvals.closeout.onBehalf',
+        )}`,
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole('link', { name: i18n.t('approvals.closeout.review') }),
+    ).toBeVisible();
   },
 };

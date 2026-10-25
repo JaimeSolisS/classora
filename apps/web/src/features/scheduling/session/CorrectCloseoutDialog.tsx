@@ -11,18 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import type {
   CloseoutCorrectionBody,
   SessionCloseoutRecord,
 } from '@/features/tutor-portal/closeout/api';
 import {
-  MINUTES_MAX,
-  MINUTES_MIN,
   SUMMARY_FIELDS,
-  SUMMARY_MAX,
-  isRequired,
   minutesError,
   serverSummaryErrors,
   summaryErrors,
@@ -35,6 +30,8 @@ import {
   reasonError,
   summaryDraftOf,
 } from './closeoutReview';
+import { CloseoutFields } from './CloseoutFields';
+import { useFocusAfterSend } from './useFocusAfterSend';
 import { REVIEW_TEXTAREA_CLASS, ReviewFailure } from './ReviewFailure';
 import { REASON_MAX_LENGTH, reasonLength } from './rules';
 
@@ -46,13 +43,6 @@ import { REASON_MAX_LENGTH, reasonLength } from './rules';
 // new approval. "Re-approve" (E6) opens it with the fields locked: only the
 // reason is sent, approving the current attendance again. Focus starts on
 // the first field (the reason when locked) and returns to the trigger.
-
-const FIELD_KEYS = {
-  topics: 'closeout.fields.topics',
-  performance: 'closeout.fields.performance',
-  homework: 'closeout.fields.homework',
-  next_steps: 'closeout.fields.next_steps',
-} as const;
 
 export interface CorrectCloseoutDialogProps {
   open: boolean;
@@ -98,7 +88,6 @@ function CorrectContent({
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
   const id = useId();
-  const minutesId = `${id}-minutes`;
   const reasonId = `${id}-reason`;
   const first = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
@@ -115,12 +104,20 @@ function CorrectContent({
   const [unchanged, setUnchanged] = useState(false);
   const [failure, setFailure] = useState<unknown>(initialError);
   const [busy, setBusy] = useState(false);
+  const focusAfterSend = useFocusAfterSend(busy);
 
   const minutesProblem = reapprove ? null : minutesError(minutes);
   const fieldErrors: SummaryErrors = reapprove
     ? {}
     : { ...summaryErrors(draft, allAbsent), ...serverErrors };
   const reasonProblem = serverReason ?? reasonError(reason);
+  const shownErrors: SummaryErrors = {};
+  for (const field of SUMMARY_FIELDS) {
+    const code = fieldErrors[field];
+    if (code && (checked || serverErrors[field])) {
+      shownErrors[field] = code;
+    }
+  }
 
   function reasonMessage(code: string): string {
     return code === 'reason_too_long'
@@ -165,9 +162,18 @@ function CorrectContent({
         setServerErrors(summary);
         setServerMinutes(onMinutes);
         setServerReason(onReason ? onReason.code : null);
-        if (onReason) {
-          reasonRef.current?.focus();
-        }
+        // The first invalid field, once the fields are enabled again
+        // (#301b QA D1; the same rule as the on-behalf dialog).
+        const field = SUMMARY_FIELDS.find((name) => summary[name]);
+        focusAfterSend(() => {
+          if (onMinutes) {
+            first.current?.focus();
+          } else if (field) {
+            document.getElementById(`${id}-${field}`)?.focus();
+          } else if (onReason) {
+            reasonRef.current?.focus();
+          }
+        });
       } else {
         setFailure(caught);
       }
@@ -235,112 +241,30 @@ function CorrectContent({
           </p>
         ) : null}
         <ReviewFailure error={failure} onReload={onReload} />
-        <div className="flex max-w-xs flex-col gap-2">
-          <label htmlFor={minutesId} className="text-sm font-medium">
-            {t('closeout.actualMinutes')}
-          </label>
-          <Input
-            id={minutesId}
-            ref={first}
-            type="number"
-            inputMode="numeric"
-            min={MINUTES_MIN}
-            max={MINUTES_MAX}
-            step={1}
-            value={minutes}
-            readOnly={reapprove}
-            disabled={busy}
-            aria-invalid={
-              (checked && minutesProblem) || serverMinutes ? true : undefined
-            }
-            aria-describedby={`${minutesId}-hint ${minutesId}-error`}
-            onChange={(event) => {
-              setMinutes(event.target.value);
-              setServerMinutes(false);
-            }}
-          />
-          <p id={`${minutesId}-hint`} className="text-sm text-muted-foreground">
-            {t('closeout.scheduled', { minutes: scheduledMinutes })}
-          </p>
-          <FieldError
-            id={`${minutesId}-error`}
-            message={
-              (checked && minutesProblem) || serverMinutes
-                ? t('closeout.minutesRange', {
-                    min: MINUTES_MIN,
-                    max: MINUTES_MAX,
-                  })
-                : undefined
-            }
-          />
-        </div>
-        {allAbsent && !reapprove ? (
-          <p className="text-sm">{t('closeout.allAbsent')}</p>
-        ) : null}
-        {SUMMARY_FIELDS.map((field) => {
-          const fieldId = `${id}-${field}`;
-          const value = draft[field];
-          const code =
-            checked || serverErrors[field] ? fieldErrors[field] : undefined;
-          const required = !reapprove && isRequired(field, allAbsent);
-          const length = value.trim().length;
-          return (
-            <div key={field} className="flex min-w-0 flex-col gap-2">
-              <label htmlFor={fieldId} className="text-sm font-medium">
-                {t(FIELD_KEYS[field])}{' '}
-                {reapprove ? null : (
-                  <span className="font-normal text-muted-foreground">
-                    {required ? t('closeout.required') : t('closeout.optional')}
-                  </span>
-                )}
-              </label>
-              <textarea
-                id={fieldId}
-                rows={3}
-                value={value}
-                readOnly={reapprove}
-                disabled={busy}
-                required={required}
-                aria-required={required}
-                aria-invalid={code ? true : undefined}
-                aria-describedby={`${fieldId}-error ${fieldId}-counter`}
-                onChange={(event) => {
-                  setDraft((current) => ({
-                    ...current,
-                    [field]: event.target.value,
-                  }));
-                  setServerErrors((current) => {
-                    const rest = { ...current };
-                    delete rest[field];
-                    return rest;
-                  });
-                }}
-                className={REVIEW_TEXTAREA_CLASS}
-              />
-              <FieldError
-                id={`${fieldId}-error`}
-                message={
-                  code
-                    ? t(`closeout.errors.${code}`, { max: SUMMARY_MAX })
-                    : undefined
-                }
-              />
-              <p
-                id={`${fieldId}-counter`}
-                className={
-                  length > SUMMARY_MAX
-                    ? 'text-sm text-destructive'
-                    : 'text-sm text-muted-foreground'
-                }
-              >
-                {t('scheduling.substitution.counter', {
-                  length,
-                  max: SUMMARY_MAX,
-                })}
-              </p>
-            </div>
-          );
-        })}
+        <CloseoutFields
+          id={id}
+          minutes={minutes}
+          onMinutes={(value) => {
+            setMinutes(value);
+            setServerMinutes(false);
+          }}
+          minutesInvalid={Boolean((checked && minutesProblem) || serverMinutes)}
+          minutesRef={first}
+          scheduledMinutes={scheduledMinutes}
+          draft={draft}
+          onField={(field, value) => {
+            setDraft((current) => ({ ...current, [field]: value }));
+            setServerErrors((current) => {
+              const rest = { ...current };
+              delete rest[field];
+              return rest;
+            });
+          }}
+          errors={shownErrors}
+          allAbsent={allAbsent}
+          locked={reapprove}
+          disabled={busy}
+        />
         <div className="flex flex-col gap-2">
           <label htmlFor={reasonId} className="text-sm font-medium">
             {t('closeout.review.correctDialog.reason')}{' '}

@@ -186,5 +186,9 @@
   "closeout_unchanged": "No cambió nada. Cambia los minutos o el resumen, o cancela.",
   "session_not_closable": "Esta clase no se puede cerrar en su estado actual.",
   "session_not_started": "El cierre se abre cuando empieza la clase.",
-  "summary_required": "Completa las partes obligatorias del resumen."
+  "summary_required": "Completa las partes obligatorias del resumen.",
+  "session_not_ended": "Esta clase todavía no termina. Ciérrala en nombre del tutor cuando termine.",
+  "closeout_on_behalf_own_session": "Impartes esta clase, así que no puedes cerrarla en nombre del tutor.",
+  "closeout_submitted_on_behalf": "Este cierre se envió en nombre del tutor, así que no se puede devolver. Corrígelo en su lugar.",
+  "closeout_not_with_tutor": "El cierre ya no está esperando al tutor. Recarga para ver su estado."
 }

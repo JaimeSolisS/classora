@@ -1,11 +1,12 @@
-"""The E2E attendance fixture (#76 E5, H9; #77 H8):
+"""The E2E attendance fixture (#76 E5, H9; #77 H8; #301b H3):
 ``python -m tests.factories.e2e_attendance`` after ``make seed-demo``.
 
 One started ``confirmed`` group session of ``demo.tutor`` with two students,
 in the latest free hour before now (never on the #299 demo schedule's
 sessions), and (#77) one started ``confirmed`` individual session with one
-student in the latest free hour before that one; idempotent, guarded by
-``APP_ENV``, counts only.
+student in the latest free hour before that one, and (#301b) one more
+started ``confirmed`` individual session with one student and no
+attendance before that; idempotent, guarded by ``APP_ENV``, counts only.
 """
 
 import asyncio
@@ -19,6 +20,7 @@ from app.core.uow import UnitOfWork
 from tests.factories import demo, e2e_attendance
 from tests.factories.e2e_attendance import (
     CLOSEOUT_SUBJECT_NAME,
+    OVERDUE_SUBJECT_NAME,
     SUBJECT_NAME,
     latest_free_slot,
 )
@@ -26,7 +28,7 @@ from tests.factories.scheduling import persist_class_session
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import FROZEN_NOW, demo_env, migrate
 
-FIRST_RUN = f"{e2e_attendance.NAME}: 12 rows"
+FIRST_RUN = f"{e2e_attendance.NAME}: 16 rows"
 RERUN = f"{e2e_attendance.NAME}: 0 rows"
 
 
@@ -101,6 +103,26 @@ def test_after_the_demo_it_inserts_one_started_session(
     assert closeout.ends_at - closeout.starts_at == timedelta(minutes=60)
     assert closeout.first_confirmed_at is not None
     assert overlaps(migrated_url, closeout.id) == 0
+    # #301b: the overdue session ends at or before the closeout one starts,
+    # with no attendance.
+    [overdue] = fixture_sessions(migrated_url, OVERDUE_SUBJECT_NAME)
+    assert (
+        overdue.kind,
+        overdue.state,
+        overdue.classroom_id,
+        overdue.students,
+        overdue.tutor_user_id,
+    ) == ("individual", "confirmed", None, 1, closeout.tutor_user_id)
+    assert overdue.ends_at <= closeout.starts_at
+    assert overdue.ends_at - overdue.starts_at == timedelta(minutes=60)
+    assert overlaps(migrated_url, overdue.id) == 0
+    [marks] = run_sql(
+        migrated_url,
+        "SELECT count(*) AS n FROM class_session_attendance"
+        " WHERE class_session_id = :id",
+        {"id": overdue.id},
+    )
+    assert marks.n == 0
 
     # A rerun (even later) writes nothing.
     clock.set(FROZEN_NOW + timedelta(days=1))
@@ -108,6 +130,7 @@ def test_after_the_demo_it_inserts_one_started_session(
     assert capsys.readouterr().out.splitlines() == [RERUN]
     assert len(fixture_sessions(migrated_url)) == 1
     assert len(fixture_sessions(migrated_url, CLOSEOUT_SUBJECT_NAME)) == 1
+    assert len(fixture_sessions(migrated_url, OVERDUE_SUBJECT_NAME)) == 1
 
 
 def test_a_busy_hour_is_skipped(migrated_url, env_for, clock, capsys):

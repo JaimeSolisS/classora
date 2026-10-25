@@ -1,5 +1,5 @@
 """``python -m tests.factories.e2e_attendance``: the E2E attendance and
-closeout fixture (#76 E5, H9; #77 E8, H8).
+closeout fixture (#76 E5, H9; #77 E8, H8; #301b H3).
 
 ``e2e/scripts/run.sh`` runs it right after the demo step. It inserts, with
 the factories, one ``confirmed`` **group** session of ``demo.tutor`` (the
@@ -17,6 +17,13 @@ attendance one (whose correction step stays unchanged): one ``confirmed``
 **individual** session of ``demo.tutor`` with one new synthetic student,
 the subject :data:`CLOSEOUT_SUBJECT_NAME` (same level), 60 minutes, in the
 latest free slot that ends at or before the attendance session's start.
+
+#301b adds a third session for the overdue closeouts spec, which the
+Owner closes out on the tutor's behalf: one ``confirmed`` **individual**
+session of ``demo.tutor`` with one new synthetic student and **no
+attendance**, the subject :data:`OVERDUE_SUBJECT_NAME` (same level), 60
+minutes, in the latest free slot that ends at or before the closeout
+session's start.
 
 Separate from ``make seed-demo`` (``tests/factories/demo.py``): it is test
 data for one spec, not demo data.
@@ -61,6 +68,7 @@ from tests.factories.scheduling import add_participant, persist_class_session
 NAME: Final = "scheduling.e2e_attendance"
 SUBJECT_NAME: Final = "E2E Attendance"
 CLOSEOUT_SUBJECT_NAME: Final = "E2E Closeout"
+OVERDUE_SUBJECT_NAME: Final = "E2E Overdue"
 LEVEL_NAME: Final = "E2E Asistencia"
 SEARCH_DAYS: Final = 7
 DURATION: Final = timedelta(minutes=60)
@@ -155,6 +163,31 @@ async def _slot_before(
     return slot
 
 
+async def _individual_before(
+    session: AsyncSession,
+    tutor_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    before: datetime,
+) -> ClassSession:
+    """A ``confirmed`` individual session of the tutor with one new student
+    (no attendance), in the latest free hour ending at or before
+    ``before``."""
+    start, end = await _slot_before(session, tutor_id, before)
+    lesson = await persist_class_session(
+        session,
+        kind="individual",
+        state="confirmed",
+        subject_id=subject_id,
+        tutor_user_id=tutor_id,
+        starts_at=start,
+        ends_at=end,
+        scheduled_minutes=int(DURATION.total_seconds() // 60),
+    )
+    student = await persist_student(session, contacts=0)
+    await add_participant(session, lesson, student.id)
+    return lesson
+
+
 async def generate(session: AsyncSession) -> int:
     """Insert the fixture (see the module docstring); returns the rows
     written."""
@@ -182,20 +215,20 @@ async def generate(session: AsyncSession) -> int:
     # #77: the closeout session, before the attendance one.
     closeout_subject, written = await _subject(session, CLOSEOUT_SUBJECT_NAME)
     rows += written
-    if await _existing(session, tutor_id, closeout_subject.id) is None:
-        start, end = await _slot_before(session, tutor_id, attendance.starts_at)
-        closeout = await persist_class_session(
-            session,
-            kind="individual",
-            state="confirmed",
-            subject_id=closeout_subject.id,
-            tutor_user_id=tutor_id,
-            starts_at=start,
-            ends_at=end,
-            scheduled_minutes=int(DURATION.total_seconds() // 60),
+    closeout = await _existing(session, tutor_id, closeout_subject.id)
+    if closeout is None:
+        closeout = await _individual_before(
+            session, tutor_id, closeout_subject.id, attendance.starts_at
         )
-        student = await persist_student(session, contacts=0)
-        await add_participant(session, closeout, student.id)
+        rows += 3  # the session, the student and the participant
+
+    # #301b: the overdue session, before the closeout one.
+    overdue_subject, written = await _subject(session, OVERDUE_SUBJECT_NAME)
+    rows += written
+    if await _existing(session, tutor_id, overdue_subject.id) is None:
+        await _individual_before(
+            session, tutor_id, overdue_subject.id, closeout.starts_at
+        )
         rows += 3  # the session, the student and the participant
     return rows
 
@@ -218,7 +251,7 @@ def main(
     parser = argparse.ArgumentParser(
         prog="python -m tests.factories.e2e_attendance",
         description=(
-            "Insert the E2E attendance and closeout sessions"
+            "Insert the E2E attendance, closeout and overdue sessions"
             " (APP_ENV local or dev only)."
         ),
     )

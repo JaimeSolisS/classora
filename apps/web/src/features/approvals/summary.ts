@@ -398,6 +398,8 @@ interface SessionCloseoutSubject {
   /** #78 C4 (absent before #78's API). */
   kind_of_review?: 'first' | 'resubmission' | 'correction';
   approved_minutes?: number | null;
+  /** #301: set when a reviewer submitted it on the tutor's behalf. */
+  on_behalf_by_display_name?: string | null;
 }
 
 function isSessionCloseout(
@@ -436,9 +438,9 @@ export function sessionCloseoutLink(item: ApprovalRequestItem): string | null {
     : null;
 }
 
-/** #78 G2: what a closeout item asks ("New", "Resubmitted", "Correction")
- * and the minutes approved now (a correction), as text; empty without
- * them. */
+/** #78 G2: what a closeout item asks ("New", "Resubmitted", "Correction"),
+ * " · On behalf" when a reviewer submitted it for the tutor (#301b E4) and
+ * the minutes approved now (a correction), as text; empty without them. */
 export function sessionCloseoutReviewLine(
   item: ApprovalRequestItem,
   t: TFunction,
@@ -447,12 +449,18 @@ export function sessionCloseoutReviewLine(
   if (!subject?.kind_of_review) {
     return '';
   }
-  const kind = t(`approvals.closeout.kinds.${subject.kind_of_review}`);
-  return typeof subject.approved_minutes === 'number'
-    ? `${kind} · ${t('approvals.closeout.approvedMinutes', {
+  const parts = [t(`approvals.closeout.kinds.${subject.kind_of_review}`)];
+  if (subject.on_behalf_by_display_name) {
+    parts.push(t('approvals.closeout.onBehalf'));
+  }
+  if (typeof subject.approved_minutes === 'number') {
+    parts.push(
+      t('approvals.closeout.approvedMinutes', {
         minutes: subject.approved_minutes,
-      })}`
-    : kind;
+      }),
+    );
+  }
+  return parts.join(' · ');
 }
 
 /** Formats an instant for a summary (the center zone, from useFormatters). */

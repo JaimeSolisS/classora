@@ -373,3 +373,31 @@ export function hasOffsetChange(
   const { start, end } = localDayBounds(localDate, timeZone);
   return Date.parse(end) - Date.parse(start) !== DAY_MS;
 }
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+/**
+ * How long ago `instant` was at `now`, as relative text in `language`
+ * ("3 hours ago" / "hace 3 horas"; #301b): whole minutes under an hour,
+ * whole hours under 48 hours, then whole days (rounded down; at least 1
+ * minute). Uses `Intl.RelativeTimeFormat`; no zone is involved.
+ */
+export function formatElapsed(
+  instant: Instant,
+  now: Date,
+  language: Language,
+): string {
+  const elapsed = Math.max(0, now.getTime() - parseInstant(instant).getTime());
+  const relative = new Intl.RelativeTimeFormat(language, { numeric: 'always' });
+  if (elapsed < HOUR_MS) {
+    return relative.format(
+      -Math.max(1, Math.floor(elapsed / MINUTE_MS)),
+      'minute',
+    );
+  }
+  if (elapsed < 48 * HOUR_MS) {
+    return relative.format(-Math.floor(elapsed / HOUR_MS), 'hour');
+  }
+  return relative.format(-Math.floor(elapsed / DAY_MS), 'day');
+}

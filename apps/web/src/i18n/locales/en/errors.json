@@ -186,5 +186,9 @@
   "closeout_unchanged": "Nothing changed. Change the minutes or the summary, or cancel.",
   "session_not_closable": "This class can't be closed out in its current state.",
   "session_not_started": "The closeout opens when the class starts.",
-  "summary_required": "Fill in the required parts of the summary."
+  "summary_required": "Fill in the required parts of the summary.",
+  "session_not_ended": "This class hasn't ended yet. Close it out on the tutor's behalf once it ends.",
+  "closeout_on_behalf_own_session": "You tutor this class, so you can't close it out on the tutor's behalf.",
+  "closeout_submitted_on_behalf": "This closeout was submitted on the tutor's behalf, so it can't be sent back. Correct it instead.",
+  "closeout_not_with_tutor": "The closeout is no longer waiting for the tutor. Reload to see where it stands."
 }
