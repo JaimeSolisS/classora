@@ -51,7 +51,8 @@ def demo_owner_rows(url: str) -> list:
 
 def test_the_generators_are_registered_in_order():
     # #195 E1: the seven demo accounts, then the demo families; #299 A1:
-    # then the catalog, the tutor and the schedule.
+    # then the catalog, the tutor and the schedule; #303 A1: demo.tutor2
+    # after demo.guardian, then its setup, the course and the changes.
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
     assert GENERATOR_NAMES == [
         "identity.demo_owner",
@@ -61,10 +62,14 @@ def test_the_generators_are_registered_in_order():
         "identity.demo_tutor",
         "identity.demo_student",
         "identity.demo_guardian",
+        "identity.demo_tutor2",
         "families.demo_families",
         "catalog.demo_catalog",
         "staff.demo_tutor",
         "scheduling.demo_schedule",
+        "staff.demo_tutor2",
+        "courses.demo_courses",
+        "scheduling.demo_changes",
     ]
 
 
@@ -156,5 +161,5 @@ def test_bootstrap_owner_is_refused_after_the_demo_owner(migrated_url, env_for, 
 
     assert code == 1
     assert "An Owner account already exists" in capsys.readouterr().err
-    # #195: the seven demo accounts, and no bootstrap Owner.
-    assert run_sql(migrated_url, "SELECT count(*) FROM users")[0][0] == 7
+    # #195, #303: the eight demo accounts, and no bootstrap Owner.
+    assert run_sql(migrated_url, "SELECT count(*) FROM users")[0][0] == 8

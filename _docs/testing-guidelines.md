@@ -96,7 +96,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -493,7 +493,8 @@ follows these rules.
   students. Guardian profiles a spec creates (#34) and families (#172,
   `Familia Ñúñez <suffix>`) follow the same rule. The E2E stack also has the
   #195 demo accounts (`demo.admin`, `demo.coordinator`, `demo.finance`,
-  `demo.tutor`, `demo.student` and `demo.guardian`) and the three demo
+  `demo.tutor`, `demo.student` and `demo.guardian`), the #303 second tutor
+  `demo.tutor2` (display name `Demo Second Tutor`) and the three demo
   families with their students and guardians. They are **not** E2E fixtures:
   specs never sign them in, change them, or assert on them or on unfiltered
   list totals. `demo.owner` remains the only named demo fixture.
@@ -509,6 +510,17 @@ follows these rules.
   approvals or notifications. The demo data has one holiday within the
   next 4–6 days, so specs keep scheduling at least 14 days ahead, as all of
   them do today.
+- The E2E stack also has the #303 demo data (the `staff.demo_tutor2`,
+  `courses.demo_courses` and `scheduling.demo_changes` generators:
+  `demo.tutor2`'s qualifications and availability, a course template and a
+  cohort, a substitution, a cancelled session, a session request, a change
+  request and an availability change request, with their approval items and
+  notifications, all dated `T + 2` to `T + 28`). It is **not** an E2E
+  fixture: specs never select it or `demo.tutor2`, and never assert on
+  unfiltered totals of templates, cohorts, requests, change requests,
+  approvals or notifications. `demo.tutor` has one pending availability
+  change from it, so specs that read `demo.tutor`'s pending changes pick
+  their own (as `availability.spec.ts` does with the newest).
 - **Never change `demo.owner` in a spec** (its profile, state, roles,
   password or preferences): every test shares its signed-in session
   (`storageState`). A test that needs an Owner to act signs `demo.owner` in

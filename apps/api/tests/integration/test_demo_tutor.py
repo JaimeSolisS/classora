@@ -14,11 +14,14 @@ from tests.factories.identity import DEMO_TUTOR_USERNAME
 from tests.factories.staff import PROFESSIONAL_EXPERIENCE, DemoTutorGenerator
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import (
+    CATALOG_GENERATOR,
     DEMO_TUTOR_ROWS,
     FROZEN_NOW,
+    SCHEDULE_GENERATOR,
     TUTOR_GENERATOR,
     count,
     demo_env,
+    generators_through,
     migrate,
 )
 
@@ -46,7 +49,8 @@ def test_a_first_run_sets_up_demo_tutor(migrated_url, env_for, clock, capsys):
     clock.set(FROZEN_NOW)  # T = Wednesday 2026-11-04: D(4) + 7 = 2026-11-18
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    # The #299 run (#303 adds demo.tutor's pending time off later).
+    assert demo.main([], generators=generators_through(SCHEDULE_GENERATOR)) == 0
 
     assert f"{TUTOR_GENERATOR}: {DEMO_TUTOR_ROWS} rows" in (
         capsys.readouterr().out.splitlines()
@@ -150,7 +154,7 @@ async def _run(url: str, *steps: Any) -> list[int | GeneratorSkipped]:
 def test_a_tutor_with_a_qualification_means_0_rows(migrated_url, env_for):
     # E6: the marker (any qualification, even without a profile).
     env_for("local", migrated_url)
-    assert demo.main([], generators=demo.DEMO_GENERATORS[:9]) == 0
+    assert demo.main([], generators=generators_through(CATALOG_GENERATOR)) == 0
     tutor = tutor_id(migrated_url)
     [subject] = run_sql(migrated_url, "SELECT id FROM subjects LIMIT 1")
 

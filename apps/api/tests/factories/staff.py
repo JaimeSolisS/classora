@@ -1,9 +1,12 @@
-"""The demo tutor (#299 C): the ``staff.demo_tutor`` generator.
+"""The demo tutors: the ``staff.demo_tutor`` (#299 C) and
+``staff.demo_tutor2`` (#303 B) generators.
 
 ``demo.tutor``'s profile, qualifications (three approved, one pending),
-weekly availability, one day off, limits and a preferred classroom, all
-written through the staff and approval services (#299 G1) with principals
-from ``identity.service.load_principal``. Fixed ``es_MX`` text, no Faker.
+weekly availability, one day off, limits and a preferred classroom; and
+``demo.tutor2``'s two approved qualifications and weekly availability. All
+written through the staff and approval services (#299 G1, #303 G1) with
+principals from ``identity.service.load_principal``. Fixed ``es_MX`` text, no
+Faker.
 """
 
 import uuid
@@ -38,8 +41,10 @@ from app.modules.staff.schemas import (
     WeeklyAvailabilityUpdate,
 )
 from tests.factories.base import GeneratorSkipped, count_rows
+from tests.factories.demo_changes import demo_subject_ids
 from tests.factories.demo_schedule import (
     AULA_1,
+    CIENCIAS_SECONDARY,
     ENGLISH_SECONDARY,
     MATH_PRIMARY,
     MATH_SECONDARY,
@@ -50,8 +55,10 @@ from tests.factories.demo_schedule import (
 from tests.factories.identity import (
     DEMO_ACCOUNT_APP_ENVS,
     DEMO_OWNER_USERNAME,
+    DEMO_TUTOR2_USERNAME,
     DEMO_TUTOR_USERNAME,
     DemoPrerequisiteMissingError,
+    demo_principal,
     demo_user_id,
 )
 
@@ -242,3 +249,106 @@ async def _already_set_up(session: AsyncSession, tutor_id: uuid.UUID) -> bool:
         .limit(1)
     )
     return profile is not None or qualification is not None
+
+
+# --- demo.tutor2 (#303 B) ---------------------------------------------------------
+
+TUTOR2_QUALIFICATIONS: tuple[SubjectKey, ...] = (MATH_SECONDARY, CIENCIAS_SECONDARY)
+"""``demo.tutor2``'s qualifications, both approved by ``demo.owner`` (#303 B2)."""
+
+TUTOR2_WINDOWS: tuple[tuple[int, str, str], ...] = tuple(
+    (day, "15:00", "20:00") for day in (1, 2, 3, 4, 5)
+)
+"""``demo.tutor2``'s weekly windows, Monday-Friday 15:00-20:00 (#303 B3)."""
+
+DEMO_TUTOR2_TABLES = (
+    TutorQualification,
+    ApprovalRequest,
+    Notification,
+    TutorAvailabilitySettings,
+    TutorAvailabilityWindow,
+)
+"""The tables whose added rows ``staff.demo_tutor2`` counts (#303 B)."""
+
+
+class DemoSecondTutorGenerator:
+    """``staff.demo_tutor2`` (#303 B): ``demo.tutor2``'s two qualifications
+    (Matemáticas and Ciencias, Secundaria), each requested by the tutor and
+    approved by ``demo.owner``, and its weekly availability (Monday-Friday
+    15:00-20:00, set by the Owner). No profile, exception, limits or
+    preferred classroom.
+
+    Writes nothing outside ``APP_ENV=local`` (skipped), and nothing (0 rows)
+    once ``demo.tutor2`` has any qualification or an availability settings
+    row. Raises when ``demo.owner``, ``demo.tutor2`` or a demo subject is
+    missing. It writes no dates, so it also runs on a database whose #299
+    schedule is from an earlier day.
+    """
+
+    name = "staff.demo_tutor2"
+
+    def __init__(self, app_env: Callable[[], str] = _settings_app_env) -> None:
+        self._app_env = app_env
+
+    async def generate(self, session: AsyncSession) -> int | GeneratorSkipped:
+        app_env = self._app_env()
+        if app_env not in DEMO_ACCOUNT_APP_ENVS:
+            return GeneratorSkipped(f"APP_ENV={app_env}; local only")
+        owner = await demo_principal(session, DEMO_OWNER_USERNAME, self.name)
+        tutor = await demo_principal(session, DEMO_TUTOR2_USERNAME, self.name)
+        if await _tutor2_set_up(session, tutor.user_id):
+            return 0
+        subjects = await demo_subject_ids(session, TUTOR2_QUALIFICATIONS, self.name)
+        before = await count_rows(session, DEMO_TUTOR2_TABLES)
+
+        # B2: requested by the tutor, approved by the Owner.
+        for key in TUTOR2_QUALIFICATIONS:
+            item = await staff.request_qualification(
+                session,
+                principal=tutor,
+                user_id=tutor.user_id,
+                subject_id=subjects[key],
+            )
+            request_id = await session.scalar(
+                select(ApprovalRequest.id).where(ApprovalRequest.subject_id == item.id)
+            )
+            assert request_id is not None
+            await administration.decide_approval_request(
+                session, principal=owner, request_id=request_id, action="approve"
+            )
+
+        # B3: the weekly windows (version 0: no settings row yet), as the Owner.
+        weekly = await staff.replace_weekly_availability(
+            session,
+            principal=owner,
+            user_id=tutor.user_id,
+            body=WeeklyAvailabilityUpdate(
+                version=0,
+                windows=[
+                    AvailabilityWindow(weekday=day, starts_at=start, ends_at=end)
+                    for day, start, end in TUTOR2_WINDOWS
+                ],
+            ),
+            impact=registered_availability_impact_source(),
+        )
+        if not isinstance(weekly, TutorAvailabilityDetail):
+            raise DemoPrerequisiteMissingError(
+                f"{self.name} must run before {DEMO_TUTOR2_USERNAME} teaches"
+            )
+        return await count_rows(session, DEMO_TUTOR2_TABLES) - before
+
+
+async def _tutor2_set_up(session: AsyncSession, tutor_id: uuid.UUID) -> bool:
+    """The marker (#303 B1): any qualification or an availability settings
+    row of ``demo.tutor2``."""
+    qualification = await session.scalar(
+        select(TutorQualification.id)
+        .where(TutorQualification.tutor_user_id == tutor_id)
+        .limit(1)
+    )
+    settings = await session.scalar(
+        select(TutorAvailabilitySettings.id).where(
+            TutorAvailabilitySettings.user_id == tutor_id
+        )
+    )
+    return qualification is not None or settings is not None

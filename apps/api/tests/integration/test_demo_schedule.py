@@ -1,5 +1,9 @@
 """The demo schedule (#299 D, E2-E7): ``scheduling.demo_schedule`` and what
-each demo account sees after a first run."""
+each demo account sees after a first run.
+
+The row and per-account checks run the generators through
+``scheduling.demo_schedule`` (#303 G5), so the #299 numbers stay as pinned;
+the rerun and ``dev`` checks run every generator."""
 
 import dataclasses
 from datetime import UTC, date, datetime, timedelta
@@ -21,14 +25,18 @@ from tests.integration.auth_support import auth_client, login, only_set_cookie
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
 from tests.integration.demo_support import (
+    ALL_TABLE_COUNTS,
     DEMO_TABLE_COUNTS,
     DEV_LINES,
-    FIRST_RUN_LINES,
     FROZEN_NOW,
     RERUN_LINES,
+    SCHEDULE_GENERATOR,
+    TUTOR_GENERATOR,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
+    generators_through,
     migrate,
 )
 from tests.integration.test_demo_accounts import accept_the_notice
@@ -83,6 +91,12 @@ EXPECTED_SESSIONS = sorted(
         ),
     ]
 )  # fmt: skip
+
+
+THROUGH_SCHEDULE = generators_through(SCHEDULE_GENERATOR)
+"""The #299 run (#303 G5): every generator up to the schedule (with
+``identity.demo_tutor2``, which writes only the account)."""
+THROUGH_SCHEDULE_LINES = first_run_lines(THROUGH_SCHEDULE)
 
 
 @pytest.fixture
@@ -166,9 +180,9 @@ def test_a_first_run_writes_the_schedule(migrated_url, env_for, clock, capsys):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_SCHEDULE) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == THROUGH_SCHEDULE_LINES
     assert session_rows(migrated_url) == EXPECTED_SESSIONS
 
     offers = run_sql(
@@ -209,8 +223,8 @@ def test_a_first_run_writes_the_schedule(migrated_url, env_for, clock, capsys):
     [group] = run_sql(migrated_url, "SELECT name, max_students FROM class_groups")
     assert tuple(group) == ("Club de Matemáticas", 6)
     assert count(migrated_url, "group_enrollments") == 3
-    # G4: no new users, students or families.
-    assert count(migrated_url, "users") == 7
+    # G4: no new users, students or families (the eight demo accounts, #303).
+    assert count(migrated_url, "users") == 8
     assert count(migrated_url, "students") == 5
     assert count(migrated_url, "families") == 3
     assert demo_table_counts(migrated_url) == DEMO_TABLE_COUNTS
@@ -229,9 +243,9 @@ def test_a_weekend_run_writes_the_same_shape(migrated_url, env_for, clock, capsy
     clock.set(now)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_SCHEDULE) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == THROUGH_SCHEDULE_LINES
     assert demo_table_counts(migrated_url) == DEMO_TABLE_COUNTS
 
 
@@ -249,7 +263,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     clock.advance(timedelta(days=10))
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
-    assert demo_table_counts(migrated_url) == DEMO_TABLE_COUNTS
+    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
     assert session_rows(migrated_url) == first
 
 
@@ -284,7 +298,7 @@ def test_a_refused_service_call_rolls_the_run_back(migrated_url, env_for, clock)
         )
 
     generators = [
-        *demo.DEMO_GENERATORS[:-1],
+        *generators_through(TUTOR_GENERATOR),
         DemoScheduleGenerator(plan=on_the_closure),
     ]
     with pytest.raises(SchedulingConflictError):
@@ -333,7 +347,7 @@ def _local(item: dict[str, Any]) -> str:
 def test_every_account_sees_its_demo_data(migrated_url, env_for, clock):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_SCHEDULE) == 0
     labels = student_labels(migrated_url)
     ids = {label: student for student, label in labels.items()}
     [tutor] = run_sql(
