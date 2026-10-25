@@ -8,6 +8,8 @@ through the API.
 """
 
 import uuid
+from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,9 +49,12 @@ async def persist_course_cohort(
     max_students: int = 12,
     session_count: int = 10,
     session_minutes: int = 60,
+    assessments: Sequence[dict[str, Any]] = (),
 ) -> CourseCohort:
     """A cohort of a new template (``session_count`` × ``session_minutes``)
-    on ``subject_id``, with unique names."""
+    on ``subject_id``, with unique names. ``assessments`` (``id``,
+    ``title``, optional ``is_required`` and ``min_score_percent``) go into
+    the snapshot only (#80: evaluations read them from there)."""
     suffix = uuid.uuid4().hex[:8]
     template = await persist_course_template(
         session,
@@ -74,7 +79,17 @@ async def persist_course_cohort(
                 }
             ],
             "modules": [],
-            "assessments": [],
+            "assessments": [
+                {
+                    "id": str(item["id"]),
+                    "position": position,
+                    "title": item["title"],
+                    "module_id": None,
+                    "is_required": item.get("is_required", True),
+                    "min_score_percent": item.get("min_score_percent"),
+                }
+                for position, item in enumerate(assessments, start=1)
+            ],
             "completion": {
                 "min_attendance_percent": None,
                 "required_module_ids": [],

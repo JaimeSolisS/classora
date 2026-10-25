@@ -28,7 +28,10 @@ existing reference to a deactivated one stays valid and is still shown
 the id, name and active flag of levels a record points at (#33: one row,
 optionally locked ``FOR SHARE``, or one statement for a page of records);
 :func:`get_subject_for_reference` and :func:`subject_references` do the same
-for subjects, with their level (#44 tutor qualifications).
+for subjects, with their level (#44 tutor qualifications);
+:func:`subject_name_columns` is an unexecuted ``(id, name)`` select another
+module joins (#80). :func:`periods_overlapping` gives the active periods of
+one type over a date range (#80 E3).
 
 **Writes** (``catalog.manage``): create and ``PATCH`` (rename, reorder,
 deactivate, reactivate). Nothing is ever deleted. Every change sends the
@@ -138,6 +141,9 @@ from app.modules.catalog.periods import (
 )
 from app.modules.catalog.periods import (
     list_closures as list_closures,
+)
+from app.modules.catalog.periods import (
+    periods_overlapping as periods_overlapping,
 )
 from app.modules.catalog.periods import (
     update_academic_period as update_academic_period,
@@ -355,6 +361,13 @@ async def subject_references(
         _subject_reference_query().where(Subject.id.in_(set(subject_ids)))
     )
     return {subject.id: _subject_reference(subject, level) for subject, level in rows}
+
+
+def subject_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, name FROM subjects``, **not executed** (#80 F2): another
+    module joins it as a subquery so a list and its subjects' names come in
+    one statement."""
+    return select(Subject.id, Subject.name)
 
 
 def _subjects_query() -> Select[Subject, str]:

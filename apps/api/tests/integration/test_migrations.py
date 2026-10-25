@@ -7,6 +7,7 @@ database."""
 import asyncio
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -71,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0053"
+HEAD = "0054"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -131,6 +132,12 @@ ATTENDANCE_TABLES = ["class_session_attendance", "class_session_attendance_corre
 CLOSEOUT_TABLES = ["session_closeouts"]
 CLOSEOUT_REVIEW_TABLES = ["session_closeout_approvals", "session_closeout_corrections"]
 NOTE_TABLES = ["session_notes"]
+EVALUATION_TABLES = [
+    "evaluation_templates",
+    "evaluation_template_criteria",
+    "evaluations",
+    "evaluation_scores",
+]
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
     "review_reason",
@@ -347,6 +354,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *CLOSEOUT_TABLES,
             *CLOSEOUT_REVIEW_TABLES,
             *NOTE_TABLES,
+            *EVALUATION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4408,9 +4416,24 @@ def _of_0053(diff: Any) -> bool:
     return False
 
 
+def _of_0054(diff: Any) -> bool:
+    """A metadata difference that revision 0054 adds: the evaluation tables
+    and their indexes (#80 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in EVALUATION_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in EVALUATION_TABLES
+    return False
+
+
+def _of_0053_on(diff: Any) -> bool:
+    """A metadata difference that revision 0053 or a later one adds."""
+    return _of_0053(diff) or _of_0054(diff)
+
+
 def _of_0052_on(diff: Any) -> bool:
     """A metadata difference that revision 0052 or a later one adds."""
-    return _of_0052(diff) or _of_0053(diff)
+    return _of_0052(diff) or _of_0053_on(diff)
 
 
 def _of_0051_on(diff: Any) -> bool:
@@ -8664,7 +8687,7 @@ def test_0052_adds_the_on_behalf_objects_and_downgrade_drops_them(fresh_database
     command.upgrade(config, "0052")
 
     assert version_nums(dsn) == ["0052"]
-    assert [d for d in metadata_diff(dsn) if not _of_0053(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0053_on(d)] == []
     assert public_tables(dsn) == before
     assert OVERDUE_INDEX in _indexes(dsn, "class_sessions")
     assert (
@@ -8773,7 +8796,7 @@ def test_0053_adds_the_notes_table_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0053")
 
     assert version_nums(dsn) == ["0053"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0054(d)] == []
     assert public_tables(dsn) - before == set(NOTE_TABLES)
     run_sql(dsn, NOTE_INSERT, _note_values(dsn))
 
@@ -8781,7 +8804,7 @@ def test_0053_adds_the_notes_table_and_downgrade_drops_it(fresh_database_url):
 
     assert version_nums(dsn) == ["0052"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0053(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0053_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -8894,3 +8917,321 @@ def test_session_note_rows_are_checked(fresh_database_url):
     # A referenced author can't be deleted.
     with pytest.raises(IntegrityError, match="fk_session_notes_author_user_id_users"):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", values)
+
+
+# --- 0054: evaluations (#80 A1) -------------------------------------------------------
+
+TEMPLATE_INSERT = (
+    "INSERT INTO evaluation_templates (name, kind, subject_id, description)"
+    " VALUES (:name, :kind, :subject, :description) RETURNING id, is_active, version"
+)
+CRITERION_INSERT = (
+    "INSERT INTO evaluation_template_criteria (template_id, position, title,"
+    " description, max_score) VALUES (:t, :position, :title, :description, :max)"
+)
+EVALUATION_INSERT = (
+    "INSERT INTO evaluations (student_id, subject_id, author_user_id, template_id,"
+    " template_version, template_name, kind, evaluated_on, class_session_id,"
+    " cohort_id, course_assessment_id, course_assessment_title, status, feedback,"
+    " score_total, max_total, score_percent, finalized_at, last_change_reason,"
+    " voided_at, voided_by_user_id, void_reason, deleted_at, deleted_by_user_id)"
+    " VALUES (:st, :sub, :u, :t, 1, :tname, :kind, :on, :session, :cohort,"
+    " :assessment, :atitle, :status, :feedback, :total, :max_total, :percent,"
+    " :finalized_at, :reason, :voided_at, :voided_by, :void_reason, :deleted_at,"
+    " :deleted_by) RETURNING id, status, version"
+)
+SCORE_INSERT = (
+    "INSERT INTO evaluation_scores (evaluation_id, position, criterion_title,"
+    " criterion_description, max_score, score, comment)"
+    " VALUES (:e, :position, :title, :description, :max, :score, :comment)"
+)
+
+
+def _template_values(dsn: str) -> dict[str, Any]:
+    return {
+        "name": f"Plantilla {uuid.uuid4().hex[:8]}",
+        "kind": "diagnostic",
+        "subject": _subject_row(dsn),
+        "description": None,
+    }
+
+
+def _evaluation_values(dsn: str) -> dict[str, Any]:
+    template = _template_values(dsn)
+    [row] = run_sql(dsn, TEMPLATE_INSERT, template)
+    return {
+        "st": _student_row(dsn),
+        "sub": template["subject"],
+        "u": _user_row(dsn),
+        "t": row.id,
+        "tname": template["name"],
+        "kind": "ongoing",
+        "on": date(2031, 3, 5),
+        "session": None,
+        "cohort": None,
+        "assessment": None,
+        "atitle": None,
+        "status": "draft",
+        "feedback": None,
+        "total": None,
+        "max_total": None,
+        "percent": None,
+        "finalized_at": None,
+        "reason": None,
+        "voided_at": None,
+        "voided_by": None,
+        "void_reason": None,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+
+
+def test_0054_adds_the_evaluation_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0053")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0054")
+
+    assert version_nums(dsn) == ["0054"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(EVALUATION_TABLES)
+    run_sql(dsn, EVALUATION_INSERT, _evaluation_values(dsn))
+
+    command.downgrade(config, "0053")
+
+    assert version_nums(dsn) == ["0053"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0054(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_evaluation_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    unversioned = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    timestamp = ("timestamp with time zone", "YES", None, None)
+    money = ("numeric", "NO", None, None)
+
+    assert _columns(dsn, "evaluation_templates") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 120, None),
+        "kind": ("character varying", "NO", 20, None),
+        "subject_id": ("uuid", "YES", None, None),
+        "description": ("character varying", "YES", 2000, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "evaluation_template_criteria") == {
+        **unversioned,
+        "template_id": ("uuid", "NO", None, None),
+        "position": ("smallint", "NO", None, None),
+        "title": ("character varying", "NO", 120, None),
+        "description": ("character varying", "YES", 500, None),
+        "max_score": money,
+    }
+    assert _columns(dsn, "evaluations") == {
+        **STANDARD_COLUMNS,
+        "student_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "author_user_id": ("uuid", "NO", None, None),
+        "template_id": ("uuid", "NO", None, None),
+        "template_version": ("integer", "NO", None, None),
+        "template_name": ("character varying", "NO", 120, None),
+        "kind": ("character varying", "NO", 20, None),
+        "evaluated_on": ("date", "NO", None, None),
+        "class_session_id": ("uuid", "YES", None, None),
+        "cohort_id": ("uuid", "YES", None, None),
+        "course_assessment_id": ("uuid", "YES", None, None),
+        "course_assessment_title": ("character varying", "YES", 200, None),
+        "status": ("character varying", "NO", 10, "'draft'::character varying"),
+        "feedback": ("text", "YES", None, None),
+        "score_total": ("numeric", "YES", None, None),
+        "max_total": ("numeric", "YES", None, None),
+        "score_percent": ("numeric", "YES", None, None),
+        "finalized_at": timestamp,
+        "amended_at": timestamp,
+        "last_change_reason": ("text", "YES", None, None),
+        "voided_at": timestamp,
+        "voided_by_user_id": ("uuid", "YES", None, None),
+        "void_reason": ("text", "YES", None, None),
+        "deleted_at": timestamp,
+        "deleted_by_user_id": ("uuid", "YES", None, None),
+    }
+    assert _columns(dsn, "evaluation_scores") == {
+        **unversioned,
+        "evaluation_id": ("uuid", "NO", None, None),
+        "position": ("smallint", "NO", None, None),
+        "criterion_title": ("character varying", "NO", 120, None),
+        "criterion_description": ("character varying", "YES", 500, None),
+        "max_score": money,
+        "score": ("numeric", "YES", None, None),
+        "comment": ("text", "YES", None, None),
+    }
+    evaluation_fks = {
+        "fk_evaluations_student_id_students",
+        "fk_evaluations_subject_id_subjects",
+        "fk_evaluations_author_user_id_users",
+        "fk_evaluations_template_id_evaluation_templates",
+        "fk_evaluations_class_session_id_class_sessions",
+        "fk_evaluations_cohort_id_course_cohorts",
+        "fk_evaluations_voided_by_user_id_users",
+        "fk_evaluations_deleted_by_user_id_users",
+    }
+    constraints = _constraints(dsn, "evaluations")
+    assert set(constraints) == {
+        "pk_evaluations",
+        *evaluation_fks,
+        *(
+            f"ck_evaluations_{name}"
+            for name in (
+                "kind_valid",
+                "status_valid",
+                "template_name_valid",
+                "course_together",
+                "course_needs_session",
+                "course_assessment_title_valid",
+                "feedback_valid",
+                "score_percent_range",
+                "final_totals",
+                "last_change_reason_valid",
+                "voided_together",
+                "void_reason_valid",
+                "voided_final",
+                "deleted_together",
+                "deleted_draft",
+            )
+        ),
+    }
+    for name in evaluation_fks:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert "course_assessment_id" not in " ".join(
+        constraints[name] for name in evaluation_fks
+    )
+    criteria = _constraints(dsn, "evaluation_template_criteria")
+    assert (
+        "DEFERRABLE INITIALLY DEFERRED"
+        in (criteria["uq_evaluation_template_criteria_position"])
+    )
+    assert (
+        'UNIQUE (evaluation_id, "position")'
+        in (_constraints(dsn, "evaluation_scores")["uq_evaluation_scores_position"])
+    )
+    indexes = _indexes(dsn, "evaluations")
+    assert set(indexes) == {
+        "pk_evaluations",
+        "ix_evaluations_student_id_evaluated_on",
+        "ix_evaluations_student_id_created_at",
+        "ix_evaluations_author_user_id_drafts",
+        "ix_evaluations_cohort_id_course_assessment_id",
+    }
+    assert (
+        "WHERE (((status)::text = 'final'::text) AND (voided_at IS NULL))"
+        in (indexes["ix_evaluations_student_id_evaluated_on"])
+    )
+    assert (
+        "WHERE (deleted_at IS NULL)" in indexes["ix_evaluations_student_id_created_at"]
+    )
+    assert (
+        "lower((name)::text)"
+        in (_indexes(dsn, "evaluation_templates")["uq_evaluation_templates_name_ci"])
+    )
+
+
+def test_evaluation_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    template = _template_values(dsn)
+    for changes, constraint in (
+        ({"name": " x "}, "evaluation_templates_name_valid"),
+        ({"name": ""}, "evaluation_templates_name_valid"),
+        ({"kind": "quiz"}, "kind_valid"),
+        ({"description": ""}, "description_valid"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, TEMPLATE_INSERT, template | changes)
+    [made] = run_sql(dsn, TEMPLATE_INSERT, template)
+    assert (made.is_active, made.version) == (True, 1)
+    with pytest.raises(IntegrityError, match="uq_evaluation_templates_name_ci"):
+        run_sql(dsn, TEMPLATE_INSERT, template | {"name": template["name"].upper()})
+    criterion = {
+        "t": made.id,
+        "position": 1,
+        "title": "Lectura",
+        "description": None,
+        "max": Decimal("10"),
+    }
+    for changes, constraint in (
+        ({"position": 0}, "position_range"),
+        ({"position": 21}, "position_range"),
+        ({"title": " x"}, "title_valid"),
+        ({"max": Decimal("0.49")}, "max_score_range"),
+        ({"max": Decimal("1000.01")}, "max_score_range"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, CRITERION_INSERT, criterion | changes)
+    run_sql(dsn, CRITERION_INSERT, criterion | {"max": Decimal("0.5")})
+
+    values = _evaluation_values(dsn)
+    now = datetime.now(UTC)
+    final = {
+        "status": "final",
+        "total": Decimal("7"),
+        "max_total": Decimal("10"),
+        "percent": Decimal("70"),
+        "finalized_at": now,
+    }
+    voided = {"voided_at": now, "voided_by": values["u"], "void_reason": "Error"}
+    deleted = {"deleted_at": now, "deleted_by": values["u"]}
+    for changes, constraint in (
+        ({"status": "sent"}, "status_valid"),
+        ({"kind": "quiz"}, "kind_valid"),
+        ({"status": "final"}, "final_totals"),
+        (final | {"percent": None}, "final_totals"),
+        (final | {"status": "draft"}, "final_totals"),
+        (final | {"percent": Decimal("100.01")}, "score_percent_range"),
+        ({"feedback": "x" * 4001}, "feedback_valid"),
+        ({"reason": "x" * 501}, "last_change_reason_valid"),
+        (final | {"voided_at": now}, "voided_together"),
+        (final | voided | {"void_reason": ""}, "void_reason_valid"),
+        (voided, "voided_final"),
+        ({"deleted_at": now}, "deleted_together"),
+        (final | deleted, "deleted_draft"),
+        ({"assessment": uuid.uuid4()}, "course_together"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, EVALUATION_INSERT, values | changes)
+    [draft] = run_sql(dsn, EVALUATION_INSERT, values)
+    assert (draft.status, draft.version) == ("draft", 1)
+    run_sql(dsn, EVALUATION_INSERT, values | final | voided)
+    run_sql(dsn, EVALUATION_INSERT, values | deleted)
+    score = {
+        "e": draft.id,
+        "position": 1,
+        "title": "Lectura",
+        "description": None,
+        "max": Decimal("10"),
+        "score": None,
+        "comment": None,
+    }
+    for changes, constraint in (
+        ({"score": Decimal("10.01")}, "score_range"),
+        ({"score": Decimal("-1")}, "score_range"),
+        ({"comment": ""}, "comment_valid"),
+        ({"position": 21}, "position_range"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, SCORE_INSERT, score | changes)
+    run_sql(dsn, SCORE_INSERT, score | {"score": Decimal("10")})
+    with pytest.raises(IntegrityError, match="uq_evaluation_scores_position"):
+        run_sql(dsn, SCORE_INSERT, score)
+    # A referenced author or template can't be deleted.
+    with pytest.raises(IntegrityError, match="fk_evaluations_author_user_id_users"):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", values)
+    with pytest.raises(IntegrityError, match="fk_evaluations_template_id"):
+        run_sql(dsn, "DELETE FROM evaluation_templates WHERE id = :t", values)

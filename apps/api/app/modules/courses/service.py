@@ -54,6 +54,10 @@ active counts, the record-policy filters (``visible_to`` on
 ``app.workflows.cohort_enrollment`` composes them with
 ``scheduling.service``.
 
+**Course assessments for evaluations** (#80 E7, AM1):
+:func:`cohort_assessments` and :func:`cohort_assessment` read a cohort's
+assessments from its frozen snapshot, never the live template.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -968,6 +972,72 @@ async def cohort_names(
         )
     )
     return {cohort_id: name for cohort_id, name in rows}
+
+
+@dataclass(frozen=True)
+class CohortAssessment:
+    """One assessment of a cohort's frozen syllabus (#80 E7)."""
+
+    id: uuid.UUID
+    title: str
+    module_id: uuid.UUID | None
+    is_required: bool
+    min_score_percent: int | None
+
+
+@dataclass(frozen=True)
+class CohortAssessments:
+    """A cohort's name and the assessments of its snapshot, in position
+    order (#80 AM1)."""
+
+    cohort_id: uuid.UUID
+    cohort_name: str
+    assessments: list[CohortAssessment]
+
+
+async def cohort_assessments(
+    session: AsyncSession, cohort_id: uuid.UUID
+) -> CohortAssessments | None:
+    """The cohort's name and the assessments of its **snapshot** (never the
+    live template: an assessment deleted from the template since stays),
+    or ``None`` when unknown (#80 E7, AM1). One statement."""
+    row = (
+        await session.execute(
+            select(CourseCohort.id, CourseCohort.name, SnapshotRow)
+            .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+            .where(CourseCohort.id == cohort_id)
+        )
+    ).first()
+    if row is None:
+        return None
+    found_id, name, snapshot = row
+    syllabus = syllabus_of(snapshot.content, schema_version=snapshot.schema_version)
+    return CohortAssessments(
+        cohort_id=found_id,
+        cohort_name=name,
+        assessments=[
+            CohortAssessment(
+                id=item.id,
+                title=item.title,
+                module_id=item.module_id,
+                is_required=item.is_required,
+                min_score_percent=item.min_score_percent,
+            )
+            for item in syllabus.assessments
+        ],
+    )
+
+
+async def cohort_assessment(
+    session: AsyncSession, cohort_id: uuid.UUID, assessment_id: uuid.UUID
+) -> CohortAssessment | None:
+    """One assessment of the cohort's snapshot, or ``None`` (an unknown
+    cohort or an id the snapshot doesn't hold; #80 D2 step 8). One
+    statement."""
+    found = await cohort_assessments(session, cohort_id)
+    if found is None:
+        return None
+    return next((a for a in found.assessments if a.id == assessment_id), None)
 
 
 async def ensure_cohort_name_free(

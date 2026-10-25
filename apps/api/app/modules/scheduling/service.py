@@ -119,6 +119,13 @@ with ``academics`` by ``app.workflows.session_notes``; the family half of
 the #67 student rule, :func:`ensure_family_student_access` (no staff
 branch), guards the family note route.
 
+Evaluations (#80, :mod:`~app.modules.scheduling.evaluation_context`): the
+session facts :func:`evaluation_session` (kind, state, start, current
+tutor, subject, cohort and participants in one statement; ``FOR SHARE`` on
+a create), composed with ``academics`` by ``app.workflows.evaluations``,
+which also uses :func:`student_ids_for_tutor`,
+:func:`ensure_family_student_access` and :func:`note_session_columns`.
+
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
 :func:`reconcile_series_closures` per series before the extension; the
@@ -449,6 +456,12 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
+)
+from app.modules.scheduling.evaluation_context import (
+    EvaluationSession as EvaluationSession,
+)
+from app.modules.scheduling.evaluation_context import (
+    evaluation_session as evaluation_session,
 )
 from app.modules.scheduling.group_lock import lock_group as lock_group
 from app.modules.scheduling.group_reads import get_group as get_group

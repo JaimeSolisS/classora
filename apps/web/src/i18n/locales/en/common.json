@@ -1481,7 +1481,9 @@
       "academics_closeout_changes_requested": "Changes were requested to your closeout of the {{subject_name}} class on {{starts_at}}.",
       "academics_closeout_submitted_on_behalf": "Your closeout of the {{subject_name}} class on {{starts_at}} was submitted on your behalf.",
       "academics_learning_note_published": "The tutor shared a note about the class on {{starts_at}}.",
-      "academics_learning_note_unpublished": "A reviewer stopped sharing your note about the class on {{starts_at}}."
+      "academics_learning_note_unpublished": "A reviewer stopped sharing your note about the class on {{starts_at}}.",
+      "academics_evaluation_finalized": "A tutor finalized an evaluation from {{evaluated_on}}: it is in the academic history.",
+      "academics_evaluation_voided": "A reviewer voided one of your evaluations."
     }
   },
   "scheduling": {

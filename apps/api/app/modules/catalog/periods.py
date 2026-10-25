@@ -160,6 +160,26 @@ async def get_academic_period(
     return _period_detail(period)
 
 
+async def periods_overlapping(
+    session: AsyncSession, period_type: PeriodType, from_: date, to: date
+) -> list[AcademicPeriodDetail]:
+    """The **active** periods of one type that share a day with the
+    inclusive range ``[from_, to]`` (#80 E3: the history groups each
+    evaluation by the period holding its date), by ``starts_on`` (newest
+    first). Active periods of one type never overlap. One statement."""
+    periods = await session.scalars(
+        select(AcademicPeriod)
+        .where(
+            AcademicPeriod.is_active,
+            AcademicPeriod.period_type == period_type,
+            AcademicPeriod.starts_on <= to,
+            AcademicPeriod.ends_on >= from_,
+        )
+        .order_by(AcademicPeriod.starts_on.desc(), AcademicPeriod.id)
+    )
+    return [_period_detail(period) for period in periods]
+
+
 # --- Academic periods: writes --------------------------------------------------------
 
 
