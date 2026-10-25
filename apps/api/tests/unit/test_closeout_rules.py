@@ -1,5 +1,5 @@
-"""Session closeout rules (#77 A5, C1, E4, E5, H4; #78 A3, E7, C4):
-table-driven, no database."""
+"""Session closeout rules (#77 A5, C1, E4, E5, H4; #78 A3, E7, C4; #301
+A3, E5, F1, H4): table-driven, no database."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -24,6 +24,7 @@ from app.modules.academics.closeout_rules import (
     corrected_fields,
     is_self_review,
     kind_of_review,
+    on_behalf_block,
     review_block,
     sees_summary,
     summary_errors,
@@ -172,6 +173,7 @@ def principal(user_id: uuid.UUID, *roles: str) -> Principal:
 
 ME = uuid.uuid4()
 OTHER = uuid.uuid4()
+THIRD = uuid.uuid4()
 
 
 @pytest.mark.parametrize(
@@ -263,6 +265,67 @@ def test_is_self_review(roles, submitter, expected):
     assert is_self_review(principal(ME, *roles), submitter) is expected
 
 
+@pytest.mark.parametrize(
+    ("roles", "tutor", "on_behalf_by", "expected"),
+    [
+        # #301 E5: the reviewer who submitted it on the tutor's behalf.
+        ((ADMINISTRATOR,), OTHER, ME, True),
+        ((ACADEMIC_COORDINATOR,), OTHER, ME, True),
+        ((OWNER,), OTHER, ME, False),
+        # The tutor of record is still a self-review.
+        ((ADMINISTRATOR, TUTOR), ME, OTHER, True),
+        ((OWNER, TUTOR), ME, OTHER, False),
+        # Another reviewer decides.
+        ((ADMINISTRATOR,), OTHER, THIRD, False),
+        ((ACADEMIC_COORDINATOR,), OTHER, None, False),
+    ],
+)
+def test_is_self_review_on_behalf(roles, tutor, on_behalf_by, expected):
+    assert is_self_review(principal(ME, *roles), tutor, on_behalf_by) is expected
+
+
+ENDED = NOW - timedelta(minutes=1)
+LATER = NOW + timedelta(minutes=1)
+
+
+@pytest.mark.parametrize("state", [s.value for s in SessionState])
+@pytest.mark.parametrize("ends_at", [ENDED, NOW, LATER])
+@pytest.mark.parametrize("has_closeout", [False, True])
+@pytest.mark.parametrize("caller_is_tutor", [False, True])
+def test_on_behalf_block(state, ends_at, has_closeout, caller_is_tutor):
+    # #301 A3: own session, then already submitted, not closable, not ended.
+    if caller_is_tutor:
+        expected = "closeout_on_behalf_own_session"
+    elif state == "completed" or has_closeout:
+        expected = "closeout_already_submitted"
+    elif state != "confirmed":
+        expected = "session_not_closable"
+    elif ends_at > NOW:
+        expected = "session_not_ended"
+    else:
+        expected = None
+
+    assert (
+        on_behalf_block(
+            state,
+            ends_at,
+            NOW,
+            has_closeout=has_closeout,
+            caller_is_tutor=caller_is_tutor,
+        )
+        == expected
+    )
+
+
+def test_an_ended_confirmed_session_is_open_on_behalf_from_its_end():
+    assert (
+        on_behalf_block(
+            "confirmed", NOW, NOW, has_closeout=False, caller_is_tutor=False
+        )
+        is None
+    )
+
+
 CURRENT = {
     "actual_minutes": 55,
     "topics": "Fracciones",
@@ -352,3 +415,25 @@ def test_the_review_notification_params():
         validated_params("academics.closeout_changes_requested", base | {"reason": "x"})
         == base
     )
+
+
+def test_the_on_behalf_notification_params():
+    # #301 F1: ids, the start and the subject name only (no reason).
+    from app.modules.administration.notifications import validated_params
+    from app.workflows.closeout_on_behalf import register_on_behalf_notifications
+
+    register_on_behalf_notifications()
+    base = {
+        "class_session_id": str(A),
+        "starts_at": "2031-03-05T17:30:00Z",
+        "subject_name": "Matemáticas",
+    }
+    assert (
+        validated_params(
+            "academics.closeout_submitted_on_behalf",
+            base | {"reason": "x", "summary": "y"},
+        )
+        == base
+    )
+    with pytest.raises(ValueError, match="params"):
+        validated_params("academics.closeout_submitted_on_behalf", {"x": 1})

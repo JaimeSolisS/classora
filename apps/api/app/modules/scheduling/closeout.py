@@ -27,6 +27,10 @@ imports ``academics`` (E2).
   closeout id, joining the caller's ``(subject_id, class_session_id)``
   select (``academics.service.closeout_session_keys``) into the session
   read: three statements per page.
+- #301: :func:`sessions_awaiting_closeout`, the overdue list: ``confirmed``
+  sessions that have ended (a confirmed session never has a closeout:
+  submitting one completes it), oldest first, with participant and mark
+  counts, in two statements.
 
 ``first_confirmed_at`` never changes. The lock order of the closeout paths
 is closeout → session → approval request (#78 note); #77's submit creates
@@ -105,6 +109,7 @@ class ClosingSession:
     version: int
     state: str
     starts_at: datetime
+    ends_at: datetime
     tutor_user_id: uuid.UUID | None
     kind: str
     scheduled_minutes: int
@@ -222,6 +227,7 @@ async def lock_closeout_session(
         version=row.version,
         state=row.state,
         starts_at=row.starts_at.astimezone(UTC),
+        ends_at=row.ends_at.astimezone(UTC),
         tutor_user_id=row.tutor_user_id,
         kind=row.kind,
         scheduled_minutes=row.scheduled_minutes,
@@ -306,7 +312,10 @@ async def complete_class_session(
 
 
 async def closeout_session_summaries(
-    session: AsyncSession, keys: Select[*tuple[Any, ...]]
+    session: AsyncSession,
+    keys: Select[*tuple[Any, ...]],
+    *,
+    named_user_columns: Mapping[str, str] | None = None,
 ) -> dict[uuid.UUID, dict[str, Any]]:
     """The approval inbox summary of each closeout (#77 E1), by the
     ``subject_id`` column of ``keys`` (a select of ``subject_id``,
@@ -315,8 +324,12 @@ async def closeout_session_summaries(
     ``approved_minutes``): ``{class_session_id, starts_at, subject_name,
     tutor_display_name, kind, scheduled_minutes, actual_minutes,
     participant_count, …}``. No summary text, student names or attendance.
-    Three statements: the sessions with their participant counts, the
-    subjects, the tutors' names."""
+    ``named_user_columns`` maps further user-id columns of ``keys`` to the
+    summary key of that user's display name (``null`` without one; #301's
+    ``on_behalf_by_user_id`` → ``on_behalf_by_display_name``), resolved with
+    the tutors. Three statements: the sessions with their participant
+    counts, the subjects, the tutors' and named users' names."""
+    named = dict(named_user_columns or {})
     keyed = keys.subquery()
     extra = [
         column
@@ -344,14 +357,20 @@ async def closeout_session_summaries(
     subjects = await catalog.subject_references(
         session, {found[1].subject_id for found in rows}
     )
-    tutors = await identity.get_account_references(
-        session,
-        {
-            found[1].tutor_user_id
-            for found in rows
-            if found[1].tutor_user_id is not None
-        },
-    )
+    named_at = {
+        3 + i: named[column.name]
+        for i, column in enumerate(extra)
+        if column.name in named
+    }
+    user_ids = {
+        found[1].tutor_user_id for found in rows if found[1].tutor_user_id is not None
+    } | {found[i] for found in rows for i in named_at if found[i] is not None}
+    tutors = await identity.get_account_references(session, user_ids)
+
+    def name_at(found: Any, index: int) -> str | None:
+        account = None if found[index] is None else tutors.get(found[index])
+        return None if account is None else account.display_name
+
     summaries: dict[uuid.UUID, dict[str, Any]] = {}
     for found in rows:
         subject_id, row, count = found[0], found[1], found[2]
@@ -366,6 +385,112 @@ async def closeout_session_summaries(
             "scheduled_minutes": row.scheduled_minutes,
             "actual_minutes": row.actual_minutes,
             "participant_count": int(count),
-            **{column.name: found[3 + i] for i, column in enumerate(extra)},
+            **{
+                column.name: found[3 + i]
+                for i, column in enumerate(extra)
+                if 3 + i not in named_at
+            },
+            **{key: name_at(found, index) for index, key in named_at.items()},
         }
     return summaries
+
+
+# --- #301 B2: sessions awaiting a closeout ---------------------------------------
+
+
+@dataclass(frozen=True)
+class AwaitingCloseout:
+    """A ``confirmed`` session that has ended (#301 B2)."""
+
+    id: uuid.UUID
+    kind: str
+    starts_at: datetime
+    ends_at: datetime
+    scheduled_minutes: int
+    subject_id: uuid.UUID
+    tutor_user_id: uuid.UUID | None
+    participant_count: int
+    marked_count: int
+
+
+async def sessions_awaiting_closeout(
+    session: AsyncSession,
+    *,
+    now: datetime,
+    tutor_user_id: uuid.UUID | None = None,
+    starts_from: datetime | None = None,
+    starts_before: datetime | None = None,
+    limit: int,
+    offset: int,
+) -> tuple[list[AwaitingCloseout], int]:
+    """The ``confirmed`` sessions with ``ends_at <= now`` (#301 B2, E2),
+    optionally of one tutor and starting in ``[starts_from,
+    starts_before)``, ordered by ``ends_at``, then ``id``: one page and the
+    total, in two statements (the partial index
+    ``ix_class_sessions_confirmed_ends_at``); none for the page when the
+    total is 0. No lock; no student data."""
+    conditions = [
+        ClassSession.state == SessionState.CONFIRMED,
+        ClassSession.ends_at <= now,
+    ]
+    if tutor_user_id is not None:
+        conditions.append(ClassSession.tutor_user_id == tutor_user_id)
+    if starts_from is not None:
+        conditions.append(ClassSession.starts_at >= starts_from)
+    if starts_before is not None:
+        conditions.append(ClassSession.starts_at < starts_before)
+    total = int(await session.scalar(select(func.count()).where(*conditions)) or 0)
+    if total == 0 or offset >= total:
+        return [], total
+    participant_count = (
+        select(func.count())
+        .where(ClassSessionParticipant.class_session_id == ClassSession.id)
+        .correlate(ClassSession)
+        .scalar_subquery()
+    )
+    marked_count = (
+        select(func.count())
+        .select_from(ClassSessionParticipant)
+        .join(
+            ClassSessionAttendance,
+            (
+                ClassSessionAttendance.class_session_id
+                == ClassSessionParticipant.class_session_id
+            )
+            & (ClassSessionAttendance.student_id == ClassSessionParticipant.student_id),
+        )
+        .where(ClassSessionParticipant.class_session_id == ClassSession.id)
+        .correlate(ClassSession)
+        .scalar_subquery()
+    )
+    rows = await session.execute(
+        select(
+            ClassSession.id,
+            ClassSession.kind,
+            ClassSession.starts_at,
+            ClassSession.ends_at,
+            ClassSession.scheduled_minutes,
+            ClassSession.subject_id,
+            ClassSession.tutor_user_id,
+            participant_count.label("participant_count"),
+            marked_count.label("marked_count"),
+        )
+        .where(*conditions)
+        .order_by(ClassSession.ends_at, ClassSession.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return [
+        AwaitingCloseout(
+            id=row.id,
+            kind=row.kind,
+            starts_at=row.starts_at.astimezone(UTC),
+            ends_at=row.ends_at.astimezone(UTC),
+            scheduled_minutes=row.scheduled_minutes,
+            subject_id=row.subject_id,
+            tutor_user_id=row.tutor_user_id,
+            participant_count=int(row.participant_count),
+            marked_count=int(row.marked_count),
+        )
+        for row in rows
+    ], total

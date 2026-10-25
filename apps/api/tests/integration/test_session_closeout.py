@@ -281,6 +281,10 @@ def test_the_body_is_a_closed_allow_list(module_seeded_url, client):
         "can_correct",
         "can_resubmit",
         "can_request_correction",
+        # #301 E5.
+        "can_request_changes",
+        "can_submit_on_behalf",
+        "can_take_over",
         "block",
         "attendance",
         "closeout",
@@ -302,6 +306,8 @@ def test_the_body_is_a_closed_allow_list(module_seeded_url, client):
         "revisions",
         "corrections",
         "attendance_changed_since_approval",
+        # #301 E5.
+        "on_behalf",
     }
     assert set(body["closeout"]["summary"]) == {
         "topics",
@@ -755,6 +761,8 @@ def test_who_sees_the_inbox_item(module_seeded_url, client, role, visible):
         # #78 C4.
         "kind_of_review": "first",
         "approved_minutes": None,
+        # #301 E4.
+        "on_behalf_by_display_name": None,
     }
     listed = get(
         client,

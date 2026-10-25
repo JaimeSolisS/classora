@@ -109,6 +109,18 @@ class CloseoutCorrectionItem(_Closed):
     )
 
 
+class CloseoutOnBehalf(_Closed):
+    """The latest submission was made by a reviewer on the tutor's behalf
+    (#301 E3, E5). The closeout stays the tutor's (`submitted_by`).
+    `reason` is `null` for staff who don't see the lesson content."""
+
+    by: CloseoutPerson = Field(description="The reviewer who submitted it.")
+    reason: str | None
+    submitted_at: datetime = Field(
+        description="When (the closeout's latest submission)."
+    )
+
+
 class SessionCloseoutRecord(_Closed):
     """A submitted closeout. Submitted hours are not approved until a
     reviewer approves them (`approval`); a correction never changes an
@@ -145,6 +157,10 @@ class SessionCloseoutRecord(_Closed):
     attendance_changed_since_approval: bool = Field(
         description="The attendance differs from the current approval's snapshot."
     )
+    on_behalf: CloseoutOnBehalf | None = Field(
+        description="Set when a reviewer made the latest submission on the"
+        " tutor's behalf (#301); cleared when the tutor resubmits."
+    )
 
 
 class SessionCloseoutView(_Closed):
@@ -179,6 +195,18 @@ class SessionCloseoutView(_Closed):
     can_request_correction: bool = Field(
         description="You submitted it and it is approved."
     )
+    can_request_changes: bool = Field(
+        description="You may send it back to the tutor now: `can_review`, and"
+        " it wasn't submitted on the tutor's behalf (#301)."
+    )
+    can_submit_on_behalf: bool = Field(
+        description="You hold teaching_hours.approve, the class has ended"
+        " without a closeout and you don't tutor it (#301)."
+    )
+    can_take_over: bool = Field(
+        description="You hold teaching_hours.approve, changes were requested"
+        " and you aren't its tutor: resubmit it on the tutor's behalf (#301)."
+    )
     block: CloseoutBlockCode | None
     attendance: CloseoutAttendance
     closeout: SessionCloseoutRecord | None
@@ -196,3 +224,44 @@ class SessionCloseoutSubmit(_Closed):
         description="Actual teaching minutes, 0-720.",
     )
     summary: CloseoutSummaryInput
+
+
+# --- #301 B3: the overdue list -------------------------------------------------------
+
+
+class OverdueCloseoutSubject(_Closed):
+    """The session's subject with its level's name."""
+
+    name: str
+    education_level_name: str
+
+
+class OverdueCloseoutTutor(_Closed):
+    """The session's current tutor. `can_submit`: the account is active and
+    holds the tutor role (otherwise only a reviewer can close it out)."""
+
+    user_id: uuid.UUID
+    display_name: str
+    can_submit: bool
+
+
+class OverdueCloseoutAttendance(_Closed):
+    """How many participants have an attendance mark."""
+
+    marked: int
+    total: int
+
+
+class OverdueCloseoutItem(_Closed):
+    """A confirmed class that has ended without a closeout (#301 B3). No
+    student, group or cohort names."""
+
+    class_session_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    kind: SessionKindCode
+    scheduled_minutes: int
+    subject: OverdueCloseoutSubject
+    tutor: OverdueCloseoutTutor
+    participant_count: int
+    attendance: OverdueCloseoutAttendance

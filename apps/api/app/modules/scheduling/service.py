@@ -107,7 +107,9 @@ bundle :func:`closeout_session_context`, :func:`lock_closeout_session`,
 closeout_attendance_incomplete`` otherwise) and the inbox summaries
 :func:`closeout_session_summaries`, composed with ``academics`` by
 ``app.workflows.session_closeout``; #78 adds :func:`closeout_attendance`
-and :func:`set_actual_minutes` (``app.workflows.session_closeout_review``).
+and :func:`set_actual_minutes` (``app.workflows.session_closeout_review``);
+#301 adds the overdue list :func:`sessions_awaiting_closeout`
+(``app.workflows.closeout_on_behalf``).
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -331,6 +333,7 @@ from app.modules.scheduling.checks import collect_conflicts as collect_conflicts
 from app.modules.scheduling.checks import (
     find_offer_conflicts as find_offer_conflicts,
 )
+from app.modules.scheduling.closeout import AwaitingCloseout as AwaitingCloseout
 from app.modules.scheduling.closeout import (
     CloseoutSessionContext as CloseoutSessionContext,
 )
@@ -350,6 +353,9 @@ from app.modules.scheduling.closeout import (
 )
 from app.modules.scheduling.closeout import (
     lock_closeout_session as lock_closeout_session,
+)
+from app.modules.scheduling.closeout import (
+    sessions_awaiting_closeout as sessions_awaiting_closeout,
 )
 from app.modules.scheduling.closeout import (
     set_actual_minutes as set_actual_minutes,

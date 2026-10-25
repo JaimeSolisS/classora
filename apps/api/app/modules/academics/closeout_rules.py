@@ -10,6 +10,9 @@
   values (the state is compared as text; ``tests/unit/test_closeout_rules.py``
   checks the strings against ``scheduling.states.SessionState``), so this
   module needs no scheduling import (E2).
+- :func:`on_behalf_block` (#301 A3): why a reviewer can't close a session
+  out on its tutor's behalf now (the same text states, plus an ended
+  class).
 - :func:`closeout_access`: the record policy of ``GET`` / ``POST
   /api/v1/class-sessions/{id}/closeout`` (the session's **current** tutor
   while they hold the ``tutor`` role, or a ``schedule.view`` holder; anyone
@@ -202,10 +205,19 @@ def review_block(status: str, action: ReviewAction) -> ReviewBlock | None:
     return UNDER_REVIEW
 
 
-def is_self_review(principal: Principal, tutor_user_id: uuid.UUID) -> bool:
-    """E7: the caller submitted the closeout and isn't the Owner (the final
-    payroll authority, so a one-person center still works)."""
-    return principal.user_id == tutor_user_id and OWNER_ROLE not in principal.roles
+def is_self_review(
+    principal: Principal,
+    tutor_user_id: uuid.UUID,
+    on_behalf_by_user_id: uuid.UUID | None = None,
+) -> bool:
+    """E7: the caller submitted the closeout (the tutor of record, or the
+    reviewer who made the latest submission on the tutor's behalf, #301 E5)
+    and isn't the Owner (the final payroll authority, so a one-person center
+    still works)."""
+    return (
+        principal.user_id in (tutor_user_id, on_behalf_by_user_id)
+        and OWNER_ROLE not in principal.roles
+    )
 
 
 def corrected_fields(
@@ -239,3 +251,39 @@ def kind_of_review(
     if changes_requested_before:
         return "resubmission"
     return "first"
+
+
+# --- On behalf of the tutor (#301 A3) ----------------------------------------------
+
+ON_BEHALF_OWN_SESSION: Final = "closeout_on_behalf_own_session"
+NOT_ENDED: Final = "session_not_ended"
+
+type OnBehalfBlock = Literal[
+    "closeout_on_behalf_own_session",
+    "closeout_already_submitted",
+    "session_not_closable",
+    "session_not_ended",
+]
+
+
+def on_behalf_block(
+    state: str,
+    ends_at: datetime,
+    now: datetime,
+    *,
+    has_closeout: bool,
+    caller_is_tutor: bool,
+) -> OnBehalfBlock | None:
+    """Why a reviewer can't close the session out on its tutor's behalf now,
+    or ``None`` (#301 A3, E2), in this order: the caller tutors the session;
+    a ``completed`` session or an existing closeout; a state other than
+    ``confirmed``; a class that hasn't ended (``ends_at > now``)."""
+    if caller_is_tutor:
+        return ON_BEHALF_OWN_SESSION
+    if state == COMPLETED or has_closeout:
+        return ALREADY_SUBMITTED
+    if state != CONFIRMED:
+        return NOT_CLOSABLE
+    if ends_at > now:
+        return NOT_ENDED
+    return None

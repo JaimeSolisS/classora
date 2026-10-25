@@ -19,7 +19,9 @@ The routes are in :mod:`app.workflows.session_closeout_router`.
 ``schedule.view`` holder; anyone else the ``404`` of an unknown id, in any
 state). The summary text only for the tutor and ``teaching_hours.approve``
 holders (E5), also the review reasons (#78 E1). At most 8 statements
-(#78 E2: the closeout's revisions and corrections in two).
+(#78 E2: the closeout's revisions and corrections in two). #301 adds the
+on-behalf marker and the ``can_request_changes``, ``can_submit_on_behalf``
+and ``can_take_over`` flags (:mod:`app.workflows.closeout_on_behalf`).
 
 **Submit** (:func:`submit_session_closeout`; the route adds ``401`` and the
 body's ``422`` first), in this order:
@@ -39,6 +41,9 @@ body's ``422`` first), in this order:
    ``body.summary.<field>`` unless every participant is ``absent``: the
    Unit of Work rolls the transition back, nothing changes;
 8. the closeout row, then the approval request (requester = the tutor).
+
+Steps 6–8 are :func:`close_out`, shared with the reviewer's submit on the
+tutor's behalf (#301 C3).
 
 **Lock order:** closeout → session → approval request for the closeout
 paths (#78). The submit locks only the session; the closeout and the
@@ -65,6 +70,7 @@ from app.core.authz import Principal, RecordNotFoundError
 from app.core.errors import FieldError
 from app.core.models import StaleVersionError
 from app.modules.academics import service as academics
+from app.modules.academics.schemas import CloseoutSummaryInput
 from app.modules.administration import service as administration
 from app.modules.identity import service as identity
 from app.modules.scheduling import service as scheduling
@@ -73,6 +79,7 @@ from app.workflows.session_closeout_schemas import (
     CloseoutAttendance,
     CloseoutBlockCode,
     CloseoutCorrectionItem,
+    CloseoutOnBehalf,
     CloseoutPerson,
     CloseoutReview,
     CloseoutSessionSubject,
@@ -140,6 +147,8 @@ async def get_session_closeout(
     user_ids = {context.tutor_user_id}
     if closeout is not None and history is not None:
         user_ids.add(closeout.tutor_user_id)
+        if closeout.on_behalf_by_user_id is not None:
+            user_ids.add(closeout.on_behalf_by_user_id)
         user_ids |= {item.approved_by_user_id for item in history.revisions}
         user_ids |= {item.corrected_by_user_id for item in history.corrections}
     names = await identity.get_account_references(
@@ -165,16 +174,31 @@ async def get_session_closeout(
         return person(user_id) or CloseoutPerson(display_name="")
 
     is_tutor = access is academics.CloseoutAccess.TUTOR
+    now = clock.now()
     state_block = academics.closeout_block(
         context.state,
         context.starts_at,
-        clock.now(),
+        now,
         has_closeout=closeout is not None,
+    )
+    holder = principal.has(academics.TEACHING_HOURS_APPROVE)
+    can_submit_on_behalf = (
+        holder
+        and closeout is None
+        and academics.on_behalf_block(
+            context.state,
+            context.ends_at,
+            now,
+            has_closeout=False,
+            caller_is_tutor=principal.user_id == context.tutor_user_id,
+        )
+        is None
     )
     block: CloseoutBlockCode | None = state_block if is_tutor else academics.TUTOR_ONLY
     shows_text = academics.sees_summary(principal, context.tutor_user_id)
     record = None
     can_review = can_correct = can_resubmit = can_request_correction = False
+    can_request_changes = can_take_over = False
     if closeout is not None and history is not None:
         revisions = [
             CloseoutApprovalRevision(
@@ -228,10 +252,17 @@ async def get_session_closeout(
             ],
             attendance_changed_since_approval=current is not None
             and academics.attendance_changed(current[1].attendance, context.statuses),
+            on_behalf=None
+            if closeout.on_behalf_by_user_id is None
+            else CloseoutOnBehalf(
+                by=named(closeout.on_behalf_by_user_id),
+                reason=closeout.on_behalf_reason if shows_text else None,
+                submitted_at=closeout.last_submitted_at,
+            ),
         )
-        reviewer = principal.has(
-            academics.TEACHING_HOURS_APPROVE
-        ) and not academics.is_self_review(principal, closeout.tutor_user_id)
+        reviewer = holder and not academics.is_self_review(
+            principal, closeout.tutor_user_id, closeout.on_behalf_by_user_id
+        )
         submitter = is_tutor and closeout.tutor_user_id == principal.user_id
         can_review = reviewer and closeout.status == academics.SUBMITTED
         can_correct = reviewer and closeout.status in (
@@ -240,6 +271,12 @@ async def get_session_closeout(
         )
         can_resubmit = submitter and closeout.status == academics.CHANGES_REQUESTED
         can_request_correction = submitter and closeout.status == academics.APPROVED
+        can_request_changes = can_review and closeout.on_behalf_by_user_id is None
+        can_take_over = (
+            holder
+            and closeout.status == academics.CHANGES_REQUESTED
+            and principal.user_id != closeout.tutor_user_id
+        )
     missing = context.missing_student_ids
     return SessionCloseoutView(
         class_session_id=context.id,
@@ -260,6 +297,9 @@ async def get_session_closeout(
         can_correct=can_correct,
         can_resubmit=can_resubmit,
         can_request_correction=can_request_correction,
+        can_request_changes=can_request_changes,
+        can_submit_on_behalf=can_submit_on_behalf,
+        can_take_over=can_take_over,
         block=block,
         attendance=CloseoutAttendance(
             total=len(context.participant_ids),
@@ -299,15 +339,44 @@ async def submit_session_closeout(
     if block is not None:
         _raise_block(block, locked.state)
 
+    await close_out(
+        session,
+        locked=locked,
+        version=body.version,
+        actual_minutes=body.actual_minutes,
+        summary=body.summary,
+        tutor_user_id=principal.user_id,
+    )
+    return await get_session_closeout(session, principal, locked.id)
+
+
+async def close_out(
+    session: AsyncSession,
+    *,
+    locked: scheduling.ClosingSession,
+    version: int,
+    actual_minutes: int,
+    summary: CloseoutSummaryInput,
+    tutor_user_id: uuid.UUID,
+    on_behalf_by_user_id: uuid.UUID | None = None,
+    on_behalf_reason: str | None = None,
+) -> academics.SessionCloseout:
+    """Submit steps 6–8, shared by the tutor's submit and the reviewer's
+    submit on the tutor's behalf (#301 C3): the session ``completed``
+    (``409 closeout_attendance_incomplete``), ``422 summary_required``
+    (rolls back), the ``submitted`` closeout of ``tutor_user_id`` (with the
+    on-behalf marker when given) and its approval request (requester = the
+    tutor). The caller holds the session lock and has checked the version
+    and the block."""
     try:
         completed = await scheduling.complete_class_session(
             session,
             class_session_id=locked.id,
-            expected_version=body.version,
-            actual_minutes=body.actual_minutes,
+            expected_version=version,
+            actual_minutes=actual_minutes,
         )
     except scheduling.SessionNotCompletableError as exc:  # pragma: no cover
-        # The block above has checked the state under the same lock.
+        # The caller's block has checked the state under the same lock.
         raise academics.SessionNotClosableError(exc.state) from exc
 
     all_absent = academics.all_marked_absent(
@@ -320,7 +389,7 @@ async def submit_session_closeout(
             "message": _MESSAGES[code],
         }
         for field, code in academics.summary_errors(
-            body.summary.model_dump(), all_absent=all_absent
+            summary.model_dump(), all_absent=all_absent
         )
     ]
     if errors:
@@ -329,17 +398,19 @@ async def submit_session_closeout(
     closeout = await academics.create_session_closeout(
         session,
         class_session_id=completed.id,
-        tutor_user_id=principal.user_id,
-        summary=body.summary,
+        tutor_user_id=tutor_user_id,
+        summary=summary,
         submitted_at=clock.now(),
+        on_behalf_by_user_id=on_behalf_by_user_id,
+        on_behalf_reason=on_behalf_reason,
     )
     await administration.create_approval_request(
         session,
         request_type=SESSION_CLOSEOUT_TYPE,
         subject_id=closeout.id,
-        requester_user_id=principal.user_id,
+        requester_user_id=tutor_user_id,
     )
-    return await get_session_closeout(session, principal, completed.id)
+    return closeout
 
 
 def review_path(class_session_id: uuid.UUID) -> str:
@@ -445,15 +516,19 @@ class SessionCloseoutApprovalHandler:
     ) -> Mapping[uuid.UUID, Mapping[str, Any]]:
         """``{class_session_id, starts_at, subject_name, tutor_display_name,
         kind, scheduled_minutes, actual_minutes, participant_count,
-        kind_of_review, approved_minutes}`` by closeout id, in three
-        statements (#78 C4: ``kind_of_review`` is ``first``,
-        ``resubmission`` or ``correction``; ``approved_minutes`` the current
-        approval revision's, or ``null``)."""
+        kind_of_review, approved_minutes, on_behalf_by_display_name}`` by
+        closeout id, in three statements (#78 C4: ``kind_of_review`` is
+        ``first``, ``resubmission`` or ``correction``; ``approved_minutes``
+        the current approval revision's, or ``null``; #301 E4:
+        ``on_behalf_by_display_name`` the reviewer who made the latest
+        submission on the tutor's behalf, or ``null``)."""
         ids = set(subject_ids)
         if not ids:
             return {}
         return await scheduling.closeout_session_summaries(
-            session, academics.closeout_session_keys(ids)
+            session,
+            academics.closeout_session_keys(ids),
+            named_user_columns={"on_behalf_by_user_id": "on_behalf_by_display_name"},
         )
 
 

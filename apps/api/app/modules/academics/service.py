@@ -21,6 +21,11 @@ the pure rules :func:`review_block`, :func:`is_self_review`,
 :func:`corrected_fields`, :func:`attendance_changed`;
 ``app.workflows.session_closeout_review`` composes them.
 
+Closeout on behalf of a tutor (#301): the rule :func:`on_behalf_block`, the
+widened :func:`is_self_review`, the bodies :class:`CloseoutOnBehalfSubmit`
+and :class:`CloseoutTakeOver` and their errors;
+``app.workflows.closeout_on_behalf`` composes them.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -51,8 +56,12 @@ from app.modules.academics.closeout_rules import (
     CHANGES_REQUESTED as CHANGES_REQUESTED,
 )
 from app.modules.academics.closeout_rules import NOT_CLOSABLE as NOT_CLOSABLE
+from app.modules.academics.closeout_rules import NOT_ENDED as NOT_ENDED
 from app.modules.academics.closeout_rules import NOT_STARTED as NOT_STARTED
 from app.modules.academics.closeout_rules import NOT_SUBMITTED as NOT_SUBMITTED
+from app.modules.academics.closeout_rules import (
+    ON_BEHALF_OWN_SESSION as ON_BEHALF_OWN_SESSION,
+)
 from app.modules.academics.closeout_rules import SUBMITTED as SUBMITTED
 from app.modules.academics.closeout_rules import (
     SUMMARY_REQUIRED as SUMMARY_REQUIRED,
@@ -65,6 +74,7 @@ from app.modules.academics.closeout_rules import UNDER_REVIEW as UNDER_REVIEW
 from app.modules.academics.closeout_rules import WITH_TUTOR as WITH_TUTOR
 from app.modules.academics.closeout_rules import CloseoutAccess as CloseoutAccess
 from app.modules.academics.closeout_rules import CloseoutBlock as CloseoutBlock
+from app.modules.academics.closeout_rules import OnBehalfBlock as OnBehalfBlock
 from app.modules.academics.closeout_rules import (
     all_marked_absent as all_marked_absent,
 )
@@ -80,6 +90,7 @@ from app.modules.academics.closeout_rules import (
     is_current_tutor as is_current_tutor,
 )
 from app.modules.academics.closeout_rules import is_self_review as is_self_review
+from app.modules.academics.closeout_rules import on_behalf_block as on_behalf_block
 from app.modules.academics.closeout_rules import review_block as review_block
 from app.modules.academics.closeout_rules import sees_summary as sees_summary
 from app.modules.academics.closeout_rules import summary_errors as summary_errors
@@ -101,10 +112,19 @@ from app.modules.academics.errors import (
     CloseoutNotSubmittedError as CloseoutNotSubmittedError,
 )
 from app.modules.academics.errors import (
+    CloseoutNotWithTutorError as CloseoutNotWithTutorError,
+)
+from app.modules.academics.errors import (
+    CloseoutOnBehalfOwnSessionError as CloseoutOnBehalfOwnSessionError,
+)
+from app.modules.academics.errors import (
     CloseoutReviewRouteRequiredError as CloseoutReviewRouteRequiredError,
 )
 from app.modules.academics.errors import (
     CloseoutSelfReviewError as CloseoutSelfReviewError,
+)
+from app.modules.academics.errors import (
+    CloseoutSubmittedOnBehalfError as CloseoutSubmittedOnBehalfError,
 )
 from app.modules.academics.errors import (
     CloseoutSummaryInvalidError as CloseoutSummaryInvalidError,
@@ -125,6 +145,9 @@ from app.modules.academics.errors import (
     SessionNotClosableError as SessionNotClosableError,
 )
 from app.modules.academics.errors import (
+    SessionNotEndedError as SessionNotEndedError,
+)
+from app.modules.academics.errors import (
     SessionNotStartedError as SessionNotStartedError,
 )
 from app.modules.academics.models import (
@@ -140,6 +163,10 @@ from app.modules.academics.models import (
 from app.modules.academics.schemas import CloseoutApprove as CloseoutApprove
 from app.modules.academics.schemas import CloseoutCorrection as CloseoutCorrection
 from app.modules.academics.schemas import (
+    CloseoutOnBehalfSubmit as CloseoutOnBehalfSubmit,
+)
+from app.modules.academics.schemas import (
     CloseoutRequestChanges as CloseoutRequestChanges,
 )
 from app.modules.academics.schemas import CloseoutResubmit as CloseoutResubmit
+from app.modules.academics.schemas import CloseoutTakeOver as CloseoutTakeOver

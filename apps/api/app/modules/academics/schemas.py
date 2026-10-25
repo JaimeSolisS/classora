@@ -167,3 +167,36 @@ class CloseoutResubmit(_Closed):
         default=None,
         description="A note for the reviewer; required for a correction request.",
     )
+
+
+# --- On behalf of the tutor (#301 C1, D1) -------------------------------------------
+
+
+class _OnBehalf(_WithRequiredReason):
+    actual_minutes: int = Field(
+        ge=ACTUAL_MINUTES_RANGE[0],
+        le=ACTUAL_MINUTES_RANGE[1],
+        description="Actual teaching minutes, 0-720.",
+    )
+    summary: CloseoutSummaryInput
+    reason: str = Field(
+        description="Why you close it out for the tutor: 1-1000 characters,"
+        " trimmed (reason_required / reason_too_long)."
+    )
+
+
+class CloseoutOnBehalfSubmit(_OnBehalf):
+    """`POST /api/v1/class-sessions/{id}/closeout/on-behalf` (#301 C1): a
+    reviewer closes out an ended class for its tutor. The #77 rules apply
+    (every participant's attendance marked first; the summary required
+    unless everyone was absent); the closeout stays the tutor's."""
+
+    version: int = Field(description="The session's version, as last read.")
+
+
+class CloseoutTakeOver(_OnBehalf):
+    """`PUT /api/v1/class-sessions/{id}/closeout/on-behalf` (#301 D1): a
+    reviewer resubmits a closeout sent back to its tutor (the full
+    replacement of the minutes and the summary), with a reason."""
+
+    version: int = Field(description="The closeout's version, as last read.")

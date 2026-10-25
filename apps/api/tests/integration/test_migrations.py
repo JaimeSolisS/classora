@@ -71,7 +71,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0051"
+HEAD = "0052"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -137,6 +137,10 @@ CLOSEOUT_REVIEW_COLUMNS = {
     "current_approval_id",
 }
 """The session_closeouts columns revision 0051 adds (#78 A1)."""
+ON_BEHALF_COLUMNS = {"on_behalf_by_user_id", "on_behalf_reason"}
+"""The session_closeouts columns revision 0052 adds (#301 A1)."""
+OVERDUE_INDEX = "ix_class_sessions_confirmed_ends_at"
+"""The class_sessions partial index revision 0052 adds (#301 A1)."""
 SERIES_SESSION_COLUMNS = [
     "series_id",
     "original_start",
@@ -4379,9 +4383,27 @@ def _of_0051(diff: Any) -> bool:
     return False
 
 
+def _of_0052(diff: Any) -> bool:
+    """A metadata difference that revision 0052 adds: the two on-behalf
+    columns of session_closeouts, their key (the CHECKs are not compared)
+    and the overdue index on class_sessions."""
+    if diff[0] == "add_column":
+        return diff[2] == "session_closeouts" and diff[3].name in ON_BEHALF_COLUMNS
+    if diff[0] == "add_fk":
+        return diff[1].name == "fk_session_closeouts_on_behalf_by_user_id_users"
+    if diff[0] == "add_index":
+        return diff[1].name == OVERDUE_INDEX
+    return False
+
+
+def _of_0051_on(diff: Any) -> bool:
+    """A metadata difference that revision 0051 or a later one adds."""
+    return _of_0051(diff) or _of_0052(diff)
+
+
 def _of_0050_on(diff: Any) -> bool:
     """A metadata difference that revision 0050 or a later one adds."""
-    return _of_0050(diff) or _of_0051(diff)
+    return _of_0050(diff) or _of_0051_on(diff)
 
 
 def _of_0049_on(diff: Any) -> bool:
@@ -4506,6 +4528,8 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_starts_at",
         f"ix_{table}_group_id_starts_at",
         f"ix_{table}_cohort_id_starts_at",
+        # 0052 (#301 A1)
+        OVERDUE_INDEX,
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",
@@ -8204,7 +8228,7 @@ def test_0050_adds_the_closeout_table_and_downgrade_drops_it(fresh_database_url)
     command.upgrade(config, "0050")
 
     assert version_nums(dsn) == ["0050"]
-    assert [d for d in metadata_diff(dsn) if not _of_0051(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0051_on(d)] == []
     assert public_tables(dsn) - before == set(CLOSEOUT_TABLES)
     run_sql(dsn, CLOSEOUT_INSERT_0050, _closeout_values(dsn))
 
@@ -8239,12 +8263,16 @@ def test_closeout_columns_constraints_and_indexes(fresh_database_url):
         "review_reason": ("text", "YES", None, None),
         "tutor_note": ("text", "YES", None, None),
         "current_approval_id": ("uuid", "YES", None, None),
+        # #301 A1.
+        "on_behalf_by_user_id": ("uuid", "YES", None, None),
+        "on_behalf_reason": ("text", "YES", None, None),
     }
     constraints = _constraints(dsn, table)
     foreign_keys = {
         f"fk_{table}_class_session_id_class_sessions",
         f"fk_{table}_tutor_user_id_users",
         f"fk_{table}_current_approval_id",
+        f"fk_{table}_on_behalf_by_user_id_users",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -8258,6 +8286,9 @@ def test_closeout_columns_constraints_and_indexes(fresh_database_url):
         f"ck_{table}_tutor_note_valid",
         f"ck_{table}_changes_requested_reason",
         f"ck_{table}_approved_has_approval",
+        f"ck_{table}_on_behalf_reason_valid",
+        f"ck_{table}_on_behalf_together",
+        f"ck_{table}_on_behalf_not_tutor",
         *foreign_keys,
     }
     for name in foreign_keys:
@@ -8345,7 +8376,7 @@ def test_0051_adds_the_review_objects_and_downgrade_drops_them(fresh_database_ur
     command.upgrade(config, "0051")
 
     assert version_nums(dsn) == ["0051"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0052(d)] == []
     assert public_tables(dsn) - before == set(CLOSEOUT_REVIEW_TABLES)
     # last_submitted_at is backfilled from submitted_at.
     [row] = run_sql(
@@ -8361,7 +8392,7 @@ def test_0051_adds_the_review_objects_and_downgrade_drops_them(fresh_database_ur
 
     assert version_nums(dsn) == ["0050"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0051(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0051_on(d)] == []
     assert not run_sql(
         dsn, "SELECT 1 FROM pg_proc WHERE proname LIKE 'session_closeout_%'"
     )
@@ -8601,3 +8632,79 @@ def test_closeout_review_rows_are_checked(fresh_database_url):
     )
     with pytest.raises(IntegrityError, match="fk_session_closeout_"):
         run_sql(dsn, "DELETE FROM session_closeouts WHERE id = :c", closeout)
+
+
+# --- 0052: closeout on behalf (#301 A1, H6) -------------------------------------------
+
+
+def test_0052_adds_the_on_behalf_objects_and_downgrade_drops_them(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0051")
+    before = public_tables(dsn)
+    [existing] = run_sql(dsn, CLOSEOUT_INSERT, _closeout_values(dsn))
+
+    command.upgrade(config, "0052")
+
+    assert version_nums(dsn) == ["0052"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) == before
+    assert OVERDUE_INDEX in _indexes(dsn, "class_sessions")
+    assert (
+        "WHERE ((state)::text = 'confirmed'::text)"
+        in (_indexes(dsn, "class_sessions")[OVERDUE_INDEX])
+    )
+    [row] = run_sql(
+        dsn,
+        "SELECT on_behalf_by_user_id, on_behalf_reason FROM session_closeouts"
+        " WHERE id = :id",
+        {"id": existing.id},
+    )
+    assert (row.on_behalf_by_user_id, row.on_behalf_reason) == (None, None)
+
+    command.downgrade(config, "0051")
+
+    assert version_nums(dsn) == ["0051"]
+    assert [d for d in metadata_diff(dsn) if not _of_0052(d)] == []
+    assert OVERDUE_INDEX not in _indexes(dsn, "class_sessions")
+    assert not {
+        name for name in _constraints(dsn, "session_closeouts") if "on_behalf" in name
+    }
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_closeout_on_behalf_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    world = _review_world(dsn)
+    staff = _user_row(dsn)
+    closeout = {"c": world["c"], "staff": staff, "tutor": world["u"]}
+    statement = (
+        "UPDATE session_closeouts SET on_behalf_by_user_id = :by,"
+        " on_behalf_reason = :reason WHERE id = :c"
+    )
+
+    for by, reason, constraint in (
+        (staff, None, "on_behalf_together"),
+        (None, "Sin tutor", "on_behalf_together"),
+        (staff, " ", "on_behalf_reason_valid"),
+        (staff, " padded ", "on_behalf_reason_valid"),
+        (staff, "x" * 1001, "on_behalf_reason_valid"),
+        (world["u"], "Sin tutor", "on_behalf_not_tutor"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, statement, closeout | {"by": by, "reason": reason})
+    with pytest.raises(
+        IntegrityError, match="fk_session_closeouts_on_behalf_by_user_id_users"
+    ):
+        run_sql(dsn, statement, closeout | {"by": uuid.uuid4(), "reason": "x"})
+    run_sql(dsn, statement, closeout | {"by": staff, "reason": "x" * 1000})
+    # The reviewer's account can't be deleted while it is referenced.
+    with pytest.raises(
+        IntegrityError, match="fk_session_closeouts_on_behalf_by_user_id_users"
+    ):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": staff})
+    run_sql(dsn, statement, closeout | {"by": None, "reason": None})

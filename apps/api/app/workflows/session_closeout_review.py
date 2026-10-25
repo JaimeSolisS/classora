@@ -29,8 +29,11 @@ stays ``approved``). A staff correction while ``changes_requested`` is
 and the body's ``422`` first): the closeout ``FOR UPDATE`` (``404`` for an
 unknown session or one without a closeout, the same body) → the session
 (``FOR SHARE`` to approve or send back, ``FOR UPDATE`` to correct) → ``403
-closeout_self_review`` (the submitter, unless they hold the Owner role, E7)
-→ ``409 version_conflict`` (the closeout's version) → the status check
+closeout_self_review`` (the submitter, unless they hold the Owner role, E7;
+#301 E5: also the reviewer who made the latest submission on the tutor's
+behalf, except for request changes) → ``409 version_conflict`` (the
+closeout's version) → request changes only: ``409
+closeout_submitted_on_behalf`` (#301 E5) → the status check
 (``409 closeout_not_submitted`` / ``closeout_with_tutor``) → the writes →
 the approval request (``administration.service.decide_approval_request``,
 which the handler accepts because the closeout already has the target
@@ -44,8 +47,9 @@ the session ``FOR UPDATE`` → ``409 version_conflict`` → ``409
 closeout_under_review`` → ``422 reason_required`` (from ``approved``) →
 ``409 closeout_attendance_incomplete`` → ``422 summary_required`` → ``422
 closeout_unchanged`` (from ``approved`` with identical minutes and
-summary) → the writes → the approval request → ``academics.
-closeout_resubmitted``. No notification (the inbox lists it again).
+summary) → the writes (clearing #301's on-behalf marker) → the approval
+request → ``academics.closeout_resubmitted``. No notification (the inbox
+lists it again).
 
 **Lock order:** closeout → session → approval request, for every writer
 here. #77's submit takes the session first, but no closeout exists before
@@ -127,7 +131,7 @@ def register_closeout_notifications() -> None:
     )
 
 
-async def _notify(
+async def notify_tutor(
     session: AsyncSession,
     closeout: academics.SessionCloseout,
     locked: scheduling.ClosingSession,
@@ -135,7 +139,9 @@ async def _notify(
     *,
     approved_minutes: int | None = None,
 ) -> None:
-    """One notification to the submitting tutor (in any account state)."""
+    """One notification to the closeout's tutor (in any account state);
+    ``approved_minutes`` only for the approved and corrected types (#301
+    reuses it for ``academics.closeout_submitted_on_behalf``)."""
     subject = (await catalog.subject_references(session, [locked.subject_id])).get(
         locked.subject_id
     )
@@ -144,7 +150,7 @@ async def _notify(
         "starts_at": rfc3339(locked.starts_at),
         "subject_name": "" if subject is None else subject.name,
     }
-    if notification_type != CHANGES_REQUESTED_NOTIFICATION:
+    if notification_type in (APPROVED_NOTIFICATION, CORRECTED_NOTIFICATION):
         params["approved_minutes"] = approved_minutes
     await administration.create_notification(
         session,
@@ -173,16 +179,25 @@ async def _lock_for_review(
     version: int,
     *,
     share: bool,
+    on_behalf_counts: bool = True,
 ) -> tuple[academics.SessionCloseout, scheduling.ClosingSession]:
     """Reviewer steps 4–7: the closeout ``FOR UPDATE`` (``404``), the
-    session, ``403 closeout_self_review``, ``409 version_conflict``."""
+    session, ``403 closeout_self_review``, ``409 version_conflict``. The
+    self-review covers the tutor and the reviewer who submitted it on the
+    tutor's behalf (#301 E5); request changes passes ``on_behalf_counts=
+    False`` because it refuses an on-behalf submission after the version
+    check anyway (``409 closeout_submitted_on_behalf``)."""
     closeout = await academics.lock_closeout(session, class_session_id)
     if closeout is None:
         raise RecordNotFoundError()
     locked = await scheduling.lock_closeout_session(
         session, class_session_id, share=share
     )
-    if academics.is_self_review(principal, closeout.tutor_user_id):
+    if academics.is_self_review(
+        principal,
+        closeout.tutor_user_id,
+        closeout.on_behalf_by_user_id if on_behalf_counts else None,
+    ):
         raise academics.CloseoutSelfReviewError()
     if closeout.version != version:
         raise StaleVersionError()
@@ -198,7 +213,7 @@ async def _touch(session: AsyncSession, closeout: academics.SessionCloseout) -> 
     await session.refresh(closeout, ["updated_at"])
 
 
-async def _request_id(session: AsyncSession, closeout_id: uuid.UUID) -> uuid.UUID:
+async def request_id_of(session: AsyncSession, closeout_id: uuid.UUID) -> uuid.UUID:
     request_id = await administration.approval_request_id_for_subject(
         session, request_type=SESSION_CLOSEOUT_TYPE, subject_id=closeout_id
     )
@@ -207,7 +222,7 @@ async def _request_id(session: AsyncSession, closeout_id: uuid.UUID) -> uuid.UUI
     return request_id
 
 
-def _summary_field_errors(
+def summary_field_errors(
     summary: dict[str, str | None], *, all_absent: bool
 ) -> list[FieldError]:
     return [
@@ -284,7 +299,7 @@ async def approve_closeout(
     await administration.decide_approval_request(
         session,
         principal=principal,
-        request_id=await _request_id(session, closeout.id),
+        request_id=await request_id_of(session, closeout.id),
         action="approve",
     )
     record_audit_event(
@@ -300,7 +315,7 @@ async def approve_closeout(
             "source": approval.source,
         },
     )
-    await _notify(
+    await notify_tutor(
         session,
         closeout,
         locked,
@@ -324,8 +339,15 @@ async def request_closeout_changes(
     reason; the session stays ``completed`` and the tutor may mark
     attendance again (E6)."""
     closeout, locked = await _lock_for_review(
-        session, principal, class_session_id, body.version, share=True
+        session,
+        principal,
+        class_session_id,
+        body.version,
+        share=True,
+        on_behalf_counts=False,
     )
+    if closeout.on_behalf_by_user_id is not None:
+        raise academics.CloseoutSubmittedOnBehalfError()
     _raise_review_block(academics.review_block(closeout.status, "request_changes"))
     closeout.status = academics.CHANGES_REQUESTED
     closeout.review_reason = body.reason
@@ -333,7 +355,7 @@ async def request_closeout_changes(
     await administration.decide_approval_request(
         session,
         principal=principal,
-        request_id=await _request_id(session, closeout.id),
+        request_id=await request_id_of(session, closeout.id),
         action="request_changes",
         reason=body.reason,
     )
@@ -344,7 +366,7 @@ async def request_closeout_changes(
         record_id=closeout.id,
         details={"reason": body.reason},
     )
-    await _notify(session, closeout, locked, CHANGES_REQUESTED_NOTIFICATION)
+    await notify_tutor(session, closeout, locked, CHANGES_REQUESTED_NOTIFICATION)
     return await get_session_closeout(session, principal, locked.id)
 
 
@@ -392,7 +414,7 @@ async def correct_closeout(
     current = _current_values(closeout, locked)
     result = current | proposed
     participants, statuses = await scheduling.closeout_attendance(session, locked.id)
-    errors = _summary_field_errors(
+    errors = summary_field_errors(
         _summary_part(result),
         all_absent=academics.all_marked_absent(statuses, len(participants)),
     )
@@ -463,7 +485,7 @@ async def correct_closeout(
             "approval_id": correction.approval_id,
         },
     )
-    await _notify(
+    await notify_tutor(
         session,
         closeout,
         locked,
@@ -535,7 +557,7 @@ async def resubmit_closeout(
     if missing:
         raise scheduling.AttendanceIncompleteError(missing)
     summary = body.summary.model_dump()
-    errors = _summary_field_errors(
+    errors = summary_field_errors(
         summary, all_absent=academics.all_marked_absent(statuses, len(participants))
     )
     if errors:
@@ -554,6 +576,10 @@ async def resubmit_closeout(
     closeout.tutor_note = body.reason
     closeout.last_submitted_at = clock.now()
     closeout.status = academics.SUBMITTED
+    # #301 E3: the tutor's own submission clears the on-behalf marker (the
+    # audit log keeps the earlier one).
+    closeout.on_behalf_by_user_id = None
+    closeout.on_behalf_reason = None
     await session.flush()
     await scheduling.set_actual_minutes(
         session, class_session_id=locked.id, actual_minutes=body.actual_minutes
@@ -561,7 +587,7 @@ async def resubmit_closeout(
     if from_status == academics.CHANGES_REQUESTED:
         await administration.resubmit_approval_request(
             session,
-            request_id=await _request_id(session, closeout.id),
+            request_id=await request_id_of(session, closeout.id),
             by_user_id=principal.user_id,
         )
     else:

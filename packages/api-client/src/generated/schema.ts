@@ -2271,6 +2271,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Take Over Class Session Closeout
+         * @description Take over a closeout sent back to its tutor (changes requested) and
+         *     resubmit it on the tutor's behalf, with a reason. It goes back to the
+         *     approval inbox; an earlier approval stays in force. The tutor is
+         *     notified.
+         */
+        put: operations["take_over_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_on_behalf_put"];
+        /**
+         * Submit Class Session Closeout On Behalf
+         * @description Close out an ended class on its tutor's behalf, with a reason. The
+         *     closeout stays the tutor's (for payroll) and goes to the approval inbox;
+         *     the tutor is notified. You can't approve your own on-behalf submission
+         *     (the Owner can).
+         */
+        post: operations["submit_class_session_closeout_on_behalf_api_v1_class_sessions__class_session_id__closeout_on_behalf_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/closeouts/overdue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Overdue Closeouts
+         * @description Classes that have ended without a closeout (confirmed, past their
+         *     end), oldest first, for academic reviewers to close out on the tutor's
+         *     behalf. No student names.
+         */
+        get: operations["list_overdue_closeouts_api_v1_closeouts_overdue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -5625,6 +5677,49 @@ export interface components {
             approval_id: string | null;
         };
         /**
+         * CloseoutOnBehalf
+         * @description The latest submission was made by a reviewer on the tutor's behalf
+         *     (#301 E3, E5). The closeout stays the tutor's (`submitted_by`).
+         *     `reason` is `null` for staff who don't see the lesson content.
+         */
+        CloseoutOnBehalf: {
+            /** @description The reviewer who submitted it. */
+            by: components["schemas"]["CloseoutPerson"];
+            /** Reason */
+            reason: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             * @description When (the closeout's latest submission).
+             */
+            submitted_at: string;
+        };
+        /**
+         * CloseoutOnBehalfSubmit
+         * @description `POST /api/v1/class-sessions/{id}/closeout/on-behalf` (#301 C1): a
+         *     reviewer closes out an ended class for its tutor. The #77 rules apply
+         *     (every participant's attendance marked first; the summary required
+         *     unless everyone was absent); the closeout stays the tutor's.
+         */
+        CloseoutOnBehalfSubmit: {
+            /**
+             * Actual Minutes
+             * @description Actual teaching minutes, 0-720.
+             */
+            actual_minutes: number;
+            summary: components["schemas"]["CloseoutSummaryInput"];
+            /**
+             * Reason
+             * @description Why you close it out for the tutor: 1-1000 characters, trimmed (reason_required / reason_too_long).
+             */
+            reason: string;
+            /**
+             * Version
+             * @description The session's version, as last read.
+             */
+            version: number;
+        };
+        /**
          * CloseoutPerson
          * @description A person by display name only.
          */
@@ -5750,6 +5845,30 @@ export interface components {
             performance?: components["schemas"]["SummaryText"];
             homework?: components["schemas"]["SummaryText"];
             next_steps?: components["schemas"]["SummaryText"];
+        };
+        /**
+         * CloseoutTakeOver
+         * @description `PUT /api/v1/class-sessions/{id}/closeout/on-behalf` (#301 D1): a
+         *     reviewer resubmits a closeout sent back to its tutor (the full
+         *     replacement of the minutes and the summary), with a reason.
+         */
+        CloseoutTakeOver: {
+            /**
+             * Actual Minutes
+             * @description Actual teaching minutes, 0-720.
+             */
+            actual_minutes: number;
+            summary: components["schemas"]["CloseoutSummaryInput"];
+            /**
+             * Reason
+             * @description Why you close it out for the tutor: 1-1000 characters, trimmed (reason_required / reason_too_long).
+             */
+            reason: string;
+            /**
+             * Version
+             * @description The closeout's version, as last read.
+             */
+            version: number;
         };
         /**
          * ClosureCheck
@@ -8411,6 +8530,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[OverdueCloseoutItem] */
+        OffsetPage_OverdueCloseoutItem_: {
+            /** Items */
+            items: components["schemas"]["OverdueCloseoutItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[SessionRequestItem] */
         OffsetPage_SessionRequestItem_: {
             /** Items */
@@ -8486,6 +8616,72 @@ export interface components {
              * @description A local wall-clock time, HH:MM (24-hour).
              */
             closes_at: string;
+        };
+        /**
+         * OverdueCloseoutAttendance
+         * @description How many participants have an attendance mark.
+         */
+        OverdueCloseoutAttendance: {
+            /** Marked */
+            marked: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * OverdueCloseoutItem
+         * @description A confirmed class that has ended without a closeout (#301 B3). No
+         *     student, group or cohort names.
+         */
+        OverdueCloseoutItem: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            kind: components["schemas"]["SessionKindCode"];
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            subject: components["schemas"]["OverdueCloseoutSubject"];
+            tutor: components["schemas"]["OverdueCloseoutTutor"];
+            /** Participant Count */
+            participant_count: number;
+            attendance: components["schemas"]["OverdueCloseoutAttendance"];
+        };
+        /**
+         * OverdueCloseoutSubject
+         * @description The session's subject with its level's name.
+         */
+        OverdueCloseoutSubject: {
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /**
+         * OverdueCloseoutTutor
+         * @description The session's current tutor. `can_submit`: the account is active and
+         *     holds the tutor role (otherwise only a reviewer can close it out).
+         */
+        OverdueCloseoutTutor: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Can Submit */
+            can_submit: boolean;
         };
         /**
          * OverrideActor
@@ -9372,6 +9568,8 @@ export interface components {
              * @description The attendance differs from the current approval's snapshot.
              */
             attendance_changed_since_approval: boolean;
+            /** @description Set when a reviewer made the latest submission on the tutor's behalf (#301); cleared when the tutor resubmits. */
+            on_behalf: components["schemas"]["CloseoutOnBehalf"] | null;
         };
         /**
          * SessionCloseoutSubmit
@@ -9451,6 +9649,21 @@ export interface components {
              * @description You submitted it and it is approved.
              */
             can_request_correction: boolean;
+            /**
+             * Can Request Changes
+             * @description You may send it back to the tutor now: `can_review`, and it wasn't submitted on the tutor's behalf (#301).
+             */
+            can_request_changes: boolean;
+            /**
+             * Can Submit On Behalf
+             * @description You hold teaching_hours.approve, the class has ended without a closeout and you don't tutor it (#301).
+             */
+            can_submit_on_behalf: boolean;
+            /**
+             * Can Take Over
+             * @description You hold teaching_hours.approve, changes were requested and you aren't its tutor: resubmit it on the tutor's behalf (#301).
+             */
+            can_take_over: boolean;
             block: components["schemas"]["CloseoutBlockCode"] | null;
             attendance: components["schemas"]["CloseoutAttendance"];
             closeout: components["schemas"]["SessionCloseoutRecord"] | null;
@@ -18433,7 +18646,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own, or you submitted it on the tutor's behalf, and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -18504,7 +18717,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own, or you submitted it on the tutor's behalf, and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -18522,7 +18735,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The closeout changed since it was read (version_conflict) or isn't waiting for review (closeout_not_submitted). */
+            /** @description The closeout changed since it was read (version_conflict), was submitted on the tutor's behalf (closeout_submitted_on_behalf: correct it instead) or isn't waiting for review (closeout_not_submitted). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -18575,7 +18788,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own, or you submitted it on the tutor's behalf, and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -18595,6 +18808,204 @@ export interface operations {
             };
             /** @description The closeout changed since it was read (version_conflict), or changes were requested and the tutor is editing it (closeout_with_tutor). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    take_over_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_on_behalf_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutTakeOver"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You lack teaching_hours.approve (permission_denied, checked before anything is read: the same for an unknown id); you are the closeout's tutor (closeout_on_behalf_own_session); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or it has no closeout (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The closeout changed since it was read (version_conflict); it isn't waiting for its tutor (closeout_not_with_tutor); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    submit_class_session_closeout_on_behalf_api_v1_class_sessions__class_session_id__closeout_on_behalf_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutOnBehalfSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You lack teaching_hours.approve (permission_denied, checked before anything is read: the same for an unknown id); you tutor this session (closeout_on_behalf_own_session); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The session changed since it was read (version_conflict); its closeout was already submitted (closeout_already_submitted); it isn't confirmed (session_not_closable, details.state); it hasn't ended (session_not_ended); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids: mark them with attendance corrections first). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_overdue_closeouts_api_v1_closeouts_overdue_get: {
+        parameters: {
+            query?: {
+                /** @description Only this tutor's classes (an unknown id: none). */
+                tutor_user_id?: string | null;
+                /** @description Only classes starting on or after this center-local date. */
+                from?: string | null;
+                /** @description Only classes starting on or before this center-local date. */
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_OverdueCloseoutItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

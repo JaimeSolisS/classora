@@ -12,9 +12,11 @@
   request-changes reason (``review_reason``, required while
   ``changes_requested``), the tutor's note on a resubmission or correction
   request (``tutor_note``), the current approval revision
-  (``current_approval_id``, required while ``approved``) and a
-  ``version``. The actual minutes live on ``class_sessions.actual_minutes``
-  (ISSUE-F2), not here.
+  (``current_approval_id``, required while ``approved``), the reviewer
+  who made the latest submission on the tutor's behalf with the reason
+  (``on_behalf_by_user_id``, ``on_behalf_reason``: both or neither, never
+  the tutor; #301) and a ``version``. The actual minutes live on
+  ``class_sessions.actual_minutes`` (ISSUE-F2), not here.
 - ``session_closeout_approvals`` (#78 E1): append-only approval revisions.
   A re-approval never edits a revision: it inserts the next one, naming the
   one it supersedes (``supersedes_approval_id``, unique: never two
@@ -111,6 +113,16 @@ class SessionCloseout(Audited, VersionedMixin, Model):
             "status <> 'approved' OR current_approval_id IS NOT NULL",
             name="approved_has_approval",
         ),
+        # #301 A1: the latest submission made on the tutor's behalf.
+        _reason_check("on_behalf_reason", nullable=True),
+        CheckConstraint(
+            "(on_behalf_by_user_id IS NULL) = (on_behalf_reason IS NULL)",
+            name="on_behalf_together",
+        ),
+        CheckConstraint(
+            "on_behalf_by_user_id IS NULL OR on_behalf_by_user_id <> tutor_user_id",
+            name="on_behalf_not_tutor",
+        ),
         # #78 and M7 list a tutor's closeouts by submission time.
         Index(
             "ix_session_closeouts_tutor_user_id_submitted_at",
@@ -148,6 +160,15 @@ class SessionCloseout(Audited, VersionedMixin, Model):
         ),
         nullable=True,
     )
+    on_behalf_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """#301: the reviewer who made the latest submission on the tutor's
+    behalf (``NULL`` when the tutor made it)."""
+    on_behalf_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """#301: why (trimmed, 1–1000; with ``on_behalf_by_user_id``)."""
 
 
 class SessionCloseoutApproval(Model):

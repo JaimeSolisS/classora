@@ -54,17 +54,18 @@ async def closeouts_by_id(
 
 def closeout_session_keys(
     closeout_ids: Collection[uuid.UUID],
-) -> Select[uuid.UUID, uuid.UUID, str, int | None]:
+) -> Select[uuid.UUID, uuid.UUID, str, int | None, uuid.UUID | None]:
     """A select of ``(subject_id, class_session_id, kind_of_review,
-    approved_minutes)`` for these closeouts, for a caller that joins it into
-    its own read (the approval inbox summaries read the sessions in the same
-    statement, #77 E1; the caller passes the columns after the first two
-    through). ``kind_of_review`` follows
+    approved_minutes, on_behalf_by_user_id)`` for these closeouts, for a
+    caller that joins it into its own read (the approval inbox summaries
+    read the sessions in the same statement, #77 E1; the caller passes the
+    columns after the first two through). ``kind_of_review`` follows
     :func:`~app.modules.academics.closeout_rules.kind_of_review` (#78 C4):
     ``correction`` with a current approval revision, ``resubmission`` after
     changes were requested (the reason stays until an approval), else
-    ``first``; ``approved_minutes`` is the current revision's. Not executed
-    here."""
+    ``first``; ``approved_minutes`` is the current revision's;
+    ``on_behalf_by_user_id`` the reviewer who made the latest submission on
+    the tutor's behalf (#301), for the caller to name. Not executed here."""
     return (
         select(
             SessionCloseout.id.label("subject_id"),
@@ -75,6 +76,7 @@ def closeout_session_keys(
                 else_="first",
             ).label("kind_of_review"),
             SessionCloseoutApproval.approved_minutes.label("approved_minutes"),
+            SessionCloseout.on_behalf_by_user_id.label("on_behalf_by_user_id"),
         )
         .outerjoin(
             SessionCloseoutApproval,
@@ -91,10 +93,14 @@ async def create_session_closeout(
     tutor_user_id: uuid.UUID,
     summary: CloseoutSummaryInput,
     submitted_at: datetime,
+    on_behalf_by_user_id: uuid.UUID | None = None,
+    on_behalf_reason: str | None = None,
 ) -> SessionCloseout:
     """A ``submitted`` closeout (D3 step 2), flushed; its automatic audit
     event records the create. The summary is stored trimmed, an empty field
-    as ``NULL`` (the input model has trimmed it)."""
+    as ``NULL`` (the input model has trimmed it). #301: a reviewer's
+    submission on the tutor's behalf sets ``on_behalf_by_user_id`` and
+    ``on_behalf_reason``."""
     row = SessionCloseout(
         id=uuid.uuid7(),
         class_session_id=class_session_id,
@@ -106,6 +112,8 @@ async def create_session_closeout(
         next_steps=summary.next_steps,
         submitted_at=submitted_at,
         last_submitted_at=submitted_at,
+        on_behalf_by_user_id=on_behalf_by_user_id,
+        on_behalf_reason=on_behalf_reason,
     )
     session.add(row)
     await session.flush()
