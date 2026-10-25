@@ -337,3 +337,32 @@ export const DetailsDialogChangesRequestedNarrow320: Story = {
   ...DetailsDialogChangesRequested,
   globals: { viewport: { value: 'narrow320' } },
 };
+
+// #308 D1: a tutor's confirmed entry lists its students with "Academic
+// history" (named with the student); "Evaluate" waits until the class has
+// started (these fixtures are later than the story's clock or not).
+export const DetailsDialogAcademicHistory: Story = {
+  play: async ({ canvasElement }) => {
+    const region = await events(canvasElement);
+    region
+      .getByRole('button', {
+        name: new RegExp(escape(i18n.t('mySchedule.states.confirmed'))),
+      })
+      .click();
+    const dialog = await within(document.body).findByRole('dialog');
+    const history = within(dialog).getByRole('link', {
+      name: i18n.t('academics.entry.historyOf', { name: LUCIA.display_name }),
+    });
+    await expect(history).toHaveAttribute(
+      'href',
+      `/students/${LUCIA.student_id}/history`,
+    );
+    const box = history.getBoundingClientRect();
+    await expect(box.height).toBeGreaterThanOrEqual(16);
+  },
+};
+
+export const DetailsDialogAcademicHistoryNarrow320: Story = {
+  ...DetailsDialogAcademicHistory,
+  globals: { viewport: { value: 'narrow320' } },
+};

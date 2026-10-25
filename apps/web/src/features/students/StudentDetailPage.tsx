@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useCan } from '@/features/auth/useSession';
+import { useCan, useSession } from '@/features/auth/useSession';
 import {
   setStudentAccount,
   type LoginAccountOption,
@@ -66,6 +66,14 @@ export function StudentDetailPage() {
   const canManage = useCan('student.manage');
   const canManageFamilies = useCan('family.manage');
   const canRecordConsent = useCan('consent.record');
+  // #308 A3: evaluation.manage holders and tutors open the student's
+  // academic history (the API decides what it holds).
+  const session = useSession();
+  const canReview = useCan('evaluation.manage');
+  const showsHistory =
+    canReview ||
+    (session.status === 'signedIn' &&
+      (session.user.roles as readonly string[]).includes('tutor'));
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -116,6 +124,7 @@ export function StudentDetailPage() {
     <StudentDetailView
       student={detail.data}
       canManage={canManage}
+      showsHistory={showsHistory}
       initiallySaved={arrivedSaved}
       onSetActive={setActive}
       onReload={async () => {
@@ -160,6 +169,8 @@ interface StudentDetailViewProps {
   student: StudentDetail;
   /** The caller holds student.manage (UX only; the API decides). */
   canManage: boolean;
+  /** #308 A3: link the academic history (evaluation.manage or tutor). */
+  showsHistory?: boolean;
   /** Arrived from a save: announce "Changes saved.". */
   initiallySaved?: boolean;
   /** Deactivates (false) or reactivates (true); rejects with the error. */
@@ -193,6 +204,7 @@ const NO_CHANGE = () => Promise.resolve();
 export function StudentDetailView({
   student,
   canManage,
+  showsHistory = false,
   initiallySaved = false,
   onSetActive,
   onReload,
@@ -245,6 +257,16 @@ export function StudentDetailView({
           <StudentAgeBadge minor={student.is_minor} />
         </p>
         <FamilyLine family={student.family} />
+        {showsHistory ? (
+          <p>
+            <Link
+              to={`/students/${student.id}/history`}
+              className={TEXT_LINK_CLASS}
+            >
+              {t('academics.history.title')}
+            </Link>
+          </p>
+        ) : null}
         {canManage ? (
           <div className="flex flex-wrap items-center gap-3">
             <Link

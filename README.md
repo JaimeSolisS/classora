@@ -234,6 +234,16 @@ unless a bullet says otherwise.
   see it in the class details and are notified. Owners, Administrators and
   Academic Coordinators read every note on the session page and can stop
   sharing one with a reason.
+- Owners, Administrators and Academic Coordinators build diagnostic and
+  ongoing evaluation templates with up to 20 scored criteria. Tutors record
+  evaluations of their students from a phone, with a score and comment per
+  criterion and overall feedback, save drafts only they see, and finalize
+  them; a correction after that needs an internal reason. Final evaluations
+  from every tutor roll up into one academic history per student, grouped by
+  school year, semester or term and by subject, or listed by date: staff,
+  current tutors, the student and guardians with access to their academic
+  records read it, and the student and those guardians are notified of each
+  final evaluation. Staff can void an evaluation with a reason.
 
 **Courses**
 
@@ -300,8 +310,9 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** academic records beyond session notes, billing and
-payments, payroll, reporting and analytics, and deployment. See the
+**Not built yet:** learning plans, assignments and grades, progress
+reports, course completion, billing and payments, payroll, reporting and
+analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

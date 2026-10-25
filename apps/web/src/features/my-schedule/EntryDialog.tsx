@@ -26,6 +26,11 @@ import {
 import { tutorCloseoutLink } from '@/features/tutor-portal/closeout/rules';
 import { notesPath } from '@/features/tutor-portal/notes/api';
 import { tutorNotesLink } from '@/features/tutor-portal/notes/rules';
+import {
+  newEvaluationPath,
+  studentHistoryPath,
+} from '@/features/academics/evaluations/api';
+import { tutorAcademicLinks } from '@/features/academics/evaluations/rules';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -46,6 +51,9 @@ import { dateText, whoText, type LabelContext } from './labels';
 // on an error or in any other status: "View closeout", nothing else.
 // #79 H2: a tutor's confirmed or completed item links to "Notes" (the
 // session's notes page); a family's shared notes come in the `action` slot.
+// #308 D1: a tutor's confirmed or completed item lists its students, each
+// with "Academic history" and, once the class has started, "Evaluate"
+// (the new-evaluation form linked to this class).
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
@@ -95,6 +103,8 @@ export function EntryDialog({
       ? tutorCloseoutLink(entry.item, now(), closeoutStatus)
       : null;
   const notesLink = entry?.audience === 'tutor' && tutorNotesLink(entry.item);
+  const academic =
+    entry?.audience === 'tutor' ? tutorAcademicLinks(entry.item, now()) : null;
   return (
     <Dialog
       open={entry !== null}
@@ -202,6 +212,50 @@ export function EntryDialog({
                   {t('notes.open')}
                 </Link>
               ) : null}
+            </div>
+          ) : null}
+          {entry.audience === 'tutor' &&
+          academic?.history &&
+          entry.item.participants.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">
+                {t('academics.entry.heading')}
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {entry.item.participants.map((participant) => (
+                  <li
+                    key={participant.student_id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+                  >
+                    <span className="min-w-0 break-words">
+                      {participant.display_name}
+                    </span>
+                    <Link
+                      to={studentHistoryPath(participant.student_id)}
+                      aria-label={t('academics.entry.historyOf', {
+                        name: participant.display_name,
+                      })}
+                      className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                    >
+                      {t('academics.entry.history')}
+                    </Link>
+                    {academic.evaluate ? (
+                      <Link
+                        to={newEvaluationPath(
+                          participant.student_id,
+                          entry.item.id,
+                        )}
+                        aria-label={t('academics.entry.evaluateName', {
+                          name: participant.display_name,
+                        })}
+                        className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                      >
+                        {t('academics.entry.evaluate')}
+                      </Link>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
           {entry.audience === 'tutor' && entry.item.state === 'offered' ? (

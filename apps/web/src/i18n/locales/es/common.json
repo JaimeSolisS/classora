@@ -46,7 +46,9 @@
     "sessionRequests": "Solicitudes de sesión",
     "mySchedule": "Mi horario",
     "changeRequests": "Mis solicitudes de cambio",
-    "myCourses": "Mis cursos"
+    "myCourses": "Mis cursos",
+    "evaluationTemplates": "Plantillas de evaluación",
+    "academicHistory": "Historial académico"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -3316,6 +3318,299 @@
         "cancel": "Cancelar"
       },
       "done": "La nota ya no se comparte con la familia."
+    }
+  },
+  "academics": {
+    "counter": "{{length}}/{{max}} caracteres",
+    "reload": "Recargar",
+    "kinds": {
+      "diagnostic": "Diagnóstica",
+      "ongoing": "Continua"
+    },
+    "subjectOption": "{{subject}} ({{level}})",
+    "leave": {
+      "title": "¿Salir sin guardar?",
+      "description": "Tus cambios en esta página aún no se guardan. Si sales, se pierden.",
+      "stay": "Quedarme",
+      "leave": "Salir"
+    },
+    "entry": {
+      "heading": "Estudiantes",
+      "history": "Historial académico",
+      "historyOf": "Historial académico de {{name}}",
+      "evaluate": "Evaluar",
+      "evaluateName": "Evaluar a {{name}}"
+    },
+    "templates": {
+      "title": "Plantillas de evaluación",
+      "new": "Nueva plantilla",
+      "newTitle": "Nueva plantilla de evaluación",
+      "back": "Volver a las plantillas de evaluación",
+      "empty": "Aún no hay plantillas de evaluación.",
+      "emptyFiltered": "Ninguna plantilla coincide con estos filtros.",
+      "clearFilters": "Quitar filtros",
+      "anySubject": "Cualquier materia",
+      "columns": {
+        "name": "Nombre",
+        "kind": "Tipo",
+        "subject": "Materia",
+        "criteria": "Criterios",
+        "status": "Estado"
+      },
+      "filters": {
+        "search": "Buscar por nombre",
+        "status": "Estado",
+        "statusActive": "Activas",
+        "statusInactive": "Inactivas",
+        "statusAll": "Todas",
+        "kind": "Tipo",
+        "anyKind": "Cualquier tipo",
+        "subject": "Materia",
+        "anySubject": "Cualquier materia",
+        "selectedSubject": "Materia seleccionada"
+      },
+      "saved": "Plantilla guardada.",
+      "conflict": "Esta plantilla cambió en otro lugar.",
+      "fields": {
+        "name": "Nombre",
+        "kind": "Tipo",
+        "chooseKind": "Elige un tipo",
+        "subject": "Materia",
+        "description": "Descripción"
+      },
+      "kindFixed": "El tipo no puede cambiar después de crearla.",
+      "criteria": {
+        "heading": "Criterios",
+        "help": "De 1 a {{max}} criterios, en el orden en que los tutores califican.",
+        "moved": "Criterio movido a la posición {{position}}.",
+        "removed": "Criterio {{number}} quitado.",
+        "row": "Criterio {{number}}",
+        "rowUnnamed": "criterio {{number}}",
+        "rowNamed": "criterio {{number}}: {{title}}",
+        "titleLabel": "Título del criterio {{number}}",
+        "descriptionLabel": "Descripción del criterio {{number}}",
+        "maxLabel": "Calificación máxima del criterio {{number}}",
+        "maxHelp": "De 0.5 a 1000, con dos decimales como máximo (usa punto: 7.5).",
+        "up": "Subir",
+        "down": "Bajar",
+        "moveUp": "Subir {{name}}",
+        "moveDown": "Bajar {{name}}",
+        "remove": "Quitar {{name}}",
+        "removeShort": "Quitar",
+        "add": "Agregar criterio",
+        "atMax": "Una plantilla tiene como máximo {{max}} criterios."
+      },
+      "activeHelp": "Al desactivarla, los tutores ya no la ven. Las evaluaciones existentes nunca cambian.",
+      "deactivate": "Desactivar",
+      "activate": "Activar",
+      "saving": "Guardando…",
+      "save": "Guardar plantilla",
+      "validation": {
+        "nameRequired": "Escribe un nombre.",
+        "nameTooLong": "El nombre puede tener como máximo 120 caracteres.",
+        "nameTaken": "Otra plantilla de evaluación ya tiene este nombre.",
+        "kindRequired": "Elige un tipo.",
+        "kindImmutable": "El tipo de una plantilla no puede cambiar.",
+        "descriptionTooLong": "La descripción puede tener como máximo 2000 caracteres.",
+        "titleRequired": "Escribe un título.",
+        "titleTooLong": "El título puede tener como máximo 120 caracteres.",
+        "criterionDescriptionTooLong": "La descripción puede tener como máximo 500 caracteres.",
+        "maxScoreInvalid": "Escribe un número como 10 o 7.5.",
+        "decimalComma": "Usa punto para los decimales, por ejemplo 7.5.",
+        "maxScorePrecision": "Usa como máximo dos decimales.",
+        "maxScoreRange": "La calificación máxima debe ser de 0.5 a 1000.",
+        "criteriaRequired": "Agrega al menos un criterio.",
+        "criteriaTooMany": "Una plantilla tiene como máximo 20 criterios.",
+        "duplicateTitle": "Otro criterio tiene este título.",
+        "subjectUnknown": "Elige una materia activa."
+      }
+    },
+    "evaluations": {
+      "newTitle": "Nueva evaluación",
+      "pageTitle": "Evaluación",
+      "title": "Evaluación: {{student}}",
+      "backToHistory": "Volver al historial académico",
+      "cancel": "Cancelar",
+      "conflict": "Esta evaluación cambió en otro lugar.",
+      "missing": "Califica estos criterios antes de finalizar:",
+      "notEvaluable": "Esta clase no se puede evaluar.",
+      "withoutSession": "Registrar una evaluación sin clase",
+      "noTemplates": "No hay plantillas de evaluación disponibles. Pide una a la coordinación académica.",
+      "privateDraft": "Solo tú puedes ver este borrador.",
+      "templateLine": "{{name}} · {{kind}}",
+      "templateOption": "{{name}} · {{kind}} · {{subject}}",
+      "sessionLine": "Clase: {{subject}}, {{when}}",
+      "status": {
+        "draft": "Borrador",
+        "final": "Final",
+        "finalUpdated": "Final · Modificada",
+        "voided": "Anulada"
+      },
+      "fields": {
+        "evaluatedOn": "Fecha de la evaluación",
+        "criterion": "{{position}}. {{title}}",
+        "score": "Calificación",
+        "of": "de {{max}}",
+        "comment": "Comentario",
+        "feedback": "Retroalimentación",
+        "feedbackHelp": "Las familias ven la retroalimentación cuando finalizas.",
+        "changeReason": "Motivo del cambio",
+        "changeReasonHelp": "El motivo es interno: el estudiante y sus tutores legales nunca lo ven.",
+        "template": "Plantilla",
+        "chooseTemplate": "Elige una plantilla",
+        "subject": "Materia",
+        "chooseSubject": "Elige una materia",
+        "session": "Clase",
+        "course": "Evaluación del curso",
+        "assessment": "Evaluación del curso",
+        "noAssessment": "Ninguna",
+        "assessmentRequired": "{{title}} (Obligatoria)"
+      },
+      "read": {
+        "voided": "Anulada el {{date}} por {{name}}: {{reason}}",
+        "total": "Total {{total}} de {{max}} ({{percent}} %)",
+        "evaluatedOn": "Fecha de la evaluación",
+        "finalizedOn": "Finalizada el",
+        "updated": "Modificada el",
+        "lastReason": "Motivo del último cambio (interno): {{reason}}",
+        "notScored": "Sin calificar (de {{max}})",
+        "score": "{{score}} de {{max}}",
+        "noFeedback": "Sin retroalimentación.",
+        "course": "{{assessment}} ({{cohort}})",
+        "author": "Por {{name}}"
+      },
+      "actions": {
+        "saving": "Guardando…",
+        "saveDraft": "Guardar borrador",
+        "saveAmendment": "Guardar cambios",
+        "finalize": "Finalizar",
+        "delete": "Eliminar borrador",
+        "amend": "Modificar",
+        "void": "Anular"
+      },
+      "notices": {
+        "draftSaved": "Borrador guardado.",
+        "finalized": "Evaluación finalizada.",
+        "amended": "Cambios guardados.",
+        "voided": "Evaluación anulada.",
+        "deleted": "Borrador eliminado."
+      },
+      "finalize": {
+        "title": "¿Finalizar esta evaluación?",
+        "description": "{{student}} y los tutores legales con acceso a su historial académico verán esta evaluación.",
+        "confirm": "Finalizar",
+        "busy": "Finalizando…"
+      },
+      "delete": {
+        "title": "¿Eliminar este borrador?",
+        "description": "Se eliminan el borrador y sus calificaciones. No se puede deshacer.",
+        "confirm": "Eliminar borrador",
+        "busy": "Eliminando…"
+      },
+      "discard": {
+        "title": "¿Descartar tus cambios?",
+        "description": "Los cambios que escribiste no se guardan. La evaluación queda como está.",
+        "confirm": "Descartar cambios",
+        "keep": "Seguir editando"
+      },
+      "void": {
+        "title": "Anular esta evaluación",
+        "description": "Desaparece del historial académico para el estudiante, sus tutores legales y los tutores. No se puede deshacer.",
+        "reason": "Motivo",
+        "confirm": "Anular evaluación",
+        "busy": "Anulando…"
+      },
+      "validation": {
+        "dateRequired": "Elige una fecha.",
+        "dateInFuture": "La fecha no puede ser posterior a hoy.",
+        "dateInvalid": "Elige una fecha válida.",
+        "scoreRequired": "Cada criterio necesita una calificación.",
+        "scoreInvalid": "Escribe un número como 8 o 7.5.",
+        "decimalComma": "Usa punto para los decimales, por ejemplo 7.5.",
+        "scorePrecision": "Usa como máximo dos decimales.",
+        "scoreRange": "La calificación debe ir de 0 al máximo del criterio.",
+        "commentTooLong": "El comentario puede tener como máximo 1000 caracteres.",
+        "feedbackTooLong": "La retroalimentación puede tener como máximo 4000 caracteres.",
+        "reasonRequired": "Escribe un motivo.",
+        "reasonTooLong": "El motivo puede tener como máximo 500 caracteres.",
+        "templateRequired": "Elige una plantilla.",
+        "templateUnavailable": "Esta plantilla ya no está disponible. Elige otra.",
+        "subjectRequired": "Elige una materia.",
+        "subjectUnknown": "Elige una materia activa.",
+        "subjectMismatch": "Esta materia no coincide con la plantilla o la clase."
+      }
+    },
+    "history": {
+      "title": "Historial académico",
+      "titleFor": "Historial académico: {{name}}",
+      "backToStudent": "Volver al estudiante",
+      "newEvaluation": "Nueva evaluación",
+      "tabs": {
+        "label": "Secciones del historial académico",
+        "history": "Historial",
+        "evaluations": "Evaluaciones"
+      },
+      "mine": "Mi historial",
+      "whose": "Historial de",
+      "noStudents": "No hay ningún estudiante vinculado a tu cuenta.",
+      "consentTitle": "Este estudiante no ha compartido su historial académico contigo",
+      "unavailable": "Este historial académico no está disponible.",
+      "truncated": "Se muestran las últimas 500 evaluaciones. Acota las fechas para ver las anteriores.",
+      "empty": "Aún no hay evaluaciones.",
+      "emptyFamily": "Aún no se ha compartido ninguna evaluación.",
+      "emptyFiltered": "Ninguna evaluación coincide con estos filtros.",
+      "clearFilters": "Quitar filtros",
+      "selectedSubject": "Materia seleccionada",
+      "controls": "Opciones del historial",
+      "groupBy": "Agrupar por",
+      "groups": {
+        "school_year": "Ciclo escolar",
+        "semester": "Semestre",
+        "term": "Periodo",
+        "none": "Sin agrupar"
+      },
+      "subject": "Materia",
+      "allSubjects": "Todas las materias",
+      "from": "Desde",
+      "to": "Hasta",
+      "rangeInvalid": "La fecha final debe ser igual o posterior a la inicial.",
+      "view": "Vista",
+      "views": {
+        "grouped": "Agrupada",
+        "list": "Cronológica"
+      },
+      "allEvaluations": "Todas las evaluaciones",
+      "period": "{{name}} ({{start}} – {{end}})",
+      "noPeriod": "Sin periodo",
+      "subjectSummary_one": "{{count}} evaluación · promedio {{average}} %",
+      "subjectSummary_many": "{{count}} evaluaciones · promedio {{average}} %",
+      "subjectSummary_other": "{{count}} evaluaciones · promedio {{average}} %",
+      "entry": {
+        "meta": "{{kind}} · {{date}}",
+        "metaWithSubject": "{{subject}} · {{kind}} · {{date}}",
+        "by": "por {{name}}",
+        "updated": "Modificada",
+        "course": "Evaluación del curso: {{assessment}} ({{cohort}})",
+        "total": "Total {{total}} de {{max}} · {{percent}} %",
+        "score": "{{score}} de {{max}}",
+        "feedback": "Retroalimentación",
+        "details": "Detalles",
+        "detailsOf": "Detalles: {{name}}, {{date}}"
+      },
+      "working": {
+        "status": "Estado",
+        "all": "Todas",
+        "statuses": {
+          "draft": "Borradores",
+          "final": "Finales",
+          "voided": "Anuladas"
+        },
+        "empty": "Aún no hay evaluaciones.",
+        "open": "{{name}}, {{date}}",
+        "meta": "{{subject}} · {{date}} · por {{name}}",
+        "loadMore": "Cargar más",
+        "loadingMore": "Cargando…"
+      }
     }
   }
 }

@@ -106,6 +106,13 @@ describe('route tree', () => {
       'my-schedule/sessions/:sessionId/closeout',
       'my-schedule/sessions/:sessionId/notes',
       'change-requests',
+      'academics/evaluation-templates',
+      'academics/evaluation-templates/new',
+      'academics/evaluation-templates/:templateId',
+      'students/:studentId/history',
+      'students/:studentId/evaluations/new',
+      'evaluations/:evaluationId',
+      'my-history',
       'account/password',
       'privacy-notice',
       '*',
@@ -219,10 +226,26 @@ describe('route tree', () => {
     expect(children[51]!.handle).toEqual({
       anyRole: ['guardian', 'student', 'tutor'],
     });
-    expect(children[52]!.handle).toBeUndefined();
+    // #308 A1: the evaluation pages (all code-split).
+    expect(children[52]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[53]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[54]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[55]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[56]!.handle).toEqual({ role: 'tutor' });
+    expect(children[57]!.handle).toEqual({
+      anyOf: [{ role: 'tutor' }, { permission: 'evaluation.manage' }],
+    });
+    expect(children[58]!.handle).toEqual({
+      anyRole: ['student', 'guardian'],
+    });
+    for (const index of [52, 53, 54, 55, 56, 57, 58]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[59]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[53]!.id).toBe('privacy-notice');
-    expect(children[53]!.handle).toBeUndefined();
+    expect(children[60]!.id).toBe('privacy-notice');
+    expect(children[60]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

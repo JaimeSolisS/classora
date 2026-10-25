@@ -447,6 +447,30 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   "Notes from the tutor" (`FamilyNotesList`, `features/my-schedule`) renders
   nothing while loading or when empty and an inline `ErrorAlert` with "Try
   again" on failure.
+- **Evaluation score inputs** (`features/academics/evaluations`, #308):
+  scores and maximum scores are decimals with at most two places, typed in
+  a labelled text input with `inputmode="decimal"` followed by "of {max}".
+  `lib/decimal.ts` reads them as whole hundredths (`parseScore`,
+  `compareHundredths`), never with `Number()` or `parseFloat`; a decimal
+  comma ("5,5") gets its own hint to use a period. They are sent as the
+  API's decimal strings ("7.50"). The client never computes totals,
+  percentages or averages: those come from the API. A blocked Finalize
+  lists the unscored criteria in a `role="alert"` and focuses the first
+  empty score. Dialogs (Finalize, Delete, Void, Discard changes) return
+  focus to their trigger on Cancel or Escape; a done action moves it to the
+  `role="status"` message (after a void, to the page heading) and a refused
+  one to its failure or the first invalid field.
+- **`AcademicHistory`** (`features/academics/history`, #308): one student's
+  academic history for every audience, its controls in the URL. Grouped:
+  a section per period (an `h2` with its dates, or "No period"), an `h3`
+  per subject with "{count} evaluations · average {average} %", then the
+  entries; chronological: every entry newest first, naming its subject.
+  Each entry is an `article` whose numbers are the API's strings as sent
+  (no client arithmetic or rounding) and whose meaning never relies on
+  colour (no colour scale; "Updated" is a bordered text badge); free text
+  is plain text (`whitespace-pre-line break-words`). An entry kind the view
+  doesn't know is skipped. Staff and tutors get a "Details" link per
+  entry; families don't.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

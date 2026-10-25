@@ -693,6 +693,28 @@ type Common = {
       academics_closeout_changes_requested: string;
       // #79 I8: a note the tutor shared with the family.
       academics_learning_note_published: string;
+      // #308 G3: a finalized evaluation (the guardian's bell).
+      academics_evaluation_finalized: string;
+    };
+  };
+  // #308 G3: the evaluation pages.
+  academics: {
+    kinds: Record<'diagnostic' | 'ongoing', string>;
+    entry: Record<'historyOf' | 'evaluateName', string>;
+    templates: Record<'title', string>;
+    evaluations: {
+      templateOption: string;
+      fields: Record<'template' | 'score' | 'feedback', string>;
+      actions: Record<'saveDraft' | 'finalize', string>;
+      notices: Record<'draftSaved' | 'finalized', string>;
+      status: Record<'draft' | 'final', string>;
+      finalize: Record<'title' | 'description' | 'confirm', string>;
+      read: Record<'total', string>;
+    };
+    history: {
+      title: string;
+      newEvaluation: string;
+      views: Record<'grouped' | 'list', string>;
     };
   };
   courses: {

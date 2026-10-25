@@ -54,6 +54,7 @@ import { AppLayout } from './layout/AppLayout';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
+import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import { COHORTS_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
@@ -467,6 +468,77 @@ export const routes: RouteObject[] = [
               ).ChangeRequestsPage,
             }),
             handle: CHANGE_REQUESTS_ACCESS,
+          },
+          // #308 A1: evaluation templates (evaluation.manage), a student's
+          // academic history (staff and tutors; every role holds
+          // student.view, the API decides), the tutor's new-evaluation form,
+          // one evaluation (tutors and evaluation.manage holders; the API's
+          // record policy decides) and the family's history (students and
+          // guardians). All code-split.
+          {
+            path: 'academics/evaluation-templates',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/templates/TemplatesPage')
+              ).TemplatesPage,
+            }),
+            handle: { permission: 'evaluation.manage' },
+          },
+          {
+            path: 'academics/evaluation-templates/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/templates/TemplateEditorPage')
+              ).NewTemplatePage,
+            }),
+            handle: { permission: 'evaluation.manage' },
+          },
+          {
+            path: 'academics/evaluation-templates/:templateId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/templates/TemplateEditorPage')
+              ).TemplateEditPage,
+            }),
+            handle: { permission: 'evaluation.manage' },
+          },
+          {
+            path: 'students/:studentId/history',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/history/StudentHistoryPage')
+              ).StudentHistoryPage,
+            }),
+            handle: { permission: 'student.view' },
+          },
+          {
+            path: 'students/:studentId/evaluations/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/evaluations/EvaluationFormPage')
+              ).NewEvaluationPage,
+            }),
+            handle: { role: 'tutor' },
+          },
+          {
+            path: 'evaluations/:evaluationId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/evaluations/EvaluationFormPage')
+              ).EvaluationPage,
+            }),
+            handle: {
+              anyOf: [{ role: 'tutor' }, { permission: 'evaluation.manage' }],
+            },
+          },
+          {
+            path: 'my-history',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/academics/history/MyHistoryPage')
+              ).MyHistoryPage,
+            }),
+            handle: MY_HISTORY_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

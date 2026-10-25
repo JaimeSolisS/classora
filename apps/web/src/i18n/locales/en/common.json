@@ -46,7 +46,9 @@
     "sessionRequests": "Session requests",
     "mySchedule": "My schedule",
     "changeRequests": "My change requests",
-    "myCourses": "My courses"
+    "myCourses": "My courses",
+    "evaluationTemplates": "Evaluation templates",
+    "academicHistory": "Academic history"
   },
   "notFound": {
     "title": "Page not found",
@@ -3257,6 +3259,298 @@
         "cancel": "Cancel"
       },
       "done": "Note no longer shared with the family."
+    }
+  },
+  "academics": {
+    "counter": "{{length}}/{{max}} characters",
+    "reload": "Reload",
+    "kinds": {
+      "diagnostic": "Diagnostic",
+      "ongoing": "Ongoing"
+    },
+    "subjectOption": "{{subject}} ({{level}})",
+    "leave": {
+      "title": "Leave without saving?",
+      "description": "Your changes on this page aren't saved yet. If you leave, they are lost.",
+      "stay": "Stay",
+      "leave": "Leave"
+    },
+    "entry": {
+      "heading": "Students",
+      "history": "Academic history",
+      "historyOf": "Academic history of {{name}}",
+      "evaluate": "Evaluate",
+      "evaluateName": "Evaluate {{name}}"
+    },
+    "templates": {
+      "title": "Evaluation templates",
+      "new": "New template",
+      "newTitle": "New evaluation template",
+      "back": "Back to evaluation templates",
+      "empty": "No evaluation templates yet.",
+      "emptyFiltered": "No templates match these filters.",
+      "clearFilters": "Clear filters",
+      "anySubject": "Any subject",
+      "columns": {
+        "name": "Name",
+        "kind": "Kind",
+        "subject": "Subject",
+        "criteria": "Criteria",
+        "status": "Status"
+      },
+      "filters": {
+        "search": "Search by name",
+        "status": "Status",
+        "statusActive": "Active",
+        "statusInactive": "Inactive",
+        "statusAll": "All",
+        "kind": "Kind",
+        "anyKind": "Any kind",
+        "subject": "Subject",
+        "anySubject": "Any subject",
+        "selectedSubject": "Selected subject"
+      },
+      "saved": "Template saved.",
+      "conflict": "This template changed elsewhere.",
+      "fields": {
+        "name": "Name",
+        "kind": "Kind",
+        "chooseKind": "Choose a kind",
+        "subject": "Subject",
+        "description": "Description"
+      },
+      "kindFixed": "The kind can't change after creation.",
+      "criteria": {
+        "heading": "Criteria",
+        "help": "From 1 to {{max}} criteria, in the order tutors score them.",
+        "moved": "Criterion moved to position {{position}}.",
+        "removed": "Criterion {{number}} removed.",
+        "row": "Criterion {{number}}",
+        "rowUnnamed": "criterion {{number}}",
+        "rowNamed": "criterion {{number}}: {{title}}",
+        "titleLabel": "Criterion {{number}} title",
+        "descriptionLabel": "Criterion {{number}} description",
+        "maxLabel": "Criterion {{number}} maximum score",
+        "maxHelp": "From 0.5 to 1000, with at most two decimal places (use a period: 7.5).",
+        "up": "Move up",
+        "down": "Move down",
+        "moveUp": "Move up {{name}}",
+        "moveDown": "Move down {{name}}",
+        "remove": "Remove {{name}}",
+        "removeShort": "Remove",
+        "add": "Add criterion",
+        "atMax": "A template has at most {{max}} criteria."
+      },
+      "activeHelp": "Deactivating hides the template from tutors. Existing evaluations never change.",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "saving": "Saving…",
+      "save": "Save template",
+      "validation": {
+        "nameRequired": "Write a name.",
+        "nameTooLong": "The name can have at most 120 characters.",
+        "nameTaken": "Another evaluation template already has this name.",
+        "kindRequired": "Choose a kind.",
+        "kindImmutable": "A template's kind can't change.",
+        "descriptionTooLong": "The description can have at most 2000 characters.",
+        "titleRequired": "Write a title.",
+        "titleTooLong": "The title can have at most 120 characters.",
+        "criterionDescriptionTooLong": "The description can have at most 500 characters.",
+        "maxScoreInvalid": "Write a number such as 10 or 7.5.",
+        "decimalComma": "Use a period for decimals, for example 7.5.",
+        "maxScorePrecision": "Use at most two decimal places.",
+        "maxScoreRange": "The maximum score must be from 0.5 to 1000.",
+        "criteriaRequired": "Add at least one criterion.",
+        "criteriaTooMany": "A template has at most 20 criteria.",
+        "duplicateTitle": "Another criterion has this title.",
+        "subjectUnknown": "Choose an active subject."
+      }
+    },
+    "evaluations": {
+      "newTitle": "New evaluation",
+      "pageTitle": "Evaluation",
+      "title": "Evaluation: {{student}}",
+      "backToHistory": "Back to academic history",
+      "cancel": "Cancel",
+      "conflict": "This evaluation changed elsewhere.",
+      "missing": "Score these criteria before finalizing:",
+      "notEvaluable": "This class can't be evaluated.",
+      "withoutSession": "Record an evaluation without a class",
+      "noTemplates": "No evaluation templates are available. Ask an academic coordinator.",
+      "privateDraft": "Only you can see this draft.",
+      "templateLine": "{{name}} · {{kind}}",
+      "templateOption": "{{name}} · {{kind}} · {{subject}}",
+      "sessionLine": "Class: {{subject}}, {{when}}",
+      "status": {
+        "draft": "Draft",
+        "final": "Final",
+        "finalUpdated": "Final · Updated",
+        "voided": "Voided"
+      },
+      "fields": {
+        "evaluatedOn": "Evaluated on",
+        "criterion": "{{position}}. {{title}}",
+        "score": "Score",
+        "of": "of {{max}}",
+        "comment": "Comment",
+        "feedback": "Feedback",
+        "feedbackHelp": "Families see the feedback once you finalize.",
+        "changeReason": "Reason for the change",
+        "changeReasonHelp": "The reason stays internal: the student and guardians never see it.",
+        "template": "Template",
+        "chooseTemplate": "Choose a template",
+        "subject": "Subject",
+        "chooseSubject": "Choose a subject",
+        "session": "Class",
+        "course": "Course assessment",
+        "assessment": "Course assessment",
+        "noAssessment": "None",
+        "assessmentRequired": "{{title}} (Required)"
+      },
+      "read": {
+        "voided": "Voided on {{date}} by {{name}}: {{reason}}",
+        "total": "Total {{total}} of {{max}} ({{percent}} %)",
+        "evaluatedOn": "Evaluated on",
+        "finalizedOn": "Finalized on",
+        "updated": "Updated on",
+        "lastReason": "Last change reason (internal): {{reason}}",
+        "notScored": "Not scored (of {{max}})",
+        "score": "{{score}} of {{max}}",
+        "noFeedback": "No feedback.",
+        "course": "{{assessment}} ({{cohort}})",
+        "author": "By {{name}}"
+      },
+      "actions": {
+        "saving": "Saving…",
+        "saveDraft": "Save draft",
+        "saveAmendment": "Save changes",
+        "finalize": "Finalize",
+        "delete": "Delete draft",
+        "amend": "Amend",
+        "void": "Void"
+      },
+      "notices": {
+        "draftSaved": "Draft saved.",
+        "finalized": "Evaluation finalized.",
+        "amended": "Changes saved.",
+        "voided": "Evaluation voided.",
+        "deleted": "Draft deleted."
+      },
+      "finalize": {
+        "title": "Finalize this evaluation?",
+        "description": "{{student}} and guardians with access to their academic records will see this evaluation.",
+        "confirm": "Finalize",
+        "busy": "Finalizing…"
+      },
+      "delete": {
+        "title": "Delete this draft?",
+        "description": "The draft and its scores are deleted. This can't be undone.",
+        "confirm": "Delete draft",
+        "busy": "Deleting…"
+      },
+      "discard": {
+        "title": "Discard your changes?",
+        "description": "The changes you typed aren't saved. The evaluation stays as it is.",
+        "confirm": "Discard changes",
+        "keep": "Keep editing"
+      },
+      "void": {
+        "title": "Void this evaluation",
+        "description": "It disappears from the academic history for the student, guardians and tutors. This can't be undone.",
+        "reason": "Reason",
+        "confirm": "Void evaluation",
+        "busy": "Voiding…"
+      },
+      "validation": {
+        "dateRequired": "Choose a date.",
+        "dateInFuture": "The date can't be after today.",
+        "dateInvalid": "Choose a valid date.",
+        "scoreRequired": "Every criterion needs a score.",
+        "scoreInvalid": "Write a number such as 8 or 7.5.",
+        "decimalComma": "Use a period for decimals, for example 7.5.",
+        "scorePrecision": "Use at most two decimal places.",
+        "scoreRange": "The score must be from 0 to the criterion's maximum.",
+        "commentTooLong": "The comment can have at most 1000 characters.",
+        "feedbackTooLong": "The feedback can have at most 4000 characters.",
+        "reasonRequired": "Write a reason.",
+        "reasonTooLong": "The reason can have at most 500 characters.",
+        "templateRequired": "Choose a template.",
+        "templateUnavailable": "This template is no longer available. Choose another one.",
+        "subjectRequired": "Choose a subject.",
+        "subjectUnknown": "Choose an active subject.",
+        "subjectMismatch": "This subject doesn't match the template or the class."
+      }
+    },
+    "history": {
+      "title": "Academic history",
+      "titleFor": "Academic history: {{name}}",
+      "backToStudent": "Back to student",
+      "newEvaluation": "New evaluation",
+      "tabs": {
+        "label": "Academic history sections",
+        "history": "History",
+        "evaluations": "Evaluations"
+      },
+      "mine": "My history",
+      "whose": "Whose history",
+      "noStudents": "There's no student linked to your account.",
+      "consentTitle": "This student hasn't shared their academic records with you",
+      "unavailable": "This academic history isn't available.",
+      "truncated": "Showing the latest 500 evaluations. Narrow the dates to see older ones.",
+      "empty": "No evaluations yet.",
+      "emptyFamily": "No evaluations have been shared yet.",
+      "emptyFiltered": "No evaluations match these filters.",
+      "clearFilters": "Clear filters",
+      "selectedSubject": "Selected subject",
+      "controls": "History options",
+      "groupBy": "Group by",
+      "groups": {
+        "school_year": "School year",
+        "semester": "Semester",
+        "term": "Term",
+        "none": "No grouping"
+      },
+      "subject": "Subject",
+      "allSubjects": "All subjects",
+      "from": "From",
+      "to": "To",
+      "rangeInvalid": "The end date must be on or after the start date.",
+      "view": "View",
+      "views": {
+        "grouped": "Grouped",
+        "list": "Chronological"
+      },
+      "allEvaluations": "All evaluations",
+      "period": "{{name}} ({{start}} – {{end}})",
+      "noPeriod": "No period",
+      "subjectSummary_one": "{{count}} evaluation · average {{average}} %",
+      "subjectSummary_other": "{{count}} evaluations · average {{average}} %",
+      "entry": {
+        "meta": "{{kind}} · {{date}}",
+        "metaWithSubject": "{{subject}} · {{kind}} · {{date}}",
+        "by": "by {{name}}",
+        "updated": "Updated",
+        "course": "Course assessment: {{assessment}} ({{cohort}})",
+        "total": "Total {{total}} of {{max}} · {{percent}} %",
+        "score": "{{score}} of {{max}}",
+        "feedback": "Feedback",
+        "details": "Details",
+        "detailsOf": "Details: {{name}}, {{date}}"
+      },
+      "working": {
+        "status": "Status",
+        "all": "All",
+        "statuses": {
+          "draft": "Drafts",
+          "final": "Final",
+          "voided": "Voided"
+        },
+        "empty": "No evaluations yet.",
+        "open": "{{name}}, {{date}}",
+        "meta": "{{subject}} · {{date}} · by {{name}}",
+        "loadMore": "Load more",
+        "loadingMore": "Loading…"
+      }
     }
   }
 }
