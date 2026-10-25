@@ -1,9 +1,11 @@
-"""The family leak walk (#79 I1, #80 I1; spec §2 "Internal tutor notes are
-not automatically shared with families", §4 "grades … visible according to
-permissions", §16): **no** ``GET`` route a family can reach returns a
-tutor's internal, unpublished or deleted note, a draft, deleted or voided
-evaluation, an evaluation's internal change or void reason, nor another
-student's note or evaluation.
+"""The family leak walk (#79 I1, #80 I1, #81 I1; spec §2 "Internal tutor
+notes are not automatically shared with families", §4 "grades … visible
+according to permissions", "learning plans … visible to
+students/guardians", §16): **no** ``GET`` route a family can reach returns
+a tutor's internal, unpublished or deleted note, a draft, deleted or voided
+evaluation, an evaluation's internal change or void reason, a draft,
+deleted or never-activated learning plan, a plan's text from before an
+edit, nor another student's note, evaluation or plan.
 
 Shared infrastructure: later family-facing issues (#80 evaluations, #81
 learning plans, #82 assignments, #83 progress reports, #84 dashboards)
@@ -28,7 +30,14 @@ published note (visible to that family only: (iv) for the other family).
 draft, (iii) a final evaluation then voided (its feedback and the void
 reason), (iv) the internal change reason of an amended final evaluation,
 and the amended evaluation's feedback and comment (visible to that family
-only: (v) for the other family), shown on the academic history.
+only: (v) for the other family), shown on the academic history. #81's
+source writes, per student, learning plans with canaries in the title,
+description, objective and milestone text: (i) a draft, (ii) a deleted
+draft, (iii) a draft discontinued before activation, (v) the pre-edit
+milestone text of an active plan edited after its activation, and that
+active plan and a plan discontinued after its activation (visible to that
+family only: (iv) for the other family), shown on the plan list and
+detail (``test_the_active_learning_plans_reach_their_own_family``).
 
 **The walk** (:func:`family_get_routes`): every ``GET`` route of
 ``build_app(include_dev_routes=True)``, except
@@ -101,6 +110,7 @@ from tests.integration.auth_support import (
 )
 from tests.integration.catalog_support import get, patch, post
 from tests.integration.conftest import run_sql
+from tests.integration.courses_support import put
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
 from tests.integration.schedule_support import stored, z
@@ -154,6 +164,16 @@ class LeakWorld:
     """Filled by the canary sources (#80: every evaluation, deleted too)."""
     template_ids: list[str] = field(default_factory=list)
     """Filled by the canary sources (#80: the evaluation templates)."""
+    session_subjects: dict[str, uuid.UUID] = field(default_factory=dict)
+    """Each world session's subject (#81: plans in a subject the world
+    tutor teaches the student)."""
+    plan_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#81: every plan, deleted ones too)."""
+    milestone_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#81: a milestone of every plan)."""
+    shown_plans: dict[uuid.UUID, dict[str, set[str]]] = field(default_factory=dict)
+    """Per student: the plans their family sees (plan id → its visible
+    canaries), for the #81 positive control."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -252,7 +272,7 @@ def build_world(url: str) -> LeakWorld:
     )
     rows = run_sql(
         url,
-        "SELECT group_id, subject_id FROM class_sessions WHERE id IN (:a, :b, :c)",
+        "SELECT id, group_id, subject_id FROM class_sessions WHERE id IN (:a, :b, :c)",
         {"a": group_session, "b": minor_session, "c": adult_session},
     )
     [group_id] = [row.group_id for row in rows if row.group_id is not None]
@@ -272,6 +292,7 @@ def build_world(url: str) -> LeakWorld:
         group_id=group_id,
         subject_ids=[row.subject_id for row in rows],
         staff=staff,
+        session_subjects={str(row.id): row.subject_id for row in rows},
     )
 
 
@@ -445,9 +466,140 @@ def evaluation_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     )
 
 
+def learning_plan_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#81: per student, in the subject of their individual session (the
+    world tutor teaches it): (i) a draft, (ii) a deleted draft, (iii) a draft
+    discontinued before activation, (v) the pre-edit milestone text of an
+    active plan edited after its activation; the edited active plan and a
+    plan discontinued after its activation are visible to that family
+    only ((iv) for the other family)."""
+    cookie = sign_in(client, world.tutor.username)
+    hidden: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+
+    def canary(kind: str) -> str:
+        return f"CANARY-plan-{kind}-{uuid.uuid4().hex}"
+
+    def plan(student: uuid.UUID, subject: uuid.UUID, kind: str) -> tuple[Any, ...]:
+        texts = {
+            part: canary(f"{kind}-{part}")
+            for part in ("title", "goal", "objective", "why", "milestone", "todo")
+        }
+        response = post(
+            client,
+            cookie,
+            f"/api/v1/students/{student}/learning-plans",
+            {
+                "subject_id": str(subject),
+                "title": texts["title"],
+                "description": texts["goal"],
+                "objectives": [
+                    {
+                        "title": texts["objective"],
+                        "description": texts["why"],
+                        "milestones": [
+                            {"title": texts["milestone"], "activities": texts["todo"]}
+                        ],
+                    }
+                ],
+            },
+        )
+        assert code_of(response) == (201, None), response.text
+        view = response.json()
+        world.plan_ids.append(view["id"])
+        world.milestone_ids.append(view["objectives"][0]["milestones"][0]["id"])
+        return view, texts
+
+    def transition(plan_id: str, version: int, action: str) -> Any:
+        response = post(
+            client,
+            cookie,
+            f"/api/v1/learning-plans/{plan_id}/transition",
+            {"version": version, "action": action},
+        )
+        assert code_of(response) == (200, None), response.text
+        return response.json()
+
+    for student, session in (
+        (world.minor, world.minor_session),
+        (world.adult, world.adult_session),
+    ):
+        subject = world.session_subjects[session]
+        shown: dict[str, set[str]] = {}
+
+        _, draft = plan(student, subject, "draft")
+        hidden[student] |= set(draft.values())
+
+        deleted_view, deleted = plan(student, subject, "deleted")
+        client.cookies.clear()
+        response = client.delete(
+            f"/api/v1/learning-plans/{deleted_view['id']}",
+            params={"version": 1},
+            headers=signed_headers(cookie),
+        )
+        assert response.status_code == 204, response.text
+        hidden[student] |= set(deleted.values())
+
+        stopped_view, stopped = plan(student, subject, "never-active")
+        transition(stopped_view["id"], 1, "discontinue")
+        hidden[student] |= set(stopped.values())
+
+        ended_view, ended = plan(student, subject, "ended")
+        transition(ended_view["id"], 1, "activate")
+        transition(ended_view["id"], 2, "discontinue")
+        visible[student] |= set(ended.values())
+        shown[ended_view["id"]] = set(ended.values())
+
+        active_view, active = plan(student, subject, "active")
+        active_view = transition(active_view["id"], 1, "activate")
+        [objective] = active_view["objectives"]
+        [milestone] = objective["milestones"]
+        edited = {"milestone": canary("edited"), "todo": canary("edited-todo")}
+        response = put(
+            client,
+            cookie,
+            f"/api/v1/learning-plans/{active_view['id']}",
+            {
+                "version": active_view["version"],
+                "title": active["title"],
+                "description": active["goal"],
+                "starts_on": active_view["starts_on"],
+                "objectives": [
+                    {
+                        "id": objective["id"],
+                        "title": active["objective"],
+                        "description": active["why"],
+                        "milestones": [
+                            {
+                                "id": milestone["id"],
+                                "title": edited["milestone"],
+                                "activities": edited["todo"],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert code_of(response) == (200, None), response.text
+        hidden[student] |= {active["milestone"], active["todo"]}
+        now_shown = {
+            active["title"],
+            active["goal"],
+            active["objective"],
+            active["why"],
+            *edited.values(),
+        }
+        visible[student] |= now_shown
+        shown[active_view["id"]] = now_shown
+        world.shown_plans[student] = shown
+
+    return Canaries(hidden=hidden, visible=visible, shown_on=[])
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
     evaluation_canaries,
+    learning_plan_canaries,
 ]
 
 
@@ -465,6 +617,8 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "note_id": lambda w: list(w.note_ids),
     "evaluation_id": lambda w: list(w.evaluation_ids),
     "template_id": lambda w: list(w.template_ids),
+    "plan_id": lambda w: list(w.plan_ids),
+    "milestone_id": lambda w: list(w.milestone_ids),
     "group_id": lambda w: [str(w.group_id)],
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
@@ -610,6 +764,9 @@ def test_every_path_parameter_is_mapped():
         "/api/v1/evaluation-templates",
         "/api/v1/evaluation-templates/{template_id}",
         "/api/v1/class-sessions/{class_session_id}/evaluation-context",
+        # #81 learning plans
+        "/api/v1/students/{student_id}/learning-plans",
+        "/api/v1/learning-plans/{plan_id}",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
 
@@ -685,3 +842,41 @@ def test_evaluation_notifications_carry_ids_only(client, walk):
                 "evaluated_on",
             }
             assert item["params"]["student_id"] == str(actor.student_id)
+
+
+def test_the_active_learning_plans_reach_their_own_family(client, walk):
+    """#81 positive control: the active plan (with its edited milestone) and
+    the plan discontinued after its activation reach their own family, on
+    the list (titles) and the detail (every visible string)."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        shown = walk.world.shown_plans[actor.student_id]
+        assert len(shown) == 2
+        listed = get(
+            client, cookie, f"/api/v1/students/{actor.student_id}/learning-plans"
+        )
+        assert code_of(listed) == (200, None), (actor.label, listed.text)
+        assert {item["id"] for item in listed.json()["items"]} == set(shown)
+        for plan_id, expected in shown.items():
+            detail = get(client, cookie, f"/api/v1/learning-plans/{plan_id}")
+            assert code_of(detail) == (200, None), (actor.label, detail.text)
+            assert {c for c in expected if c in detail.text} == expected
+
+
+def test_learning_plan_notifications_carry_ids_only(client, walk):
+    """#81 E6: activating notified both families (the student's login and
+    the guardians with academic access), with ids only."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(client, cookie, "/api/v1/notifications", limit=100)
+        assert code_of(response) == (200, None)
+        activated = [
+            item
+            for item in response.json()["items"]
+            if item["notification_type"] == "academics.learning_plan_activated"
+        ]
+        assert len(activated) == 2, actor.label
+        for item in activated:
+            assert set(item["params"]) == {"student_id", "plan_id", "subject_id"}
+            assert item["params"]["student_id"] == str(actor.student_id)
+            assert item["params"]["plan_id"] in walk.world.shown_plans[actor.student_id]

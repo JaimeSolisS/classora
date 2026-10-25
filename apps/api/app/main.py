@@ -129,6 +129,15 @@ from app.workflows.evaluations_router import (
     template_router as evaluation_templates_router,
 )
 from app.workflows.groups_router import router as groups_router
+from app.workflows.learning_plans_router import (
+    milestone_router as learning_plan_milestones_router,
+)
+from app.workflows.learning_plans_router import (
+    plan_router as learning_plans_router,
+)
+from app.workflows.learning_plans_router import (
+    student_router as student_learning_plans_router,
+)
 from app.workflows.overdue_closeouts_router import (
     router as overdue_closeouts_router,
 )
@@ -251,6 +260,9 @@ def build_app(
     app.include_router(evaluations_router)
     app.include_router(student_evaluations_router)
     app.include_router(evaluation_context_router)
+    app.include_router(student_learning_plans_router)
+    app.include_router(learning_plans_router)
+    app.include_router(learning_plan_milestones_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

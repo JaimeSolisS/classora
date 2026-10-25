@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0054"
+HEAD = "0055"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -137,6 +137,11 @@ EVALUATION_TABLES = [
     "evaluation_template_criteria",
     "evaluations",
     "evaluation_scores",
+]
+LEARNING_PLAN_TABLES = [
+    "learning_plans",
+    "learning_plan_objectives",
+    "learning_plan_milestones",
 ]
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
@@ -355,6 +360,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *CLOSEOUT_REVIEW_TABLES,
             *NOTE_TABLES,
             *EVALUATION_TABLES,
+            *LEARNING_PLAN_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4426,9 +4432,24 @@ def _of_0054(diff: Any) -> bool:
     return False
 
 
+def _of_0055(diff: Any) -> bool:
+    """A metadata difference that revision 0055 adds: the learning plan
+    tables and their indexes (#81 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in LEARNING_PLAN_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in LEARNING_PLAN_TABLES
+    return False
+
+
+def _of_0054_on(diff: Any) -> bool:
+    """A metadata difference that revision 0054 or a later one adds."""
+    return _of_0054(diff) or _of_0055(diff)
+
+
 def _of_0053_on(diff: Any) -> bool:
     """A metadata difference that revision 0053 or a later one adds."""
-    return _of_0053(diff) or _of_0054(diff)
+    return _of_0053(diff) or _of_0054_on(diff)
 
 
 def _of_0052_on(diff: Any) -> bool:
@@ -8796,7 +8817,7 @@ def test_0053_adds_the_notes_table_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0053")
 
     assert version_nums(dsn) == ["0053"]
-    assert [d for d in metadata_diff(dsn) if not _of_0054(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0054_on(d)] == []
     assert public_tables(dsn) - before == set(NOTE_TABLES)
     run_sql(dsn, NOTE_INSERT, _note_values(dsn))
 
@@ -8997,7 +9018,7 @@ def test_0054_adds_the_evaluation_tables_and_downgrade_drops_them(
     command.upgrade(config, "0054")
 
     assert version_nums(dsn) == ["0054"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0055(d)] == []
     assert public_tables(dsn) - before == set(EVALUATION_TABLES)
     run_sql(dsn, EVALUATION_INSERT, _evaluation_values(dsn))
 
@@ -9005,7 +9026,7 @@ def test_0054_adds_the_evaluation_tables_and_downgrade_drops_them(
 
     assert version_nums(dsn) == ["0053"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0054(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0054_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -9235,3 +9256,270 @@ def test_evaluation_rows_are_checked(fresh_database_url):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", values)
     with pytest.raises(IntegrityError, match="fk_evaluations_template_id"):
         run_sql(dsn, "DELETE FROM evaluation_templates WHERE id = :t", values)
+
+
+# --- 0055: learning plans (#81 A1) ----------------------------------------------------
+
+PLAN_INSERT = (
+    "INSERT INTO learning_plans (student_id, subject_id, created_by_user_id,"
+    " title, description, starts_on, target_on, status, activated_at,"
+    " closed_at, deleted_at, deleted_by_user_id)"
+    " VALUES (:st, :sub, :u, :title, :description, :starts_on, :target_on,"
+    " :status, :activated_at, :closed_at, :deleted_at, :deleted_by)"
+    " RETURNING id, status, version"
+)
+OBJECTIVE_INSERT = (
+    "INSERT INTO learning_plan_objectives (plan_id, position, title, description)"
+    " VALUES (:p, :position, :title, :description) RETURNING id"
+)
+MILESTONE_INSERT = (
+    "INSERT INTO learning_plan_milestones (plan_id, objective_id, position,"
+    " title, activities, due_on, status, completed_at, completed_by_user_id)"
+    " VALUES (:p, :o, :position, :title, :activities, :due_on, :status,"
+    " :completed_at, :completed_by) RETURNING id, status, version"
+)
+
+
+def _plan_values(dsn: str) -> dict[str, Any]:
+    return {
+        "st": _student_row(dsn),
+        "sub": _subject_row(dsn),
+        "u": _user_row(dsn),
+        "title": "Lectura",
+        "description": None,
+        "starts_on": date(2031, 3, 5),
+        "target_on": None,
+        "status": "draft",
+        "activated_at": None,
+        "closed_at": None,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+
+
+def test_0055_adds_the_learning_plan_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0054")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0055")
+
+    assert version_nums(dsn) == ["0055"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(LEARNING_PLAN_TABLES)
+    run_sql(dsn, PLAN_INSERT, _plan_values(dsn))
+
+    command.downgrade(config, "0054")
+
+    assert version_nums(dsn) == ["0054"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0055(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_learning_plan_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    unversioned = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    timestamp = ("timestamp with time zone", "YES", None, None)
+
+    assert _columns(dsn, "learning_plans") == {
+        **STANDARD_COLUMNS,
+        "student_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "created_by_user_id": ("uuid", "NO", None, None),
+        "title": ("character varying", "NO", 120, None),
+        "description": ("text", "YES", None, None),
+        "starts_on": ("date", "NO", None, None),
+        "target_on": ("date", "YES", None, None),
+        "status": ("character varying", "NO", 20, "'draft'::character varying"),
+        "activated_at": timestamp,
+        "closed_at": timestamp,
+        "deleted_at": timestamp,
+        "deleted_by_user_id": ("uuid", "YES", None, None),
+    }
+    assert _columns(dsn, "learning_plan_objectives") == {
+        **unversioned,
+        "plan_id": ("uuid", "NO", None, None),
+        "position": ("smallint", "NO", None, None),
+        "title": ("character varying", "NO", 200, None),
+        "description": ("text", "YES", None, None),
+    }
+    assert _columns(dsn, "learning_plan_milestones") == {
+        **STANDARD_COLUMNS,
+        "plan_id": ("uuid", "NO", None, None),
+        "objective_id": ("uuid", "NO", None, None),
+        "position": ("smallint", "NO", None, None),
+        "title": ("character varying", "NO", 200, None),
+        "activities": ("text", "YES", None, None),
+        "due_on": ("date", "YES", None, None),
+        "status": ("character varying", "NO", 20, "'pending'::character varying"),
+        "completed_at": timestamp,
+        "completed_by_user_id": ("uuid", "YES", None, None),
+    }
+    plan_fks = {
+        "fk_learning_plans_student_id_students",
+        "fk_learning_plans_subject_id_subjects",
+        "fk_learning_plans_created_by_user_id_users",
+        "fk_learning_plans_deleted_by_user_id_users",
+    }
+    constraints = _constraints(dsn, "learning_plans")
+    assert set(constraints) == {
+        "pk_learning_plans",
+        *plan_fks,
+        *(
+            f"ck_learning_plans_{name}"
+            for name in (
+                "title_valid",
+                "description_valid",
+                "target_after_start",
+                "status_valid",
+                "draft_not_activated",
+                "active_activated",
+                "closed_together",
+                "deleted_together",
+                "deleted_draft",
+            )
+        ),
+    }
+    milestone_constraints = _constraints(dsn, "learning_plan_milestones")
+    for name in plan_fks:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    for name in (
+        "fk_learning_plan_milestones_plan_id_learning_plans",
+        "fk_learning_plan_milestones_objective_id",
+        "fk_learning_plan_milestones_completed_by_user_id_users",
+    ):
+        assert "ON DELETE RESTRICT" in milestone_constraints[name]
+    assert (
+        "DEFERRABLE INITIALLY DEFERRED"
+        in milestone_constraints["uq_learning_plan_milestones_position"]
+    )
+    assert (
+        "DEFERRABLE INITIALLY DEFERRED"
+        in _constraints(dsn, "learning_plan_objectives")[
+            "uq_learning_plan_objectives_position"
+        ]
+    )
+    indexes = _indexes(dsn, "learning_plans")
+    assert set(indexes) == {
+        "pk_learning_plans",
+        "uq_learning_plans_student_id_subject_id_active",
+        "ix_learning_plans_student_id_created_at",
+    }
+    active = indexes["uq_learning_plans_student_id_subject_id_active"]
+    assert "UNIQUE" in active
+    assert (
+        "WHERE (((status)::text = 'active'::text) AND (deleted_at IS NULL))" in active
+    )
+    assert set(_indexes(dsn, "learning_plan_milestones")) >= {
+        "ix_learning_plan_milestones_plan_id",
+        "ix_learning_plan_milestones_objective_id",
+    }
+
+
+def test_learning_plan_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _plan_values(dsn)
+    now = datetime.now(UTC)
+    for changes, constraint in (
+        ({"title": " x "}, "learning_plans_title_valid"),
+        ({"title": ""}, "learning_plans_title_valid"),
+        ({"title": "x" * 121}, "value too long"),
+        ({"description": ""}, "description_valid"),
+        ({"description": "x" * 2001}, "description_valid"),
+        ({"target_on": date(2031, 3, 4)}, "target_after_start"),
+        ({"status": "paused"}, "status_valid"),
+        ({"activated_at": now}, "draft_not_activated"),
+        ({"status": "active"}, "active_activated"),
+        ({"status": "completed", "closed_at": now}, "active_activated"),
+        (
+            {"status": "active", "activated_at": now, "closed_at": now},
+            "closed_together",
+        ),
+        ({"status": "discontinued"}, "closed_together"),
+        ({"deleted_at": now}, "deleted_together"),
+        (
+            {
+                "status": "discontinued",
+                "closed_at": now,
+                "deleted_at": now,
+                "deleted_by": values["u"],
+            },
+            "deleted_draft",
+        ),
+    ):
+        with pytest.raises(DBAPIError, match=constraint):
+            run_sql(dsn, PLAN_INSERT, values | changes)
+    [draft] = run_sql(dsn, PLAN_INSERT, values)
+    assert (draft.status, draft.version) == ("draft", 1)
+    # A discontinued plan may or may not have been activated.
+    run_sql(dsn, PLAN_INSERT, values | {"status": "discontinued", "closed_at": now})
+    active = {"status": "active", "activated_at": now}
+    run_sql(dsn, PLAN_INSERT, values | active)
+    with pytest.raises(
+        IntegrityError, match="uq_learning_plans_student_id_subject_id_active"
+    ):
+        run_sql(dsn, PLAN_INSERT, values | active)
+    # A deleted draft and a completed plan don't count.
+    run_sql(dsn, PLAN_INSERT, values | {"deleted_at": now, "deleted_by": values["u"]})
+    run_sql(
+        dsn,
+        PLAN_INSERT,
+        values | active | {"status": "completed", "closed_at": now},
+    )
+
+    objective = {"p": draft.id, "position": 1, "title": "Leer", "description": None}
+    for changes, constraint in (
+        ({"position": 0}, "position_range"),
+        ({"position": 11}, "position_range"),
+        ({"title": " x"}, "title_valid"),
+        ({"description": "x" * 1001}, "description_valid"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, OBJECTIVE_INSERT, objective | changes)
+    [made] = run_sql(dsn, OBJECTIVE_INSERT, objective)
+    with pytest.raises(IntegrityError, match="uq_learning_plan_objectives_position"):
+        run_sql(dsn, OBJECTIVE_INSERT, objective)
+    milestone = {
+        "p": draft.id,
+        "o": made.id,
+        "position": 1,
+        "title": "Capítulo 1",
+        "activities": None,
+        "due_on": None,
+        "status": "pending",
+        "completed_at": None,
+        "completed_by": None,
+    }
+    done = {"status": "done", "completed_at": now, "completed_by": values["u"]}
+    for changes, constraint in (
+        ({"position": 11}, "position_range"),
+        ({"title": ""}, "title_valid"),
+        ({"activities": ""}, "activities_valid"),
+        ({"activities": "x" * 2001}, "activities_valid"),
+        ({"status": "late"}, "status_valid"),
+        ({"status": "done"}, "done_together"),
+        (done | {"completed_by": None}, "done_together"),
+        (done | {"status": "pending"}, "done_together"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, MILESTONE_INSERT, milestone | changes)
+    [first] = run_sql(dsn, MILESTONE_INSERT, milestone | done)
+    assert (first.status, first.version) == ("done", 1)
+    with pytest.raises(IntegrityError, match="uq_learning_plan_milestones_position"):
+        run_sql(dsn, MILESTONE_INSERT, milestone)
+    # A referenced plan, objective or creator can't be deleted.
+    with pytest.raises(IntegrityError, match="fk_learning_plan_milestones_objective"):
+        run_sql(
+            dsn, "DELETE FROM learning_plan_objectives WHERE id = :id", {"id": made.id}
+        )
+    with pytest.raises(IntegrityError, match="fk_learning_plans_created_by_user_id"):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", values)

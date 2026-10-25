@@ -192,6 +192,11 @@ Codes in use today:
 | `evaluation_not_final` / `evaluation_voided` | 409 | Voiding an evaluation that isn't final, or voiding, changing or amending a voided one. |
 | `evaluation_incomplete` | 409 | Finalizing with unscored criteria; `details.missing_positions` (the positions, as strings). |
 | `template_unknown` / `subject_mismatch` / `subject_required` / `class_session_invalid` / `course_assessment_requires_course_session` / `course_assessment_unknown` / `evaluated_on_in_future` / `evaluated_on_invalid` / `criterion_unknown` / `duplicate_criterion` / `score_out_of_range` / `score_precision` / `score_required` / `change_reason_required` / `kind_immutable` / `criteria_required` / `criteria_too_many` / `duplicate_title` / `max_score_out_of_range` / `range_invalid` | 422 | Evaluation field errors on the field they name (see Evaluations and academic history). |
+| `plan_subject_not_assigned` | 403 | A learning plan write by a tutor who currently teaches the student another subject (see Learning plans). |
+| `plan_read_only` | 403 | A learning plan write by a tutor who no longer teaches the student; the plans they created stay readable (see Learning plans). |
+| `plan_closed` / `plan_not_active` / `plan_not_draft` | 409 | A write to a completed or discontinued plan; completing a draft or progress on a draft; activating an active plan or deleting a plan that isn't a draft (see Learning plans). |
+| `active_plan_exists` | 409 | Activating a plan while the student has another active plan in the subject (see Learning plans). |
+| `title_required` / `objectives_required` / `objectives_too_many` / `milestones_required` / `milestones_too_many` / `target_before_start` / `due_on_invalid` / `objective_unknown` / `milestone_unknown` | 422 | Learning plan field errors on the field they name (see Learning plans). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4708,6 +4713,152 @@ columns with their CHECKs) and `evaluation_scores` (the copied criterion and
 `score NUMERIC(6,2)` 0..max), every key `ON DELETE RESTRICT`, with partial
 indexes for the history, the working list, an author's drafts and `(cohort_id,
 course_assessment_id)`.
+
+### Learning plans
+
+Implemented by M5-14 (#81; spec §2, §4 "structured learning plans with
+objectives, milestones, due dates, activities and progress visible to
+students/guardians", §9, §16, W5.3, W5.4; architecture §4.1, §4.2; ADR-0004)
+in `academics` (`learning_plan_rules.py`: the pure rules; `learning_plans.py`:
+the rows), the seam `scheduling.service.subject_ids_for_tutor_student`, and
+the workflow `app/workflows/learning_plans.py` with its routes in
+`app/workflows/learning_plans_router.py` and bodies in
+`app/workflows/learning_plan_schemas.py`. One new permission,
+`learning_plan.manage` (Owner, Administrator, Academic coordinator; not
+delegable). The web pages are #310 (M5-14b).
+
+A **plan** belongs to one student and one subject: a title, an optional goal
+description, `starts_on` / `target_on` local dates, 1-10 ordered
+**objectives** and 1-10 ordered **milestones** per objective (at most 50 in a
+plan), each with optional **activities** text (what the student will do), an
+optional `due_on` date and a progress status (`pending`, `in_progress`,
+`done`). A plan is created as a **`draft`**; **activating** it shows it to
+the student and to the guardians with academic access and notifies them (no
+admin approval); an active plan stays editable (families see edits at once;
+the audit keeps the prior values); **completing** it notifies them again;
+**discontinuing** (a draft or an active plan) notifies nobody. Completed and
+discontinued plans are read-only (`409 plan_closed`); there is no reopen.
+Only a draft is deleted (soft delete). At most one live **active** plan per
+student and subject (`409 active_plan_exists`, backed by a partial unique
+index). **Drafts are never returned to families**, nor are deleted plans or
+plans discontinued before they were activated; the family leak walk
+`apps/api/tests/integration/test_session_notes_leak.py` proves no `GET`
+route carries them, nor a plan's text from before an edit.
+
+Progress is computed on every read, never stored: per objective and per
+plan, `{done, total, percent}` with `percent` = done / total × 100 rounded
+half-up to a whole number, a JSON **string** (`"33"`). An objective is
+`complete` when all its milestones are `done` (`objectives_complete`); a
+milestone is `overdue` when it isn't `done` and its `due_on` is before the
+center's today (`overdue_milestones`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/students/{student_id}/learning-plans[?status&subject_id]` | `authenticated()` + record policy | `LearningPlanList` `{items [LearningPlanSummary], truncated, can_create, creatable_subjects}`. `status` may repeat (it narrows; a family's rows never widen). Active first, then drafts, then closed plans; within each `starts_on` newest first, then `id`. At most 100 (`truncated`, no cursor); at most 7 statements, the same for 1 and 100 plans. |
+| `POST /api/v1/students/{student_id}/learning-plans` | `authenticated()` + record policy | `{subject_id, title, description?, starts_on?, target_on?, objectives: [{title, description?, milestones: [{title, activities?, due_on?}]}]}`; `starts_on` defaults to the center's today. A `draft`; nobody is notified. `201 LearningPlanView`. |
+| `GET /api/v1/learning-plans/{plan_id}` | `authenticated()` + record policy | `LearningPlanView`; at most 6 statements whatever the number of objectives and milestones. |
+| `PUT /api/v1/learning-plans/{plan_id}` | `authenticated()` + record policy | The whole content `{version, title, description?, starts_on, target_on?, objectives: [{id?, title, description?, milestones: [{id?, title, activities?, due_on?}]}]}` in order (the order is the position). An item with an `id` is updated in place (a milestone keeps its progress); one without is new (`pending`); stored items left out are deleted (the milestones of a deleted objective too). A milestone never moves to another objective (`422 milestone_unknown`: delete it and add a new one). `subject_id` never changes (`422 extra_forbidden`). The plan's version goes up once; a body that changes nothing writes nothing (`200`, same version). |
+| `POST /api/v1/learning-plans/{plan_id}/transition` | `authenticated()` + record policy | `{version, action: activate \| complete \| discontinue}`: `draft → active` (`activated_at`; notifies), `active → completed` (`closed_at`; notifies), `draft \| active → discontinued` (`closed_at`). |
+| `PATCH /api/v1/learning-plan-milestones/{milestone_id}` | `authenticated()` + record policy | `{version, status}` with the **milestone's** version (each milestone has its own; a content edit of the milestone bumps it too). Only on an active plan. `done` stores `completed_at` and who; another status clears them; the same status writes nothing. Returns the whole `LearningPlanView`. |
+| `DELETE /api/v1/learning-plans/{plan_id}?version=` | `authenticated()` + record policy | A draft only (`409 plan_not_draft`): soft delete, `204`; every route then answers `404` and every list leaves it out. |
+
+**Who** (the plan record policy; a user with several roles gets the union):
+
+- `learning_plan.manage` holders (Owner, Administrator, Academic
+  coordinator) read every plan, drafts included, and write any plan;
+- a user with the `tutor` role who currently teaches the student
+  (`scheduling.service.subject_ids_for_tutor_student`: the subjects of the
+  sessions in `student_ids_for_tutor`'s states and window with that
+  student) reads every plan of the student, drafts included, and writes
+  (create, edit, transition, progress, delete a draft) the plans **in a
+  subject they teach the student**; in another subject `403
+  plan_subject_not_assigned`. Any such writer edits any such plan (no
+  author-only rule);
+- a tutor who no longer teaches the student reads only the plans they
+  created, read-only (`403 plan_read_only`); with none, the list is `404`;
+- the student and the linked guardians of a minor, or of an adult who gave
+  that guardian `guardian_academic_access` (the #67 rule without its staff
+  branch) read the **active**, **completed**, and **discontinued after an
+  activation** plans, through the same routes; a linked guardian of an adult
+  without the consent gets `403 student_consent_required` (also on a
+  draft's id, and on the next request after a revocation); a family member's
+  write is the `404` of an unknown id;
+- anyone else (Finance, unlinked users, other tutors, a tutor who lost the
+  role, the original tutor after a substitution when the student isn't
+  otherwise theirs) and an unknown id get the same `404`.
+
+**Create order:** `401` → `422` schema → `404` (unknown student, or neither a
+holder nor a tutor currently teaching the student) → `422 subject_unknown`
+(unknown or inactive subject, or an inactive level; the subject `FOR
+SHARE`) → `403 plan_subject_not_assigned` (tutors) → `422` content → the
+draft and its audit create.
+
+**Write order** (`PUT`, `transition`, `DELETE`): `401` → `422` schema → `404`
+(unknown, deleted or unreadable) → `403` `plan_subject_not_assigned` /
+`plan_read_only` → the plan `FOR UPDATE` → `409 version_conflict` → `409`
+`plan_closed` (edit; every transition of a closed plan), `plan_not_draft`
+(activate an active plan; delete), `plan_not_active` (complete a draft) →
+`409 active_plan_exists` (activate; a race surfaces as the same `409`, never
+a `500`) / `422` content (`PUT`) → the write (version + 1, the audit diff).
+
+**Progress order** (`PATCH`): `401` → `422` → `404` (the milestone's plan
+unknown, deleted or unreadable) → `403` → the plan `FOR SHARE` (a concurrent
+`PUT` can't delete the milestone meanwhile: the `PATCH` then sees it or gets
+`404`) → the milestone `FOR UPDATE` → `409 version_conflict` → `409
+plan_not_active` (a draft) / `plan_closed` → the write.
+
+**Content errors** (`422 validation_error`, field paths such as
+`["body","objectives",0,"milestones",1,"title"]`): `title_required`,
+`too_long` (title 120, objective and milestone titles 200, description 2000,
+objective description 1000, activities 2000), `objectives_required`,
+`objectives_too_many`, `milestones_required`, `milestones_too_many` (per
+objective, or on `["body","objectives"]` over 50 in the plan),
+`target_before_start`, `due_on_invalid` (before 2000-01-01; a due date
+outside the plan's dates is allowed), `subject_unknown`, and on `PUT`
+`objective_unknown` / `milestone_unknown` (an id not in this plan, used
+twice, or a milestone under another objective).
+
+**`LearningPlanSummary`** (closed allow-list, the same for staff, tutors and
+families): `{id, version, student_id, subject {id, name}, title, status,
+starts_on, target_on, activated_at, closed_at, created_by {display_name},
+progress {done, total, percent}, objectives_complete, objectives_total,
+overdue_milestones, updated_at}`. **`LearningPlanView`** adds `description`,
+`objectives [{id, position, title, description, complete, progress,
+milestones [{id, version, position, title, activities, due_on, status,
+overdue, completed_at, completed_by {display_name} | null}]}]` and
+`can_edit`, `can_activate`, `can_complete`, `can_discontinue`, `can_delete`,
+`can_update_progress` (always `false` for families). Display names only,
+never a user id.
+
+**Create hints** (#310 AM1) on the list, for the caller and not affected by
+the filters: a holder `can_create: true, creatable_subjects: null` (any
+active subject, `GET /subjects`); a tutor currently teaching the student the
+**active** subjects they teach the student, by name (ignoring case) then id,
+possibly `[]`, and `can_create` = not empty (subjects that already have an
+active plan are listed: only activation is limited); anyone else the route
+answers `can_create: false, creatable_subjects: []`.
+
+**Notifications** (ids only: never a title, description, activities text or
+tutor name): `academics.learning_plan_activated` and
+`academics.learning_plan_completed` `{student_id, plan_id, subject_id}` to
+the student's login and the accounts of linked, active guardian profiles
+with academic access (computed then). Creates, edits, progress, discontinue
+and deletes notify nobody.
+
+**History:** the three tables are audited (the create, update and delete
+diffs with prior and new values; a soft delete is `soft_delete`), readable
+through `audit.view`.
+
+**Data** (revision 0055): `learning_plans` (`title` 1-120 trimmed,
+`description` ≤ 2000, `starts_on`, `target_on` ≥ `starts_on`, `status`,
+`activated_at` / `closed_at` with their CHECKs, soft delete of drafts only,
+`version`; the partial unique index `(student_id, subject_id) WHERE status =
+'active' AND deleted_at IS NULL`), `learning_plan_objectives` (`position`
+1-10 unique per plan, deferrable; `title` 1-200, `description` ≤ 1000) and
+`learning_plan_milestones` (`position` 1-10 unique per objective,
+deferrable; `title` 1-200, `activities` ≤ 2000, `due_on`, `status`,
+`completed_at` / `completed_by_user_id` exactly when `done`, `version`),
+every key `ON DELETE RESTRICT`.
 
 ### Change requests
 

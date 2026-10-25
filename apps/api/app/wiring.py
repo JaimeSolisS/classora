@@ -46,6 +46,7 @@ from app.modules.staff.service import (
 from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.closeout_on_behalf import register_on_behalf_notifications
 from app.workflows.evaluations import register_evaluation_notifications
+from app.workflows.learning_plans import register_learning_plan_notifications
 from app.workflows.session_cancellation import on_session_cancelled
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 from app.workflows.session_closeout_review import register_closeout_notifications
@@ -78,6 +79,7 @@ def register_approval_wiring() -> None:
     register_on_behalf_notifications()
     register_note_notifications()
     register_evaluation_notifications()
+    register_learning_plan_notifications()
     scheduling_service.register_completed_attendance_unlock(
         academics_service.closeout_awaits_tutor
     )

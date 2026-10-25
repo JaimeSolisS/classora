@@ -6,8 +6,10 @@ whose **current** tutor they are (``tutor_user_id``), in ``offered``
 than :data:`TUTOR_ASSIGNMENT_LOOKBACK_DAYS` days ago or haven't ended.
 ``unassigned``, ``cancelled``, ``skipped_closure`` and ``conflict`` sessions
 don't count, and a substitution or a decline (which change or clear
-``tutor_user_id``) ends the link at once. Former students' read-only
-history is a separate fact set (M5).
+``tutor_user_id``) ends the link at once.
+:func:`subject_ids_for_tutor_student` gives the subjects of the same
+sessions for one student (#81 E4). Former students' read-only history is a
+separate fact set (M5).
 
 ``families`` never imports ``scheduling`` (ADR-0002): ``app/wiring.py``
 registers :data:`TUTOR_ASSIGNMENT_SOURCE` with
@@ -17,9 +19,9 @@ record policy sees these students at the ``limited`` level (#67 D3).
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Any, Final
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -34,14 +36,17 @@ ASSIGNMENT_STATES: Final = TUTOR_OCCUPYING_STATES
 """``offered``, ``confirmed`` and ``completed`` (#67 E5)."""
 
 
-async def student_ids_for_tutor(
-    session: AsyncSession, tutor_user_id: uuid.UUID, *, now: datetime
-) -> frozenset[uuid.UUID]:
-    """The students of ``tutor_user_id``'s current assignments at ``now``
-    (see the module docstring). One statement."""
+def _current_assignments(
+    columns: Any, tutor_user_id: uuid.UUID, now: datetime
+) -> Select[Any]:
+    """The participants of ``tutor_user_id``'s current assignment sessions
+    at ``now`` (one definition for :func:`student_ids_for_tutor` and
+    :func:`subject_ids_for_tutor_student`, so their states and window never
+    drift apart)."""
     since = now - timedelta(days=TUTOR_ASSIGNMENT_LOOKBACK_DAYS)
-    found = await session.scalars(
-        select(ClassSessionParticipant.student_id)
+    return (
+        select(columns)
+        .select_from(ClassSessionParticipant)
         .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
         .where(
             ClassSession.tutor_user_id == tutor_user_id,
@@ -49,6 +54,36 @@ async def student_ids_for_tutor(
             ClassSession.ends_at > since,
         )
         .distinct()
+    )
+
+
+async def student_ids_for_tutor(
+    session: AsyncSession, tutor_user_id: uuid.UUID, *, now: datetime
+) -> frozenset[uuid.UUID]:
+    """The students of ``tutor_user_id``'s current assignments at ``now``
+    (see the module docstring). One statement."""
+    found = await session.scalars(
+        _current_assignments(ClassSessionParticipant.student_id, tutor_user_id, now)
+    )
+    return frozenset(found)
+
+
+async def subject_ids_for_tutor_student(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    student_id: uuid.UUID,
+    *,
+    now: datetime,
+) -> frozenset[uuid.UUID]:
+    """The subjects in which ``tutor_user_id`` currently teaches
+    ``student_id`` at ``now`` (#81 E4): the subjects of the same sessions as
+    :func:`student_ids_for_tutor`, for that student. Empty exactly when the
+    student isn't one of the tutor's current assignments (a substituted-away
+    original tutor gets an empty set). One statement."""
+    found = await session.scalars(
+        _current_assignments(ClassSession.subject_id, tutor_user_id, now).where(
+            ClassSessionParticipant.student_id == student_id
+        )
     )
     return frozenset(found)
 

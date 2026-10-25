@@ -12978,6 +12978,638 @@
         }
       }
     },
+    "/api/v1/students/{student_id}/learning-plans": {
+      "get": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "List Student Learning Plans",
+        "description": "A student's learning plans with their progress: active first, then\ndrafts, then closed ones (at most 100). Staff with learning_plan.manage\nand tutors currently teaching the student see every plan; a tutor who\ntaught the student before only the plans they created; the student and\ntheir guardians with access to their academic records only active and\nclosed plans (never drafts). `status` may repeat.",
+        "operationId": "list_student_learning_plans_api_v1_students__student_id__learning_plans_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlanStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose learning plans you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Create Learning Plan",
+        "description": "Start a draft learning plan for a student in a subject. Families\nnever see a draft; nobody is notified until it is activated.",
+        "operationId": "create_learning_plan_api_v1_students__student_id__learning_plans_post",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You don't currently teach this student this subject (plan_subject_not_assigned); csrf_failed; privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one you may write learning plans for (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Get Learning Plan",
+        "description": "One learning plan with its objectives, milestones and progress.",
+        "operationId": "get_learning_plan_api_v1_learning_plans__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such learning plan, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Replace Learning Plan",
+        "description": "Replace a plan's content. Objectives and milestones keep their id\n(and a milestone its progress) when you send it back; the ones you\nleave out are deleted. Families see the change at once on an active\nplan.",
+        "operationId": "replace_learning_plan_api_v1_learning_plans__plan_id__put",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningPlanReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You teach this student another subject (plan_subject_not_assigned); the student is no longer one of your current assignments (plan_read_only); the adult student hasn't given you access to their academic records (student_consent_required); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such learning plan, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was read (version_conflict) or is closed (plan_closed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Delete Learning Plan",
+        "description": "Delete a draft plan. It disappears from every list.",
+        "operationId": "delete_learning_plan_api_v1_learning_plans__plan_id__delete",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The plan's version, as last read.",
+              "title": "Version"
+            },
+            "description": "The plan's version, as last read."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You teach this student another subject (plan_subject_not_assigned); the student is no longer one of your current assignments (plan_read_only); the adult student hasn't given you access to their academic records (student_consent_required); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such learning plan, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was read (version_conflict) or isn't a draft (plan_not_draft).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-plans/{plan_id}/transition": {
+      "post": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Transition Learning Plan",
+        "description": "Activate a draft (the student and their guardians with access to\ntheir academic records see it and are notified), complete an active\nplan (they are notified) or discontinue a draft or an active plan.",
+        "operationId": "transition_learning_plan_api_v1_learning_plans__plan_id__transition_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningPlanTransition"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You teach this student another subject (plan_subject_not_assigned); the student is no longer one of your current assignments (plan_read_only); the adult student hasn't given you access to their academic records (student_consent_required); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such learning plan, it was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was read (version_conflict), is closed (plan_closed), isn't a draft (plan_not_draft: activate), isn't active (plan_not_active: complete), or the student already has an active plan in this subject (active_plan_exists).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-plan-milestones/{milestone_id}": {
+      "patch": {
+        "tags": [
+          "learning-plans"
+        ],
+        "summary": "Update Learning Plan Milestone",
+        "description": "Set a milestone's progress on an active plan (pending, in progress,\ndone). The whole plan comes back so the totals refresh.",
+        "operationId": "update_learning_plan_milestone_api_v1_learning_plan_milestones__milestone_id__patch",
+        "parameters": [
+          {
+            "name": "milestone_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Milestone Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningPlanMilestoneProgress"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You teach this student another subject (plan_subject_not_assigned); the student is no longer one of your current assignments (plan_read_only); the adult student hasn't given you access to their academic records (student_consent_required); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such milestone, its plan was deleted, or it isn't one you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The milestone changed since it was read (version_conflict), the plan is a draft (plan_not_active) or closed (plan_closed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -28986,6 +29618,836 @@
           "en"
         ]
       },
+      "LearningPlanCreate": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id",
+            "description": "An active subject; a tutor only one they currently teach the student (plan_subject_not_assigned). It never changes."
+          },
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-120 characters (title_required / too_long)."
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text",
+            "description": "The overall goal; at most 2000 characters."
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On",
+            "description": "A local date; defaults to the center's today."
+          },
+          "target_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target On",
+            "description": "Not before starts_on (target_before_start)."
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanObjectiveInput"
+            },
+            "type": "array",
+            "title": "Objectives",
+            "description": "1-10 objectives, in order (objectives_required / objectives_too_many)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject_id",
+          "title",
+          "objectives"
+        ],
+        "title": "LearningPlanCreate",
+        "description": "`POST /api/v1/students/{student_id}/learning-plans` (#81 C1): a draft\nplan. Nobody sees it but staff and the student's tutors until it is\nactivated; nobody is notified."
+      },
+      "LearningPlanList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More than 100 plans: the rest are left out."
+          },
+          "can_create": {
+            "type": "boolean",
+            "title": "Can Create",
+            "description": "You may create a plan for this student."
+          },
+          "creatable_subjects": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LearningPlanSubject"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creatable Subjects",
+            "description": "The active subjects you may create a plan in, by name; null means any active subject (staff with learning_plan.manage)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "truncated",
+          "can_create",
+          "creatable_subjects"
+        ],
+        "title": "LearningPlanList",
+        "description": "A student's learning plans (#81 E2, AM1): active first, then drafts,\nthen closed ones; at most 100. `can_create` / `creatable_subjects` are\nfor you and ignore the filters."
+      },
+      "LearningPlanMilestoneInput": {
+        "properties": {
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-200 characters (title_required / too_long)."
+          },
+          "activities": {
+            "$ref": "#/components/schemas/Text",
+            "description": "Plain text: what the student will do; at most 2000 characters."
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On",
+            "description": "A local date, not before 2000-01-01 (due_on_invalid); it may fall outside the plan's dates."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "LearningPlanMilestoneInput"
+      },
+      "LearningPlanMilestoneProgress": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The milestone's version, as last read."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MilestoneStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "status"
+        ],
+        "title": "LearningPlanMilestoneProgress",
+        "description": "`PATCH /api/v1/learning-plan-milestones/{milestone_id}` (#81 D2)."
+      },
+      "LearningPlanMilestoneReplace": {
+        "properties": {
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-200 characters (title_required / too_long)."
+          },
+          "activities": {
+            "$ref": "#/components/schemas/Text",
+            "description": "Plain text: what the student will do; at most 2000 characters."
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On",
+            "description": "A local date, not before 2000-01-01 (due_on_invalid); it may fall outside the plan's dates."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "An existing milestone of this objective, updated in place (its progress is kept); omit for a new one (milestone_unknown)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "LearningPlanMilestoneReplace"
+      },
+      "LearningPlanMilestoneView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The milestone's version (send it back)."
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "activities": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activities"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MilestoneStatus"
+          },
+          "overdue": {
+            "type": "boolean",
+            "title": "Overdue"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningPlanPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "position",
+          "title",
+          "activities",
+          "due_on",
+          "status",
+          "overdue",
+          "completed_at",
+          "completed_by"
+        ],
+        "title": "LearningPlanMilestoneView"
+      },
+      "LearningPlanObjectiveInput": {
+        "properties": {
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-200 characters (title_required / too_long)."
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text",
+            "description": "At most 1000 characters."
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanMilestoneInput"
+            },
+            "type": "array",
+            "title": "Milestones",
+            "description": "1-10 milestones, in order (milestones_required / milestones_too_many); at most 50 in the plan."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "milestones"
+        ],
+        "title": "LearningPlanObjectiveInput"
+      },
+      "LearningPlanObjectiveReplace": {
+        "properties": {
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-200 characters (title_required / too_long)."
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text",
+            "description": "At most 1000 characters."
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanMilestoneReplace"
+            },
+            "type": "array",
+            "title": "Milestones",
+            "description": "1-10 milestones, in order; at most 50 in the plan. A milestone never moves to another objective (delete it and add a new one)."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "An existing objective of this plan, updated in place; omit for a new one (objective_unknown)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "milestones"
+        ],
+        "title": "LearningPlanObjectiveReplace"
+      },
+      "LearningPlanObjectiveView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "description": "All its milestones are done."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/LearningPlanProgress"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanMilestoneView"
+            },
+            "type": "array",
+            "title": "Milestones"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "title",
+          "description",
+          "complete",
+          "progress",
+          "milestones"
+        ],
+        "title": "LearningPlanObjectiveView"
+      },
+      "LearningPlanPerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "LearningPlanPerson"
+      },
+      "LearningPlanProgress": {
+        "properties": {
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "percent": {
+            "$ref": "#/components/schemas/PercentOut",
+            "description": "done / total × 100, a whole number."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "done",
+          "total",
+          "percent"
+        ],
+        "title": "LearningPlanProgress"
+      },
+      "LearningPlanReplace": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The plan's version, as last read."
+          },
+          "title": {
+            "$ref": "#/components/schemas/Text",
+            "description": "1-120 characters (title_required / too_long)."
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text",
+            "description": "The overall goal; at most 2000 characters."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "target_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target On",
+            "description": "Not before starts_on (target_before_start)."
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanObjectiveReplace"
+            },
+            "type": "array",
+            "title": "Objectives",
+            "description": "1-10 objectives, in order."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "title",
+          "starts_on",
+          "objectives"
+        ],
+        "title": "LearningPlanReplace",
+        "description": "`PUT /api/v1/learning-plans/{plan_id}` (#81 C1, C4): the whole content\nwith the version you loaded. Objectives and milestones you leave out are\ndeleted. `subject_id` never changes (extra_forbidden). A body that\nchanges nothing writes nothing."
+      },
+      "LearningPlanSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LearningPlanSubject"
+      },
+      "LearningPlanSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The plan's version (send it back)."
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/LearningPlanSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "target_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target On"
+          },
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/LearningPlanPerson"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/LearningPlanProgress"
+          },
+          "objectives_complete": {
+            "type": "integer",
+            "title": "Objectives Complete",
+            "description": "Objectives whose milestones are all done."
+          },
+          "objectives_total": {
+            "type": "integer",
+            "title": "Objectives Total"
+          },
+          "overdue_milestones": {
+            "type": "integer",
+            "title": "Overdue Milestones",
+            "description": "Milestones not done whose due date is before the center's today."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "student_id",
+          "subject",
+          "title",
+          "status",
+          "starts_on",
+          "target_on",
+          "activated_at",
+          "closed_at",
+          "created_by",
+          "progress",
+          "objectives_complete",
+          "objectives_total",
+          "overdue_milestones",
+          "updated_at"
+        ],
+        "title": "LearningPlanSummary",
+        "description": "A learning plan in a student's list (#81 F2): the same shape for\nstaff, tutors and families."
+      },
+      "LearningPlanTransition": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The plan's version, as last read."
+          },
+          "action": {
+            "$ref": "#/components/schemas/PlanAction",
+            "description": "activate (a draft: the student and their guardians with academic access see it and are notified), complete (an active plan: they are notified) or discontinue (a draft or an active plan)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "action"
+        ],
+        "title": "LearningPlanTransition",
+        "description": "`POST /api/v1/learning-plans/{plan_id}/transition` (#81 D1)."
+      },
+      "LearningPlanView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The plan's version (send it back)."
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/LearningPlanSubject"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "target_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target On"
+          },
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/LearningPlanPerson"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/LearningPlanProgress"
+          },
+          "objectives_complete": {
+            "type": "integer",
+            "title": "Objectives Complete",
+            "description": "Objectives whose milestones are all done."
+          },
+          "objectives_total": {
+            "type": "integer",
+            "title": "Objectives Total"
+          },
+          "overdue_milestones": {
+            "type": "integer",
+            "title": "Overdue Milestones",
+            "description": "Milestones not done whose due date is before the center's today."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPlanObjectiveView"
+            },
+            "type": "array",
+            "title": "Objectives"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "can_activate": {
+            "type": "boolean",
+            "title": "Can Activate"
+          },
+          "can_complete": {
+            "type": "boolean",
+            "title": "Can Complete"
+          },
+          "can_discontinue": {
+            "type": "boolean",
+            "title": "Can Discontinue"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete",
+            "description": "Delete this draft."
+          },
+          "can_update_progress": {
+            "type": "boolean",
+            "title": "Can Update Progress"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "student_id",
+          "subject",
+          "title",
+          "status",
+          "starts_on",
+          "target_on",
+          "activated_at",
+          "closed_at",
+          "created_by",
+          "progress",
+          "objectives_complete",
+          "objectives_total",
+          "overdue_milestones",
+          "updated_at",
+          "description",
+          "objectives",
+          "can_edit",
+          "can_activate",
+          "can_complete",
+          "can_discontinue",
+          "can_delete",
+          "can_update_progress"
+        ],
+        "title": "LearningPlanView",
+        "description": "A learning plan with its objectives and milestones (#81 F3): the same\nshape for staff, tutors and families. The `can_*` flags say what you may\ndo now (always false for families)."
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -29016,6 +30478,14 @@
           "tutor_not_qualified",
           "overridden",
           "reassignment_needed"
+        ]
+      },
+      "MilestoneStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "in_progress",
+          "done"
         ]
       },
       "NoteBody": {
@@ -30368,6 +31838,13 @@
         "title": "PendingSubstitution",
         "description": "The pending substitution of a ``confirmed`` session (#55 E3)."
       },
+      "PercentOut": {
+        "type": "string",
+        "format": "decimal",
+        "examples": [
+          "50"
+        ]
+      },
       "PeriodType": {
         "type": "string",
         "enum": [
@@ -30390,6 +31867,7 @@
           "family.manage",
           "finance.refund.approve",
           "guardian.view",
+          "learning_plan.manage",
           "payroll.finalize",
           "qualification.review",
           "registration.review",
@@ -30411,6 +31889,23 @@
           "user.password_reset.issue",
           "user.role.assign",
           "user.view"
+        ]
+      },
+      "PlanAction": {
+        "type": "string",
+        "enum": [
+          "activate",
+          "complete",
+          "discontinue"
+        ]
+      },
+      "PlanStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "active",
+          "completed",
+          "discontinued"
         ]
       },
       "PrivacyNoticeAcceptanceRequest": {
@@ -34198,6 +35693,16 @@
         ],
         "title": "TeachingSubject",
         "description": "A subject the tutor holds an **approved** qualification for (#44 D1).\nA subject deactivated later stays, with ``subject_is_active`` false."
+      },
+      "Text": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "Theme": {
         "type": "string",

@@ -1204,6 +1204,48 @@ reauth = "user.invitation.staff_role"
 reauth_conditional = true
 
 [[route]]
+method = "PATCH"
+path = "/api/v1/learning-plan-milestones/{milestone_id}"
+access = "authenticated"
+# #81 D2: the plan record policy (holders and tutors teaching the student in
+# the plan's subject write). The placeholder id is no milestone: 404 for
+# every role. The 200, 403 and 409 cases are tested in
+# tests/integration/test_learning_plans.py.
+json = { version = 1, status = "done" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 D3: the plan record policy. The placeholder id is no plan: 404 for
+# every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_learning_plans.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 E1: the plan record policy (holders, tutors teaching the student, a
+# former creator for their own, the family for active and closed plans).
+# The placeholder id is no plan: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 C4: as DELETE, with a valid body.
+json = { version = 1, title = "Matrix", starts_on = "2031-03-05", objectives = [] }
+
+[[route]]
+method = "POST"
+path = "/api/v1/learning-plans/{plan_id}/transition"
+access = "authenticated"
+# #81 D1: as DELETE, with a valid body.
+json = { version = 1, action = "activate" }
+
+[[route]]
 method = "DELETE"
 path = "/api/v1/notes/{note_id}"
 access = "authenticated"
@@ -1507,6 +1549,26 @@ access = "authenticated"
 # 200 and 403 student_consent_required cases are in
 # tests/integration/test_session_notes.py; the leak walk is
 # tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-plans"
+access = "authenticated"
+# #81 E1: holders and tutors teaching the student (every plan), a former
+# creator (own plans), the student and linked guardians with academic access
+# (active and closed plans; 403 student_consent_required for a guardian of
+# an adult without it); anyone else the 404 of an unknown id. The
+# placeholder id is no student: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/learning-plans"
+access = "authenticated"
+# #81 C3: holders and tutors teaching the student. A valid body; the
+# placeholder student is unknown: 404 for every role. The 201, 403 and 422
+# cases are tested in tests/integration/test_learning_plans.py.
+json = { subject_id = "00000000-0000-4000-8000-000000000081", title = "Matrix", objectives = [] }
 
 [[route]]
 method = "GET"
