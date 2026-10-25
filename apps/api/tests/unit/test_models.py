@@ -60,7 +60,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # class_session_substitutions, M4-10; class_groups and group_enrollments,
     # M4-11; session_requests, M4-14; session_change_requests, M4-17;
     # class_session_reassignment_flags and, in staff,
-    # tutor_availability_change_requests, M4-18), then
+    # tutor_availability_change_requests, M4-18; class_session_attendance and
+    # class_session_attendance_corrections, M5-09), then
     # courses (course_templates, _subjects, _modules, _assessments and
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
@@ -95,6 +96,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "session_requests",
         "session_change_requests",
         "class_session_reassignment_flags",
+        "class_session_attendance",
+        "class_session_attendance_corrections",
         "users",
         "roles",
         "permissions",
