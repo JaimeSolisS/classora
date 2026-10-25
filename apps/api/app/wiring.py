@@ -21,11 +21,14 @@ types, ``scheduling.reassignment_needed`` and the scheduling implementation
 of the ``staff`` availability impact seam; #67 D2: the ``scheduling`` tutor
 assignment source of the ``families`` student record policy; #77: the
 ``academics.session_closeout`` approval type,
-``app.workflows.session_closeout``) are wired
+``app.workflows.session_closeout``; #78: the three closeout review
+notification types and the scheduling ``completed`` attendance unlock,
+``academics.service.closeout_awaits_tutor``) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
+from app.modules.academics import service as academics_service
 from app.modules.administration import service as administration_service
 from app.modules.families import service as families_service
 from app.modules.identity.service import (
@@ -42,6 +45,7 @@ from app.modules.staff.service import (
 from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.session_cancellation import on_session_cancelled
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
+from app.workflows.session_closeout_review import register_closeout_notifications
 
 
 def register_approval_wiring() -> None:
@@ -66,6 +70,10 @@ def register_approval_wiring() -> None:
     )
     administration_service.register_approval_handler(AVAILABILITY_CHANGE_HANDLER)
     administration_service.register_approval_handler(SESSION_CLOSEOUT_HANDLER)
+    register_closeout_notifications()
+    scheduling_service.register_completed_attendance_unlock(
+        academics_service.closeout_awaits_tutor
+    )
     register_availability_notifications()
     scheduling_service.register_reassignment_notifications()
     register_availability_impact_source(scheduling_service.AVAILABILITY_IMPACT_SOURCE)

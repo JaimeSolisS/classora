@@ -26,6 +26,7 @@ import {
   namedActionLabelKey,
   reassignmentLink,
   sessionCloseoutLink,
+  sessionCloseoutReviewLine,
   reassignmentSubject,
   itemReviewLink,
   typeLabel,
@@ -197,16 +198,18 @@ function RequestSummary({ item }: { item: ApprovalRequestItem }) {
   }
   const closeout = sessionCloseoutLink(item);
   if (closeout) {
-    // #77 G4: the staff session page (its Closeout section); no decisions
-    // until the review (#78).
+    // #77 G4, #78 G2: what the item asks and a "Review" link to the
+    // session page's Closeout section; the decisions are made there.
+    const line = sessionCloseoutReviewLine(item, t);
     return (
       <span className="flex flex-col gap-1">
+        {line ? <span className="text-sm font-medium">{line}</span> : null}
         <span>{summary}</span>
         <Link
           to={closeout}
           className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
-          {t('approvals.closeout.openSession')}
+          {t('approvals.closeout.review')}
         </Link>
       </span>
     );

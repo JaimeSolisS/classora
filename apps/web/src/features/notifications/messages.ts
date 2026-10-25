@@ -1,6 +1,7 @@
 import type { i18n as I18n, TFunction } from 'i18next';
 import { toLanguage } from '@/i18n/language';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
+import { closeoutPath } from '@/features/tutor-portal/closeout/api';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -223,6 +224,12 @@ function mySchedule(
   return `/my-schedule?${search.toString()}`;
 }
 
+/** The tutor's closeout of the session (#78 F1); My schedule without an id. */
+function closeoutLink(params: NotificationItem['params']): string {
+  const id = params.class_session_id;
+  return typeof id === 'string' && id ? closeoutPath(id) : '/my-schedule';
+}
+
 /**
  * Where activating a notification of a type goes, from its params and its
  * recipient; a type without an entry only becomes read (for example
@@ -242,6 +249,11 @@ export const NOTIFICATION_LINKS: Readonly<
     ) => string
   >
 > = {
+  // #78 F1: the tutor's closeout decisions open the closeout (#305 adds
+  // its edit modes).
+  'academics.closeout_approved': closeoutLink,
+  'academics.closeout_corrected': closeoutLink,
+  'academics.closeout_changes_requested': closeoutLink,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

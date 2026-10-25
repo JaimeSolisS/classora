@@ -1,4 +1,5 @@
 """Request and response bodies of the session closeout routes (#77 C2, D1;
+#78 E1;
 ``app.workflows.session_closeout_router``).
 
 They combine ``scheduling`` (the session, its attendance) and
@@ -24,7 +25,11 @@ type CloseoutBlockCode = Literal[
     "session_not_started",
     "closeout_tutor_only",
 ]
-type CloseoutStatus = Literal["submitted"]
+type CloseoutStatus = Literal["submitted", "changes_requested", "approved"]
+type CloseoutApprovalSource = Literal["review", "staff_correction"]
+type CloseoutCorrectedField = Literal[
+    "actual_minutes", "topics", "performance", "homework", "next_steps"
+]
 
 
 class _Closed(BaseModel):
@@ -59,12 +64,63 @@ class CloseoutAttendance(_Closed):
     )
 
 
-class SessionCloseoutRecord(_Closed):
-    """A submitted closeout. Submitted hours are not approved: approval is a
-    later review. `summary` is `null` with `summary_hidden: true` for
-    staff who may see the minutes but not the lesson content."""
+class CloseoutReview(_Closed):
+    """Where the review stands (#78 E1). `reason`: the latest
+    request-changes reason; `tutor_note`: the tutor's note on a
+    resubmission or the reason of a correction request. Both are `null`
+    for staff who don't see the lesson content."""
+
+    status: CloseoutStatus
+    reason: str | None
+    last_submitted_at: datetime = Field(
+        description="The latest submission, resubmission or correction request."
+    )
+    tutor_note: str | None
+
+
+class CloseoutApprovalRevision(_Closed):
+    """One immutable approval revision (#78 E1): what payroll reads."""
 
     id: uuid.UUID
+    revision: int
+    approved_minutes: int
+    approved_by: CloseoutPerson
+    approved_at: datetime
+    source: CloseoutApprovalSource = Field(
+        description="review (approved by a reviewer) or staff_correction (a"
+        " correction of an approved closeout)."
+    )
+
+
+class CloseoutCorrectionItem(_Closed):
+    """One staff correction (#78 E5). `reason` is `null` for staff who
+    don't see the lesson content; `fields` is empty for an attendance
+    re-approval."""
+
+    id: uuid.UUID
+    fields: list[CloseoutCorrectedField]
+    previous_minutes: int | None
+    new_minutes: int | None
+    reason: str | None
+    corrected_by: CloseoutPerson
+    created_at: datetime
+    approval_id: uuid.UUID | None = Field(
+        description="The approval revision the correction created, if any."
+    )
+
+
+class SessionCloseoutRecord(_Closed):
+    """A submitted closeout. Submitted hours are not approved until a
+    reviewer approves them (`approval`); a correction never changes an
+    approved revision, it adds one (`revisions`, newest first). `summary`
+    is `null` with `summary_hidden: true` for staff who may see the minutes
+    but not the lesson content."""
+
+    id: uuid.UUID
+    version: int = Field(
+        description="The closeout's version: send it to approve, request"
+        " changes, correct or resubmit."
+    )
     status: CloseoutStatus
     actual_minutes: int | None = Field(
         description="The actual teaching minutes (stored on the session)."
@@ -74,7 +130,20 @@ class SessionCloseoutRecord(_Closed):
     submitted_by: CloseoutPerson
     submitted_at: datetime
     approval_request_id: uuid.UUID | None = Field(
-        description="The pending item in the approval inbox."
+        description="The item in the approval inbox."
+    )
+    review: CloseoutReview
+    approval: CloseoutApprovalRevision | None = Field(
+        description="The current approval revision (in force for payroll), if any."
+    )
+    revisions: list[CloseoutApprovalRevision] = Field(
+        description="Every approval revision, newest first."
+    )
+    corrections: list[CloseoutCorrectionItem] = Field(
+        description="Every staff correction, newest first."
+    )
+    attendance_changed_since_approval: bool = Field(
+        description="The attendance differs from the current approval's snapshot."
     )
 
 
@@ -97,6 +166,19 @@ class SessionCloseoutView(_Closed):
     subject: CloseoutSessionSubject
     tutor: CloseoutPerson | None
     can_submit: bool
+    can_review: bool = Field(
+        description="You may approve or request changes now (a submitted"
+        " closeout that isn't your own)."
+    )
+    can_correct: bool = Field(
+        description="You may correct the minutes or the summary now."
+    )
+    can_resubmit: bool = Field(
+        description="You submitted it and changes were requested."
+    )
+    can_request_correction: bool = Field(
+        description="You submitted it and it is approved."
+    )
     block: CloseoutBlockCode | None
     attendance: CloseoutAttendance
     closeout: SessionCloseoutRecord | None

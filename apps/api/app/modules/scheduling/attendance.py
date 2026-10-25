@@ -28,7 +28,9 @@ markers' and correctors' accounts, the subject.
    row last); the policy is checked again on the locked row;
 4. ``409 version_conflict``;
 5. ``409 attendance_not_recordable`` / ``attendance_not_started`` /
-   ``attendance_locked`` (``by_tutor=True``);
+   ``attendance_locked`` (``by_tutor=True``; on a ``completed`` session the
+   registered #78 unlock predicate runs first, after the lock: the tutor
+   marks again while the closeout is ``changes_requested``);
 6. ``422 validation_error`` with ``student_not_participant`` at
    ``marks[i].student_id`` (the same for an unknown student and another
    session's: no existence oracle);
@@ -53,7 +55,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterable, Sequence
 from datetime import UTC
 from typing import Final, cast
 
@@ -106,12 +108,40 @@ from app.modules.scheduling.models import (
 from app.modules.scheduling.offer_flow import lock_sessions
 from app.modules.scheduling.schedule_schemas import ScheduleSubject
 from app.modules.scheduling.schemas import SessionKindCode, SessionStateCode
+from app.modules.scheduling.states import SessionState
 
 CORRECTED_EVENT: Final = "scheduling.attendance_corrected"
 ATTENDANCE_RECORD_TYPE: Final = "class_session_attendance"
 
 _NOT_PARTICIPANT_MESSAGE: Final = "Not a student of this session."
 _UNCHANGED_MESSAGE: Final = "The student already has this status."
+
+
+type CompletedAttendanceUnlock = Callable[[AsyncSession, uuid.UUID], Awaitable[bool]]
+"""``(session, class_session_id) -> bool``: whether the tutor may mark a
+``completed`` session again (#78 E6)."""
+
+_unlocks: list[CompletedAttendanceUnlock] = []
+
+
+def register_completed_attendance_unlock(
+    predicate: CompletedAttendanceUnlock | None,
+) -> None:
+    """Register the predicate (again: replaces it; ``None`` removes it,
+    tests only). ``app.wiring`` registers
+    ``academics.service.closeout_awaits_tutor``; scheduling never imports
+    academics (ADR-0002). Without one, a ``completed`` session stays locked
+    for the tutor (#76)."""
+    _unlocks[:] = [] if predicate is None else [predicate]
+
+
+async def _tutor_unlocked(session: AsyncSession, row: ClassSession) -> bool:
+    """The registered predicate for a ``completed`` session (one statement
+    then), else ``False`` without a statement. Called after the caller has
+    read (or locked) the session row."""
+    if row.state != SessionState.COMPLETED or not _unlocks:
+        return False
+    return await _unlocks[0](session, row.id)
 
 
 def _person(name: str | None) -> AttendancePerson | None:
@@ -140,9 +170,15 @@ async def _session_row(
 
 
 async def _attendance_view(
-    session: AsyncSession, principal: Principal, row: ClassSession
+    session: AsyncSession,
+    principal: Principal,
+    row: ClassSession,
+    *,
+    tutor_unlocked: bool | None = None,
 ) -> SessionAttendance:
-    """The B2 body of ``row`` for ``principal`` (at most 5 statements)."""
+    """The B2 body of ``row`` for ``principal`` (at most 5 statements; one
+    more for the tutor of a ``completed`` session when ``tutor_unlocked``
+    isn't given: the #78 unlock predicate, AM1)."""
     pairs = list(
         await session.execute(
             select(ClassSessionParticipant.student_id, ClassSessionAttendance)
@@ -237,7 +273,15 @@ async def _attendance_view(
 
     now = clock.now()
     is_tutor = is_current_tutor(principal, row.tutor_user_id)
-    tutor_block = attendance_block(row.state, row.starts_at, now, by_tutor=True)
+    if is_tutor and tutor_unlocked is None:
+        tutor_unlocked = await _tutor_unlocked(session, row)
+    tutor_block = attendance_block(
+        row.state,
+        row.starts_at,
+        now,
+        by_tutor=True,
+        tutor_unlocked=bool(tutor_unlocked),
+    )
     staff_block = attendance_block(row.state, row.starts_at, now, by_tutor=False)
     return SessionAttendance(
         class_session_id=row.id,
@@ -352,7 +396,10 @@ async def record_attendance(
     _ensure_tutor(actor, row)
     ensure_version(row, version)
     now = clock.now()
-    block = attendance_block(row.state, row.starts_at, now, by_tutor=True)
+    unlocked = await _tutor_unlocked(session, row)
+    block = attendance_block(
+        row.state, row.starts_at, now, by_tutor=True, tutor_unlocked=unlocked
+    )
     if block is not None:
         raise_block(block, row.state)
 
@@ -399,7 +446,7 @@ async def record_attendance(
     if changed:
         await session.flush()
         await _bump(session, row)
-    return await _attendance_view(session, actor, row)
+    return await _attendance_view(session, actor, row, tutor_unlocked=unlocked)
 
 
 async def correct_attendance(

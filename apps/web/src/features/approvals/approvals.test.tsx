@@ -489,8 +489,9 @@ describe('availability changes (#63 H2)', () => {
   });
 });
 
-// #77 G4: a session closeout row summarizes the session, links to the staff
-// session page and has no decision buttons (#78 adds the review).
+// #77 G4, #78 G2: a session closeout row says what it asks, summarizes the
+// session, links ("Review") to the staff session page's Closeout section
+// and has no decision buttons (the review happens there).
 describe('session closeouts (#77 G4)', () => {
   const COORDINATOR: SessionUserBody = {
     ...TEST_USER,
@@ -504,11 +505,12 @@ describe('session closeouts (#77 G4)', () => {
 
     expect(main().textContent).toContain('Session closeout');
     expect(main().textContent).toContain('55 of 60 min · 3 students');
+    expect(main().textContent).toContain('New');
     const link = [...main().querySelectorAll('a')].find(
-      (anchor) => anchor.textContent === 'Open session',
+      (anchor) => anchor.textContent === 'Review',
     );
     expect(link?.getAttribute('href')).toBe(
-      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2',
+      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2#closeout',
     );
     expect(
       [...main().querySelectorAll('tbody button')].map((b) => b.textContent),

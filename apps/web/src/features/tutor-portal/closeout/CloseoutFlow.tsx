@@ -243,10 +243,27 @@ export function CloseoutReadOnly({
   if (!record) {
     return <p className="text-sm font-medium">{t('closeout.noCloseout')}</p>;
   }
+  // #78 G4: the review statuses as text (the edit modes are #305's).
+  let status: string;
+  if (record.status === 'changes_requested') {
+    status = record.review.reason
+      ? t('closeout.review.tutor.changesRequested', {
+          reason: record.review.reason,
+        })
+      : t('closeout.review.tutor.changesRequestedNoReason');
+  } else if (record.status === 'approved' && record.approval) {
+    status = t('closeout.review.tutor.approved', {
+      minutes: record.approval.approved_minutes,
+    });
+  } else if (record.approval) {
+    status = t('closeout.review.tutor.correctionSubmitted');
+  } else {
+    status = t('closeout.submitted');
+  }
   return (
     <section className="flex min-w-0 flex-col gap-4">
-      <p className="rounded-md border border-border p-3 text-sm font-medium">
-        {t('closeout.submitted')}
+      <p className="rounded-md border border-border p-3 text-sm font-medium break-words whitespace-pre-line">
+        {status}
       </p>
       <dl className="grid gap-1 text-sm">
         <dt className="font-medium">{t('closeout.actualMinutes')}</dt>

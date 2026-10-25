@@ -8,8 +8,9 @@ structured summary. Submission completes the session (``confirmed →
 completed``, ``actual_minutes`` stored on ``class_sessions``), writes the
 ``academics`` closeout row (``submitted``) and creates a pending
 ``academics.session_closeout`` item in the approval inbox, in one Unit of
-Work. Submitted hours are **not approved** (#78 reviews them; payroll,
-M7-04, reads only approved closeouts). No notification is sent.
+Work. Submitted hours are **not approved** (#78 reviews them in
+:mod:`app.workflows.session_closeout_review`; payroll, M7-04, reads only
+approved closeouts). No notification is sent.
 
 The routes are in :mod:`app.workflows.session_closeout_router`.
 
@@ -17,7 +18,8 @@ The routes are in :mod:`app.workflows.session_closeout_router`.
 ``academics.service.closeout_access`` (the current tutor, or a
 ``schedule.view`` holder; anyone else the ``404`` of an unknown id, in any
 state). The summary text only for the tutor and ``teaching_hours.approve``
-holders (E5). At most 6 statements.
+holders (E5), also the review reasons (#78 E1). At most 8 statements
+(#78 E2: the closeout's revisions and corrections in two).
 
 **Submit** (:func:`submit_session_closeout`; the route adds ``401`` and the
 body's ``422`` first), in this order:
@@ -44,10 +46,11 @@ request don't exist before it.
 
 The ``academics.session_closeout`` approval handler
 (:data:`SESSION_CLOSEOUT_HANDLER`, registered by ``app.wiring``): reviewers
-hold ``teaching_hours.approve``; ``inbox_decisions = False``, and approve,
-reject and request changes answer ``409 closeout_review_unavailable`` (the
-item stays ``pending``) until #78 replaces them. ``summaries``: the session
-facts in three statements, no summary text, student names or attendance.
+hold ``teaching_hours.approve``; ``inbox_decisions = False``; the generic
+approve, reject and request changes answer ``409
+closeout_review_route_required`` unless the #78 closeout routes already
+decided the closeout (see the handler). ``summaries``: the session facts in
+three statements, no summary text, student names or attendance.
 """
 
 import uuid
@@ -65,9 +68,12 @@ from app.modules.administration import service as administration
 from app.modules.identity import service as identity
 from app.modules.scheduling import service as scheduling
 from app.workflows.session_closeout_schemas import (
+    CloseoutApprovalRevision,
     CloseoutAttendance,
     CloseoutBlockCode,
+    CloseoutCorrectionItem,
     CloseoutPerson,
+    CloseoutReview,
     CloseoutSessionSubject,
     SessionCloseoutRecord,
     SessionCloseoutSubmit,
@@ -114,7 +120,9 @@ def _raise_block(block: academics.CloseoutBlock, state: str) -> None:
 async def get_session_closeout(
     session: AsyncSession, principal: Principal, class_session_id: uuid.UUID
 ) -> SessionCloseoutView:
-    """``GET /api/v1/class-sessions/{id}/closeout`` (C1, C2)."""
+    """``GET /api/v1/class-sessions/{id}/closeout`` (#77 C1, C2; #78 E1, E2:
+    at most 8 statements whatever the participants, revisions and
+    corrections)."""
     context = await scheduling.closeout_session_context(session, class_session_id)
     access = _ensure_visible(
         principal,
@@ -123,16 +131,18 @@ async def get_session_closeout(
     )
     assert context is not None  # noqa: S101 (checked above)
     closeout = await academics.closeout_for_session(session, context.id)
+    history = (
+        None
+        if closeout is None
+        else await academics.closeout_history(session, closeout.id)
+    )
+    user_ids = {context.tutor_user_id}
+    if closeout is not None and history is not None:
+        user_ids.add(closeout.tutor_user_id)
+        user_ids |= {item.approved_by_user_id for item in history.revisions}
+        user_ids |= {item.corrected_by_user_id for item in history.corrections}
     names = await identity.get_account_references(
-        session,
-        {
-            user_id
-            for user_id in (
-                context.tutor_user_id,
-                None if closeout is None else closeout.tutor_user_id,
-            )
-            if user_id is not None
-        },
+        session, {user_id for user_id in user_ids if user_id is not None}
     )
     approval_request_id = (
         None
@@ -150,6 +160,9 @@ async def get_session_closeout(
             else CloseoutPerson(display_name=account.display_name)
         )
 
+    def named(user_id: uuid.UUID) -> CloseoutPerson:
+        return person(user_id) or CloseoutPerson(display_name="")
+
     is_tutor = access is academics.CloseoutAccess.TUTOR
     state_block = academics.closeout_block(
         context.state,
@@ -158,20 +171,74 @@ async def get_session_closeout(
         has_closeout=closeout is not None,
     )
     block: CloseoutBlockCode | None = state_block if is_tutor else academics.TUTOR_ONLY
-    shows_summary = academics.sees_summary(principal, context.tutor_user_id)
+    shows_text = academics.sees_summary(principal, context.tutor_user_id)
     record = None
-    if closeout is not None:
+    can_review = can_correct = can_resubmit = can_request_correction = False
+    if closeout is not None and history is not None:
+        revisions = [
+            CloseoutApprovalRevision(
+                id=item.id,
+                revision=item.revision,
+                approved_minutes=item.approved_minutes,
+                approved_by=named(item.approved_by_user_id),
+                approved_at=item.approved_at,
+                source=cast(Any, item.source),
+            )
+            for item in history.revisions
+        ]
+        current = next(
+            (
+                (view, item)
+                for view, item in zip(revisions, history.revisions, strict=True)
+                if item.id == closeout.current_approval_id
+            ),
+            None,
+        )
         record = SessionCloseoutRecord(
             id=closeout.id,
+            version=closeout.version,
             status=cast(Any, closeout.status),
             actual_minutes=context.actual_minutes,
-            summary=academics.summary_of(closeout) if shows_summary else None,
-            summary_hidden=not shows_summary,
-            submitted_by=person(closeout.tutor_user_id)
-            or CloseoutPerson(display_name=""),
+            summary=academics.summary_of(closeout) if shows_text else None,
+            summary_hidden=not shows_text,
+            submitted_by=named(closeout.tutor_user_id),
             submitted_at=closeout.submitted_at,
             approval_request_id=approval_request_id,
+            review=CloseoutReview(
+                status=cast(Any, closeout.status),
+                reason=closeout.review_reason if shows_text else None,
+                last_submitted_at=closeout.last_submitted_at,
+                tutor_note=closeout.tutor_note if shows_text else None,
+            ),
+            approval=None if current is None else current[0],
+            revisions=revisions,
+            corrections=[
+                CloseoutCorrectionItem(
+                    id=item.id,
+                    fields=cast(Any, list(item.fields)),
+                    previous_minutes=item.previous_minutes,
+                    new_minutes=item.new_minutes,
+                    reason=item.reason if shows_text else None,
+                    corrected_by=named(item.corrected_by_user_id),
+                    created_at=item.created_at,
+                    approval_id=item.approval_id,
+                )
+                for item in history.corrections
+            ],
+            attendance_changed_since_approval=current is not None
+            and academics.attendance_changed(current[1].attendance, context.statuses),
         )
+        reviewer = principal.has(
+            academics.TEACHING_HOURS_APPROVE
+        ) and not academics.is_self_review(principal, closeout.tutor_user_id)
+        submitter = is_tutor and closeout.tutor_user_id == principal.user_id
+        can_review = reviewer and closeout.status == academics.SUBMITTED
+        can_correct = reviewer and closeout.status in (
+            academics.SUBMITTED,
+            academics.APPROVED,
+        )
+        can_resubmit = submitter and closeout.status == academics.CHANGES_REQUESTED
+        can_request_correction = submitter and closeout.status == academics.APPROVED
     missing = context.missing_student_ids
     return SessionCloseoutView(
         class_session_id=context.id,
@@ -188,6 +255,10 @@ async def get_session_closeout(
         ),
         tutor=person(context.tutor_user_id),
         can_submit=is_tutor and state_block is None,
+        can_review=can_review,
+        can_correct=can_correct,
+        can_resubmit=can_resubmit,
+        can_request_correction=can_request_correction,
         block=block,
         attendance=CloseoutAttendance(
             total=len(context.participant_ids),
@@ -270,18 +341,50 @@ async def submit_session_closeout(
     return await get_session_closeout(session, principal, completed.id)
 
 
+def review_path(class_session_id: uuid.UUID) -> str:
+    """The staff session page where a closeout is reviewed (#78 E2)."""
+    return f"/schedule/sessions/{class_session_id}"
+
+
 class SessionCloseoutApprovalHandler:
     """The :class:`~app.modules.administration.service.ApprovalHandler` of
-    session closeouts; the subject is the closeout (E1 of #77)."""
+    session closeouts; the subject is the closeout (E1 of #77).
+
+    **Decisions go through the closeout routes (#78 E2, E3):** reviewers
+    approve or request changes on the staff session page
+    (``app.workflows.session_closeout_review``), which moves the closeout
+    first and then resolves this item through
+    ``administration.service.decide_approval_request`` in the same Unit of
+    Work. So ``approve`` accepts only a closeout already ``approved`` and
+    ``request_changes`` only one already ``changes_requested``; otherwise,
+    and always for ``reject`` (closeouts have no reject), they raise ``409
+    closeout_review_route_required`` with ``details.review_path`` and the
+    item stays as it was. The closeout is read without a lock (the review
+    routes hold it; the generic routes fail before touching it)."""
 
     request_type: Final = SESSION_CLOSEOUT_TYPE
     review_permission: Final = academics.TEACHING_HOURS_APPROVE
     supports_request_changes: Final = True
-    """#78 implements it."""
     reason_required_on_reject: Final = True
     inbox_decisions: Final = False
-    """No decisions until #78: the inbox lists no actions, and the generic
-    routes answer ``409 closeout_review_unavailable``."""
+    """E2: the inbox lists no decisions, only the "Review" link."""
+
+    async def _require(
+        self,
+        session: AsyncSession,
+        request: administration.ApprovalRequestView,
+        status: str | None,
+    ) -> None:
+        closeout = await academics.closeouts_by_id(
+            session, [request.subject_id], fresh=True
+        )
+        found = closeout.get(request.subject_id)
+        if found is None or status is None or found.status != status:
+            raise academics.CloseoutReviewRouteRequiredError(
+                review_path(found.class_session_id)
+                if found is not None
+                else "/approvals"
+            )
 
     async def approve(
         self,
@@ -289,7 +392,7 @@ class SessionCloseoutApprovalHandler:
         request: administration.ApprovalRequestView,
         principal: Principal,
     ) -> None:
-        raise academics.CloseoutReviewUnavailableError()
+        await self._require(session, request, academics.APPROVED)
 
     async def reject(
         self,
@@ -298,7 +401,7 @@ class SessionCloseoutApprovalHandler:
         principal: Principal,
         reason: str | None,
     ) -> None:
-        raise academics.CloseoutReviewUnavailableError()
+        await self._require(session, request, None)
 
     async def request_changes(
         self,
@@ -307,14 +410,17 @@ class SessionCloseoutApprovalHandler:
         principal: Principal,
         reason: str,
     ) -> None:
-        raise academics.CloseoutReviewUnavailableError()
+        await self._require(session, request, academics.CHANGES_REQUESTED)
 
     async def summaries(
         self, session: AsyncSession, subject_ids: Iterable[uuid.UUID]
     ) -> Mapping[uuid.UUID, Mapping[str, Any]]:
         """``{class_session_id, starts_at, subject_name, tutor_display_name,
-        kind, scheduled_minutes, actual_minutes, participant_count}`` by
-        closeout id, in three statements."""
+        kind, scheduled_minutes, actual_minutes, participant_count,
+        kind_of_review, approved_minutes}`` by closeout id, in three
+        statements (#78 C4: ``kind_of_review`` is ``first``,
+        ``resubmission`` or ``correction``; ``approved_minutes`` the current
+        approval revision's, or ``null``)."""
         ids = set(subject_ids)
         if not ids:
             return {}

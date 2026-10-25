@@ -217,8 +217,10 @@ unless a bullet says otherwise.
   phone flow: attendance, the actual teaching minutes and a short summary
   (topics, performance, homework, next steps). The class becomes completed
   and the closeout goes to the approval inbox for Owners, Administrators and
-  Academic Coordinators, who see it on the session page; approving it comes
-  later.
+  Academic Coordinators. From the session page they approve it, send it
+  back to the tutor with a reason, or correct the minutes and summary with
+  a reason; approvals are kept as an immutable history for payroll, and a
+  correction adds a new approval instead of changing the old one.
 
 **Courses**
 
@@ -249,8 +251,9 @@ unless a bullet says otherwise.
   qualification requests, sessions to reassign after a tutor declined or
   didn't answer an offer, families' session requests (reviewed on their
   own page), families' and tutors' cancellation and reschedule requests
-  (also reviewed on their own page) and tutor availability changes that
-  affect scheduled classes;
+  (also reviewed on their own page), tutor availability changes that
+  affect scheduled classes and tutors' session closeouts (reviewed on the
+  session page);
   staff approve or reject them. Approving an account request
   never enrolls anyone.
 

@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -165,7 +165,12 @@ Codes in use today:
 | `session_not_closable` | 409 | Submitting the closeout of a session that isn't `confirmed`; `details.state` (see Session closeout). |
 | `session_not_started` | 409 | Submitting a closeout before the session starts (`starts_at > now`; see Session closeout). |
 | `closeout_attendance_incomplete` | 409 | Submitting a closeout while a participant has no attendance mark; `details.missing_student_ids` (sorted). Nothing changes (see Session closeout). |
-| `closeout_review_unavailable` | 409 | The inbox's approve, reject or request changes of an `academics.session_closeout` item: the review arrives with M5-11 (#78); the item stays pending. |
+| `closeout_review_route_required` | 409 | The inbox's generic approve, reject or request changes of an `academics.session_closeout` item: closeouts are decided on the staff session page (M5-11, #78); `details.review_path`; the item stays as it was (see Session closeout). |
+| `closeout_not_submitted` | 409 | Approving or requesting changes of a closeout that isn't `submitted` (see Session closeout). |
+| `closeout_with_tutor` | 409 | A staff correction while the closeout is `changes_requested`: the tutor owns it until they resubmit (see Session closeout). |
+| `closeout_under_review` | 409 | The tutor's `PUT …/closeout` while it is `submitted` (see Session closeout). |
+| `closeout_self_review` | 403 | Approving, requesting changes of or correcting a closeout the caller submitted, unless they hold the Owner role (see Session closeout). |
+| `closeout_unchanged` | 422 | A staff correction or a correction request of an approved closeout that changes nothing (see Session closeout). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -4094,8 +4099,8 @@ scheduling seam `scheduling/closeout.py` and the workflow
 `scheduling`, `families` or `courses` module; `scheduling` never imports
 `academics`. One new permission, `teaching_hours.approve` (Owner,
 Administrator, Academic coordinator; not delegable). The tutor UI is
-`/my-schedule/sessions/:id/closeout`; staff see a read-only Closeout section
-on `/schedule/sessions/:id`.
+`/my-schedule/sessions/:id/closeout`; staff see the Closeout section on
+`/schedule/sessions/:id` (with the review actions since M5-11, below).
 
 After a class starts, its **current** tutor submits the closeout: every
 participant's attendance (#76 marks), the actual teaching minutes and a
@@ -4104,12 +4109,13 @@ structured summary. Submission makes the session `completed`
 (separate from `scheduled_minutes`, ISSUE-F2), writes a `submitted`
 closeout row and creates a pending `academics.session_closeout` item in the
 approval inbox, in one transaction. **Submitted is not approved:** the
-review is M5-11 (#78), and payroll (M7-04) reads approved closeouts only.
+review is M5-11 (#78, below), and payroll (M7-04) reads approved closeouts
+only.
 No notification is sent. There is no deadline.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The session's **current** tutor (while holding the `tutor` role; an accepted #55 substitute, never the original tutor after it), or a `schedule.view` holder. Anyone else, in any state, gets the `404 not_found` of an unknown id. `200` with `SessionCloseoutView`; at most 8 statements (6 today), the same for 1 and 20 participants. |
+| `GET /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The session's **current** tutor (while holding the `tutor` role; an accepted #55 substitute, never the original tutor after it), or a `schedule.view` holder. Anyone else, in any state, gets the `404 not_found` of an unknown id. `200` with `SessionCloseoutView`; at most 8 statements, the same for 1 and 20 participants and any number of revisions (#78). |
 | `POST /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The current tutor only: other visible callers get `403 closeout_tutor_only`, anyone else `404`. `201` with `SessionCloseoutView`. |
 
 **`SessionCloseoutView`** (closed allow-list): `{class_session_id, version,
@@ -4150,17 +4156,162 @@ attendance_locked`; staff corrections still work.
 
 **Approval type** `academics.session_closeout` (subject = the closeout id;
 `review_permission` `teaching_hours.approve`; `supports_request_changes`;
-a rejection needs a reason; `inbox_decisions = false`). Until #78, approve,
-reject and request changes answer `409 closeout_review_unavailable` and the
-item stays pending. Its `subject`: `{class_session_id, starts_at,
+`inbox_decisions = false`). Its `subject`: `{class_session_id, starts_at,
 subject_name, tutor_display_name, kind, scheduled_minutes, actual_minutes,
-participant_count}` (no summary text, student names or attendance; 3
-statements per page). Finance, tutors and families get `404` on the item.
+participant_count, kind_of_review, approved_minutes}` (`kind_of_review`:
+`first`, `resubmission` after changes were requested, or `correction` of an
+approved closeout; `approved_minutes`: the current approval revision's, or
+`null`; no summary text, student names or attendance; 3 statements per
+page). Finance, tutors and families get `404` on the item. The inbox shows
+a "Review" link to `/schedule/sessions/:id#closeout` and no decisions: the
+generic approve, reject and request changes answer `409
+closeout_review_route_required` with `details.review_path` and change
+nothing (the handler accepts `approve` / `request_changes` only when the
+closeout routes below already moved the closeout to that status in the same
+transaction; closeouts have no reject).
 
 **Data** (revision 0050): `session_closeouts` (`class_session_id` unique,
-`tutor_user_id`, `status` CHECK `submitted` (#78 widens it), the four summary
-columns `NULL` or 1-2000 characters, `submitted_at`, `version`; both keys `ON
-DELETE RESTRICT`; `ix_session_closeouts_tutor_user_id_submitted_at`).
+`tutor_user_id`, `status` CHECK, the four summary columns `NULL` or 1-2000
+characters, `submitted_at`, `version`; both keys `ON DELETE RESTRICT`;
+`ix_session_closeouts_tutor_user_id_submitted_at`).
+
+#### Closeout review and corrections
+
+Implemented by M5-11 (#78; spec §2, §3 "Approved hours feed payroll. Tutors
+can request corrections and admins reapprove; finalized payroll remains
+locked", §7, §16, W3.2-W3.5; architecture §4.1, §4.2, ISSUE-F1, ISSUE-F7)
+in `academics` (`closeout_rules.py`: the review rules; `closeout_review.py`:
+the approval revisions and corrections), the scheduling seams
+(`set_actual_minutes`, `closeout_attendance`,
+`register_completed_attendance_unlock`) and the workflow
+`app/workflows/session_closeout_review.py` (routes in
+`session_closeout_router.py`; the no-op `closeout_approval.on_closeout_approved`
+seam for M6/M7). No new permission. The staff session page's Closeout
+section has the review actions and the history; the tutor's edit modes are
+M5-11b (#305).
+
+**Approved records are immutable; corrections supersede.** Every approval is
+a revision in the append-only `session_closeout_approvals` (UPDATE, DELETE
+and TRUNCATE raise 42501). A re-approval inserts revision `n + 1` naming the
+one it supersedes (`supersedes_approval_id`, unique); the closeout points to
+its current revision (`current_approval_id`). M7-08 turns a superseding
+revision into a payroll adjustment when the superseded one is in a locked
+period.
+
+**Status machine** (`session_closeouts.status`; the approval request in
+brackets):
+
+| From | Action | Who | To |
+| ---- | ------ | --- | -- |
+| `submitted` | approve | reviewer | `approved`, a new revision (`pending → approved`) |
+| `submitted` | request changes (reason) | reviewer | `changes_requested` (`pending → changes_requested`) |
+| `submitted` | staff correction (reason) | reviewer | `submitted`, values changed (still `pending`) |
+| `changes_requested` | resubmit | tutor | `submitted` (`changes_requested → pending`) |
+| `approved` | correction request (reason) | tutor | `submitted`; the current revision stays in force (reopened `pending`) |
+| `approved` | staff correction (reason) | reviewer | `approved`, a new superseding revision (stays `approved`) |
+| `changes_requested` | staff correction | reviewer | `409 closeout_with_tutor` |
+
+There is no reject and no tutor withdraw.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/class-sessions/{class_session_id}/closeout/approve` | `require("teaching_hours.approve")` | Body `{version}` (the closeout's). `200` with `SessionCloseoutView`. |
+| `POST …/closeout/request-changes` | `require("teaching_hours.approve")` | Body `{version, reason}` (trimmed 1-1000: `reason_required`, `reason_too_long`). |
+| `POST …/closeout/corrections` | `require("teaching_hours.approve")` | Body `{version, actual_minutes?, summary? {topics?, performance?, homework?, next_steps?}, reason}`: only the given members change; a summary member set to `null` clears it. |
+| `PUT /api/v1/class-sessions/{class_session_id}/closeout` | `authenticated()` + record policy | The current tutor who submitted it; staff who aren't get `403 closeout_tutor_only`, anyone else `404`. Body `{version, actual_minutes, summary, reason?}` (a full replacement; `reason` trimmed, at most 1000, required from `approved`). |
+| `PUT /api/v1/class-sessions/{class_session_id}/attendance` (#76) | as before | The tutor may mark a `completed` session again only while its closeout is `changes_requested`; the attendance `GET` reports `can_mark` the same way. |
+
+**Reviewer order** (approve, request changes, corrections): `401` → `403
+permission_denied` (before any read; an unknown id gives the same `403`) →
+`422` body → the closeout `FOR UPDATE` (`404` for an unknown session or one
+without a closeout, the same body) → the session (`FOR SHARE` to approve or
+send back, `FOR UPDATE` to correct) → `403 closeout_self_review` (the
+submitter, unless they hold the Owner role) → `409 version_conflict` → `409
+closeout_not_submitted` (approve / request changes) or `closeout_with_tutor`
+(corrections). **Approve** then inserts the next revision (`source
+review`; snapshots of the tutor, the session start and kind, the scheduled
+minutes, `approved_minutes` = the session's actual minutes, and the live
+attendance statuses `{student_id: status}`), sets `approved` and clears the
+request-changes reason, resolves the inbox item, records
+`academics.closeout_approved {approval_id, revision, approved_minutes,
+supersedes_approval_id, source}` and notifies the tutor. **Request
+changes** sets `changes_requested` with the reason, resolves the item,
+records `academics.closeout_changes_requested {reason}` and notifies the
+tutor; the tutor may then mark attendance again. **Corrections** check `422
+summary_required` against the corrected result and the live attendance,
+then `422 closeout_unchanged` when nothing changes (unless the closeout is
+`approved` and its attendance changed since the approval: a re-approval),
+write the values (`set_actual_minutes` for the minutes), append a
+`session_closeout_corrections` row, and on an `approved` closeout insert a
+superseding revision (`source staff_correction`; the inbox item is
+untouched); then `academics.closeout_corrected {correction_id, fields,
+previous_minutes, new_minutes, reason, approval_id}` and the tutor's
+notification. The closeout's version goes up by exactly one per decision.
+
+**Tutor `PUT` order:** `401` → `422` body → `404` (the record policy, or no
+closeout) → `403 closeout_tutor_only` → the closeout `FOR UPDATE` → the
+session `FOR UPDATE` → `409 version_conflict` → `409 closeout_under_review`
+(`submitted`) → `422 reason_required` (from `approved`) → `409
+closeout_attendance_incomplete` → `422 summary_required` → `422
+closeout_unchanged` (from `approved` with identical minutes and summary) →
+the writes (`tutor_note`, `last_submitted_at`, `submitted`) → the inbox item
+(`resubmit_approval_request` from `changes_requested`,
+`open_approval_request` from `approved`) → `academics.closeout_resubmitted
+{from_status, reason}`. No notification: the inbox lists it again. While a
+correction request is pending, `current_approval_id` and its revision stay
+as they were, so payroll keeps the earlier approved minutes.
+
+**Lock order:** closeout → session → approval request for every writer here
+(#77's submit takes the session first, but no closeout exists before it;
+#76's attendance writers take only the session row, and the unlock
+predicate reads the closeout without a lock after it).
+
+**`GET` additions** (at most 8 statements whatever the participants,
+revisions and corrections): `can_review` (a holder, `submitted`, not their
+own), `can_correct` (a holder, `submitted` or `approved`, not their own),
+`can_resubmit` (the submitting current tutor, `changes_requested`),
+`can_request_correction` (the same tutor, `approved`); `closeout` gains
+`version` (send it to the four routes), `review {status, reason,
+last_submitted_at, tutor_note}`, `approval` (the current revision `{id,
+revision, approved_minutes, approved_by {display_name}, approved_at,
+source}` or `null`), `revisions[]` (newest first), `corrections[] {id,
+fields, previous_minutes, new_minutes, reason, corrected_by {display_name},
+created_at, approval_id}` and `attendance_changed_since_approval`.
+**Finance redaction:** `review.reason`, `review.tutor_note` and each
+correction's `reason` are `null` for callers who don't see the summary
+(Finance); minutes, statuses, revisions and correction metadata stay.
+
+**Notifications** (to the submitting tutor, in any account state, in the
+decision's transaction): `academics.closeout_approved` and
+`academics.closeout_corrected` `{class_session_id, starts_at, subject_name,
+approved_minutes | null}`, `academics.closeout_changes_requested`
+`{class_session_id, starts_at, subject_name}`; never a reason, summary or
+student data. The web opens the closeout page.
+
+**Approved fields for payroll** (read by M7): M7-04 reads only the current
+revision (`session_closeouts.current_approval_id`): `tutor_user_id`,
+`session_starts_at`, `session_kind`, `scheduled_minutes`, `approved_minutes`,
+`attendance`, `approved_at` and `id`. A closeout without a current revision
+is never paid. M7-08: a revision with `supersedes_approval_id` whose
+superseded revision is on a finalized line yields one adjustment. M6 /
+ISSUE-F1: the package debit runs in `on_closeout_approved` for revision 1
+only.
+
+**Data** (revision 0051): `session_closeouts` gains `last_submitted_at`
+(backfilled from `submitted_at`), `review_reason` and `tutor_note` (trimmed
+1-1000), `current_approval_id` (`DEFERRABLE INITIALLY DEFERRED`, `ON DELETE
+RESTRICT`); the status CHECK is `submitted`, `changes_requested`,
+`approved`, with a reason while `changes_requested` and a current revision
+while `approved`. `session_closeout_approvals` (`UNIQUE (closeout_id,
+revision)`, `supersedes_approval_id` unique, revision 1 and only revision 1
+supersedes nothing, `source` `review` / `staff_correction`,
+`approved_minutes` 0-720, `ix_session_closeout_approvals_tutor_user_id
+_session_starts_at` for M7-04) and `session_closeout_corrections` (`fields`
+a subset of `actual_minutes`, `topics`, `performance`, `homework`,
+`next_steps`, empty only for a re-approval; `new_minutes` with the minutes
+field; `closeout_status` `submitted` / `approved` with the revision it
+created), both append-only and not audited (their named events are their
+record). Every key `ON DELETE RESTRICT`.
 
 ### Change requests
 

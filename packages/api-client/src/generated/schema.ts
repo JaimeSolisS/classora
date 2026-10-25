@@ -2182,7 +2182,14 @@ export interface paths {
          *     schedule.view.
          */
         get: operations["get_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_get"];
-        put?: never;
+        /**
+         * Resubmit Class Session Closeout
+         * @description Resubmit your closeout after changes were requested, or ask for a
+         *     correction of an approved one (with a reason). It goes back to the
+         *     approval inbox; an approval stays in force until a reviewer approves
+         *     the correction.
+         */
+        put: operations["resubmit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_put"];
         /**
          * Submit Class Session Closeout
          * @description Close out a class once it has started: with every participant's
@@ -2192,6 +2199,72 @@ export interface paths {
          *     are not approved.
          */
         post: operations["submit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/closeout/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Class Session Closeout
+         * @description Approve a submitted closeout: an immutable approval revision with the
+         *     actual minutes and the attendance as they are now. A later approval
+         *     supersedes it; it is never edited.
+         */
+        post: operations["approve_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/closeout/request-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Class Session Closeout Changes
+         * @description Send a submitted closeout back to its tutor with a reason. The tutor
+         *     can then fix the attendance, minutes and summary and resubmit.
+         */
+        post: operations["request_class_session_closeout_changes_api_v1_class_sessions__class_session_id__closeout_request_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/class-sessions/{class_session_id}/closeout/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Class Session Closeout
+         * @description Correct the minutes or the summary of a closeout with a reason. On an
+         *     approved closeout the correction is a new approval that supersedes the
+         *     current one (also with no field changed, to re-approve changed
+         *     attendance).
+         */
+        post: operations["correct_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_corrections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5427,6 +5500,42 @@ export interface components {
             availability?: components["schemas"]["AvailabilityWindow"][] | null;
         };
         /**
+         * CloseoutApprovalRevision
+         * @description One immutable approval revision (#78 E1): what payroll reads.
+         */
+        CloseoutApprovalRevision: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Approved Minutes */
+            approved_minutes: number;
+            approved_by: components["schemas"]["CloseoutPerson"];
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /** @description review (approved by a reviewer) or staff_correction (a correction of an approved closeout). */
+            source: components["schemas"]["CloseoutApprovalSource"];
+        };
+        /** @enum {string} */
+        CloseoutApprovalSource: "review" | "staff_correction";
+        /**
+         * CloseoutApprove
+         * @description `POST /api/v1/class-sessions/{id}/closeout/approve` (#78 C1).
+         */
+        CloseoutApprove: {
+            /**
+             * Version
+             * @description The closeout's version, as last read.
+             */
+            version: number;
+        };
+        /**
          * CloseoutAttendance
          * @description How complete the session's attendance is (the marks themselves are
          *     on `GET …/attendance`).
@@ -5455,6 +5564,66 @@ export interface components {
         };
         /** @enum {string} */
         CloseoutBlockCode: "closeout_already_submitted" | "session_not_closable" | "session_not_started" | "closeout_tutor_only";
+        /** @enum {string} */
+        CloseoutCorrectedField: "actual_minutes" | "topics" | "performance" | "homework" | "next_steps";
+        /**
+         * CloseoutCorrection
+         * @description `POST /api/v1/class-sessions/{id}/closeout/corrections` (#78 C3): the
+         *     members given change (`actual_minutes` 0-720; a `summary` member set to
+         *     `null` clears it), with a reason (trimmed, 1-1000 characters). On an
+         *     approved closeout the correction is a new approval.
+         */
+        CloseoutCorrection: {
+            /**
+             * Version
+             * @description The closeout's version, as last read.
+             */
+            version: number;
+            /**
+             * Actual Minutes
+             * @description The corrected teaching minutes, 0-720 (left out: unchanged).
+             */
+            actual_minutes?: number | null;
+            /** @description The summary members to change (left out: unchanged). */
+            summary?: components["schemas"]["CloseoutSummaryInput"] | null;
+            /**
+             * Reason
+             * @description Why: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * CloseoutCorrectionItem
+         * @description One staff correction (#78 E5). `reason` is `null` for staff who
+         *     don't see the lesson content; `fields` is empty for an attendance
+         *     re-approval.
+         */
+        CloseoutCorrectionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Fields */
+            fields: components["schemas"]["CloseoutCorrectedField"][];
+            /** Previous Minutes */
+            previous_minutes: number | null;
+            /** New Minutes */
+            new_minutes: number | null;
+            /** Reason */
+            reason: string | null;
+            corrected_by: components["schemas"]["CloseoutPerson"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Approval Id
+             * @description The approval revision the correction created, if any.
+             */
+            approval_id: string | null;
+        };
         /**
          * CloseoutPerson
          * @description A person by display name only.
@@ -5462,6 +5631,69 @@ export interface components {
         CloseoutPerson: {
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * CloseoutRequestChanges
+         * @description `POST /api/v1/class-sessions/{id}/closeout/request-changes` (#78 C2):
+         *     why the tutor must change it (trimmed, 1-1000 characters:
+         *     reason_required / reason_too_long).
+         */
+        CloseoutRequestChanges: {
+            /**
+             * Version
+             * @description The closeout's version, as last read.
+             */
+            version: number;
+            /**
+             * Reason
+             * @description What to change: 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * CloseoutResubmit
+         * @description `PUT /api/v1/class-sessions/{id}/closeout` (#78 D1): the full
+         *     replacement of the minutes and the summary, and a reason (trimmed, at
+         *     most 1000 characters; required to request a correction of an approved
+         *     closeout).
+         */
+        CloseoutResubmit: {
+            /**
+             * Version
+             * @description The closeout's version, as last read.
+             */
+            version: number;
+            /**
+             * Actual Minutes
+             * @description Actual teaching minutes, 0-720.
+             */
+            actual_minutes: number;
+            summary: components["schemas"]["CloseoutSummaryInput"];
+            /**
+             * Reason
+             * @description A note for the reviewer; required for a correction request.
+             */
+            reason?: string | null;
+        };
+        /**
+         * CloseoutReview
+         * @description Where the review stands (#78 E1). `reason`: the latest
+         *     request-changes reason; `tutor_note`: the tutor's note on a
+         *     resubmission or the reason of a correction request. Both are `null`
+         *     for staff who don't see the lesson content.
+         */
+        CloseoutReview: {
+            status: components["schemas"]["CloseoutStatus"];
+            /** Reason */
+            reason: string | null;
+            /**
+             * Last Submitted At
+             * Format: date-time
+             * @description The latest submission, resubmission or correction request.
+             */
+            last_submitted_at: string;
+            /** Tutor Note */
+            tutor_note: string | null;
         };
         /**
          * CloseoutSessionSubject
@@ -5478,8 +5710,8 @@ export interface components {
             /** Education Level Name */
             education_level_name: string;
         };
-        /** @constant */
-        CloseoutStatus: "submitted";
+        /** @enum {string} */
+        CloseoutStatus: "submitted" | "changes_requested" | "approved";
         /**
          * CloseoutSummary
          * @description The structured summary as stored (`null`: left empty).
@@ -9085,9 +9317,11 @@ export interface components {
         };
         /**
          * SessionCloseoutRecord
-         * @description A submitted closeout. Submitted hours are not approved: approval is a
-         *     later review. `summary` is `null` with `summary_hidden: true` for
-         *     staff who may see the minutes but not the lesson content.
+         * @description A submitted closeout. Submitted hours are not approved until a
+         *     reviewer approves them (`approval`); a correction never changes an
+         *     approved revision, it adds one (`revisions`, newest first). `summary`
+         *     is `null` with `summary_hidden: true` for staff who may see the minutes
+         *     but not the lesson content.
          */
         SessionCloseoutRecord: {
             /**
@@ -9095,6 +9329,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Version
+             * @description The closeout's version: send it to approve, request changes, correct or resubmit.
+             */
+            version: number;
             status: components["schemas"]["CloseoutStatus"];
             /**
              * Actual Minutes
@@ -9112,9 +9351,27 @@ export interface components {
             submitted_at: string;
             /**
              * Approval Request Id
-             * @description The pending item in the approval inbox.
+             * @description The item in the approval inbox.
              */
             approval_request_id: string | null;
+            review: components["schemas"]["CloseoutReview"];
+            /** @description The current approval revision (in force for payroll), if any. */
+            approval: components["schemas"]["CloseoutApprovalRevision"] | null;
+            /**
+             * Revisions
+             * @description Every approval revision, newest first.
+             */
+            revisions: components["schemas"]["CloseoutApprovalRevision"][];
+            /**
+             * Corrections
+             * @description Every staff correction, newest first.
+             */
+            corrections: components["schemas"]["CloseoutCorrectionItem"][];
+            /**
+             * Attendance Changed Since Approval
+             * @description The attendance differs from the current approval's snapshot.
+             */
+            attendance_changed_since_approval: boolean;
         };
         /**
          * SessionCloseoutSubmit
@@ -9174,6 +9431,26 @@ export interface components {
             tutor: components["schemas"]["CloseoutPerson"] | null;
             /** Can Submit */
             can_submit: boolean;
+            /**
+             * Can Review
+             * @description You may approve or request changes now (a submitted closeout that isn't your own).
+             */
+            can_review: boolean;
+            /**
+             * Can Correct
+             * @description You may correct the minutes or the summary now.
+             */
+            can_correct: boolean;
+            /**
+             * Can Resubmit
+             * @description You submitted it and changes were requested.
+             */
+            can_resubmit: boolean;
+            /**
+             * Can Request Correction
+             * @description You submitted it and it is approved.
+             */
+            can_request_correction: boolean;
             block: components["schemas"]["CloseoutBlockCode"] | null;
             attendance: components["schemas"]["CloseoutAttendance"];
             closeout: components["schemas"]["SessionCloseoutRecord"] | null;
@@ -17981,6 +18258,77 @@ export interface operations {
             };
         };
     };
+    resubmit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutResubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the session's current tutor who submitted the closeout changes it (closeout_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, not one whose closeout you may see, or it has no closeout (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The closeout changed since it was read (version_conflict); it is already under review (closeout_under_review); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     submit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_post: {
         parameters: {
             query?: never;
@@ -18033,6 +18381,219 @@ export interface operations {
                 };
             };
             /** @description The session changed since it was read (version_conflict); its closeout was already submitted (closeout_already_submitted); it isn't confirmed (session_not_closable, details.state); it hasn't started (session_not_started); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    approve_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or it has no closeout (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The closeout changed since it was read (version_conflict) or isn't waiting for review (closeout_not_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    request_class_session_closeout_changes_api_v1_class_sessions__class_session_id__closeout_request_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutRequestChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or it has no closeout (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The closeout changed since it was read (version_conflict) or isn't waiting for review (closeout_not_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    correct_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseoutCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCloseoutView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such class session, or it has no closeout (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The closeout changed since it was read (version_conflict), or changes were requested and the tutor is editing it (closeout_with_tutor). */
             409: {
                 headers: {
                     [name: string]: unknown;

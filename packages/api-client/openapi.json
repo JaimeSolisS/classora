@@ -10261,6 +10261,380 @@
             }
           }
         }
+      },
+      "put": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Resubmit Class Session Closeout",
+        "description": "Resubmit your closeout after changes were requested, or ask for a\ncorrection of an approved one (with a reason). It goes back to the\napproval inbox; an approval stays in force until a reviewer approves\nthe correction.",
+        "operationId": "resubmit_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_put",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseoutResubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the session's current tutor who submitted the closeout changes it (closeout_tutor_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, not one whose closeout you may see, or it has no closeout (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The closeout changed since it was read (version_conflict); it is already under review (closeout_under_review); or a participant has no attendance mark (closeout_attendance_incomplete, details.missing_student_ids). Nothing is changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/closeout/approve": {
+      "post": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Approve Class Session Closeout",
+        "description": "Approve a submitted closeout: an immutable approval revision with the\nactual minutes and the attendance as they are now. A later approval\nsupersedes it; it is never edited.",
+        "operationId": "approve_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_approve_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseoutApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or it has no closeout (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The closeout changed since it was read (version_conflict) or isn't waiting for review (closeout_not_submitted).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/closeout/request-changes": {
+      "post": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Request Class Session Closeout Changes",
+        "description": "Send a submitted closeout back to its tutor with a reason. The tutor\ncan then fix the attendance, minutes and summary and resubmit.",
+        "operationId": "request_class_session_closeout_changes_api_v1_class_sessions__class_session_id__closeout_request_changes_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseoutRequestChanges"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or it has no closeout (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The closeout changed since it was read (version_conflict) or isn't waiting for review (closeout_not_submitted).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/class-sessions/{class_session_id}/closeout/corrections": {
+      "post": {
+        "tags": [
+          "closeout"
+        ],
+        "summary": "Correct Class Session Closeout",
+        "description": "Correct the minutes or the summary of a closeout with a reason. On an\napproved closeout the correction is a new approval that supersedes the\ncurrent one (also with no field changed, to re-approve changed\nattendance).",
+        "operationId": "correct_class_session_closeout_api_v1_class_sessions__class_session_id__closeout_corrections_post",
+        "parameters": [
+          {
+            "name": "class_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Class Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseoutCorrection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCloseoutView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You lack teaching_hours.approve (permission_denied, checked first); the closeout is your own and you aren't the Owner (closeout_self_review); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such class session, or it has no closeout (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The closeout changed since it was read (version_conflict), or changes were requested and the tutor is editing it (closeout_with_tutor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/schedule/tutor-options": {
@@ -19188,6 +19562,70 @@
         "title": "ClassroomUpdate",
         "description": "A change to a classroom with the ``version`` the caller loaded. Fields\nnot sent stay unchanged; ``availability``, when sent, replaces all the\nroom's windows (``[]`` clears them)."
       },
+      "CloseoutApprovalRevision": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "approved_minutes": {
+            "type": "integer",
+            "title": "Approved Minutes"
+          },
+          "approved_by": {
+            "$ref": "#/components/schemas/CloseoutPerson"
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Approved At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CloseoutApprovalSource",
+            "description": "review (approved by a reviewer) or staff_correction (a correction of an approved closeout)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "revision",
+          "approved_minutes",
+          "approved_by",
+          "approved_at",
+          "source"
+        ],
+        "title": "CloseoutApprovalRevision",
+        "description": "One immutable approval revision (#78 E1): what payroll reads."
+      },
+      "CloseoutApprovalSource": {
+        "type": "string",
+        "enum": [
+          "review",
+          "staff_correction"
+        ]
+      },
+      "CloseoutApprove": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The closeout's version, as last read."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "CloseoutApprove",
+        "description": "`POST /api/v1/class-sessions/{id}/closeout/approve` (#78 C1)."
+      },
       "CloseoutAttendance": {
         "properties": {
           "total": {
@@ -19235,6 +19673,147 @@
           "closeout_tutor_only"
         ]
       },
+      "CloseoutCorrectedField": {
+        "type": "string",
+        "enum": [
+          "actual_minutes",
+          "topics",
+          "performance",
+          "homework",
+          "next_steps"
+        ]
+      },
+      "CloseoutCorrection": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The closeout's version, as last read."
+          },
+          "actual_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 720.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Minutes",
+            "description": "The corrected teaching minutes, 0-720 (left out: unchanged)."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseoutSummaryInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The summary members to change (left out: unchanged)."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "CloseoutCorrection",
+        "description": "`POST /api/v1/class-sessions/{id}/closeout/corrections` (#78 C3): the\nmembers given change (`actual_minutes` 0-720; a `summary` member set to\n`null` clears it), with a reason (trimmed, 1-1000 characters). On an\napproved closeout the correction is a new approval."
+      },
+      "CloseoutCorrectionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/CloseoutCorrectedField"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "previous_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Minutes"
+          },
+          "new_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Minutes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "corrected_by": {
+            "$ref": "#/components/schemas/CloseoutPerson"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id",
+            "description": "The approval revision the correction created, if any."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "fields",
+          "previous_minutes",
+          "new_minutes",
+          "reason",
+          "corrected_by",
+          "created_at",
+          "approval_id"
+        ],
+        "title": "CloseoutCorrectionItem",
+        "description": "One staff correction (#78 E5). `reason` is `null` for staff who\ndon't see the lesson content; `fields` is empty for an attendance\nre-approval."
+      },
       "CloseoutPerson": {
         "properties": {
           "display_name": {
@@ -19249,6 +19828,113 @@
         ],
         "title": "CloseoutPerson",
         "description": "A person by display name only."
+      },
+      "CloseoutRequestChanges": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The closeout's version, as last read."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "What to change: 1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "CloseoutRequestChanges",
+        "description": "`POST /api/v1/class-sessions/{id}/closeout/request-changes` (#78 C2):\nwhy the tutor must change it (trimmed, 1-1000 characters:\nreason_required / reason_too_long)."
+      },
+      "CloseoutResubmit": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The closeout's version, as last read."
+          },
+          "actual_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 0.0,
+            "title": "Actual Minutes",
+            "description": "Actual teaching minutes, 0-720."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CloseoutSummaryInput"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "A note for the reviewer; required for a correction request."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "actual_minutes",
+          "summary"
+        ],
+        "title": "CloseoutResubmit",
+        "description": "`PUT /api/v1/class-sessions/{id}/closeout` (#78 D1): the full\nreplacement of the minutes and the summary, and a reason (trimmed, at\nmost 1000 characters; required to request a correction of an approved\ncloseout)."
+      },
+      "CloseoutReview": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CloseoutStatus"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "last_submitted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Submitted At",
+            "description": "The latest submission, resubmission or correction request."
+          },
+          "tutor_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "reason",
+          "last_submitted_at",
+          "tutor_note"
+        ],
+        "title": "CloseoutReview",
+        "description": "Where the review stands (#78 E1). `reason`: the latest\nrequest-changes reason; `tutor_note`: the tutor's note on a\nresubmission or the reason of a correction request. Both are `null`\nfor staff who don't see the lesson content."
       },
       "CloseoutSessionSubject": {
         "properties": {
@@ -19278,7 +19964,11 @@
       },
       "CloseoutStatus": {
         "type": "string",
-        "const": "submitted"
+        "enum": [
+          "submitted",
+          "changes_requested",
+          "approved"
+        ]
       },
       "CloseoutSummary": {
         "properties": {
@@ -26675,6 +27365,11 @@
             "format": "uuid",
             "title": "Id"
           },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The closeout's version: send it to approve, request changes, correct or resubmit."
+          },
           "status": {
             "$ref": "#/components/schemas/CloseoutStatus"
           },
@@ -26723,23 +27418,64 @@
               }
             ],
             "title": "Approval Request Id",
-            "description": "The pending item in the approval inbox."
+            "description": "The item in the approval inbox."
+          },
+          "review": {
+            "$ref": "#/components/schemas/CloseoutReview"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseoutApprovalRevision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current approval revision (in force for payroll), if any."
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/CloseoutApprovalRevision"
+            },
+            "type": "array",
+            "title": "Revisions",
+            "description": "Every approval revision, newest first."
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/CloseoutCorrectionItem"
+            },
+            "type": "array",
+            "title": "Corrections",
+            "description": "Every staff correction, newest first."
+          },
+          "attendance_changed_since_approval": {
+            "type": "boolean",
+            "title": "Attendance Changed Since Approval",
+            "description": "The attendance differs from the current approval's snapshot."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
+          "version",
           "status",
           "actual_minutes",
           "summary",
           "summary_hidden",
           "submitted_by",
           "submitted_at",
-          "approval_request_id"
+          "approval_request_id",
+          "review",
+          "approval",
+          "revisions",
+          "corrections",
+          "attendance_changed_since_approval"
         ],
         "title": "SessionCloseoutRecord",
-        "description": "A submitted closeout. Submitted hours are not approved: approval is a\nlater review. `summary` is `null` with `summary_hidden: true` for\nstaff who may see the minutes but not the lesson content."
+        "description": "A submitted closeout. Submitted hours are not approved until a\nreviewer approves them (`approval`); a correction never changes an\napproved revision, it adds one (`revisions`, newest first). `summary`\nis `null` with `summary_hidden: true` for staff who may see the minutes\nbut not the lesson content."
       },
       "SessionCloseoutSubmit": {
         "properties": {
@@ -26818,6 +27554,26 @@
             "type": "boolean",
             "title": "Can Submit"
           },
+          "can_review": {
+            "type": "boolean",
+            "title": "Can Review",
+            "description": "You may approve or request changes now (a submitted closeout that isn't your own)."
+          },
+          "can_correct": {
+            "type": "boolean",
+            "title": "Can Correct",
+            "description": "You may correct the minutes or the summary now."
+          },
+          "can_resubmit": {
+            "type": "boolean",
+            "title": "Can Resubmit",
+            "description": "You submitted it and changes were requested."
+          },
+          "can_request_correction": {
+            "type": "boolean",
+            "title": "Can Request Correction",
+            "description": "You submitted it and it is approved."
+          },
           "block": {
             "anyOf": [
               {
@@ -26855,6 +27611,10 @@
           "subject",
           "tutor",
           "can_submit",
+          "can_review",
+          "can_correct",
+          "can_resubmit",
+          "can_request_correction",
           "block",
           "attendance",
           "closeout"

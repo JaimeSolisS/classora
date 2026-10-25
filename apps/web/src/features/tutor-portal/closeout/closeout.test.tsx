@@ -35,6 +35,9 @@ import {
   OPEN,
   SESSION_ID,
   SUBMITTED,
+  TUTOR_APPROVED,
+  TUTOR_CHANGES_REQUESTED,
+  CORRECTION_SUBMITTED,
   ZONE,
 } from './fixtures';
 import {
@@ -465,6 +468,22 @@ describe('the closeout flow (G1)', () => {
     expect(text()).toContain('55 of 60 min');
     expect(text()).toContain('Fracciones equivalentes');
     expect(main().querySelector('ol')).toBeNull();
+  });
+
+  // #78 G4: the review statuses as text until #305's edit modes.
+  it.each([
+    [
+      TUTOR_CHANGES_REQUESTED,
+      'Changes requested: Añade la tarea asignada y los siguientes pasos con más detalle.',
+    ],
+    [TUTOR_APPROVED, 'Approved · 50 min'],
+    [CORRECTION_SUBMITTED, 'Correction submitted for review'],
+  ])('shows the review status read-only (%#)', async (data, status) => {
+    await open([data]);
+
+    expect(text()).toContain(status);
+    expect(main().querySelector('ol')).toBeNull();
+    expect(main().querySelector('button')).toBeNull();
   });
 
   it.each([

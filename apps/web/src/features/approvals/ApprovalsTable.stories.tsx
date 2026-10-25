@@ -8,6 +8,7 @@ import {
   MIXED_ITEMS,
   PENDING_REGISTRATION,
   SESSION_CLOSEOUT,
+  SESSION_CLOSEOUT_CORRECTION,
 } from './fixtures';
 
 // The approval list (#40 F3, F6): mixed statuses and types, empty, loading
@@ -101,13 +102,19 @@ export const OnePending: Story = {
   },
 };
 
-// #77 G4: a session closeout row: its summary, the "Open session" link and
-// no decision buttons.
+// #77 G4, #78 G2: session closeout rows (a first review and a correction
+// request): what they ask, the summary, the "Review" link and no decision
+// buttons.
 export const SessionCloseoutRow: Story = {
   args: {
     state: {
       status: 'ready',
-      page: { items: [SESSION_CLOSEOUT], total: 1, limit: 10, offset: 0 },
+      page: {
+        items: [SESSION_CLOSEOUT, SESSION_CLOSEOUT_CORRECTION],
+        total: 2,
+        limit: 10,
+        offset: 0,
+      },
     },
   },
   render: (args) => (
@@ -116,10 +123,17 @@ export const SessionCloseoutRow: Story = {
     />
   ),
   play: async ({ canvas, canvasElement }) => {
+    const links = await canvas.findAllByRole('link', {
+      name: i18n.t('approvals.closeout.review'),
+    });
+    await expect(links).toHaveLength(2);
     await expect(
-      await canvas.findByRole('link', {
-        name: i18n.t('approvals.closeout.openSession'),
-      }),
+      canvas.getByText(
+        `${i18n.t('approvals.closeout.kinds.correction')} · ${i18n.t(
+          'approvals.closeout.approvedMinutes',
+          { minutes: 55 },
+        )}`,
+      ),
     ).toBeVisible();
     await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
       0,

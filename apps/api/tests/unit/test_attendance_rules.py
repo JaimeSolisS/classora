@@ -75,6 +75,25 @@ def test_attendance_block(state, starts_at, by_tutor, expected):
     assert attendance_block(state, starts_at, NOW, by_tutor=by_tutor) == expected
 
 
+UNLOCKED_CASES = [
+    # #78 E6: tutor_unlocked lifts only the tutor's completed lock.
+    # (state, starts_at, by_tutor, expected)
+    (SessionState.COMPLETED, PAST, True, None),
+    (SessionState.COMPLETED, PAST, False, None),
+    (SessionState.COMPLETED, FUTURE, True, "attendance_not_started"),
+    (SessionState.CONFIRMED, PAST, True, None),
+    *((state, PAST, True, "attendance_not_recordable") for state in NOT_RECORDABLE),
+]
+
+
+@pytest.mark.parametrize(("state", "starts_at", "by_tutor", "expected"), UNLOCKED_CASES)
+def test_attendance_block_with_the_tutor_unlocked(state, starts_at, by_tutor, expected):
+    assert (
+        attendance_block(state, starts_at, NOW, by_tutor=by_tutor, tutor_unlocked=True)
+        == expected
+    )
+
+
 def principal(user_id: uuid.UUID, *roles: str) -> Principal:
     permissions: set[str] = set()
     for role in roles:

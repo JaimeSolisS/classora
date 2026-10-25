@@ -66,13 +66,16 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // Presente, sets 55 minutes, fills Topics, Performance and Next steps
 // (axe on the summary step), submits and sees "Enviado a revisión", also
 // after a reload (axe). The Owner (shared session) finds the item in the
-// approval inbox, opens the session and sees the Closeout section with
-// 55 of 60 minutes (axe).
+// approval inbox ("Nuevo"), opens it with "Revisar" and sees the Closeout
+// section with 55 of 60 minutes (axe). Closeout review (#78 I9): the Owner
+// corrects the minutes to 50 with a reason (the history shows 55 → 50),
+// approves ("Aprobado · 50 min", axe) and the inbox no longer lists it as
+// pending.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
 // the reauthenticated Owner context of createApprovedTutor, #55), no
 // one-time-link redemption, 1 registration (the substitute, #55); the
-// attendance and closeout steps add none (#76, #77). It never
+// attendance, closeout and review steps add none (#76, #77, #78). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -846,8 +849,9 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   );
   expect(await axeViolations(page)).toEqual([]);
 
-  // 10. Closeout (#77 H8): the Owner finds the item in the approval inbox
-  // (no decision buttons) and opens the session's Closeout section.
+  // 10. Closeout (#77 H8, #78 G2): the Owner finds the item in the approval
+  // inbox ("Nuevo", no decision buttons) and opens the session's Closeout
+  // section with "Revisar".
   const closed = await attendanceSession(page, tutorId, CLOSEOUT_SUBJECT);
   await page.goto('/approvals?type=academics.session_closeout');
   const item = page
@@ -857,11 +861,14 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   await expect(item).toContainText(
     fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
   );
+  await expect(item).toContainText(common.approvals.closeout.kinds.first);
   await expect(item.getByRole('button')).toHaveCount(0);
   await item
-    .getByRole('link', { name: common.approvals.closeout.openSession })
+    .getByRole('link', { name: common.approvals.closeout.review })
     .click();
-  await expect(page).toHaveURL(new RegExp(`/schedule/sessions/${closed.id}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/sessions/${closed.id}#closeout$`),
+  );
   const closeoutSection = page.getByRole('main').getByRole('region', {
     name: common.closeout.section.heading,
   });
@@ -870,6 +877,71 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
   );
   expect(await axeViolations(page)).toEqual([]);
+
+  // 11. Closeout review (#78 I9), on the shared Owner session: correct the
+  // minutes 55 → 50 with a reason (the history shows it), approve
+  // ("Aprobado · 50 min"), and the inbox no longer lists it as pending.
+  await closeoutSection
+    .getByRole('button', { name: common.closeout.review.correct, exact: true })
+    .click();
+  const correctDialog = page.getByRole('dialog');
+  await correctDialog
+    .getByLabel(common.closeout.actualMinutes, { exact: true })
+    .fill('50');
+  await correctDialog
+    .getByLabel(common.closeout.review.correctDialog.reason, { exact: false })
+    .fill('Terminó antes');
+  await correctDialog
+    .getByRole('button', {
+      name: common.closeout.review.correctDialog.submit,
+      exact: true,
+    })
+    .click();
+  await expect(correctDialog).toBeHidden();
+  await expect(closeoutSection).toContainText(
+    fill(common.closeout.review.history.minutes, { previous: 55, next: 50 }),
+  );
+  await closeoutSection
+    .getByRole('button', { name: common.closeout.review.approve, exact: true })
+    .click();
+  const approveDialog = page.getByRole('dialog');
+  await expect(approveDialog).toContainText(
+    fill(common.closeout.review.approveDialog.minutes, {
+      actual: 50,
+      scheduled: 60,
+    }),
+  );
+  await approveDialog
+    .getByRole('button', {
+      name: common.closeout.review.approveDialog.submit,
+      exact: true,
+    })
+    .click();
+  await expect(approveDialog).toBeHidden();
+  await expect(closeoutSection).toContainText(
+    fill(common.closeout.review.approvedShort, { minutes: 50 }),
+  );
+  await expect(
+    closeoutSection.getByRole('button', {
+      name: common.closeout.review.approve,
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(await axeViolations(page)).toEqual([]);
+  await page.goto('/approvals?type=academics.session_closeout&status=approved');
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('row')
+      .filter({ hasText: CLOSEOUT_SUBJECT }),
+  ).toBeVisible();
+  await page.goto('/approvals?type=academics.session_closeout');
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('row')
+      .filter({ hasText: CLOSEOUT_SUBJECT }),
+  ).toHaveCount(0);
   expect(await cspViolations(page)).toEqual([]);
   expect(ownerErrors).toEqual([]);
 });
