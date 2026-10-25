@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { i18n } from '@/i18n';
 import { formatInstant } from '@/lib/time';
 import type { ApprovalRequestItem } from './api';
-import { AVAILABILITY_CHANGE } from './fixtures';
+import { AVAILABILITY_CHANGE, SESSION_CLOSEOUT } from './fixtures';
 import {
   approvalSummary,
   availabilityChangeLink,
@@ -10,6 +10,8 @@ import {
   itemName,
   occurrenceCodeName,
   occurrenceConflictSubject,
+  sessionCloseoutLink,
+  sessionCloseoutSubject,
   sessionRequestSubject,
   typeLabel,
 } from './summary';
@@ -173,6 +175,40 @@ describe('staff.availability_change', () => {
     );
     expect(
       availabilityChangeSubject({ ...AVAILABILITY_CHANGE, subject: {} }),
+    ).toBeNull();
+  });
+});
+
+describe('academics.session_closeout (#77 G4)', () => {
+  it('summarizes the session, the tutor and the minutes', () => {
+    const t = i18n.getFixedT('en', 'common');
+    const when = (instant: string) =>
+      formatInstant(instant, {
+        timeZone: 'America/Mexico_City',
+        language: 'en',
+        style: 'dateTime',
+      });
+
+    expect(approvalSummary(SESSION_CLOSEOUT, t, when)).toBe(
+      'Matemáticas · Apr 7, 2031, 10:00 AM · Carmen Ruiz · 55 of 60 min · 3 students',
+    );
+    expect(typeLabel('academics.session_closeout', t)).toBe('Session closeout');
+    expect(
+      typeLabel('academics.session_closeout', i18n.getFixedT('es', 'common')),
+    ).toBe('Cierre de clase');
+  });
+
+  it('reads the subject only for its own type and links to the session', () => {
+    expect(sessionCloseoutSubject(SESSION_CLOSEOUT)?.participant_count).toBe(3);
+    expect(sessionCloseoutLink(SESSION_CLOSEOUT)).toBe(
+      '/schedule/sessions/00000000-0000-4000-8000-0000000000f2',
+    );
+    expect(sessionCloseoutLink(AVAILABILITY_CHANGE)).toBeNull();
+    expect(
+      sessionCloseoutSubject({
+        ...AVAILABILITY_CHANGE,
+        subject: SESSION_CLOSEOUT.subject,
+      }),
     ).toBeNull();
   });
 });

@@ -65,6 +65,7 @@ async def transition_class_session(
     expected_version: int,
     tutor_user_id: uuid.UUID | None = None,
     reason: str | None = None,
+    actual_minutes: int | None = None,
 ) -> ClassSession:
     """Move one session to ``to_state`` (ADR-0005 D2, D3, D6).
 
@@ -78,6 +79,8 @@ async def transition_class_session(
       released, the room and students stay held);
     - → ``cancelled``: ``reason`` (trimmed, 1–1000) is required; it sets
       ``cancelled_at`` from :func:`app.core.clock.now`;
+    - → ``completed``: ``actual_minutes``, when given, is stored in the same
+      versioned update (#77 closeout, ISSUE-F2); other targets don't take it;
     - other targets keep the tutor; ``confirmed`` / ``completed`` need one.
 
     A missing or unexpected argument is a ``ValueError`` (a programming
@@ -103,6 +106,8 @@ async def transition_class_session(
         raise ValueError("tutor_user_id is only taken for an offer")
     if target != SessionState.CANCELLED and reason is not None:
         raise ValueError("reason is only taken for a cancellation")
+    if target != SessionState.COMPLETED and actual_minutes is not None:
+        raise ValueError("actual_minutes is only taken for a completion")
 
     tutor = row.tutor_user_id
     if target == SessionState.OFFERED:
@@ -115,6 +120,8 @@ async def transition_class_session(
     if target == SessionState.CANCELLED:
         row.cancellation_reason = _cancellation_reason(reason)
         row.cancelled_at = clock.now()
+    if actual_minutes is not None:
+        row.actual_minutes = actual_minutes
     row.tutor_user_id = tutor
     row.state = target.value
     await flush_class_sessions(session)

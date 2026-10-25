@@ -59,10 +59,20 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // The Owner (shared session) corrects the second to Ausente with a reason
 // on the session page and sees the "Corregida" badge and the history (axe).
 //
+// Closeout (#77 H8), in the same test and logins: `run.sh` also inserts a
+// started confirmed individual session of demo.tutor with one student (the
+// subject "E2E Closeout", before the attendance session). The tutor, at
+// 390×844, opens it from My schedule, "Cerrar clase", marks the student
+// Presente, sets 55 minutes, fills Topics, Performance and Next steps
+// (axe on the summary step), submits and sees "Enviado a revisión", also
+// after a reload (axe). The Owner (shared session) finds the item in the
+// approval inbox, opens the session and sees the Closeout section with
+// 55 of 60 minutes (axe).
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
 // the reauthenticated Owner context of createApprovedTutor, #55), no
 // one-time-link redemption, 1 registration (the substitute, #55); the
-// attendance steps add none (#76). It never
+// attendance and closeout steps add none (#76, #77). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -70,13 +80,15 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-const TEST_TIMEOUT_MS = 150_000;
+const TEST_TIMEOUT_MS = 180_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
 const LEVEL = 'Primaria';
 /** The subject of the session `run.sh` inserts for attendance (#76). */
 const ATTENDANCE_SUBJECT = 'E2E Attendance';
+/** The subject of the session `run.sh` inserts for the closeout (#77). */
+const CLOSEOUT_SUBJECT = 'E2E Closeout';
 /** Every soft rule the demo tutor can break here (unlisted ones are ignored). */
 const OVERRIDE_CODES = [
   'tutor_unavailable',
@@ -181,10 +193,12 @@ interface AttendanceSession {
   students: string[];
 }
 
-/** The started session `run.sh` inserted for demo.tutor (#76 H9). */
+/** The started session `run.sh` inserted for demo.tutor (#76 H9; the
+ * closeout one with `subject`, #77 H8). */
 async function attendanceSession(
   page: Page,
   tutorId: string,
+  subject: string = ATTENDANCE_SUBJECT,
 ): Promise<AttendanceSession> {
   const to = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const from = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
@@ -202,7 +216,7 @@ async function attendanceSession(
         participants: { display_name: string }[];
       }[];
     }
-  ).items.filter((item) => item.subject.name === ATTENDANCE_SUBJECT);
+  ).items.filter((item) => item.subject.name === subject);
   expect(items).toHaveLength(1);
   const [item] = items;
   return {
@@ -676,6 +690,83 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await expect(radio(second, 'late')).toBeChecked();
     expect(await axeViolations(tutor.page)).toEqual([]);
 
+    // 9. Closeout (#77 H8): the tutor closes out the other started session
+    // from My schedule, still at 390×844.
+    const closing = await attendanceSession(
+      tutor.page,
+      tutorId,
+      CLOSEOUT_SUBJECT,
+    );
+    expect(closing.students).toHaveLength(1);
+    const [only] = closing.students as [string];
+    await tutor.page.goto(
+      `/my-schedule?view=list&date=${localDateOf(closing.startsAt)}`,
+    );
+    const agenda = tutor.page.getByRole('main').getByRole('region', {
+      name: common.mySchedule.regionLabel,
+    });
+    await expect(agenda).toHaveAttribute('aria-busy', 'false');
+    await agenda
+      .getByRole('button', { name: new RegExp(escape(CLOSEOUT_SUBJECT)) })
+      .click();
+    await tutor.page
+      .getByRole('dialog', { name: CLOSEOUT_SUBJECT })
+      .getByRole('link', { name: common.closeout.closeOut, exact: true })
+      .click();
+    await expect(tutor.page).toHaveURL(
+      new RegExp(`/my-schedule/sessions/${closing.id}/closeout$`),
+    );
+    const flow = tutor.page.getByRole('main');
+    const next = flow.getByRole('button', {
+      name: common.closeout.next,
+      exact: true,
+    });
+    await flow
+      .getByRole('group', { name: only, exact: true })
+      .getByRole('radio', {
+        name: common.attendance.statuses.present,
+        exact: true,
+      })
+      .check();
+    await flow
+      .getByRole('button', { name: common.attendance.save, exact: true })
+      .click();
+    await expect(flow.getByText(common.attendance.saved)).toBeVisible();
+    await expect(next).toBeEnabled();
+    await next.click();
+    await flow
+      .getByLabel(common.closeout.actualMinutes, { exact: true })
+      .fill('55');
+    await next.click();
+    await flow
+      .getByLabel(common.closeout.fields.topics, { exact: false })
+      .fill('Fracciones equivalentes');
+    await flow
+      .getByLabel(common.closeout.fields.performance, { exact: false })
+      .fill('Participó y resolvió los ejercicios.');
+    await flow
+      .getByLabel(common.closeout.fields.next_steps, { exact: false })
+      .fill('Suma de fracciones.');
+    expect(await axeViolations(tutor.page)).toEqual([]);
+    await next.click();
+    await flow
+      .getByRole('button', { name: common.closeout.submit, exact: true })
+      .click();
+    await expect(flow.getByText(common.closeout.submittedNotice)).toBeVisible();
+    await expect(
+      flow.getByText(common.closeout.submitted, { exact: true }),
+    ).toBeVisible();
+    await tutor.page.reload();
+    await expect(
+      flow.getByText(common.closeout.submitted, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      flow.getByText(
+        fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
+      ),
+    ).toBeVisible();
+    expect(await axeViolations(tutor.page)).toEqual([]);
+
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
   } finally {
@@ -752,6 +843,31 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     .click();
   await expect(attendanceRow).toContainText(
     fill(common.attendance.reason, { reason }),
+  );
+  expect(await axeViolations(page)).toEqual([]);
+
+  // 10. Closeout (#77 H8): the Owner finds the item in the approval inbox
+  // (no decision buttons) and opens the session's Closeout section.
+  const closed = await attendanceSession(page, tutorId, CLOSEOUT_SUBJECT);
+  await page.goto('/approvals?type=academics.session_closeout');
+  const item = page
+    .getByRole('main')
+    .getByRole('row')
+    .filter({ hasText: CLOSEOUT_SUBJECT });
+  await expect(item).toContainText(
+    fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
+  );
+  await expect(item.getByRole('button')).toHaveCount(0);
+  await item
+    .getByRole('link', { name: common.approvals.closeout.openSession })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/schedule/sessions/${closed.id}$`));
+  const closeoutSection = page.getByRole('main').getByRole('region', {
+    name: common.closeout.section.heading,
+  });
+  await expect(closeoutSection).toContainText(common.closeout.submitted);
+  await expect(closeoutSection).toContainText(
+    fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
   );
   expect(await axeViolations(page)).toEqual([]);
   expect(await cspViolations(page)).toEqual([]);

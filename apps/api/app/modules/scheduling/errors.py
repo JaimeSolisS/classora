@@ -8,6 +8,7 @@ validation_error`` with field errors). None carries record data beyond ids
 and the rule details.
 """
 
+import uuid
 from collections.abc import Sequence
 from typing import Final, Literal
 
@@ -602,3 +603,33 @@ class AttendanceCorrectedError(AppError):
 
     def __init__(self, student_id: str) -> None:
         super().__init__(details={"student_id": student_id})
+
+
+# --- Session completion (#77 B1) ------------------------------------------------------
+
+
+class AttendanceIncompleteError(AppError):
+    """``409 closeout_attendance_incomplete`` (#77 B1, E4): a participant has
+    no attendance mark; ``details`` is ``{"missing_student_ids": [...]}``
+    (sorted). Raised by :func:`~app.modules.scheduling.closeout.
+    complete_class_session`."""
+
+    status = 409
+    code = "closeout_attendance_incomplete"
+    detail = "Mark every participant's attendance first."
+
+    def __init__(self, missing_student_ids: Sequence[uuid.UUID]) -> None:
+        super().__init__(
+            details={"missing_student_ids": sorted(str(i) for i in missing_student_ids)}
+        )
+        self.missing_student_ids = sorted(missing_student_ids, key=str)
+
+
+class SessionNotCompletableError(Exception):  # noqa: N818 (a plain domain outcome)
+    """The session isn't ``confirmed`` (#77 B1); ``state`` is its state. The
+    closeout workflow checks the state first and maps it to its own
+    ``409``."""
+
+    def __init__(self, state: str) -> None:
+        super().__init__(state)
+        self.state = state

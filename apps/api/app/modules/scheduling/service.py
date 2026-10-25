@@ -98,6 +98,14 @@ marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
 reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
 #84 and #85).
 
+Session closeout (#77, :mod:`~app.modules.scheduling.closeout`): the read
+bundle :func:`closeout_session_context`, :func:`lock_closeout_session`,
+:func:`complete_class_session` (``confirmed → completed`` with
+``actual_minutes`` once every participant is marked; ``409
+closeout_attendance_incomplete`` otherwise) and the inbox summaries
+:func:`closeout_session_summaries`, composed with ``academics`` by
+``app.workflows.session_closeout``.
+
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
 :func:`reconcile_series_closures` per series before the extension; the
@@ -317,6 +325,23 @@ from app.modules.scheduling.checks import collect_conflicts as collect_conflicts
 from app.modules.scheduling.checks import (
     find_offer_conflicts as find_offer_conflicts,
 )
+from app.modules.scheduling.closeout import (
+    CloseoutSessionContext as CloseoutSessionContext,
+)
+from app.modules.scheduling.closeout import ClosingSession as ClosingSession
+from app.modules.scheduling.closeout import CompletedSession as CompletedSession
+from app.modules.scheduling.closeout import (
+    closeout_session_context as closeout_session_context,
+)
+from app.modules.scheduling.closeout import (
+    closeout_session_summaries as closeout_session_summaries,
+)
+from app.modules.scheduling.closeout import (
+    complete_class_session as complete_class_session,
+)
+from app.modules.scheduling.closeout import (
+    lock_closeout_session as lock_closeout_session,
+)
 from app.modules.scheduling.closure_changes import (
     OCCURRENCE_SKIPPED_CLOSURE as OCCURRENCE_SKIPPED_CLOSURE,
 )
@@ -360,6 +385,9 @@ from app.modules.scheduling.errors import (
     AlreadyEnrolledError as AlreadyEnrolledError,
 )
 from app.modules.scheduling.errors import (
+    AttendanceIncompleteError as AttendanceIncompleteError,
+)
+from app.modules.scheduling.errors import (
     ClassSessionNotAssignableError as ClassSessionNotAssignableError,
 )
 from app.modules.scheduling.errors import (
@@ -386,6 +414,9 @@ from app.modules.scheduling.errors import (
 )
 from app.modules.scheduling.errors import (
     SchedulingConflictError as SchedulingConflictError,
+)
+from app.modules.scheduling.errors import (
+    SessionNotCompletableError as SessionNotCompletableError,
 )
 from app.modules.scheduling.errors import (
     SessionOverlapError as SessionOverlapError,

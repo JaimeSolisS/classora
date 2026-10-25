@@ -100,6 +100,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw",
         "/api/v1/class-sessions/{class_session_id}/attendance",
         "/api/v1/class-sessions/{class_session_id}/attendance/corrections",
+        "/api/v1/class-sessions/{class_session_id}/closeout",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

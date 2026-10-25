@@ -1,9 +1,11 @@
-"""The E2E attendance fixture (#76 E5, H9):
+"""The E2E attendance fixture (#76 E5, H9; #77 H8):
 ``python -m tests.factories.e2e_attendance`` after ``make seed-demo``.
 
 One started ``confirmed`` group session of ``demo.tutor`` with two students,
 in the latest free hour before now (never on the #299 demo schedule's
-sessions), idempotent, guarded by ``APP_ENV``, counts only.
+sessions), and (#77) one started ``confirmed`` individual session with one
+student in the latest free hour before that one; idempotent, guarded by
+``APP_ENV``, counts only.
 """
 
 import asyncio
@@ -15,12 +17,16 @@ import pytest
 from app.core.db import create_sessionmaker
 from app.core.uow import UnitOfWork
 from tests.factories import demo, e2e_attendance
-from tests.factories.e2e_attendance import SUBJECT_NAME, latest_free_slot
+from tests.factories.e2e_attendance import (
+    CLOSEOUT_SUBJECT_NAME,
+    SUBJECT_NAME,
+    latest_free_slot,
+)
 from tests.factories.scheduling import persist_class_session
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import FROZEN_NOW, demo_env, migrate
 
-FIRST_RUN = f"{e2e_attendance.NAME}: 8 rows"
+FIRST_RUN = f"{e2e_attendance.NAME}: 12 rows"
 RERUN = f"{e2e_attendance.NAME}: 0 rows"
 
 
@@ -34,7 +40,7 @@ def env_for(monkeypatch):
     return lambda app_env, dsn: demo_env(monkeypatch, app_env, dsn)
 
 
-def fixture_sessions(url: str) -> list[Any]:
+def fixture_sessions(url: str, subject: str = SUBJECT_NAME) -> list[Any]:
     return run_sql(
         url,
         "SELECT s.id, s.kind, s.state, s.starts_at, s.ends_at, s.classroom_id,"
@@ -44,7 +50,7 @@ def fixture_sessions(url: str) -> list[Any]:
         " FROM class_sessions s JOIN subjects j ON j.id = s.subject_id"
         " JOIN users u ON u.id = s.tutor_user_id"
         " WHERE j.name = :subject AND u.username = 'demo.tutor'",
-        {"subject": SUBJECT_NAME},
+        {"subject": subject},
     )
 
 
@@ -83,12 +89,25 @@ def test_after_the_demo_it_inserts_one_started_session(
     assert made.starts_at >= FROZEN_NOW - timedelta(days=7)
     assert made.first_confirmed_at is not None
     assert overlaps(migrated_url, made.id) == 0
+    # #77: the closeout session ends at or before the attendance one starts.
+    [closeout] = fixture_sessions(migrated_url, CLOSEOUT_SUBJECT_NAME)
+    assert (
+        closeout.kind,
+        closeout.state,
+        closeout.classroom_id,
+        closeout.students,
+    ) == ("individual", "confirmed", None, 1)
+    assert closeout.ends_at <= made.starts_at
+    assert closeout.ends_at - closeout.starts_at == timedelta(minutes=60)
+    assert closeout.first_confirmed_at is not None
+    assert overlaps(migrated_url, closeout.id) == 0
 
     # A rerun (even later) writes nothing.
     clock.set(FROZEN_NOW + timedelta(days=1))
     assert e2e_attendance.main([]) == 0
     assert capsys.readouterr().out.splitlines() == [RERUN]
     assert len(fixture_sessions(migrated_url)) == 1
+    assert len(fixture_sessions(migrated_url, CLOSEOUT_SUBJECT_NAME)) == 1
 
 
 def test_a_busy_hour_is_skipped(migrated_url, env_for, clock, capsys):

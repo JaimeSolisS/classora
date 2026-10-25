@@ -213,6 +213,12 @@ unless a bullet says otherwise.
   session page; Owners, Administrators and Academic Coordinators correct a
   mark with a reason, kept in the session's correction history. Students and
   guardians see the student's own attendance on My schedule.
+- After the class, the tutor closes it out from My schedule in a guided
+  phone flow: attendance, the actual teaching minutes and a short summary
+  (topics, performance, homework, next steps). The class becomes completed
+  and the closeout goes to the approval inbox for Owners, Administrators and
+  Academic Coordinators, who see it on the session page; approving it comes
+  later.
 
 **Courses**
 

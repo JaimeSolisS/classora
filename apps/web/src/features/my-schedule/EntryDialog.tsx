@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,8 @@ import {
   tutorAttendanceLink,
 } from '@/features/tutor-portal/attendance/rules';
 import { StatusLabel } from '@/features/tutor-portal/attendance/StatusLabel';
+import { closeoutPath } from '@/features/tutor-portal/closeout/api';
+import { tutorCloseoutLink } from '@/features/tutor-portal/closeout/rules';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -28,6 +31,8 @@ import { dateText, whoText, type LabelContext } from './labels';
 // #76 G2: a tutor's confirmed item that has started links to "Take
 // attendance", a completed one to "View attendance"; a family item that has
 // started (confirmed or completed) shows the student's own attendance.
+// #77 G2: next to it, a started confirmed item offers "Close out session"
+// (primary) and a completed one "View closeout".
 
 export interface EntryDialogProps {
   entry: ScheduleEntry | null;
@@ -60,6 +65,8 @@ export function EntryDialog({
   const { t } = useTranslation();
   const attendanceLink =
     entry?.audience === 'tutor' ? tutorAttendanceLink(entry.item, now()) : null;
+  const closeoutLink =
+    entry?.audience === 'tutor' ? tutorCloseoutLink(entry.item, now()) : null;
   return (
     <Dialog
       open={entry !== null}
@@ -126,15 +133,33 @@ export function EntryDialog({
               </Row>
             ) : null}
           </dl>
-          {attendanceLink ? (
-            <Link
-              to={attendancePath(entry.item.id)}
-              className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
-            >
-              {attendanceLink === 'take'
-                ? t('attendance.take')
-                : t('attendance.view')}
-            </Link>
+          {closeoutLink || attendanceLink ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {closeoutLink ? (
+                <Link
+                  to={closeoutPath(entry.item.id)}
+                  className={
+                    closeoutLink === 'submit'
+                      ? buttonVariants({ size: 'sm' })
+                      : 'text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring'
+                  }
+                >
+                  {closeoutLink === 'submit'
+                    ? t('closeout.closeOut')
+                    : t('closeout.view')}
+                </Link>
+              ) : null}
+              {attendanceLink ? (
+                <Link
+                  to={attendancePath(entry.item.id)}
+                  className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {attendanceLink === 'take'
+                    ? t('attendance.take')
+                    : t('attendance.view')}
+                </Link>
+              ) : null}
+            </div>
           ) : null}
           {entry.audience === 'tutor' && entry.item.state === 'offered' ? (
             <Link

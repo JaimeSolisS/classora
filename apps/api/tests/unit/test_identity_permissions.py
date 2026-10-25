@@ -71,6 +71,8 @@ EXPECTED = {
     "course.manage": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
     # Owner decision #76 E1 (a): no Finance, Tutor, Student or Guardian.
     "attendance.correct": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
+    # Owner decision #77 E3 (a): no Finance, Tutor, Student or Guardian.
+    "teaching_hours.approve": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
 }
 
 
@@ -84,8 +86,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 29
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 72
+    assert len(PERMISSIONS) == 30
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 75
 
 
 def test_every_code_has_the_dotted_form():

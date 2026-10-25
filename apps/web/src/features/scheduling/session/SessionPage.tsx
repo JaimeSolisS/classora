@@ -31,11 +31,16 @@ import {
   correctAttendance,
   fetchAttendance,
 } from '@/features/tutor-portal/attendance/api';
+import {
+  closeoutKey,
+  fetchCloseout,
+} from '@/features/tutor-portal/closeout/api';
 import { changeRequestPath } from '../change-requests/rules';
 import {
   AttendanceSection,
   type AttendanceSectionState,
 } from './AttendanceSection';
+import { CloseoutSection, type CloseoutSectionState } from './CloseoutSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
 import { OfferPanel } from './OfferPanel';
 import {
@@ -73,6 +78,8 @@ import { SubstitutionSection } from './SubstitutionSection';
 // #76 G3: a confirmed or completed session shows its attendance; holders of
 // attendance.correct correct a mark with a reason (the session and its
 // attendance reload; the session's version changes).
+// #77 G3: a completed or started confirmed session shows its closeout
+// (read-only).
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -118,8 +125,18 @@ export function SessionPage() {
     queryFn: ({ signal }) => fetchAttendance(sessionId, signal),
     enabled: showAttendance,
   });
-  const showPanel = canAssign && session.data?.state === 'unassigned';
   const now = new Date();
+  // #77 G3: a completed session, or a confirmed one that has started.
+  const showCloseout =
+    session.data?.state === 'completed' ||
+    (session.data?.state === 'confirmed' &&
+      Date.parse(session.data.starts_at) <= now.getTime());
+  const closeout = useQuery({
+    queryKey: closeoutKey(sessionId),
+    queryFn: ({ signal }) => fetchCloseout(sessionId, signal),
+    enabled: showCloseout,
+  });
+  const showPanel = canAssign && session.data?.state === 'unassigned';
   const showSubstitute = session.data
     ? canSubstitute(session.data, now, canAssign)
     : false;
@@ -325,6 +342,21 @@ export function SessionPage() {
       }}
     />
   ) : null;
+  let closeoutState: CloseoutSectionState;
+  if (closeout.isError) {
+    closeoutState = {
+      status: 'error',
+      error: closeout.error,
+      onRetry: () => void closeout.refetch(),
+    };
+  } else if (!closeout.data) {
+    closeoutState = { status: 'loading' };
+  } else {
+    closeoutState = { status: 'ready', closeout: closeout.data };
+  }
+  const closeoutSection = showCloseout ? (
+    <CloseoutSection state={closeoutState} timeZone={timeZone} />
+  ) : null;
   const actions =
     showCancel && detail ? (
       <div>
@@ -375,6 +407,7 @@ export function SessionPage() {
         actions={actions}
         substitutions={substitutionSection}
         attendance={attendanceSection}
+        closeout={closeoutSection}
         notice={notice}
         changeRequestLink={
           canManage

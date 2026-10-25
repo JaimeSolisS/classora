@@ -25,6 +25,7 @@ import {
   itemName,
   namedActionLabelKey,
   reassignmentLink,
+  sessionCloseoutLink,
   reassignmentSubject,
   itemReviewLink,
   typeLabel,
@@ -190,6 +191,22 @@ function RequestSummary({ item }: { item: ApprovalRequestItem }) {
           className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           {t('approvals.availabilityChange.openAvailability')}
+        </Link>
+      </span>
+    );
+  }
+  const closeout = sessionCloseoutLink(item);
+  if (closeout) {
+    // #77 G4: the staff session page (its Closeout section); no decisions
+    // until the review (#78).
+    return (
+      <span className="flex flex-col gap-1">
+        <span>{summary}</span>
+        <Link
+          to={closeout}
+          className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          {t('approvals.closeout.openSession')}
         </Link>
       </span>
     );

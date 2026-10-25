@@ -2,8 +2,13 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { StoryRouter } from '@/test/StoryRouter';
 import { ApprovalsTable } from './ApprovalsTable';
-import { MIXED_ITEMS, PENDING_REGISTRATION } from './fixtures';
+import {
+  MIXED_ITEMS,
+  PENDING_REGISTRATION,
+  SESSION_CLOSEOUT,
+} from './fixtures';
 
 // The approval list (#40 F3, F6): mixed statuses and types, empty, loading
 // and error. No request.
@@ -93,5 +98,31 @@ export const OnePending: Story = {
       status: 'ready',
       page: { items: [PENDING_REGISTRATION], total: 1, limit: 10, offset: 0 },
     },
+  },
+};
+
+// #77 G4: a session closeout row: its summary, the "Open session" link and
+// no decision buttons.
+export const SessionCloseoutRow: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      page: { items: [SESSION_CLOSEOUT], total: 1, limit: 10, offset: 0 },
+    },
+  },
+  render: (args) => (
+    <StoryRouter
+      routes={[{ path: '/', element: <ApprovalsTable {...args} /> }]}
+    />
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await expect(
+      await canvas.findByRole('link', {
+        name: i18n.t('approvals.closeout.openSession'),
+      }),
+    ).toBeVisible();
+    await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
+      0,
+    );
   },
 };

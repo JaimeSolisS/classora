@@ -386,7 +386,11 @@ follows these rules.
   (subject `E2E Attendance`, no room) in the latest free hour before now. It
   is test data for `e2e/tests/scheduling/offers.spec.ts` only, separate
   from `make seed-demo`, guarded like the demo command (`local`/`dev`) and
-  idempotent; no other spec may use that subject or session.
+  idempotent; no other spec may use that subject or session. #77 adds a
+  second session for the closeout steps: one started `confirmed`
+  individual session of `demo.tutor` with one synthetic student (subject
+  `E2E Closeout`) in the latest free hour before the attendance session,
+  under the same rules.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a

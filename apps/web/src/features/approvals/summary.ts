@@ -386,6 +386,52 @@ export function availabilityChangeLink(
     : null;
 }
 
+interface SessionCloseoutSubject {
+  class_session_id: string;
+  starts_at: string;
+  subject_name: string;
+  tutor_display_name: string;
+  kind: string;
+  scheduled_minutes: number;
+  actual_minutes: number | null;
+  participant_count: number;
+}
+
+function isSessionCloseout(
+  subject: unknown,
+): subject is SessionCloseoutSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  return (
+    typeof value.class_session_id === 'string' &&
+    typeof value.starts_at === 'string' &&
+    typeof value.subject_name === 'string' &&
+    typeof value.tutor_display_name === 'string' &&
+    typeof value.scheduled_minutes === 'number' &&
+    typeof value.participant_count === 'number'
+  );
+}
+
+/** The session closeout subject of `item` (#77 G4), or null. */
+export function sessionCloseoutSubject(
+  item: ApprovalRequestItem,
+): SessionCloseoutSubject | null {
+  return item.request_type === 'academics.session_closeout' &&
+    isSessionCloseout(item.subject)
+    ? item.subject
+    : null;
+}
+
+/** The staff session page a closeout item links to (#77 G4), or null. */
+export function sessionCloseoutLink(item: ApprovalRequestItem): string | null {
+  const subject = sessionCloseoutSubject(item);
+  return subject
+    ? `/schedule/sessions/${encodeURIComponent(subject.class_session_id)}`
+    : null;
+}
+
 /** Formats an instant for a summary (the center zone, from useFormatters). */
 export type InstantFormatter = (instant: string) => string;
 
@@ -465,6 +511,8 @@ export function registrationSubject(
  * [→ <proposed>] · <classification>";
  * for an availability change (#63) "<tutor> · <change> · <n> classes
  * affected";
+ * for a session closeout (#77) "<subject> · <date, time> · <tutor> ·
+ * <actual> of <scheduled> min · <n> students";
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -567,6 +615,17 @@ export function approvalSummary(
       tutor: availability.tutor.display_name,
       change: describeChange(availability, t, formatDate),
       count: availability.affected_count,
+    });
+  }
+  const closeout = sessionCloseoutSubject(item);
+  if (closeout) {
+    return t('approvals.summary.sessionCloseout', {
+      subject: closeout.subject_name,
+      when: formatInstant(closeout.starts_at),
+      tutor: closeout.tutor_display_name,
+      actual: closeout.actual_minutes ?? 0,
+      scheduled: closeout.scheduled_minutes,
+      count: closeout.participant_count,
     });
   }
   const occurrence = occurrenceConflictSubject(item);

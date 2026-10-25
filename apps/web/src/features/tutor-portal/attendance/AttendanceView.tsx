@@ -33,7 +33,8 @@ import { StatusLabel } from './StatusLabel';
 // the form (not started: when it opens; completed: ask the center; other
 // states: the state) and the marks are shown read-only. A version conflict
 // offers Reload. Phone-first: the Save button stays at the bottom of the
-// screen while the list scrolls.
+// screen while the list scrolls. The #77 closeout flow reuses it as its
+// first step, without the class header (`showHeader={false}`).
 
 export type AttendanceViewState =
   | { status: 'loading' }
@@ -47,6 +48,8 @@ export interface AttendanceViewProps {
   onSave: (marks: AttendanceMark[]) => Promise<void>;
   /** Reloads the attendance (after a version conflict). */
   onReload: () => void;
+  /** Shows the class header (default); the #77 closeout flow has its own. */
+  showHeader?: boolean;
 }
 
 export function AttendanceView({
@@ -54,6 +57,7 @@ export function AttendanceView({
   timeZone,
   onSave,
   onReload,
+  showHeader = true,
 }: AttendanceViewProps) {
   const { t } = useTranslation();
   const [notice, setNotice] = useState<string | null>(null);
@@ -67,7 +71,9 @@ export function AttendanceView({
   const { attendance } = state;
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <ClassHeader attendance={attendance} timeZone={timeZone} />
+      {showHeader ? (
+        <ClassHeader attendance={attendance} timeZone={timeZone} />
+      ) : null}
       {notice ? (
         <p role="status" className="text-sm font-medium">
           {notice}

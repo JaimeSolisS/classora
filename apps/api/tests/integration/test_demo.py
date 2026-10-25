@@ -107,9 +107,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
     assert demo.main([]) == 0
 
     assert capsys.readouterr().out.splitlines() == [
-        "identity.permissions: 29 inserted, 0 updated",
+        "identity.permissions: 30 inserted, 0 updated",
         "identity.roles: 7 inserted, 0 updated",
-        "identity.role_permissions: 72 inserted, 0 updated",
+        "identity.role_permissions: 75 inserted, 0 updated",
         "catalog.education_levels: 4 inserted, 0 updated",
         "identity.demo_owner: 1 rows",
         "identity.demo_admin: 1 rows",

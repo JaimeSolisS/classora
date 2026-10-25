@@ -141,3 +141,26 @@ export const AVAILABILITY_CHANGE: ApprovalRequestItem = {
     change_request_status: 'pending',
   },
 };
+
+/** A tutor's session closeout (#77 G4): no decisions until #78. */
+export const SESSION_CLOSEOUT: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-0000000000f1',
+  request_type: 'academics.session_closeout',
+  requester: {
+    id: '00000000-0000-4000-8000-0000000000b1',
+    display_name: 'Carmen Ruiz',
+  },
+  subject: {
+    class_session_id: '00000000-0000-4000-8000-0000000000f2',
+    // 10:00 in Mexico City.
+    starts_at: '2031-04-07T16:00:00Z',
+    subject_name: 'Matemáticas',
+    tutor_display_name: 'Carmen Ruiz',
+    kind: 'group',
+    scheduled_minutes: 60,
+    actual_minutes: 55,
+    participant_count: 3,
+  },
+  allowed_actions: [],
+};

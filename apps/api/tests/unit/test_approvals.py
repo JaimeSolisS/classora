@@ -26,6 +26,7 @@ from app.modules.scheduling.service import (
     OFFER_REASSIGNMENT_HANDLER,
 )
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
+from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 
 ALLOWED = {
     ("pending", "approved"),
@@ -146,6 +147,7 @@ REGISTERED_TYPES = {
     "scheduling.session_request",
     "scheduling.change_request",
     "staff.availability_change",
+    "academics.session_closeout",
 }
 
 
@@ -185,6 +187,13 @@ def test_build_app_registers_exactly_the_real_types():
     assert change.supports_request_changes is False
     assert change.reason_required_on_reject is True
     assert change.inbox_decisions is False
+    # #77 E1: closeouts; no decisions until #78.
+    closeout = SESSION_CLOSEOUT_HANDLER
+    assert closeout.request_type == "academics.session_closeout"
+    assert closeout.review_permission == "teaching_hours.approve"
+    assert closeout.supports_request_changes is True
+    assert closeout.reason_required_on_reject is True
+    assert closeout.inbox_decisions is False
 
 
 def test_build_app_registers_the_account_reference_resolver():

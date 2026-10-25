@@ -424,6 +424,17 @@ export const routes: RouteObject[] = [
             }),
             handle: { role: 'tutor' },
           },
+          // #77 G1: the tutor closes out a session (code-split; the API's
+          // record policy decides: the current tutor only).
+          {
+            path: 'my-schedule/sessions/:sessionId/closeout',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/tutor-portal/closeout/CloseoutPage')
+              ).CloseoutPage,
+            }),
+            handle: { role: 'tutor' },
+          },
           // #62b B1: My change requests (code-split): guardians, students
           // and tutors; the API's record policy decides.
           {

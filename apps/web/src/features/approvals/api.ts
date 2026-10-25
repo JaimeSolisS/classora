@@ -31,6 +31,8 @@ export const APPROVAL_REVIEW_PERMISSIONS: readonly PermissionCode[] = [
   'schedule.manage',
   // #63 availability changes that affect scheduled classes.
   'tutor.manage',
+  // #77 session closeouts (Owner, Administrator, Academic Coordinator).
+  'teaching_hours.approve',
 ];
 
 /** The approval types the page knows, with their label key. */
@@ -46,6 +48,7 @@ export const APPROVAL_TYPE_LABELS: Readonly<
   'scheduling.session_request': 'approvals.types.scheduling_session_request',
   'scheduling.change_request': 'approvals.types.scheduling_change_request',
   'staff.availability_change': 'approvals.types.staff_availability_change',
+  'academics.session_closeout': 'approvals.types.academics_session_closeout',
 };
 
 export const APPROVAL_TYPES: readonly string[] =
