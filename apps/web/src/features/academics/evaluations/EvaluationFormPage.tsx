@@ -289,6 +289,7 @@ export function EvaluationPage() {
       </Link>
       <EvaluationDetail
         key={`${evaluationId}-${generation}`}
+        focusHeadingOnMount={generation > 0}
         evaluation={detail.data}
         today={todayInZone(timeZone)}
         initialNotice={

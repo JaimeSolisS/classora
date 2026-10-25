@@ -1,7 +1,13 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router';
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from 'react-router';
 import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { useCan, useSession } from '@/features/auth/useSession';
@@ -75,9 +81,18 @@ export function StudentHistoryPage() {
   const location = useLocation();
   const session = useSession();
   const canReview = useCan('evaluation.manage');
-  const isTutor =
-    session.status === 'signedIn' &&
-    (session.user.roles as readonly string[]).includes('tutor');
+  const roles =
+    session.status === 'signedIn'
+      ? (session.user.roles as readonly string[])
+      : [];
+  const isTutor = roles.includes('tutor');
+  // #308 QA D2: families only ever see the History view (E2, E5; the roles
+  // table sends them to /my-history), so a student or guardian who is
+  // neither a tutor nor a reviewer goes to their own history page.
+  const familyOnly =
+    !isTutor &&
+    !canReview &&
+    (roles.includes('student') || roles.includes('guardian'));
   const id = useId();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = parseTab(searchParams);
@@ -91,13 +106,18 @@ export function StudentHistoryPage() {
     queryKey: studentDetailKey(studentId),
     queryFn: ({ signal }) => fetchStudent(studentId, signal),
     retry: false,
+    enabled: !familyOnly,
   });
   const name = student.data ? fullName(student.data) : null;
   const title = name
     ? t('academics.history.titleFor', { name })
     : t('academics.history.title');
   useDocumentTitle(title);
-  const working = useWorkingList(studentId, status, tab === 'evaluations');
+  const working = useWorkingList(
+    studentId,
+    status,
+    tab === 'evaluations' && !familyOnly,
+  );
   const statuses: WorkingStatus[] = [
     'final',
     ...(isTutor ? (['draft'] as const) : []),
@@ -109,6 +129,15 @@ export function StudentHistoryPage() {
       noticeRef.current?.focus();
     }
   }, [arrived]);
+
+  if (familyOnly) {
+    return (
+      <Navigate
+        replace
+        to={`/my-history?student=${encodeURIComponent(studentId)}`}
+      />
+    );
+  }
 
   function selectTab(next: HistoryTab) {
     setSearchParams((previous) => {

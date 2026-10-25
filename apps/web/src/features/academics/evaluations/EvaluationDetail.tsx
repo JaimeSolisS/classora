@@ -69,6 +69,8 @@ export interface EvaluationDetailProps {
   initialDialog?: 'finalize' | 'void' | 'delete' | null;
   /** Stories: a failure to show. */
   initialFailure?: FailureState | null;
+  /** Focus the heading when it mounts (after a Reload, #308 QA D3). */
+  focusHeadingOnMount?: boolean;
 }
 
 type FocusTarget =
@@ -101,6 +103,7 @@ export function EvaluationDetail({
   initialAmending = false,
   initialDialog = null,
   initialFailure = null,
+  focusHeadingOnMount = false,
 }: EvaluationDetailProps) {
   const { t } = useTranslation();
   const { formatInstant } = useFormatters();
@@ -132,7 +135,15 @@ export function EvaluationDetail({
     n: number;
     to: FocusTarget;
     position?: number;
-  } | null>(null);
+  } | null>(
+    // #308 QA D1/D3: arriving with a notice (after the create) focuses it;
+    // a remount after Reload focuses the heading.
+    initialNotice
+      ? { n: 0, to: 'notice' }
+      : focusHeadingOnMount
+        ? { n: 0, to: 'heading' }
+        : null,
+  );
 
   const dirty = (editable || amending) && valuesDiffer(values, baseline);
   const blocker = useBlocker(

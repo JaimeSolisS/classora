@@ -138,8 +138,16 @@ export function TemplateEditor({
   const rowsRef = useRef<HTMLOListElement>(null);
   const [focusTo, setFocusTo] = useState<{
     n: number;
-    to: 'saved' | 'alert' | 'add' | { row: string; control: 'up' | 'down' };
-  } | null>(null);
+    to:
+      | 'saved'
+      | 'alert'
+      | 'add'
+      | 'name'
+      | { row: string; control: 'up' | 'down' };
+  } | null>(
+    // #308 QA D1: arriving from the create focuses "Template saved.".
+    initiallySaved ? { n: 0, to: 'saved' } : null,
+  );
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -164,6 +172,8 @@ export function TemplateEditor({
         alertRef.current?.focus();
       } else if (to === 'add') {
         addRef.current?.focus();
+      } else if (to === 'name') {
+        setFocus('name');
       } else {
         const row = rowsRef.current?.querySelector(`[data-row="${to.row}"]`);
         const wanted = row?.querySelector<HTMLButtonElement>(
@@ -176,7 +186,7 @@ export function TemplateEditor({
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [focusTo]);
+  }, [focusTo, setFocus]);
 
   function focusNext(to: NonNullable<typeof focusTo>['to']) {
     setFocusTo((current) => ({ n: (current?.n ?? 0) + 1, to }));
@@ -314,7 +324,8 @@ export function TemplateEditor({
               retryLabel={t('academics.reload')}
               onRetry={() => {
                 setError(null);
-                void onReload();
+                // #308 QA D3: the alert and its Reload are gone: Name.
+                void onReload().then(() => focusNext('name'));
               }}
             />
           ) : (

@@ -138,6 +138,25 @@ describe('access (A1, A3)', () => {
   );
 });
 
+describe('families on the staff URL (#308 QA D2)', () => {
+  it.each([
+    ['a guardian', GUARDIAN],
+    ['a student', STUDENT],
+  ] as const)(
+    '%s goes to /my-history for that student, without tabs or Details',
+    async (_who, as) => {
+      stub({}, as);
+      await open(PAGE, () => app!.location().startsWith('/my-history'));
+      expect(app!.location()).toBe(`/my-history?student=${STUDENT_ID}`);
+      await settleUntil(() => main().querySelector('h1'));
+      expect(main().querySelector('[role="tablist"]')).toBeNull();
+      expect(main().querySelector('a[href^="/evaluations/"]')).toBeNull();
+      expect(api.calls(STUDENT_ROUTE)).toHaveLength(0);
+      expect(api.calls(WORKING)).toHaveLength(0);
+    },
+  );
+});
+
 describe('the grouped view (E3, E5, E6)', () => {
   it('groups by period and subject in the API order', async () => {
     stub();

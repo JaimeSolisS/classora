@@ -415,6 +415,8 @@ export function NewEvaluationForm({
           onReload={() => {
             setFailure(null);
             onReloadTemplates();
+            // The failure (and its Reload) is gone: the heading (#308 QA D3).
+            focusNext('failure');
           }}
         />
       ) : null}

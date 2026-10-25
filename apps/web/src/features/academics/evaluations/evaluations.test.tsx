@@ -353,6 +353,11 @@ describe('the new-evaluation form (C1-C3)', () => {
       feedback: 'Sigue así',
     });
     await settleUntil(() => text().includes('Draft saved.'));
+    // #308 QA D1: focus lands on the status message, not <body>.
+    await settleUntil(
+      () =>
+        focused() === main().querySelector('[role="status"][tabindex="-1"]'),
+    );
   });
 
   it('a template with a subject sends no subject_id', async () => {
@@ -917,6 +922,8 @@ describe('server errors (C8)', () => {
     await click(buttonNamed(main(), 'Reload'));
     await settleUntil(() => api.calls(DETAIL).length > before);
     await settleUntil(() => scoreOf(2).value === '');
+    // #308 QA D3: the Reload button is gone; focus goes to the heading.
+    await settleUntil(() => focused() === main().querySelector('h1'));
   });
 
   it.each([

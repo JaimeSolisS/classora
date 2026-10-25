@@ -334,6 +334,12 @@ describe('the editor (B2)', () => {
     });
     expect(api.calls('POST /api/v1/evaluation-templates')).toHaveLength(1);
     await settleUntil(() => main().textContent?.includes('Template saved.'));
+    // #308 QA D1: focus lands on the status message, not <body>.
+    await settleUntil(
+      () =>
+        document.activeElement ===
+        main().querySelector('[role="status"][tabindex="-1"]'),
+    );
   });
 
   it('shows the kind read-only on edit and sends the PUT with version and is_active', async () => {
@@ -540,6 +546,8 @@ describe('the editor (B2)', () => {
       await settleUntil(
         () => field<HTMLInputElement>('Name').value === 'Renombrada',
       );
+      // #308 QA D3: the alert and its Reload are gone; focus goes to Name.
+      await settleUntil(() => document.activeElement === field('Name'));
     });
 
     it('a 404 on the template shows the not-found page', async () => {

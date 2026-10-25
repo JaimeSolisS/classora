@@ -459,7 +459,10 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   empty score. Dialogs (Finalize, Delete, Void, Discard changes) return
   focus to their trigger on Cancel or Escape; a done action moves it to the
   `role="status"` message (after a void, to the page heading) and a refused
-  one to its failure or the first invalid field.
+  one to its failure or the first invalid field. Arriving from a create
+  (the first "Save draft", a new template) focuses the status message from
+  the navigation state; "Reload" after a conflict focuses the heading (the
+  evaluation) or Name (the template editor).
 - **`AcademicHistory`** (`features/academics/history`, #308): one student's
   academic history for every audience, its controls in the URL. Grouped:
   a section per period (an `h2` with its dates, or "No period"), an `h3`
