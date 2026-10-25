@@ -126,6 +126,7 @@ async def persist_user(
 DEMO_OWNER_USERNAME = "demo.owner"
 DEMO_OWNER_DISPLAY_NAME = "Demo Owner"
 DEMO_OWNER_PASSWORD = "classora-demo-owner"
+DEMO_TUTOR_USERNAME = "demo.tutor"
 DEMO_STUDENT_USERNAME = "demo.student"
 DEMO_GUARDIAN_USERNAME = "demo.guardian"
 DEMO_ACCOUNT_APP_ENVS = frozenset({"local"})
@@ -157,7 +158,7 @@ DEMO_ACCOUNTS: tuple[DemoAccount, ...] = (
         ACADEMIC_COORDINATOR,
     ),
     DemoAccount("demo.finance", "Demo Finance", "classora-demo-finance", FINANCE_STAFF),
-    DemoAccount("demo.tutor", "Demo Tutor", "classora-demo-tutor", TUTOR),
+    DemoAccount(DEMO_TUTOR_USERNAME, "Demo Tutor", "classora-demo-tutor", TUTOR),
     DemoAccount(
         DEMO_STUDENT_USERNAME, "Demo Student", "classora-demo-student", STUDENT
     ),
@@ -172,6 +173,23 @@ DEMO_OWNER = DEMO_ACCOUNTS[0]
 
 def _settings_app_env() -> str:
     return get_settings().app_env
+
+
+class DemoPrerequisiteMissingError(RuntimeError):
+    """A demo generator found a row it builds on missing in a local run (a
+    demo account, the demo students or an earlier generator's rows): the whole
+    run rolls back (#299 A2)."""
+
+
+async def demo_user_id(
+    session: AsyncSession, username: str, generator: str
+) -> uuid.UUID:
+    """The id of the demo account ``username``; raises
+    :class:`DemoPrerequisiteMissingError` naming ``generator`` without it."""
+    user_id = await session.scalar(select(User.id).where(User.username == username))
+    if user_id is None:
+        raise DemoPrerequisiteMissingError(f"{username} must exist before {generator}")
+    return user_id
 
 
 class DemoAccountGenerator:

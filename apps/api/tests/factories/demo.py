@@ -10,16 +10,21 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
    engine, connecting, or seeding or calling Faker.
 3. :func:`~tests.factories.base.reseed` with ``--seed`` (default
    :data:`DEFAULT_SEED`).
-4. In **one** Unit of Work: check the Alembic head (as ``make seed``), apply the
+4. Register the app's approval and notification wiring
+   (``app.wiring.register_approval_wiring``, as ``app.cli`` and ``app.worker``
+   do; #299 A3), so approval items and notifications are created as in the
+   API.
+5. In **one** Unit of Work: check the Alembic head (as ``make seed``), apply the
    reference seeds, then run every generator in :data:`DEMO_GENERATORS` in
    order. Everything is committed, or nothing.
-5. Print generator names and row counts (or ``skipped (<reason>)``), never
+6. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-The registered generators (#23, #195) write nothing on a rerun (``0 rows``).
-A future generator may add rows on a rerun unless its issue says otherwise.
-To start over, reset with ``docker compose down -v``, then ``make migrate``
-and ``make seed-demo``.
+The registered generators (#23, #195, #299) write nothing on a rerun
+(``0 rows``), even on a later day: the #299 data keeps the dates of its first
+run. A future generator may add rows on a rerun unless its issue says
+otherwise. To start over, reset with ``docker compose down -v``, then
+``make migrate`` and ``make seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -47,9 +52,13 @@ from app.seeds.runner import (
     seed_summary,
 )
 from app.seeds.upsert import UpsertResult
+from app.wiring import register_approval_wiring
 from tests.factories.base import GeneratorSkipped, reseed
+from tests.factories.catalog import DemoCatalogGenerator
+from tests.factories.demo_schedule import DemoScheduleGenerator
 from tests.factories.families import DemoFamiliesGenerator
 from tests.factories.identity import DEMO_ACCOUNT_GENERATORS
+from tests.factories.staff import DemoTutorGenerator
 
 ALLOWED_APP_ENVS = frozenset({"local", "dev"})
 DEFAULT_SEED = 1
@@ -70,6 +79,9 @@ class DemoGenerator(Protocol):
 DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     *DEMO_ACCOUNT_GENERATORS,
     DemoFamiliesGenerator(),
+    DemoCatalogGenerator(),
+    DemoTutorGenerator(),
+    DemoScheduleGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -80,7 +92,16 @@ their factories (``persist`` / ``persist_batch``; never commit).
   and ``identity.demo_guardian`` (#195): one demo account per other role,
   ``APP_ENV=local`` only.
 - ``families.demo_families`` (#195): three demo families, the first with the
-  ``demo.student`` and ``demo.guardian`` logins, ``APP_ENV=local`` only."""
+  ``demo.student`` and ``demo.guardian`` logins, ``APP_ENV=local`` only.
+- ``catalog.demo_catalog`` (#299): subjects for the four reference levels,
+  three classrooms, the current school year and one holiday,
+  ``APP_ENV=local`` only.
+- ``staff.demo_tutor`` (#299): ``demo.tutor``'s profile, qualifications
+  (three approved, one pending), availability, a day off, limits and a
+  preferred classroom, ``APP_ENV=local`` only.
+- ``scheduling.demo_schedule`` (#299): completed and upcoming sessions, a
+  weekly series and a group around the center's today, through the
+  scheduling services, ``APP_ENV=local`` only."""
 
 
 @dataclass
@@ -103,7 +124,9 @@ async def run_demo(
     seeds: Sequence[ReferenceSeed] = REFERENCE_SEEDS,
     generators: Sequence[DemoGenerator] = DEMO_GENERATORS,
 ) -> DemoResult:
-    """Reseed, then reference seeds and generators in one Unit of Work."""
+    """Register the app wiring, reseed, then reference seeds and generators in
+    one Unit of Work."""
+    register_approval_wiring()  # #299 A3; registering again changes nothing
     reseed(seed)
     result = DemoResult()
     async with UnitOfWork(create_sessionmaker(engine)) as uow:

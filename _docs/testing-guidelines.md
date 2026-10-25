@@ -96,7 +96,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -490,6 +490,18 @@ follows these rules.
   families with their students and guardians. They are **not** E2E fixtures:
   specs never sign them in, change them, or assert on them or on unfiltered
   list totals. `demo.owner` remains the only named demo fixture.
+- The E2E stack also has the #299 demo catalog, tutor and schedule data
+  (the `catalog.demo_catalog`, `staff.demo_tutor` and
+  `scheduling.demo_schedule` generators: subjects, the classrooms `Aula 1`,
+  `Aula 2` and `Sala de usos múltiples`, a school year, a holiday,
+  `demo.tutor`'s qualifications and availability, and sessions, a series, a
+  group, offers, approval items and notifications around the run's day).
+  It is **not** an E2E fixture: specs never select a demo subject,
+  classroom, period or closure, `demo.tutor` or a demo session, and never
+  assert on unfiltered totals of subjects, classrooms, sessions, offers,
+  approvals or notifications. The demo data has one holiday within the
+  next 4–6 days, so specs keep scheduling at least 14 days ahead, as all of
+  them do today.
 - **Never change `demo.owner` in a spec** (its profile, state, roles,
   password or preferences): every test shares its signed-in session
   (`storageState`). A test that needs an Owner to act signs `demo.owner` in

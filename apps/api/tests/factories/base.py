@@ -37,6 +37,7 @@ Types (ADR-0004)
     - Instants: timezone-aware UTC ``datetime``: use :func:`instant`.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -45,7 +46,9 @@ from typing import Any
 import factory
 import factory.random
 import faker
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import DeclarativeBase
 
 LOCALE = "es_MX"
 RESERVED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
@@ -122,6 +125,17 @@ class GeneratorSkipped:
     reason: str
 
 
+async def count_rows(
+    session: AsyncSession, models: Sequence[type[DeclarativeBase]]
+) -> int:
+    """The total number of rows in the tables of ``models``: a demo generator
+    returns the total after its writes minus the total before (#299 A2)."""
+    total = 0
+    for model in models:
+        total += await session.scalar(select(func.count()).select_from(model)) or 0
+    return total
+
+
 # --- Declarations --------------------------------------------------------------
 
 
@@ -168,6 +182,7 @@ __all__ = [
     "FactoryCreateError",
     "GeneratorSkipped",
     "calendar_date",
+    "count_rows",
     "get_faker",
     "instant",
     "money",

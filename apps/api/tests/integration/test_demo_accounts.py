@@ -37,7 +37,8 @@ STUDENTS_VISIBLE = {
     "demo.admin": 5,
     "demo.coordinator": 5,
     "demo.finance": 5,
-    "demo.tutor": 0,
+    # #299 G4: S, Sib and A, the students of the tutor's demo sessions.
+    "demo.tutor": 3,
     "demo.student": 1,
     "demo.guardian": 2,
 }
