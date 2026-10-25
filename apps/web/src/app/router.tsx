@@ -55,6 +55,10 @@ import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
+import {
+  LEARNING_PLAN_ROUTE_ACCESS,
+  MY_LEARNING_PLANS_ACCESS,
+} from '@/features/learning-plans/access';
 import { COHORTS_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
@@ -539,6 +543,66 @@ export const routes: RouteObject[] = [
               ).MyHistoryPage,
             }),
             handle: MY_HISTORY_ACCESS,
+          },
+          // #310 A1: learning plans. The staff and tutor URLs serve
+          // learning_plan.manage holders and tutor-role users (the API's
+          // plan record policy decides); a student or guardian who opens one
+          // is sent to the family page (#308 QA D2), so their handle lets
+          // the family roles through. The family pages serve students and
+          // guardians.
+          {
+            path: 'students/:studentId/learning-plans',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/LearningPlansListPage')
+              ).LearningPlansListPage,
+            }),
+            handle: LEARNING_PLAN_ROUTE_ACCESS,
+          },
+          {
+            path: 'students/:studentId/learning-plans/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/LearningPlanEditorPage')
+              ).NewLearningPlanPage,
+            }),
+            handle: LEARNING_PLAN_ROUTE_ACCESS,
+          },
+          {
+            path: 'learning-plans/:planId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/LearningPlanPage')
+              ).LearningPlanPage,
+            }),
+            handle: LEARNING_PLAN_ROUTE_ACCESS,
+          },
+          {
+            path: 'learning-plans/:planId/edit',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/LearningPlanEditorPage')
+              ).EditLearningPlanPage,
+            }),
+            handle: LEARNING_PLAN_ROUTE_ACCESS,
+          },
+          {
+            path: 'my-learning-plans',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/MyLearningPlansPage')
+              ).MyLearningPlansPage,
+            }),
+            handle: MY_LEARNING_PLANS_ACCESS,
+          },
+          {
+            path: 'my-learning-plans/:planId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/learning-plans/MyLearningPlanPage')
+              ).MyLearningPlanPage,
+            }),
+            handle: MY_LEARNING_PLANS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

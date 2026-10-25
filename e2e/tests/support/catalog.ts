@@ -34,6 +34,8 @@ type Common = {
     mySchedule: string;
     // #62b E1: My change requests.
     changeRequests: string;
+    // #310 G3: the family's learning plans.
+    learningPlans: string;
   };
   // #62b E1: the request dialog and My change requests.
   changeRequests: {
@@ -695,10 +697,14 @@ type Common = {
       academics_learning_note_published: string;
       // #308 G3: a finalized evaluation (the guardian's bell).
       academics_evaluation_finalized: string;
+      // #310 G3: an activated learning plan (the guardian's bell).
+      academics_learning_plan_activated: string;
     };
   };
   // #308 G3: the evaluation pages.
   academics: {
+    // #310 G3: a subject option with its level.
+    subjectOption: string;
     kinds: Record<'diagnostic' | 'ongoing', string>;
     entry: Record<'historyOf' | 'evaluateName', string>;
     templates: Record<'title', string>;
@@ -716,6 +722,32 @@ type Common = {
       newEvaluation: string;
       views: Record<'grouped' | 'list', string>;
     };
+  };
+  // #310 G3: the learning plan pages.
+  learningPlans: {
+    new: string;
+    statusOf: string;
+    progress_other: string;
+    status: Record<'draft' | 'active', string>;
+    actions: Record<'activate' | 'edit', string>;
+    activate: Record<'title' | 'description' | 'confirm', string>;
+    notices: Record<'draftSaved' | 'activated', string>;
+    entry: Record<'linkOf', string>;
+    family: Record<'whose', string>;
+    editor: Record<
+      | 'subject'
+      | 'title'
+      | 'objectiveTitle'
+      | 'objectiveNamed'
+      | 'milestoneTitle'
+      | 'milestoneUnnamed'
+      | 'dueOn'
+      | 'addMilestoneTo'
+      | 'remove'
+      | 'planCounter'
+      | 'save',
+      string
+    >;
   };
   courses: {
     // #243: the Courses tab bar and the cohort pages.

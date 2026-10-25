@@ -218,6 +218,22 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['too_long', 'too_long'],
   ['name_required', 'name_required'],
   ['title_required', 'title_required'],
+  // Learning plans (#81, #310 C6, D6), problem and field codes.
+  ['plan_subject_not_assigned', 'plan_subject_not_assigned'],
+  ['plan_read_only', 'plan_read_only'],
+  ['plan_closed', 'plan_closed'],
+  ['plan_not_draft', 'plan_not_draft'],
+  ['plan_not_active', 'plan_not_active'],
+  ['active_plan_exists', 'active_plan_exists'],
+  ['objectives_required', 'objectives_required'],
+  // i18next reads a `_many` suffix as a plural form: their own key names.
+  ['objectives_too_many', 'objectives_limit'],
+  ['milestones_required', 'milestones_required'],
+  ['milestones_too_many', 'milestones_limit'],
+  ['target_before_start', 'target_before_start'],
+  ['due_on_invalid', 'due_on_invalid'],
+  ['objective_unknown', 'objective_unknown'],
+  ['milestone_unknown', 'milestone_unknown'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

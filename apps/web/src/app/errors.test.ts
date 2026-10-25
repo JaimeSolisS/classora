@@ -188,6 +188,19 @@ const API_CODES = [
   'too_long',
   'name_required',
   'title_required',
+  // #310 C6, D6: the learning plan codes.
+  'plan_subject_not_assigned',
+  'plan_read_only',
+  'plan_closed',
+  'plan_not_draft',
+  'plan_not_active',
+  'active_plan_exists',
+  'objectives_required',
+  'milestones_required',
+  'target_before_start',
+  'due_on_invalid',
+  'objective_unknown',
+  'milestone_unknown',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -204,6 +217,9 @@ const ALL_CODES = [...API_CODES, ...STATUS_CODES, ...CLIENT_CODES];
 // suffix, so `criteria_too_many` can't be a key).
 const RENAMED_CODES: Record<string, string> = {
   criteria_too_many: 'criteria_limit',
+  // #310: the learning plan limits.
+  objectives_too_many: 'objectives_limit',
+  milestones_too_many: 'milestones_limit',
 };
 
 afterEach(() => {

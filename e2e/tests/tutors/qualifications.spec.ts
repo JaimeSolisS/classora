@@ -83,9 +83,19 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // never the draft; the family's API reads agree. Axe on the template list,
 // the form and the history.
 //
+// #310 G3 (after #308, before #62b, whose cancellation ends the tutor's
+// assignment): the tutor (phone) follows "Learning plans of {child}" from
+// the class's details to "New plan" (only Física offered), saves a draft
+// with one objective and two milestones (a third added and removed), and
+// the guardian's API reads never carry it; the tutor activates it (the
+// dialog names the child) and marks a milestone done (1 of 2 · 50 %); the
+// guardian's bell opens the family page of the plan (Active, the progress,
+// no control), and the "Learning plans" nav item lists it for the child.
+// Axe on the editor and the family view.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
-// guardian; #79 and #308 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
+// guardian; #79, #308 and #310 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
 // the guardian's createApprovedAccount). Every `make e2e` starts from an
 // empty database, so names are unique per run.
 
@@ -1134,6 +1144,218 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         `/api/v1/students/${childId}/evaluations`,
       );
       expect(familyWorking.status).toBe(404);
+
+      // #310 G3: learning plans. The tutor (phone) opens the class's
+      // details: "Learning plans of {child}" → the list → "New plan", where
+      // only the class's subject is offered (axe on the editor); one
+      // objective with two milestones (one with a due date), a third added
+      // and removed (3 → 2), saved as a draft. The guardian's API reads
+      // never carry the draft. The tutor activates (the dialog names the
+      // child) and marks the first milestone Done: 1 of 2 · 50 %. The
+      // guardian's bell (desktop width: the header shows only ☰ at 390 px)
+      // opens the family page of the plan; at 390 px: Active, the progress,
+      // no control (axe); the "Learning plans" nav item opens the list,
+      // where the picker chooses the child.
+      const planTitle = `E2E plan ${suffix}`;
+      const plansPage = tutor.page.url();
+      const plansSize = tutor.page.viewportSize();
+      await tutor.page.setViewportSize(PHONE);
+      await tutor.page.goto(`/my-schedule?date=${day.date}`);
+      await expect(calendarOf(tutor.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await calendarOf(tutor.page)
+        .getByRole('button', {
+          name: sessionName(common.mySchedule.states.confirmed, studentName),
+        })
+        .click();
+      await tutor.page
+        .getByRole('dialog', { name: physics })
+        .getByRole('link', {
+          name: fill(common.learningPlans.entry.linkOf, { name: studentName }),
+        })
+        .click();
+      await expect(tutor.page).toHaveURL(`/students/${childId}/learning-plans`);
+      const plansMain = tutor.page.getByRole('main');
+      await plansMain
+        .getByRole('link', { name: common.learningPlans.new, exact: true })
+        .click();
+      await expect(tutor.page).toHaveURL(
+        `/students/${childId}/learning-plans/new`,
+      );
+      const planSubject = plansMain.getByLabel(
+        common.learningPlans.editor.subject,
+        { exact: true },
+      );
+      // The placeholder and the one subject the tutor teaches the child.
+      await expect(planSubject.locator('option')).toHaveCount(2);
+      // Labelled with its level (GET /subjects).
+      await planSubject.selectOption({
+        label: fill(common.academics.subjectOption, {
+          subject: physics,
+          level: LEVEL,
+        }),
+      });
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      const editor = common.learningPlans.editor;
+      await plansMain.getByLabel(editor.title, { exact: true }).fill(planTitle);
+      await plansMain
+        .getByLabel(fill(editor.objectiveTitle, { number: 1 }), {
+          exact: true,
+        })
+        .fill('Comprensión');
+      await plansMain
+        .getByLabel(fill(editor.milestoneTitle, { position: '1.1' }), {
+          exact: true,
+        })
+        .fill('Lectura diaria');
+      const addMilestone = plansMain.getByRole('button', {
+        name: fill(editor.addMilestoneTo, {
+          name: fill(editor.objectiveNamed, {
+            number: 1,
+            title: 'Comprensión',
+          }),
+        }),
+      });
+      await addMilestone.click();
+      await plansMain
+        .getByLabel(fill(editor.milestoneTitle, { position: '1.2' }), {
+          exact: true,
+        })
+        .fill('Resumen');
+      await plansMain
+        .getByLabel(fill(editor.dueOn, { position: '1.2' }), { exact: true })
+        .fill(plusDays(centerToday(), 30).date);
+      await addMilestone.click();
+      const planCounter = (n: number) =>
+        fill(editor.planCounter, { n, max: 50 });
+      await expect(plansMain).toContainText(planCounter(3));
+      await plansMain
+        .getByRole('button', {
+          name: fill(editor.remove, {
+            name: fill(editor.milestoneUnnamed, { position: '1.3' }),
+          }),
+        })
+        .click();
+      await expect(plansMain).toContainText(planCounter(2));
+      await plansMain.getByRole('button', { name: editor.save }).click();
+      await expect(tutor.page).toHaveURL(/\/learning-plans\/[0-9a-f-]{36}$/);
+      const planId = new URL(tutor.page.url()).pathname.split('/').pop()!;
+      await expect(
+        plansMain
+          .getByRole('status')
+          .filter({ hasText: common.learningPlans.notices.draftSaved }),
+      ).toBeVisible();
+      await expect(plansMain).toContainText(common.learningPlans.status.draft);
+
+      // The guardian's API reads: the draft is in neither.
+      const familyPlans = await api(
+        parent.page,
+        `/api/v1/students/${childId}/learning-plans`,
+      );
+      expect(familyPlans.status).toBe(200);
+      expect(JSON.stringify(familyPlans.body)).not.toContain(planTitle);
+      const familyDraft = await api(
+        parent.page,
+        `/api/v1/learning-plans/${planId}`,
+      );
+      expect(familyDraft.status).toBe(404);
+
+      // The tutor activates it and marks the first milestone done.
+      await plansMain
+        .getByRole('button', {
+          name: common.learningPlans.actions.activate,
+          exact: true,
+        })
+        .click();
+      const activateDialog = tutor.page.getByRole('dialog', {
+        name: common.learningPlans.activate.title,
+      });
+      await expect(activateDialog).toContainText(
+        fill(common.learningPlans.activate.description, {
+          student: studentName,
+        }),
+      );
+      await activateDialog
+        .getByRole('button', { name: common.learningPlans.activate.confirm })
+        .click();
+      await expect(activateDialog).toBeHidden();
+      await expect(
+        plansMain
+          .getByRole('status')
+          .filter({ hasText: common.learningPlans.notices.activated }),
+      ).toBeVisible();
+      await expect(plansMain).toContainText(common.learningPlans.status.active);
+      await plansMain
+        .getByLabel(
+          fill(common.learningPlans.statusOf, { title: 'Lectura diaria' }),
+          { exact: true },
+        )
+        .selectOption('done');
+      // The merged contract sends the percent as a whole-number string.
+      const halfDone = fill(common.learningPlans.progress_other, {
+        done: 1,
+        total: 2,
+        percent: '50',
+      });
+      await expect(plansMain).toContainText(halfDone);
+      if (plansSize) {
+        await tutor.page.setViewportSize(plansSize);
+      }
+      await tutor.page.goto(plansPage);
+
+      // The guardian (desktop width, the bell is in the header).
+      if (parentViewport) {
+        await parent.page.setViewportSize(parentViewport);
+      }
+      await parent.page.reload();
+      await parentBell.click();
+      await parentPanel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escapeText(
+              common.notifications.types.academics_learning_plan_activated,
+            )}`,
+          ),
+        })
+        .click();
+      await expect(parent.page).toHaveURL(`/my-learning-plans/${planId}`);
+      await parent.page.setViewportSize(PHONE);
+      const familyPlanMain = parent.page.getByRole('main');
+      await expect(
+        familyPlanMain.getByRole('heading', { level: 1, name: planTitle }),
+      ).toBeVisible();
+      await expect(familyPlanMain).toContainText(
+        common.learningPlans.status.active,
+      );
+      await expect(familyPlanMain).toContainText(halfDone);
+      await expect(familyPlanMain.getByRole('button')).toHaveCount(0);
+      await expect(familyPlanMain.getByRole('combobox')).toHaveCount(0);
+      await expect(
+        familyPlanMain.getByRole('link', {
+          name: common.learningPlans.actions.edit,
+        }),
+      ).toHaveCount(0);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await parent.page
+        .getByRole('banner')
+        .getByRole('button', { name: common.nav.toggle })
+        .click();
+      await parent.page
+        .getByRole('banner')
+        .getByRole('link', { name: common.nav.learningPlans, exact: true })
+        .click();
+      await expect(parent.page).toHaveURL(/\/my-learning-plans/);
+      const whosePlans = familyPlanMain.getByLabel(
+        common.learningPlans.family.whose,
+        { exact: true },
+      );
+      await whosePlans.selectOption({ label: studentName });
+      await expect(whosePlans).toHaveValue(childId);
+      await expect(
+        familyPlanMain.getByRole('link', { name: planTitle }),
+      ).toBeVisible();
       await parent.page.goto(`/my-schedule?date=${day.date}`);
       await whose.selectOption({ label: studentName });
       await expect(calendarOf(parent.page)).toHaveAttribute(

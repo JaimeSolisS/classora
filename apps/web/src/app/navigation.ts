@@ -7,6 +7,7 @@ import { MY_COURSES_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
+import { MY_LEARNING_PLANS_ACCESS } from '@/features/learning-plans/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
@@ -83,6 +84,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/my-history',
     labelKey: 'nav.academicHistory',
     ...MY_HISTORY_ACCESS,
+  },
+  // Learning plans (#310 A2): students and guardians (the API decides
+  // whose plans each may read). Staff and tutors open a student's plans
+  // from the student page and My schedule; no staff or tutor item.
+  {
+    to: '/my-learning-plans',
+    labelKey: 'nav.learningPlans',
+    ...MY_LEARNING_PLANS_ACCESS,
   },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },

@@ -113,6 +113,12 @@ describe('route tree', () => {
       'students/:studentId/evaluations/new',
       'evaluations/:evaluationId',
       'my-history',
+      'students/:studentId/learning-plans',
+      'students/:studentId/learning-plans/new',
+      'learning-plans/:planId',
+      'learning-plans/:planId/edit',
+      'my-learning-plans',
+      'my-learning-plans/:planId',
       'account/password',
       'privacy-notice',
       '*',
@@ -242,10 +248,32 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[59]!.handle).toBeUndefined();
+    // #310 A1: the learning plan pages (all code-split). The staff and
+    // tutor URLs let the family roles through, so the page can send them
+    // to their own page; the family pages serve students and guardians.
+    const planRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'learning_plan.manage' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [59, 60, 61, 62]) {
+      expect(children[index]!.handle).toEqual(planRoute);
+    }
+    for (const index of [63, 64]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [59, 60, 61, 62, 63, 64]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[65]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[60]!.id).toBe('privacy-notice');
-    expect(children[60]!.handle).toBeUndefined();
+    expect(children[66]!.id).toBe('privacy-notice');
+    expect(children[66]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

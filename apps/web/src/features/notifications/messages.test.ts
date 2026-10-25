@@ -436,7 +436,7 @@ describe('evaluation notifications (#80 H1)', () => {
 });
 
 // #81 H1: the learning plan notifications carry ids only (no title or
-// text) and have no link until #310.
+// text); #310 F1 links them to the family's page of the plan.
 
 describe('learning plan notifications (#81 H1)', () => {
   const plan = {
@@ -475,12 +475,23 @@ describe('learning plan notifications (#81 H1)', () => {
     }
   });
 
-  it('only become read when activated (no page until #310)', () => {
-    expect(
-      NOTIFICATION_LINKS['academics.learning_plan_activated'],
-    ).toBeUndefined();
-    expect(
-      NOTIFICATION_LINKS['academics.learning_plan_completed'],
-    ).toBeUndefined();
+  // #310 F1: both open the family's page of the plan; without a plan id
+  // the student's plans, without either /my-learning-plans. Never the
+  // staff route /learning-plans/:id.
+  it.each([
+    'academics.learning_plan_activated',
+    'academics.learning_plan_completed',
+  ])('%s links to the family page of the plan (#310 F1)', (type) => {
+    const recipient = { userId: 'u-1' };
+    const link = NOTIFICATION_LINKS[type]!;
+    expect(link).toBeTypeOf('function');
+    expect(link(plan, recipient)).toBe(`/my-learning-plans/${plan.plan_id}`);
+    expect(link({ student_id: plan.student_id }, recipient)).toBe(
+      `/my-learning-plans?student=${plan.student_id}`,
+    );
+    expect(link({}, recipient)).toBe('/my-learning-plans');
+    expect(link({ plan_id: '', student_id: 7 }, recipient)).toBe(
+      '/my-learning-plans',
+    );
   });
 });

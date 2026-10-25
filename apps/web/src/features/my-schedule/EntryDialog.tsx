@@ -31,6 +31,7 @@ import {
   studentHistoryPath,
 } from '@/features/academics/evaluations/api';
 import { tutorAcademicLinks } from '@/features/academics/evaluations/rules';
+import { studentPlansPath } from '@/features/learning-plans/api';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -51,6 +52,8 @@ import { dateText, whoText, type LabelContext } from './labels';
 // on an error or in any other status: "View closeout", nothing else.
 // #79 H2: a tutor's confirmed or completed item links to "Notes" (the
 // session's notes page); a family's shared notes come in the `action` slot.
+// #310 A4: next to each student's "Academic history", "Learning plans"
+// (named "Learning plans of {name}") opens their plans.
 // #308 D1: a tutor's confirmed or completed item lists its students, each
 // with "Academic history" and, once the class has started, "Evaluate"
 // (the new-evaluation form linked to this class).
@@ -238,6 +241,15 @@ export function EntryDialog({
                       className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
                     >
                       {t('academics.entry.history')}
+                    </Link>
+                    <Link
+                      to={studentPlansPath(participant.student_id)}
+                      aria-label={t('learningPlans.entry.linkOf', {
+                        name: participant.display_name,
+                      })}
+                      className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                    >
+                      {t('learningPlans.entry.link')}
                     </Link>
                     {academic.evaluate ? (
                       <Link

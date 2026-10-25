@@ -229,5 +229,19 @@
   "note_published": "This note is shared with the family. Stop sharing it first.",
   "note_already_published": "This note is already shared with the family. Reload to see it.",
   "note_not_published": "This note isn't shared with the family. Reload to see it.",
-  "session_not_notable": "Notes can only be written on confirmed or completed classes."
+  "session_not_notable": "Notes can only be written on confirmed or completed classes.",
+  "plan_subject_not_assigned": "You can change plans only in subjects you teach this student.",
+  "plan_read_only": "You can no longer change this plan.",
+  "plan_closed": "This plan is closed: it can't change anymore.",
+  "plan_not_draft": "This plan isn't a draft anymore.",
+  "plan_not_active": "This plan isn't active.",
+  "active_plan_exists": "This subject already has an active plan for this student.",
+  "objectives_required": "Add at least one objective.",
+  "objectives_limit": "A plan can have at most 10 objectives.",
+  "milestones_required": "Each objective needs at least one milestone.",
+  "milestones_limit": "There are too many milestones (at most 10 per objective and 50 per plan).",
+  "target_before_start": "The target date can't be before the start date.",
+  "due_on_invalid": "This due date is too early. Choose a later one.",
+  "objective_unknown": "This plan no longer has that objective. Reload it.",
+  "milestone_unknown": "This plan no longer has that milestone. Reload it."
 }

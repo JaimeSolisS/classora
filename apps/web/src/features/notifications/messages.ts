@@ -3,6 +3,7 @@ import { toLanguage } from '@/i18n/language';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
 import { closeoutPath } from '@/features/tutor-portal/closeout/api';
 import { notesPath } from '@/features/tutor-portal/notes/api';
+import { myPlanPath, myPlansPath } from '@/features/learning-plans/api';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -248,6 +249,19 @@ function myHistory(params: NotificationItem['params']): string {
     : '/my-history';
 }
 
+/** The family's page of the plan (#310 F1); the student's plans without
+ * a plan id, /my-learning-plans without either. */
+function myLearningPlan(params: NotificationItem['params']): string {
+  const planId = params.plan_id;
+  if (typeof planId === 'string' && planId) {
+    return myPlanPath(planId);
+  }
+  const studentId = params.student_id;
+  return myPlansPath(
+    typeof studentId === 'string' && studentId ? studentId : null,
+  );
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -290,9 +304,10 @@ export const NOTIFICATION_LINKS: Readonly<
   // the student; a void opens the author's evaluation.
   'academics.evaluation_finalized': myHistory,
   'academics.evaluation_voided': voidedEvaluation,
-  // #81 H1: academics.learning_plan_activated and
-  // academics.learning_plan_completed have no link until #310 (M5-14b)
-  // adds the plan pages.
+  // #310 F1: an activated or completed plan opens the family's page of
+  // the plan (#81 H1 messages unchanged).
+  'academics.learning_plan_activated': myLearningPlan,
+  'academics.learning_plan_completed': myLearningPlan,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

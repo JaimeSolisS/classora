@@ -48,7 +48,8 @@
     "changeRequests": "My change requests",
     "myCourses": "My courses",
     "evaluationTemplates": "Evaluation templates",
-    "academicHistory": "Academic history"
+    "academicHistory": "Academic history",
+    "learningPlans": "Learning plans"
   },
   "notFound": {
     "title": "Page not found",
@@ -3553,6 +3554,193 @@
         "loadMore": "Load more",
         "loadingMore": "Loading…"
       }
+    }
+  },
+  "learningPlans": {
+    "title": "Learning plans",
+    "titleFor": "Learning plans: {{name}}",
+    "planTitle": "Learning plan",
+    "backToStudent": "Back to student",
+    "backToPlans": "Back to learning plans",
+    "backToPlan": "Back to the plan",
+    "new": "New plan",
+    "empty": "No learning plans yet.",
+    "truncated": "Showing the latest {{max}} plans.",
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "completed": "Completed",
+      "discontinued": "Discontinued"
+    },
+    "progress_one": "{{done}} of {{total}} milestone done · {{percent}} %",
+    "progress_other": "{{done}} of {{total}} milestones done · {{percent}} %",
+    "dates": "{{start}} – {{target}}",
+    "datesOpen": "From {{start}} · No target date",
+    "objectivesComplete_one": "{{done}} of {{count}} objective complete",
+    "objectivesComplete_other": "{{done}} of {{count}} objectives complete",
+    "overdueCount_one": "{{count}} overdue",
+    "overdueCount_other": "{{count}} overdue",
+    "createdBy": "Created by {{name}}",
+    "activatedOn": "Activated on {{date}}",
+    "completedOn": "Completed on {{date}}",
+    "discontinuedOn": "Discontinued on {{date}}",
+    "objectiveHeading": "{{position}}. {{title}}",
+    "objectiveComplete": "Complete",
+    "due": "Due {{date}}",
+    "overdue": "Overdue",
+    "milestoneStatus": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "done": "Done"
+    },
+    "doneBy": "Done on {{date}} by {{name}}",
+    "doneOn": "Done on {{date}}",
+    "statusOf": "Status of {{title}}",
+    "savingProgress": "Saving the progress",
+    "progressSaved": "Progress saved.",
+    "conflict": "This plan changed elsewhere.",
+    "milestoneMissing": "This milestone no longer exists.",
+    "activePlanExists": "{{subject}} already has an active plan for this student. Complete or discontinue it first.",
+    "toStudentPlans": "See the student's learning plans",
+    "busy": "Saving",
+    "cancel": "Cancel",
+    "actions": {
+      "edit": "Edit",
+      "activate": "Activate",
+      "complete": "Complete",
+      "discontinue": "Discontinue",
+      "delete": "Delete draft"
+    },
+    "activate": {
+      "title": "Activate this plan?",
+      "description": "{{student}} and guardians with access to their academic records will see this plan and get a notification.",
+      "descriptionNoName": "The student and guardians with access to their academic records will see this plan and get a notification.",
+      "confirm": "Activate"
+    },
+    "complete": {
+      "title": "Complete this plan?",
+      "description": "It becomes read-only and can't be reopened. {{student}} and guardians are notified.",
+      "descriptionNoName": "It becomes read-only and can't be reopened. The student and guardians are notified.",
+      "notDone_one": "{{count}} milestone isn't done; it stays as it is.",
+      "notDone_other": "{{count}} milestones aren't done; they stay as they are.",
+      "confirm": "Complete"
+    },
+    "discontinue": {
+      "title": "Discontinue this plan?",
+      "description": "It becomes read-only and can't be reopened.",
+      "active": "{{student}} and guardians still see it, marked Discontinued.",
+      "activeNoName": "The student and guardians still see it, marked Discontinued.",
+      "draft": "It was never shared with the family.",
+      "confirm": "Discontinue"
+    },
+    "delete": {
+      "title": "Delete this draft?",
+      "description": "The draft disappears from every list. This can't be undone.",
+      "confirm": "Delete draft"
+    },
+    "notices": {
+      "activated": "Plan activated.",
+      "completed": "Plan completed.",
+      "discontinued": "Plan discontinued.",
+      "draftDeleted": "Draft deleted.",
+      "draftSaved": "Draft saved. Activate it to share it with the family.",
+      "planSaved": "Plan saved."
+    },
+    "entry": {
+      "link": "Learning plans",
+      "linkOf": "Learning plans of {{name}}"
+    },
+    "family": {
+      "mine": "My plans",
+      "whose": "Whose plans",
+      "empty": "No learning plans have been shared yet.",
+      "listMissing": "These learning plans aren't available.",
+      "planMissing": "This learning plan isn't available.",
+      "back": "Back to learning plans"
+    },
+    "editor": {
+      "newTitle": "New learning plan",
+      "editTitle": "Edit learning plan",
+      "forStudent": "For {{name}}",
+      "subject": "Subject",
+      "chooseSubject": "Choose a subject",
+      "subjectWithActive": "{{subject}} (has an active plan)",
+      "subjectFixed": "The subject can't change after creation.",
+      "title": "Title",
+      "description": "Goal description",
+      "startsOn": "Starts on",
+      "targetOn": "Target date (optional)",
+      "objectivesHeading": "Objectives",
+      "objectivesCounter": "Objectives {{n}} of {{max}}",
+      "planCounter": "{{n}} of {{max}} milestones in this plan",
+      "milestonesCounter": "Milestones {{n}} of {{max}}",
+      "objectiveLegend": "Objective {{number}}",
+      "objectiveTitle": "Title of objective {{number}}",
+      "objectiveDescription": "Description of objective {{number}} (optional)",
+      "objectiveNamed": "objective {{number}}: {{title}}",
+      "objectiveUnnamed": "objective {{number}}",
+      "moveUp": "Move up {{name}}",
+      "moveDown": "Move down {{name}}",
+      "remove": "Remove {{name}}",
+      "up": "Move up",
+      "down": "Move down",
+      "removeShort": "Remove",
+      "objectiveMin": "A plan needs at least one objective.",
+      "milestoneMin": "An objective needs at least one milestone.",
+      "milestonesHeading": "Milestones",
+      "milestoneLegend": "Milestone {{position}}",
+      "milestoneTitle": "Title of milestone {{position}}",
+      "activities": "Activities of milestone {{position}} (optional)",
+      "activitiesHelp": "What the student will do",
+      "dueOn": "Due date of milestone {{position}} (optional)",
+      "milestoneNamed": "milestone {{position}}: {{title}}",
+      "milestoneUnnamed": "milestone {{position}}",
+      "progressLabel": "Progress:",
+      "addMilestone": "Add milestone",
+      "addMilestoneTo": "Add milestone to {{name}}",
+      "milestonesAtMax": "An objective can have at most {{max}} milestones.",
+      "planAtMax": "A plan can have at most {{max}} milestones.",
+      "objectivesAtMax": "A plan can have at most {{max}} objectives.",
+      "addObjective": "Add objective",
+      "objectiveMoved": "Objective moved to position {{position}}.",
+      "objectiveRemoved": "Objective {{number}} removed.",
+      "milestoneMoved": "Milestone moved to position {{position}}.",
+      "milestoneRemoved": "Milestone {{position}} removed.",
+      "activeNote": "Changes are visible to {{student}} and guardians right away.",
+      "activeNoteNoName": "Changes are visible to the student and guardians right away.",
+      "save": "Save plan",
+      "saving": "Saving",
+      "cannotCreate": "You can't create a learning plan for this student.",
+      "cannotEdit": "This plan can't be edited.",
+      "reloadConfirm": {
+        "title": "Discard your changes?",
+        "description": "Reloading shows the plan as it is now. What you typed here is lost.",
+        "confirm": "Discard and reload"
+      },
+      "removeConfirm": {
+        "title": "Remove it?",
+        "description": "Progress already recorded for it will be lost.",
+        "confirm": "Remove"
+      }
+    },
+    "validation": {
+      "titleRequired": "Write a title.",
+      "planTitleTooLong": "The title can have at most 120 characters.",
+      "itemTitleTooLong": "The title can have at most 200 characters.",
+      "descriptionTooLong": "The goal description can have at most 2000 characters.",
+      "objectiveDescriptionTooLong": "The description can have at most 1000 characters.",
+      "activitiesTooLong": "The activities can have at most 2000 characters.",
+      "subjectRequired": "Choose a subject.",
+      "subjectUnknown": "Choose an active subject.",
+      "startsOnRequired": "Choose a start date.",
+      "dateInvalid": "Enter a valid date.",
+      "targetBeforeStart": "The target date can't be before the start date.",
+      "dueOnInvalid": "Choose a due date from January 1, 2000 on.",
+      "objectivesRequired": "Add at least one objective.",
+      "objectivesLimit": "A plan can have at most 10 objectives.",
+      "milestonesRequired": "Each objective needs at least one milestone.",
+      "milestonesLimit": "An objective can have at most 10 milestones.",
+      "planMilestonesLimit": "A plan can have at most 50 milestones."
     }
   }
 }

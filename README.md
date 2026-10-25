@@ -244,6 +244,13 @@ unless a bullet says otherwise.
   current tutors, the student and guardians with access to their academic
   records read it, and the student and those guardians are notified of each
   final evaluation. Staff can void an evaluation with a reason.
+- Owners, Administrators, Academic Coordinators and a student's current
+  tutors build learning plans: objectives with ordered milestones, the
+  student's activities and due dates. Tutors work in the subjects they teach
+  the student and update milestone progress from a phone. Activating a plan
+  shares it with the student and the guardians with access to their academic
+  records, who are notified, follow its progress and overdue milestones, and
+  are notified again when it is completed.
 
 **Courses**
 
@@ -310,7 +317,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** learning plans, assignments and grades, progress
+**Not built yet:** assignments and grades, progress
 reports, course completion, billing and payments, payroll, reporting and
 analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and

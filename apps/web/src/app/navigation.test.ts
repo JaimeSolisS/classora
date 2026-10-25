@@ -49,3 +49,29 @@ describe('the evaluation nav items (#308 A2)', () => {
     expect(labels).toEqual(['nav.evaluationTemplates', 'nav.academicHistory']);
   });
 });
+
+// #310 A2: "Learning plans" for students and guardians only; no staff or
+// tutor item (they open a student's plans from the student page and My
+// schedule).
+describe('the learning plans nav item (#310 A2)', () => {
+  const MANAGER = user(
+    ['academic_coordinator'],
+    ['student.view', 'learning_plan.manage'],
+  );
+
+  it.each([
+    ['a guardian', GUARDIAN, true],
+    ['a student', STUDENT, true],
+    ['a Coordinator', MANAGER, false],
+    ['Finance', FINANCE, false],
+    ['a tutor-only user', TUTOR, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/my-learning-plans')).toBe(visible);
+  });
+
+  it('is labelled in the common catalog', () => {
+    expect(
+      NAV_ITEMS.find((item) => item.to === '/my-learning-plans')?.labelKey,
+    ).toBe('nav.learningPlans');
+  });
+});
