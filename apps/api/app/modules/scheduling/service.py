@@ -89,7 +89,9 @@ Role-scoped schedules (#67, :mod:`~app.modules.scheduling.role_schedules`):
 The tutor assignment source of the ``families`` student record policy
 (:mod:`~app.modules.scheduling.tutor_assignments`):
 :func:`student_ids_for_tutor` and :data:`TUTOR_ASSIGNMENT_SOURCE`, which
-``app.wiring`` registers.
+``app.wiring`` registers; :func:`subject_ids_for_tutor_student` (#81: the
+subjects in which a tutor currently teaches one student, for the learning
+plan subject rule in ``app.workflows.learning_plans``).
 
 Attendance (#76, :mod:`~app.modules.scheduling.attendance`; the pure
 rules in :mod:`~app.modules.scheduling.attendance_rules`):
@@ -776,6 +778,9 @@ from app.modules.scheduling.tutor_assignments import (
 )
 from app.modules.scheduling.tutor_assignments import (
     student_ids_for_tutor as student_ids_for_tutor,
+)
+from app.modules.scheduling.tutor_assignments import (
+    subject_ids_for_tutor_student as subject_ids_for_tutor_student,
 )
 from app.modules.scheduling.tutor_suggestions import (
     suggest_for_slot as suggest_for_slot,

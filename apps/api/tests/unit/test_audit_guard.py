@@ -20,6 +20,9 @@ from app.modules.academics.models import (
     EvaluationScore,
     EvaluationTemplate,
     EvaluationTemplateCriterion,
+    LearningPlan,
+    LearningPlanMilestone,
+    LearningPlanObjective,
     SessionCloseout,
     SessionNote,
 )
@@ -150,6 +153,9 @@ def test_the_guard_scans_the_real_audited_models():
         FamilyStudent,
         GroupEnrollment,
         Guardian,
+        LearningPlan,
+        LearningPlanMilestone,
+        LearningPlanObjective,
         OperatingHours,
         PrivacyNoticeAcceptance,
         RegistrationRequest,
@@ -213,6 +219,10 @@ def test_the_guard_scans_the_real_audited_models():
         CourseTemplateSubject,
         CourseTemplateModule,
         CourseTemplateAssessment,
+        # #81 A2: a plan's text is the record; nothing excluded or masked.
+        LearningPlan,
+        LearningPlanObjective,
+        LearningPlanMilestone,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()

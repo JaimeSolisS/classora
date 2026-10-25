@@ -51,10 +51,23 @@
   link is ``cohort_id`` + a snapshot ``course_assessment_id`` (no foreign
   key) + its title. The evaluation row is the version anchor of its scores.
 
-``session_closeouts``, ``session_notes`` and the four evaluation tables
-are audited (the create and update diffs are their record). The two
-append-only tables are not: a trigger rejects ``UPDATE``, ``DELETE``
-and ``TRUNCATE`` (42501), and their named events
+- ``learning_plans``, ``learning_plan_objectives`` and
+  ``learning_plan_milestones`` (#81 A1): one student's plan in one subject
+  (title, goal description, ``starts_on`` / ``target_on`` local dates),
+  ``draft`` → ``active`` → ``completed`` | ``discontinued``
+  (``activated_at``, ``closed_at``; at most one live ``active`` plan per
+  student and subject: a partial unique index), a soft delete (drafts
+  only); 1–10 ordered objectives; 1–10 ordered milestones per objective
+  (title, activities, ``due_on``, progress ``status`` with
+  ``completed_at`` / ``completed_by_user_id`` exactly when ``done``). The
+  plan row is the version anchor of its objectives and milestone
+  definitions; each milestone has its own ``version`` for progress.
+
+``session_closeouts``, ``session_notes``, the four evaluation tables and
+the three learning plan tables are audited (the create and update diffs
+are their record). The two append-only tables are not: a trigger
+rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named
+events
 (``academics.closeout_approved``, ``academics.closeout_corrected``) are
 their audit record. Every foreign key is ``ON DELETE RESTRICT``.
 """
@@ -679,3 +692,176 @@ class EvaluationScore(Audited, Model):
     max_score: Mapped[Decimal] = mapped_column(Numeric(6, 2))
     score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# --- Learning plans (#81) ---------------------------------------------------------
+
+PLAN_STATUSES: Final = ("draft", "active", "completed", "discontinued")
+MILESTONE_STATUSES: Final = ("pending", "in_progress", "done")
+ACTIVE_PLAN_UNIQUE: Final = "uq_learning_plans_student_id_subject_id_active"
+OBJECTIVE_POSITION_UNIQUE: Final = "uq_learning_plan_objectives_position"
+MILESTONE_POSITION_UNIQUE: Final = "uq_learning_plan_milestones_position"
+
+
+class LearningPlan(Audited, SoftDeleteMixin, VersionedMixin, Model):
+    """One student's learning plan in one subject (#81 A1, E2, E3): the
+    version anchor of its objectives and milestone definitions (a change to
+    them bumps ``version`` once). Its audit diffs are its edit history
+    (spec §9)."""
+
+    __tablename__ = "learning_plans"
+    __table_args__ = (
+        _trimmed_text("title", 120, nullable=False),
+        CheckConstraint(
+            "description IS NULL OR char_length(description) BETWEEN 1 AND 2000",
+            name="description_valid",
+        ),
+        CheckConstraint(
+            "target_on IS NULL OR target_on >= starts_on", name="target_after_start"
+        ),
+        CheckConstraint(_in("status", PLAN_STATUSES), name="status_valid"),
+        CheckConstraint(
+            "status <> 'draft' OR activated_at IS NULL", name="draft_not_activated"
+        ),
+        CheckConstraint(
+            "status NOT IN ('active', 'completed') OR activated_at IS NOT NULL",
+            name="active_activated",
+        ),
+        CheckConstraint(
+            "(status IN ('completed', 'discontinued')) = (closed_at IS NOT NULL)",
+            name="closed_together",
+        ),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="deleted_together",
+        ),
+        CheckConstraint("deleted_at IS NULL OR status = 'draft'", name="deleted_draft"),
+        # E2: at most one active plan per student and subject.
+        Index(
+            ACTIVE_PLAN_UNIQUE,
+            "student_id",
+            "subject_id",
+            unique=True,
+            postgresql_where=text("status = 'active' AND deleted_at IS NULL"),
+        ),
+        # The list (E2), read by student.
+        Index(
+            "ix_learning_plans_student_id_created_at",
+            "student_id",
+            "created_at",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT")
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    starts_on: Mapped[date] = mapped_column(Date)
+    target_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'draft'"))
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+
+
+class LearningPlanObjective(Audited, Model):
+    """One objective of a plan, at ``position`` (1-based, unique per plan,
+    deferrable: the #64 pattern). Removed objectives are deleted (the audit
+    keeps them)."""
+
+    __tablename__ = "learning_plan_objectives"
+    __table_args__ = (
+        CheckConstraint("position BETWEEN 1 AND 10", name="position_range"),
+        _trimmed_text("title", 200, nullable=False),
+        CheckConstraint(
+            "description IS NULL OR char_length(description) BETWEEN 1 AND 1000",
+            name="description_valid",
+        ),
+        UniqueConstraint(
+            "plan_id",
+            "position",
+            name=OBJECTIVE_POSITION_UNIQUE,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("learning_plans.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class LearningPlanMilestone(Audited, VersionedMixin, Model):
+    """One milestone of an objective, at ``position`` (1-based, unique per
+    objective, deferrable), with its progress ``status``. ``done`` stores
+    who and when; its own ``version`` guards progress writes (D2)."""
+
+    __tablename__ = "learning_plan_milestones"
+    __table_args__ = (
+        CheckConstraint("position BETWEEN 1 AND 10", name="position_range"),
+        _trimmed_text("title", 200, nullable=False),
+        CheckConstraint(
+            "activities IS NULL OR char_length(activities) BETWEEN 1 AND 2000",
+            name="activities_valid",
+        ),
+        CheckConstraint(_in("status", MILESTONE_STATUSES), name="status_valid"),
+        CheckConstraint(
+            "(status = 'done') = (completed_at IS NOT NULL"
+            " AND completed_by_user_id IS NOT NULL)",
+            name="done_together",
+        ),
+        UniqueConstraint(
+            "objective_id",
+            "position",
+            name=MILESTONE_POSITION_UNIQUE,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("learning_plans.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    objective_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "learning_plan_objectives.id",
+            ondelete="RESTRICT",
+            # The convention's name would pass PostgreSQL's 63-character limit.
+            name="fk_learning_plan_milestones_objective_id",
+        ),
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    title: Mapped[str] = mapped_column(String(200))
+    activities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )

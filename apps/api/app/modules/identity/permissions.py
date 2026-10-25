@@ -117,6 +117,13 @@ ACADEMIC_NOTE_REVIEW = "academic_note.review"
 # record and read evaluations through the evaluation record policy
 # (academics/evaluation_rules.py); families read the academic history.
 EVALUATION_MANAGE = "evaluation.manage"
+# Learning plans (#81, owner-delegated decision E4 (a)): who creates, edits,
+# transitions and deletes any learning plan and reads every plan, drafts
+# included (Owner, Administrator, Academic Coordinator; not delegable).
+# Tutors write the plans of students they currently teach in the plan's
+# subject through the plan record policy (academics/learning_plan_rules.py);
+# families read active and closed plans through the same routes.
+LEARNING_PLAN_MANAGE = "learning_plan.manage"
 
 
 @dataclass(frozen=True)
@@ -157,6 +164,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(TEACHING_HOURS_APPROVE),
     PermissionDef(ACADEMIC_NOTE_REVIEW),
     PermissionDef(EVALUATION_MANAGE),
+    PermissionDef(LEARNING_PLAN_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -201,6 +209,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 TEACHING_HOURS_APPROVE,
                 ACADEMIC_NOTE_REVIEW,
                 EVALUATION_MANAGE,
+                LEARNING_PLAN_MANAGE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -217,6 +226,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 TEACHING_HOURS_APPROVE,
                 ACADEMIC_NOTE_REVIEW,
                 EVALUATION_MANAGE,
+                LEARNING_PLAN_MANAGE,
             }
         ),
         FINANCE_STAFF: frozenset(

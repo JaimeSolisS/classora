@@ -434,3 +434,53 @@ describe('evaluation notifications (#80 H1)', () => {
     expect(voidedLink({}, recipient)).toBe('/');
   });
 });
+
+// #81 H1: the learning plan notifications carry ids only (no title or
+// text) and have no link until #310.
+
+describe('learning plan notifications (#81 H1)', () => {
+  const plan = {
+    student_id: '00000000-0000-4000-8000-000000000081',
+    plan_id: '00000000-0000-4000-8000-000000000082',
+    subject_id: '00000000-0000-4000-8000-000000000083',
+  };
+
+  const text = (lng: 'es' | 'en', type: string) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: plan,
+    });
+
+  it('renders both types in both languages, without an id', () => {
+    expect(text('en', 'academics.learning_plan_activated')).toBe(
+      'A new learning plan is ready: see its objectives and milestones.',
+    );
+    expect(text('en', 'academics.learning_plan_completed')).toBe(
+      'A learning plan was completed.',
+    );
+    expect(text('es', 'academics.learning_plan_activated')).toBe(
+      'Hay un nuevo plan de aprendizaje: consulta sus objetivos y sus hitos.',
+    );
+    expect(text('es', 'academics.learning_plan_completed')).toBe(
+      'Se completó un plan de aprendizaje.',
+    );
+    for (const lng of ['es', 'en'] as const) {
+      for (const type of [
+        'academics.learning_plan_activated',
+        'academics.learning_plan_completed',
+      ]) {
+        expect(text(lng, type)).not.toContain(plan.plan_id);
+        expect(text(lng, type)).not.toContain('notifications.types');
+      }
+    }
+  });
+
+  it('only become read when activated (no page until #310)', () => {
+    expect(
+      NOTIFICATION_LINKS['academics.learning_plan_activated'],
+    ).toBeUndefined();
+    expect(
+      NOTIFICATION_LINKS['academics.learning_plan_completed'],
+    ).toBeUndefined();
+  });
+});

@@ -290,6 +290,9 @@ export const NOTIFICATION_LINKS: Readonly<
   // the student; a void opens the author's evaluation.
   'academics.evaluation_finalized': myHistory,
   'academics.evaluation_voided': voidedEvaluation,
+  // #81 H1: academics.learning_plan_activated and
+  // academics.learning_plan_completed have no link until #310 (M5-14b)
+  // adds the plan pages.
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

@@ -52,10 +52,27 @@ final, non-voided, live evaluations); the rules module
 composes them with ``scheduling``, ``catalog``, ``courses``, ``families``
 and ``administration``.
 
+Learning plans (#81, :mod:`~app.modules.academics.learning_plans`, the
+pure rules in :mod:`~app.modules.academics.learning_plan_rules`): the rows
+(:class:`LearningPlan`, :class:`LearningPlanObjective`,
+:class:`LearningPlanMilestone`), :func:`create_plan`,
+:func:`get_plan_for_update`, :func:`get_plan_for_share`,
+:func:`replace_plan_content`, :func:`transition_plan`,
+:func:`get_milestone_for_update`, :func:`set_milestone_status`,
+:func:`soft_delete_plan`, the reads :func:`plan_with_subject`,
+:func:`plan_items`, :func:`list_plans` (families: only
+:func:`family_visible_condition` rows), :func:`milestone_facts`,
+:func:`has_own_plan`, :func:`milestone_plan_id` and
+:func:`other_active_plan_exists`; the rules module
+(:data:`learning_plan_rules`) and the errors.
+``app.workflows.learning_plans`` composes them with ``scheduling``,
+``catalog``, ``families``, ``identity`` and ``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 from app.modules.academics import evaluation_rules as evaluation_rules
+from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
 from app.modules.academics.closeout_review import (
     ApprovalSnapshot as ApprovalSnapshot,
@@ -133,6 +150,7 @@ from app.modules.academics.closeouts import (
     create_session_closeout as create_session_closeout,
 )
 from app.modules.academics.closeouts import summary_of as summary_of
+from app.modules.academics.errors import ActivePlanExistsError as ActivePlanExistsError
 from app.modules.academics.errors import (
     CloseoutAlreadySubmittedError as CloseoutAlreadySubmittedError,
 )
@@ -203,6 +221,9 @@ from app.modules.academics.errors import (
     EvaluationVoidedError as EvaluationVoidedError,
 )
 from app.modules.academics.errors import (
+    LearningPlanFieldError as LearningPlanFieldError,
+)
+from app.modules.academics.errors import (
     NoteAlreadyPublishedError as NoteAlreadyPublishedError,
 )
 from app.modules.academics.errors import (
@@ -220,6 +241,13 @@ from app.modules.academics.errors import (
 )
 from app.modules.academics.errors import (
     NoteTutorOnlyError as NoteTutorOnlyError,
+)
+from app.modules.academics.errors import PlanClosedError as PlanClosedError
+from app.modules.academics.errors import PlanNotActiveError as PlanNotActiveError
+from app.modules.academics.errors import PlanNotDraftError as PlanNotDraftError
+from app.modules.academics.errors import PlanReadOnlyError as PlanReadOnlyError
+from app.modules.academics.errors import (
+    PlanSubjectNotAssignedError as PlanSubjectNotAssignedError,
 )
 from app.modules.academics.errors import (
     SessionNotClosableError as SessionNotClosableError,
@@ -283,6 +311,41 @@ from app.modules.academics.evaluations import (
     void_evaluation as void_evaluation,
 )
 from app.modules.academics.evaluations import working_page as working_page
+from app.modules.academics.learning_plans import MilestoneFact as MilestoneFact
+from app.modules.academics.learning_plans import MilestoneValues as MilestoneValues
+from app.modules.academics.learning_plans import ObjectiveRow as ObjectiveRow
+from app.modules.academics.learning_plans import ObjectiveValues as ObjectiveValues
+from app.modules.academics.learning_plans import PlanRow as PlanRow
+from app.modules.academics.learning_plans import create_plan as create_plan
+from app.modules.academics.learning_plans import (
+    family_visible_condition as family_visible_condition,
+)
+from app.modules.academics.learning_plans import (
+    get_milestone_for_update as get_milestone_for_update,
+)
+from app.modules.academics.learning_plans import (
+    get_plan_for_share as get_plan_for_share,
+)
+from app.modules.academics.learning_plans import (
+    get_plan_for_update as get_plan_for_update,
+)
+from app.modules.academics.learning_plans import has_own_plan as has_own_plan
+from app.modules.academics.learning_plans import list_plans as list_plans
+from app.modules.academics.learning_plans import milestone_facts as milestone_facts
+from app.modules.academics.learning_plans import milestone_plan_id as milestone_plan_id
+from app.modules.academics.learning_plans import (
+    other_active_plan_exists as other_active_plan_exists,
+)
+from app.modules.academics.learning_plans import plan_items as plan_items
+from app.modules.academics.learning_plans import plan_with_subject as plan_with_subject
+from app.modules.academics.learning_plans import (
+    replace_plan_content as replace_plan_content,
+)
+from app.modules.academics.learning_plans import (
+    set_milestone_status as set_milestone_status,
+)
+from app.modules.academics.learning_plans import soft_delete_plan as soft_delete_plan
+from app.modules.academics.learning_plans import transition_plan as transition_plan
 from app.modules.academics.models import (
     CLOSEOUT_SUBMITTED as CLOSEOUT_SUBMITTED,
 )
@@ -294,6 +357,9 @@ from app.modules.academics.models import (
 from app.modules.academics.models import (
     EvaluationTemplateCriterion as EvaluationTemplateCriterion,
 )
+from app.modules.academics.models import LearningPlan as LearningPlan
+from app.modules.academics.models import LearningPlanMilestone as LearningPlanMilestone
+from app.modules.academics.models import LearningPlanObjective as LearningPlanObjective
 from app.modules.academics.models import SessionCloseout as SessionCloseout
 from app.modules.academics.models import (
     SessionCloseoutApproval as SessionCloseoutApproval,

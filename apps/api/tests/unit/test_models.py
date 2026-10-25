@@ -65,7 +65,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # (session_closeouts, M5-10; session_closeout_approvals and
     # session_closeout_corrections, M5-11; session_notes, M5-12;
     # evaluation_templates, evaluation_template_criteria, evaluations and
-    # evaluation_scores, M5-13), then
+    # evaluation_scores, M5-13; learning_plans, learning_plan_objectives and
+    # learning_plan_milestones, M5-14), then
     # courses (course_templates, _subjects, _modules, _assessments and
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
@@ -110,6 +111,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "evaluation_template_criteria",
         "evaluations",
         "evaluation_scores",
+        "learning_plans",
+        "learning_plan_objectives",
+        "learning_plan_milestones",
         "users",
         "roles",
         "permissions",

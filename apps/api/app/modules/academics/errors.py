@@ -1,4 +1,5 @@
-"""Session closeout errors (#77 D2, E1; #78 C, D).
+"""Academics errors: session closeouts (#77 D2, E1; #78 C, D), notes (#79),
+evaluations (#80) and learning plans (#81).
 
 The routes also answer the shared ``404 not_found``
 (:class:`~app.core.authz.RecordNotFoundError`, the same body for an unknown
@@ -464,3 +465,99 @@ class EvaluationFieldError(AppError):
     def one(cls, field: str, code: str, message: str) -> EvaluationFieldError:
         """One error at ``["body", field]``."""
         return cls([(["body", field], code, message)])
+
+
+# --- Learning plans (#81) ----------------------------------------------------------
+# ``details`` carry nothing: a plan's text never reaches an error body.
+
+
+class PlanSubjectNotAssignedError(AppError):
+    """``403 plan_subject_not_assigned`` (#81 E4): a tutor who currently
+    teaches the student, but not in the plan's subject."""
+
+    status = 403
+    code = "plan_subject_not_assigned"
+    detail = "You don't currently teach this student this subject."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PlanReadOnlyError(AppError):
+    """``403 plan_read_only`` (#81 E4): a former tutor reads the plans they
+    created, read-only."""
+
+    status = 403
+    code = "plan_read_only"
+    detail = "This student is no longer assigned to you: the plan is read-only."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PlanClosedError(AppError):
+    """``409 plan_closed`` (#81 E3): a completed or discontinued plan is
+    read-only."""
+
+    status = 409
+    code = "plan_closed"
+    detail = "This learning plan is closed."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PlanNotActiveError(AppError):
+    """``409 plan_not_active`` (#81 D1, D2): only an active plan is
+    completed or tracks progress."""
+
+    status = 409
+    code = "plan_not_active"
+    detail = "This learning plan isn't active."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PlanNotDraftError(AppError):
+    """``409 plan_not_draft`` (#81 D1, D3): only a draft is activated or
+    deleted."""
+
+    status = 409
+    code = "plan_not_draft"
+    detail = "This learning plan isn't a draft."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ActivePlanExistsError(AppError):
+    """``409 active_plan_exists`` (#81 E2, D1): the student already has an
+    active plan in this subject."""
+
+    status = 409
+    code = "active_plan_exists"
+    detail = "The student already has an active learning plan in this subject."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class LearningPlanFieldError(AppError):
+    """``422 validation_error`` with field errors (#81 C2): the content
+    checks (``title_required``, ``objectives_required``,
+    ``milestones_too_many``, ``target_before_start``, ``subject_unknown``,
+    ``objective_unknown``, …). ``errors`` items are ``(path, code,
+    message)``, for example ``(["body", "objectives", 0, "milestones"],
+    "milestones_required", "…")``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, errors: Sequence[tuple[Sequence[str | int], str, str]]) -> None:
+        items: list[FieldError] = [
+            {"path": list(path), "code": code, "message": message}
+            for path, code, message in errors
+        ]
+        super().__init__(errors=items)
