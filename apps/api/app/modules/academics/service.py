@@ -112,6 +112,19 @@ module (:data:`progress_report_schedule_rules`) and the errors.
 ``app.workflows.progress_report_schedules`` (routes) and
 ``app.workflows.progress_report_schedule_tasks`` (the job) compose them.
 
+Progress dashboard reads (#84, :mod:`~app.modules.academics.progress_aggregates`,
+shared with the facts compiler; the pure rules in
+:mod:`~app.modules.academics.progress_dashboard_rules`): the counted
+evaluations (:func:`evaluation_scores`), the homework rows due or graded in
+a range (:func:`homework_rows`, :func:`homework_state_counts`,
+:func:`is_counted_grade`), the listed plans (:func:`dashboard_plans`,
+:func:`plan_counts`), the approved closeout summaries
+(:func:`approved_summaries`), a tutor's closeouts as a select
+(:func:`closeout_sessions_of`) and the shared note counts
+(:func:`family_note_counts`). ``app.workflows.progress_dashboard`` composes
+them with ``scheduling``, ``catalog``, ``families``, ``identity`` and
+``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -119,6 +132,9 @@ from app.modules.academics import assignment_rules as assignment_rules
 from app.modules.academics import evaluation_rules as evaluation_rules
 from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
+from app.modules.academics import (
+    progress_dashboard_rules as progress_dashboard_rules,
+)
 from app.modules.academics import progress_report_facts as progress_report_facts
 from app.modules.academics import progress_report_rules as progress_report_rules
 from app.modules.academics import (
@@ -229,10 +245,16 @@ from app.modules.academics.closeout_rules import review_block as review_block
 from app.modules.academics.closeout_rules import sees_summary as sees_summary
 from app.modules.academics.closeout_rules import summary_errors as summary_errors
 from app.modules.academics.closeouts import (
+    approved_summaries as approved_summaries,
+)
+from app.modules.academics.closeouts import (
     closeout_for_session as closeout_for_session,
 )
 from app.modules.academics.closeouts import (
     closeout_session_keys as closeout_session_keys,
+)
+from app.modules.academics.closeouts import (
+    closeout_sessions_of as closeout_sessions_of,
 )
 from app.modules.academics.closeouts import closeouts_by_id as closeouts_by_id
 from app.modules.academics.closeouts import (
@@ -554,6 +576,9 @@ from app.modules.academics.notes import NotePage as NotePage
 from app.modules.academics.notes import NoteRow as NoteRow
 from app.modules.academics.notes import create_note as create_note
 from app.modules.academics.notes import (
+    family_note_counts as family_note_counts,
+)
+from app.modules.academics.notes import (
     family_notes_for_student as family_notes_for_student,
 )
 from app.modules.academics.notes import (
@@ -575,6 +600,33 @@ from app.modules.academics.notes import (
 )
 from app.modules.academics.notes import (
     update_note_body as update_note_body,
+)
+from app.modules.academics.progress_aggregates import (
+    HomeworkRow as HomeworkRow,
+)
+from app.modules.academics.progress_aggregates import (
+    PlanCounts as PlanCounts,
+)
+from app.modules.academics.progress_aggregates import (
+    ScoreRow as ScoreRow,
+)
+from app.modules.academics.progress_aggregates import (
+    dashboard_plans as dashboard_plans,
+)
+from app.modules.academics.progress_aggregates import (
+    evaluation_scores as evaluation_scores,
+)
+from app.modules.academics.progress_aggregates import (
+    homework_rows as homework_rows,
+)
+from app.modules.academics.progress_aggregates import (
+    homework_state_counts as homework_state_counts,
+)
+from app.modules.academics.progress_aggregates import (
+    is_counted_grade as is_counted_grade,
+)
+from app.modules.academics.progress_aggregates import (
+    plan_counts as plan_counts,
 )
 from app.modules.academics.progress_report_facts import (
     academic_facts as academic_facts,

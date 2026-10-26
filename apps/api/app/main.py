@@ -145,6 +145,9 @@ from app.workflows.learning_plans_router import (
 from app.workflows.overdue_closeouts_router import (
     router as overdue_closeouts_router,
 )
+from app.workflows.progress_dashboard_router import (
+    student_router as student_progress_dashboard_router,
+)
 from app.workflows.progress_report_schedules_router import (
     router as progress_report_schedules_router,
 )
@@ -283,6 +286,7 @@ def build_app(
     app.include_router(student_progress_reports_router)
     app.include_router(student_progress_report_schedules_router)
     app.include_router(progress_report_schedules_router)
+    app.include_router(student_progress_dashboard_router)
     app.include_router(schedule_options_router)
     app.include_router(schedules_router)
     app.include_router(tutor_suggestions_router)

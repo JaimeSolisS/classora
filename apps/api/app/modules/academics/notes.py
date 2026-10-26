@@ -18,11 +18,12 @@ the automatic audit events record the diffs (E8).
 """
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import InvalidCursorError, decode_cursor, encode_cursor
@@ -192,6 +193,30 @@ async def family_notes_for_student(
     if class_session_id is not None:
         query = query.where(SessionNote.class_session_id == class_session_id)
     return await _page(session, query, cursor=cursor, limit=limit)
+
+
+async def family_note_counts(
+    session: AsyncSession,
+    student_id: uuid.UUID,
+    class_session_ids: Collection[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    """#84 C2: how many **shared** (``visibility = 'family'``) live notes the
+    student has in each of these sessions (sessions without one are left
+    out). One statement, none for an empty collection."""
+    ids = set(class_session_ids)
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(SessionNote.class_session_id, func.count())
+        .where(
+            SessionNote.student_id == student_id,
+            SessionNote.class_session_id.in_(ids),
+            SessionNote.visibility == NOTE_FAMILY,
+            SessionNote.deleted_at.is_(None),
+        )
+        .group_by(SessionNote.class_session_id)
+    )
+    return {class_session_id: int(count) for class_session_id, count in rows}
 
 
 # --- Writes ---------------------------------------------------------------------------

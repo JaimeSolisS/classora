@@ -147,6 +147,9 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         # #316 report schedules
         "/api/v1/students/{student_id}/progress-report-schedules",
         "/api/v1/progress-report-schedules/{schedule_id}",
+        # #84 progress dashboard
+        "/api/v1/students/{student_id}/progress",
+        "/api/v1/students/{student_id}/session-log",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

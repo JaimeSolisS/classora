@@ -16,6 +16,7 @@ from sqlalchemy import Select, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.academics.models import (
+    CLOSEOUT_APPROVED,
     CLOSEOUT_SUBMITTED,
     SessionCloseout,
     SessionCloseoutApproval,
@@ -118,6 +119,50 @@ async def create_session_closeout(
     session.add(row)
     await session.flush()
     return row
+
+
+async def approved_summaries(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, CloseoutSummary]:
+    """#84 C3: the summary of each of these sessions whose closeout is
+    ``approved`` **now** and has at least one summary field, by class session
+    id. A closeout that is ``submitted`` or ``changes_requested`` (also an
+    approved one back in review after a tutor's correction request, #305:
+    its columns hold the new, unapproved text) is left out, as is a session
+    without a closeout. One statement, none for an empty collection."""
+    ids = set(class_session_ids)
+    if not ids:
+        return {}
+    rows = await session.scalars(
+        select(SessionCloseout).where(
+            SessionCloseout.class_session_id.in_(ids),
+            SessionCloseout.status == CLOSEOUT_APPROVED,
+        )
+    )
+    found = {}
+    for row in rows:
+        summary = summary_of(row)
+        if any(
+            value is not None
+            for value in (
+                summary.topics,
+                summary.performance,
+                summary.homework,
+                summary.next_steps,
+            )
+        ):
+            found[row.class_session_id] = summary
+    return found
+
+
+def closeout_sessions_of(tutor_user_id: uuid.UUID) -> Select[uuid.UUID]:
+    """``SELECT class_session_id FROM session_closeouts`` of the closeouts
+    ``tutor_user_id`` wrote (the closeout's tutor), **not executed**: the
+    #84 former-tutor rule ("taught" = the session's current tutor or its
+    closeout's tutor), joined by ``scheduling`` into its read."""
+    return select(SessionCloseout.class_session_id).where(
+        SessionCloseout.tutor_user_id == tutor_user_id
+    )
 
 
 def summary_of(row: SessionCloseout) -> CloseoutSummary:

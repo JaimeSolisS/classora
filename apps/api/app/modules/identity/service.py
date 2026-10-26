@@ -12,7 +12,9 @@
   roots with ``administration.service.register_approval_handler``.
 - Account references (#34 B1): :func:`get_account_reference` and
   :func:`get_account_references` (``schemas.AccountReference``: id, username,
-  display name, state and roles; never a hash or contact data).
+  display name, state and roles; never a hash or contact data);
+  :func:`display_name_columns` (#84: ``SELECT id, display_name FROM users``,
+  not executed, for a module that joins the names into its own read).
   :func:`active_user_ids_with_permission` (#52 F2): the active holders of
   a permission (role grants plus delegations), for notifications.
 - Role members (#43; ``members.py``): :func:`list_role_members` and
@@ -71,7 +73,7 @@ from collections.abc import Iterable
 from typing import Final, Literal, Protocol
 
 from fastapi import Request
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import Select, func, literal_column, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -383,6 +385,13 @@ async def get_account_references(
         )
         for row in rows
     }
+
+
+def display_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, display_name FROM users``, **not executed** (#84 C2):
+    another module joins it as a subquery so a list and its people's display
+    names come in one statement."""
+    return select(User.id, User.display_name)
 
 
 async def get_account_reference(
