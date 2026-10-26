@@ -648,6 +648,90 @@ async def student_attendance_summary(
     )
 
 
+@dataclass(frozen=True)
+class ParticipationCounts:
+    """One student's sessions of a cohort (#85 B2, E3)."""
+
+    held: int = 0
+    """``completed`` sessions."""
+    attended: int = 0
+    """Held and marked ``present`` or ``late``."""
+    absent: int = 0
+    """Held and marked ``absent``."""
+    awaiting_closeout: int = 0
+    """``confirmed`` sessions that have started (waiting for a closeout)."""
+    remaining: int = 0
+    """``unassigned``, ``offered`` or ``confirmed`` sessions still to start."""
+
+
+_ATTENDED: Final = ("present", "late")
+_UPCOMING: Final = (
+    SessionState.UNASSIGNED.value,
+    SessionState.OFFERED.value,
+    SessionState.CONFIRMED.value,
+)
+
+
+async def cohort_participation(
+    session: AsyncSession,
+    cohort_id: uuid.UUID,
+    student_ids: Collection[uuid.UUID],
+    *,
+    now: datetime,
+) -> dict[uuid.UUID, ParticipationCounts]:
+    """#85 B2: per student, their sessions of the cohort
+    (``class_sessions.cohort_id``; makeups, individual sessions, never
+    count) counted as :class:`ParticipationCounts`. ``cancelled``,
+    ``skipped_closure`` and ``conflict`` sessions, and ``unassigned`` or
+    ``offered`` ones that have started, count nowhere. A student without
+    sessions is left out (all zeros). One statement over the participants,
+    the sessions and the student's own attendance mark (the #76 table);
+    none for no students."""
+    ids = set(student_ids)
+    if not ids:
+        return {}
+    state, starts_at = ClassSession.state, ClassSession.starts_at
+    status = ClassSessionAttendance.status
+    held = state == SessionState.COMPLETED.value
+    rows = await session.execute(
+        select(
+            ClassSessionParticipant.student_id,
+            func.count().filter(held),
+            func.count().filter(held, status.in_(_ATTENDED)),
+            func.count().filter(held, status == "absent"),
+            func.count().filter(
+                state == SessionState.CONFIRMED.value, starts_at <= now
+            ),
+            func.count().filter(state.in_(_UPCOMING), starts_at > now),
+        )
+        .select_from(ClassSessionParticipant)
+        .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
+        .outerjoin(
+            ClassSessionAttendance,
+            and_(
+                ClassSessionAttendance.class_session_id
+                == ClassSessionParticipant.class_session_id,
+                ClassSessionAttendance.student_id == ClassSessionParticipant.student_id,
+            ),
+        )
+        .where(
+            ClassSession.cohort_id == cohort_id,
+            ClassSessionParticipant.student_id.in_(ids),
+        )
+        .group_by(ClassSessionParticipant.student_id)
+    )
+    return {
+        student_id: ParticipationCounts(
+            held=held_count,
+            attended=attended,
+            absent=absent,
+            awaiting_closeout=awaiting,
+            remaining=remaining,
+        )
+        for student_id, held_count, attended, absent, awaiting, remaining in rows
+    }
+
+
 async def student_attendance(
     session: AsyncSession,
     student_id: uuid.UUID,

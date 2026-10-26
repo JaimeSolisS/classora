@@ -26,6 +26,14 @@ a module's router may not import ``app.workflows``.
   teach and their own sessions (#246); anyone else an empty list or ``404
   cohort_not_found``.
 
+- ``GET /api/v1/cohorts/{cohort_id}/completion`` (#85):
+  ``authenticated()`` with its own record policy
+  (``app.workflows.course_completion``): ``evaluation.manage`` holders and
+  the tutor currently teaching the cohort read every active enrollment,
+  students and guardians (the same family rule) only their own; Finance
+  (``course.view`` without ``evaluation.manage``) ``403 permission_denied``;
+  anyone else ``404 cohort_not_found``.
+
 The tutor of a cohort is offered through its series:
 ``POST /api/v1/class-series/{class_series_id}/offers`` (#233,
 ``schedule.assign``) also takes a cohort's series.
@@ -49,8 +57,9 @@ from app.core.pagination import CursorPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.courses.schemas import CohortStatusFilter, CohortUpdate
 from app.modules.scheduling.schemas import CohortSessionsQuery
-from app.workflows import cohort_enrollment, cohorts
+from app.workflows import cohort_enrollment, cohorts, course_completion
 from app.workflows.cohort_schemas import (
+    CohortCompletion,
     CohortCreate,
     CohortCreated,
     CohortDetail,
@@ -229,6 +238,38 @@ async def list_cohort_sessions(
     with `participants`."""
     viewer = await cohorts.cohort_viewer(uow.session, principal)
     return await cohorts.list_cohort_sessions(uow.session, cohort_id, query, viewer)
+
+
+@router.get(
+    "/{cohort_id}/completion",
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            "Permission denied (permission_denied): course.view without"
+            " evaluation.manage (Finance), for a cohort where you neither teach"
+            " nor have an enrolled student of your own."
+        ),
+        404: _NOT_FOUND,
+    },
+)
+async def get_cohort_completion(
+    principal: Annotated[Principal, authenticated()],
+    cohort_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> CohortCompletion:
+    """Each actively enrolled student's progress against the course's
+    completion criteria, computed live from the cohort's frozen syllabus:
+    attendance (completed sessions attended, present or late, against the
+    minimum), required modules and required assessments (the latest final
+    evaluation counts), and an overall status: `in_progress` until the
+    course has ended and every started class is closed out, then
+    `completed` or `not_completed`. Staff with evaluation.manage and the
+    tutor currently teaching the cohort see every enrolled student; a
+    student or their guardian (an adult's only with the academic consent)
+    only their own. Nothing is stored and there is no override."""
+    return await course_completion.get_cohort_completion(
+        uow.session, principal, cohort_id
+    )
 
 
 @router.patch(

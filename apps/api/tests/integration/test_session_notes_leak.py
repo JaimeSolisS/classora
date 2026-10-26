@@ -60,6 +60,16 @@ only: (vi) for the other family), shown on the session log. A group session
 of both students, approved, is the positive control
 (``test_the_approved_summaries_reach_their_own_family``): its summary on
 both families' logs, each with only their own child's attendance.
+#85's source builds a cohort with both students and a classmate (no
+family in the world, the classmate's name is the canary) and one completed
+course session, then per student evaluations linked to its required
+assessment: (i) a draft (its id and feedback), (ii) a voided final one (its
+id and the void reason), (iii) the internal change reason of an amended
+earlier attempt; the counted (latest) one and the earlier attempt are
+visible to that family only ((iv) for the other family). The positive
+control (``test_the_completion_rows_reach_their_own_family``): each family
+reads exactly its own row on ``/cohorts/{cohort_id}/completion``, with
+the counted score.
 
 **The walk** (:func:`family_get_routes`): every ``GET`` route of
 ``build_app(include_dev_routes=True)``, except
@@ -96,6 +106,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from itertools import product
 from typing import Any
 
@@ -106,6 +117,7 @@ from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import build_app
+from app.modules.courses.models import CohortEnrollment
 from app.modules.families.models import Guardian, Student
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
@@ -117,6 +129,7 @@ from app.modules.identity.permissions import (
 from tests.authz.harness import api_route_contexts, load_matrix
 from tests.conftest import FrozenClock, frozen_clock
 from tests.factories.base import persist
+from tests.factories.courses import persist_course_cohort
 from tests.factories.families import (
     ADULT_BIRTHDATE,
     GuardianFactory,
@@ -220,6 +233,10 @@ class LeakWorld:
     the adult absent)."""
     closeout_group_summary: set[str] = field(default_factory=set)
     """#84: its approved summary, on both families' session logs."""
+    cohort_id: str = ""
+    """#85: the cohort of both students and a classmate."""
+    shown_completion: dict[uuid.UUID, str] = field(default_factory=dict)
+    """#85: per student, the counted score on the completion route."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -1083,6 +1100,115 @@ def closeout_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     return Canaries(hidden=hidden, visible=visible, shown_on=[])
 
 
+def completion_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#85: a cohort of both students and a classmate whose name is a canary,
+    with a completed course session; per student, evaluations linked to the
+    cohort's required assessment: (i) a draft (id and feedback), (ii) a
+    voided final one (id and void reason), (iii) the change reason of an
+    earlier, amended attempt; the counted latest attempt and the earlier one
+    are the student's family's only ((iv) for the other family)."""
+    assessment_id = uuid.uuid4()
+    classmate_name = f"CANARY-classmate-{uuid.uuid4().hex[:12]}"
+    hidden: dict[uuid.UUID, set[str]] = {s: {classmate_name} for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    subject_id = world.subject_ids[0]
+
+    async def _cohort(session: AsyncSession) -> tuple[str, uuid.UUID]:
+        cohort = await persist_course_cohort(
+            session,
+            subject_id=subject_id,
+            assessments=[
+                {"id": assessment_id, "title": "Examen", "min_score_percent": 70}
+            ],
+        )
+        classmate = await persist_student(
+            session, contacts=0, given_names=classmate_name, family_names="Fuga"
+        )
+        for student_id in (*world.students, classmate.id):
+            session.add(
+                CohortEnrollment(
+                    cohort_id=cohort.id,
+                    student_id=student_id,
+                    enrolled_at=NOW - timedelta(days=30),
+                    enrolled_by_user_id=world.staff.id,
+                )
+            )
+        await session.flush()
+        return str(cohort.id), classmate.id
+
+    world.cohort_id, classmate = in_uow(world.url, _cohort)
+    course_session = stored(
+        world.url,
+        NOW - timedelta(days=25, hours=3),
+        state="completed",
+        students=(*world.students, classmate),
+        tutor_user_id=world.tutor.id,
+        kind="course",
+        cohort_id=world.cohort_id,
+        subject_id=subject_id,
+    )
+
+    def evaluation(
+        student: uuid.UUID,
+        percent: str,
+        days_ago: int,
+        *,
+        status: str = "final",
+        feedback: str | None = None,
+        reason: str | None = None,
+        void_reason: str | None = None,
+    ) -> str:
+        final = status == "final"
+        [row] = run_sql(
+            world.url,
+            "INSERT INTO evaluations (student_id, subject_id, author_user_id,"
+            " template_id, template_version, template_name, kind, evaluated_on,"
+            " class_session_id, cohort_id, course_assessment_id,"
+            " course_assessment_title, status, feedback, score_total, max_total,"
+            " score_percent, finalized_at, amended_at, last_change_reason,"
+            " voided_at, voided_by_user_id, void_reason)"
+            " VALUES (:st, :sub, :a, :t, 1, 'Fuga', 'ongoing', :on, :session,"
+            " :cohort, :assessment, 'Examen', :status, :f, :score, :max, :pct,"
+            " :fin, :amended, :reason, :void, :void_by, :void_reason)"
+            " RETURNING id",
+            {
+                "st": student,
+                "sub": subject_id,
+                "a": world.tutor.id,
+                "t": uuid.UUID(world.template_ids[0]),
+                "on": (NOW - timedelta(days=days_ago)).date(),
+                "session": course_session,
+                "cohort": world.cohort_id,
+                "assessment": assessment_id,
+                "status": status,
+                "f": feedback,
+                "score": Decimal(percent) / 10 if final else None,
+                "max": Decimal(10) if final else None,
+                "pct": Decimal(percent) if final else None,
+                "fin": NOW - timedelta(days=days_ago) if final else None,
+                "amended": NOW if reason else None,
+                "reason": reason,
+                "void": NOW if void_reason else None,
+                "void_by": world.staff.id if void_reason else None,
+                "void_reason": void_reason,
+            },
+        )
+        return str(row.id)
+
+    for student, counted in ((world.minor, "73.25"), (world.adult, "81.75")):
+        feedback = f"CANARY-completion-draft-{uuid.uuid4().hex}"
+        draft = evaluation(student, "99.00", 1, status="draft", feedback=feedback)
+        void_reason = f"CANARY-completion-void-{uuid.uuid4().hex}"
+        voided = evaluation(student, "99.00", 2, void_reason=void_reason)
+        reason = f"CANARY-completion-change-{uuid.uuid4().hex}"
+        earlier = evaluation(student, "40.00", 10, reason=reason)
+        latest = evaluation(student, counted, 5)
+        hidden[student] |= {draft, feedback, voided, void_reason, reason}
+        visible[student] |= {earlier, latest}
+        world.shown_completion[student] = counted
+    return Canaries(hidden=hidden, visible=visible, shown_on=[])
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
     evaluation_canaries,
@@ -1090,6 +1216,7 @@ CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     assignment_canaries,
     progress_report_canaries,
     closeout_canaries,
+    completion_canaries,
 ]
 
 
@@ -1112,6 +1239,8 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "assignment_id": lambda w: list(w.assignment_ids),
     "report_id": lambda w: list(w.report_ids),
     "group_id": lambda w: [str(w.group_id)],
+    # #85: the world cohort and an unknown id.
+    "cohort_id": lambda w: [w.cohort_id, str(uuid.uuid4())],
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
     "user_id": lambda w: [str(w.tutor.id)] + [str(a.user.id) for a in w.actors],
@@ -1120,7 +1249,6 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "family_id": _unknown,
     "request_id": _unknown,
     "change_request_id": _unknown,
-    "cohort_id": _unknown,
     "level_id": _unknown,
     "period_id": _unknown,
     "closure_id": _unknown,
@@ -1276,6 +1404,8 @@ def test_every_path_parameter_is_mapped():
         # #84 progress dashboard
         "/api/v1/students/{student_id}/progress",
         "/api/v1/students/{student_id}/session-log",
+        # #85 course completion
+        "/api/v1/cohorts/{cohort_id}/completion",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
     # #316: the report schedules are staff-only (the matrix gates them behind
@@ -1586,3 +1716,19 @@ def test_the_approved_summaries_reach_their_own_family(client, walk):
         progress = get(client, cookie, f"/api/v1/students/{actor.student_id}/progress")
         assert progress.status_code == 200, progress.text
         assert progress.json()["attendance"]["sessions"] >= 1
+
+
+def test_the_completion_rows_reach_their_own_family(client, walk):
+    """#85 positive control: each family reads exactly its own student's row
+    on the cohort's completion, with the counted (latest) score, and never
+    the classmate's (the walk)."""
+    world = walk.world
+    for actor in world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(client, cookie, f"/api/v1/cohorts/{world.cohort_id}/completion")
+        assert response.status_code == 200, (actor.label, response.text)
+        [row] = response.json()["students"]
+        assert row["student"]["id"] == str(actor.student_id), actor.label
+        [item] = row["assessments"]["items"]
+        assert item["score_percent"] == world.shown_completion[actor.student_id]
+        assert (item["status"], item["attempts"]) == ("passed", 2), actor.label

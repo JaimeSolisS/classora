@@ -58,15 +58,23 @@ active counts, the record-policy filters (``visible_to`` on
 :func:`cohort_assessments` and :func:`cohort_assessment` read a cohort's
 assessments from its frozen snapshot, never the live template.
 
+**Course completion** (#85): :func:`cohort_completion_basis` reads a
+cohort's snapshot and active enrollments in one statement; the pure rules
+are :mod:`~app.modules.courses.completion` (re-exported as
+:data:`completion`). ``app.workflows.course_completion`` composes them
+with ``scheduling`` and ``academics``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, or_, select, tuple_
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,6 +90,7 @@ from app.core.pagination import (
 )
 from app.modules.catalog import service as catalog_service
 from app.modules.catalog.schemas import SubjectReference
+from app.modules.courses import completion as completion
 from app.modules.courses.cohorts import (
     OCCURRENCES_MAX as OCCURRENCES_MAX,
 )
@@ -1038,6 +1047,88 @@ async def cohort_assessment(
     if found is None:
         return None
     return next((a for a in found.assessments if a.id == assessment_id), None)
+
+
+@dataclass(frozen=True)
+class ActiveEnrollment:
+    """An active enrollment period of a cohort (#85 B1)."""
+
+    enrollment_id: uuid.UUID
+    student_id: uuid.UUID
+    enrolled_at: datetime
+
+
+@dataclass(frozen=True)
+class CohortCompletionBasis:
+    """What completion is computed from (#85 B1): the cohort's name, its
+    snapshot (template name and version, ``schema_version``, ``content``)
+    and its active enrollments."""
+
+    cohort_id: uuid.UUID
+    cohort_name: str
+    template_name: str
+    template_version: int
+    schema_version: int
+    content: dict[str, Any]
+    enrollments: tuple[ActiveEnrollment, ...]
+
+
+async def cohort_completion_basis(
+    session: AsyncSession, cohort_id: uuid.UUID
+) -> CohortCompletionBasis | None:
+    """The cohort with its **snapshot** (never the live template) and its
+    active enrollments, or ``None`` when unknown (#85 B1). One statement:
+    the enrollments are aggregated in correlated subqueries."""
+
+    def active(column: Any) -> Any:
+        return (
+            select(
+                func.array_agg(
+                    # The same order in every array (they are zipped).
+                    aggregate_order_by(
+                        column, CohortEnrollment.enrolled_at, CohortEnrollment.id
+                    )
+                )
+            )
+            .where(
+                CohortEnrollment.cohort_id == CourseCohort.id,
+                CohortEnrollment.withdrawn_at.is_(None),
+            )
+            .correlate(CourseCohort)
+            .scalar_subquery()
+        )
+
+    row = (
+        await session.execute(
+            select(
+                CourseCohort.id,
+                CourseCohort.name,
+                SnapshotRow.template_version,
+                SnapshotRow.schema_version,
+                SnapshotRow.content,
+                active(CohortEnrollment.id),
+                active(CohortEnrollment.student_id),
+                active(CohortEnrollment.enrolled_at),
+            )
+            .join(SnapshotRow, SnapshotRow.id == CourseCohort.template_snapshot_id)
+            .where(CourseCohort.id == cohort_id)
+        )
+    ).first()
+    if row is None:
+        return None
+    found_id, name, version, schema_version, content, ids, students, at = row
+    return CohortCompletionBasis(
+        cohort_id=found_id,
+        cohort_name=name,
+        template_name=content["name"],
+        template_version=version,
+        schema_version=schema_version,
+        content=content,
+        enrollments=tuple(
+            ActiveEnrollment(enrollment_id=i, student_id=s, enrolled_at=a)
+            for i, s, a in zip(ids or (), students or (), at or (), strict=True)
+        ),
+    )
 
 
 async def ensure_cohort_name_free(

@@ -851,6 +851,18 @@ allow = ["owner", "administrator"]
 json = { version = 1, max_students = 8 }
 
 [[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}/completion"
+access = "authenticated"
+# #85 C1/D1: record policy; evaluation.manage holders and the tutor
+# currently teaching the cohort read every active enrollment, an enrolled
+# student and their guardians (an adult's only with the consent) their own
+# rows, Finance (course.view only) 403 permission_denied, anyone else 404.
+# The placeholder id is no cohort: 404 (cohort_not_found) for every role.
+# Tested in tests/integration/test_course_completion.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
 method = "POST"
 path = "/api/v1/cohorts/{cohort_id}/enrollments"
 access = "permission"

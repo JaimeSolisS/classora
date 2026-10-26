@@ -3528,6 +3528,7 @@ M4-21b (#245). The web pages are M4-20b (#243).
 | `GET /api/v1/cohorts` | `authenticated()` + the record policy (below) | `?q` (the name contains it, ignoring case; at most 120), `?template_id`, `?subject_id`, `?status=upcoming\|in_progress\|ended\|current\|all` (default `current`: upcoming and in progress); cursor pagination (`limit` 1-100, default 25, `cursor`; `{items, next_cursor}`; an invalid cursor is `400 invalid_cursor`) by name (ignoring case), then id, like Groups. At most 5 statements whatever the page size and the caller. |
 | `GET /api/v1/cohorts/{cohort_id}` | `authenticated()` + the record policy | `CohortDetail`; unknown or hidden is `404 cohort_not_found`. At most 9 statements. |
 | `GET /api/v1/cohorts/{cohort_id}/sessions?from=…&to=…` | `authenticated()` + the record policy | The cohort's sessions overlapping `[from, to)` by start, with the calendar's range rules (`422 range_invalid`, `range_too_long` over 45 days): every state for `course.view` holders, the family view below otherwise; unknown or hidden is `404 cohort_not_found`. At most 7 statements. |
+| `GET /api/v1/cohorts/{cohort_id}/completion` | `authenticated()` + its own record policy (Course completion, below) | `CohortCompletion`: each active enrollment's progress against the snapshot's completion criteria, computed live; `403 permission_denied` for Finance, `404 cohort_not_found` when unknown or hidden. At most 10 statements (8 measured) whatever the caller and the roster. M5-18. |
 | `POST /api/v1/class-series/{class_series_id}/offers` | `require("schedule.assign")` (Assignment offers, unchanged) | Also offers a cohort's series to a tutor, under the cohort lock. |
 
 Since M4-21 the cohort reads have a record policy ("Who sees what",
@@ -3813,6 +3814,93 @@ of "taught"; `group_reads.py`; `course_series.py`) and
   `confirmed`, `completed`, and `cancelled` / `skipped_closure` only when
   the session was once confirmed (`first_confirmed_at`); tutors also
   `offered`.
+
+#### Course completion
+
+Implemented by M5-18 (#85; spec §3 "completion criteria include configurable
+attendance, modules and required assessments", §2, §4; ADR-0002, ADR-0004,
+ADR-0005 D9). The pure rules are `apps/api/app/modules/courses/completion.py`;
+the workflow is `app/workflows/course_completion.py`, which composes
+`courses.service.cohort_completion_basis` (the cohort, its snapshot and active
+enrollments, one statement), `scheduling.service.cohort_participation` (one
+statement), `academics.service.cohort_assessment_evaluations` (one statement,
+`DISTINCT ON`) and `families.service.student_references`. No migration, table,
+permission or package. **Live, never stored:** no recorded decision, no
+override, no notification, no audit row, no job; an attendance correction, an
+evaluation amendment or void, or a late evaluation changes the result on the
+next read. Certificates and PDFs are out of scope. The web consumer is M5-18b
+(#323).
+
+`GET /api/v1/cohorts/{cohort_id}/completion`:
+
+| Caller | Result |
+| ------ | ------ |
+| Owner, Administrator, Academic Coordinator (`evaluation.manage`) | `200`, every active enrollment |
+| The tutor currently teaching the cohort (the #246 "taught" rule: a producing series, `pending` or `accepted`) | `200`, every active enrollment |
+| An enrolled student; a guardian of an enrolled minor, or of an enrolled adult with `guardian_academic_access` | `200`, only those students' rows |
+| A guardian of an adult without the consent; an unlinked guardian; a withdrawn student or their guardian; a tutor who doesn't (or no longer) teach it | `404 cohort_not_found` |
+| Finance (`course.view` without `evaluation.manage`), for an existing cohort with none of their own students | `403 permission_denied` |
+| An unknown id (any caller) | `404 cohort_not_found` |
+
+Several roles get the union (each student once). Order: `401` → `422` (a
+malformed id) → the record-policy facts → staff → teaching tutor → the
+visible students with an **active** enrollment → nothing visible: `403` for a
+`course.view` holder when the cohort exists, else the `404` (the same body as
+an unknown id). No evaluation, attendance or participation is read before
+that decision. The facts are read on every request, so a withdrawal, an
+unlink, a revoked consent or the end of teaching applies at once.
+
+**Body** (closed, the same shape for every audience): `{cohort_id,
+cohort_name, cohort_status, template {name, version}, criteria
+{min_attendance_percent, required_modules [{id, title}], assessments [{id,
+title, module_id, is_required, min_score_percent}]}, students [{student {id,
+display_name}, enrolled_at, status: in_progress|completed|not_completed,
+final, attendance {status, min_percent, held, attended, absent, remaining,
+awaiting_closeout, attendance_percent}, assessments {status, items
+[{assessment_id, title, is_required, min_score_percent, status:
+passed|failed|not_evaluated, score_percent, evaluated_on, attempts}]}, modules
+{status, items [{module_id, title, status: met|not_met|pending, basis:
+assessments|course_covered}]}}]}`. Criterion statuses are
+`met|not_met|pending|not_required`. Titles and minimums come from the cohort's
+**snapshot**, never the live template. Percentages are 2-dp strings
+(`"66.67"`), minimums integers. Students are ordered by name (ignoring case),
+then id; at most 500 (the cohort maximum), no pagination. The body never
+carries evaluation ids, feedback, criteria scores, authors, change or void
+reasons, enrollment ids, withdrawn students or students the caller can't see.
+
+**Rules:**
+
+- **Attendance:** *held* = the cohort's `completed` sessions where the
+  student is a participant; *attended* = held and marked `present` or `late`
+  (late counts). Met iff `attended × 100 ≥ min × held` in integers and at
+  least one session was held; `attendance_percent` is half-up to 2 places,
+  `null` when none was held.
+  `cancelled`, `skipped_closure` and `conflict` sessions, started
+  `unassigned`/`offered` ones, sessions before a late enrollment and makeups
+  (individual sessions) count nowhere; sessions from an earlier enrollment
+  period of the same cohort still count. `awaiting_closeout` = started
+  `confirmed` sessions; `remaining` = not-started `unassigned`, `offered` or
+  `confirmed` ones.
+- **Assessments:** the **latest** final, non-voided, live evaluation of the
+  student with that `cohort_id` and `course_assessment_id` counts
+  (`evaluated_on`, then `finalized_at`, then id, all descending; drafts never
+  count); `attempts` counts those evaluations. `passed` when `score_percent ≥
+  min_score_percent` (or, without a minimum, when it exists). The criterion is
+  met when every required one is passed; a failed one stays `pending` until
+  the course is final.
+- **Modules:** a required module with required assessments tied to it
+  (`module_id`) is met when they are all passed (`basis: assessments`); one
+  without any is met once the course is final (`basis: course_covered`).
+- **Final and overall:** the course is final for a student when the cohort
+  is `ended` (the #65 series rule) **and** none of their started sessions is
+  still `confirmed` (waiting for a closeout). Until then `in_progress`; then
+  `completed` when every criterion is met or not required, otherwise
+  `not_completed`. A snapshot without criteria completes once final.
+
+Tests: `tests/unit/test_course_completion_rules.py`,
+`tests/integration/test_course_completion.py` (matrix rows, live changes,
+the statement budget for every audience and role union at 2 and 30
+students) and the family leak walk (`test_session_notes_leak.py`).
 
 ### Session requests
 

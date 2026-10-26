@@ -25,6 +25,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from sqlalchemy import ColumnElement, Select, and_, false, func, or_, select, tuple_
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import InvalidCursorError, decode_cursor, encode_cursor
@@ -442,3 +443,72 @@ async def soft_delete_evaluation(
     evaluation.deleted_at = now
     evaluation.deleted_by_user_id = actor_id
     await session.flush()
+
+
+# --- #85: the evaluations a course completion counts ------------------------------
+
+
+@dataclass(frozen=True)
+class CohortAssessmentEvaluation:
+    """The evaluation that counts for one student and one course assessment
+    of a cohort (#85 E4), and how many counted evaluations they have
+    (``attempts``)."""
+
+    evaluation_id: uuid.UUID
+    student_id: uuid.UUID
+    assessment_id: uuid.UUID
+    score_percent: Decimal
+    evaluated_on: date
+    attempts: int
+
+
+async def cohort_assessment_evaluations(
+    session: AsyncSession, cohort_id: uuid.UUID, student_ids: Collection[uuid.UUID]
+) -> dict[tuple[uuid.UUID, uuid.UUID], CohortAssessmentEvaluation]:
+    """#85 B3: per ``(student_id, course_assessment_id)`` of the cohort, the
+    **latest** final, non-voided, live evaluation (``evaluated_on``, then
+    ``finalized_at``, then ``id``, all descending; drafts never count) with
+    the number of such evaluations. One statement (``DISTINCT ON`` with a
+    window count), none for no students."""
+    ids = set(student_ids)
+    if not ids:
+        return {}
+    pair = (Evaluation.student_id, Evaluation.course_assessment_id)
+    rows = await session.execute(
+        select(
+            Evaluation.id,
+            Evaluation.student_id,
+            Evaluation.course_assessment_id,
+            Evaluation.score_percent,
+            Evaluation.evaluated_on,
+            func.count().over(partition_by=pair),
+        )
+        .where(
+            Evaluation.cohort_id == cohort_id,
+            Evaluation.student_id.in_(ids),
+            Evaluation.status == FINAL,
+            Evaluation.voided_at.is_(None),
+            Evaluation.deleted_at.is_(None),
+        )
+        .ext(distinct_on(*pair))
+        .order_by(
+            *pair,
+            Evaluation.evaluated_on.desc(),
+            Evaluation.finalized_at.desc(),
+            Evaluation.id.desc(),
+        )
+    )
+    found: dict[tuple[uuid.UUID, uuid.UUID], CohortAssessmentEvaluation] = {}
+    for evaluation_id, student_id, assessment_id, percent, on, attempts in rows:
+        # cohort_id set: the assessment id is too (course_together); final:
+        # the percentage is too (final_totals).
+        assert assessment_id is not None and percent is not None  # noqa: S101
+        found[(student_id, assessment_id)] = CohortAssessmentEvaluation(
+            evaluation_id=evaluation_id,
+            student_id=student_id,
+            assessment_id=assessment_id,
+            score_percent=percent,
+            evaluated_on=on,
+            attempts=attempts,
+        )
+    return found

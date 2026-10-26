@@ -18503,6 +18503,80 @@
         }
       }
     },
+    "/api/v1/cohorts/{cohort_id}/completion": {
+      "get": {
+        "tags": [
+          "cohorts"
+        ],
+        "summary": "Get Cohort Completion",
+        "description": "Each actively enrolled student's progress against the course's\ncompletion criteria, computed live from the cohort's frozen syllabus:\nattendance (completed sessions attended, present or late, against the\nminimum), required modules and required assessments (the latest final\nevaluation counts), and an overall status: `in_progress` until the\ncourse has ended and every started class is closed out, then\n`completed` or `not_completed`. Staff with evaluation.manage and the\ntutor currently teaching the cohort see every enrolled student; a\nstudent or their guardian (an adult's only with the academic consent)\nonly their own. Nothing is stored and there is no override.",
+        "operationId": "get_cohort_completion_api_v1_cohorts__cohort_id__completion_get",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortCompletion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied): course.view without evaluation.manage (Finance), for a cohort where you neither teach nor have an enrolled student of your own.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such cohort, or one you can't see (cohort_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cohorts/{cohort_id}/enrollments": {
       "post": {
         "tags": [
@@ -20597,6 +20671,106 @@
           "all"
         ]
       },
+      "AssessmentCompletionItem": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Assessment Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "min_score_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score Percent"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssessmentOutcome"
+          },
+          "score_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluated_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated On"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "title",
+          "is_required",
+          "min_score_percent",
+          "status",
+          "score_percent",
+          "evaluated_on",
+          "attempts"
+        ],
+        "title": "AssessmentCompletionItem",
+        "description": "E4: the latest final, non-voided evaluation counts."
+      },
+      "AssessmentOutcome": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "failed",
+          "not_evaluated"
+        ]
+      },
+      "AssessmentsCompletion": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CriterionStatus"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssessmentCompletionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "items"
+        ],
+        "title": "AssessmentsCompletion"
+      },
       "AssignmentCounts": {
         "properties": {
           "recipients": {
@@ -21517,6 +21691,69 @@
           "attendance_not_started",
           "attendance_locked"
         ]
+      },
+      "AttendanceCompletion": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CriterionStatus"
+          },
+          "min_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Percent"
+          },
+          "held": {
+            "type": "integer",
+            "title": "Held"
+          },
+          "attended": {
+            "type": "integer",
+            "title": "Attended"
+          },
+          "absent": {
+            "type": "integer",
+            "title": "Absent"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          },
+          "awaiting_closeout": {
+            "type": "integer",
+            "title": "Awaiting Closeout"
+          },
+          "attendance_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "attended / held × 100, two places; null when nothing was held."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "min_percent",
+          "held",
+          "attended",
+          "absent",
+          "remaining",
+          "awaiting_closeout",
+          "attendance_percent"
+        ],
+        "title": "AttendanceCompletion",
+        "description": "E3: ``held`` are the cohort's completed sessions of the student,\n``attended`` those marked present or late."
       },
       "AttendanceCorrectionCreate": {
         "properties": {
@@ -26631,6 +26868,47 @@
         "title": "ClosureUpdate",
         "description": "A change to a closure with the ``version`` the caller loaded. Fields\nnot sent stay unchanged."
       },
+      "CohortCompletion": {
+        "properties": {
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "cohort_name": {
+            "type": "string",
+            "title": "Cohort Name"
+          },
+          "cohort_status": {
+            "$ref": "#/components/schemas/CohortStatus"
+          },
+          "template": {
+            "$ref": "#/components/schemas/CompletionTemplate"
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/CompletionCriteria"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/StudentCompletion"
+            },
+            "type": "array",
+            "title": "Students"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cohort_id",
+          "cohort_name",
+          "cohort_status",
+          "template",
+          "criteria",
+          "students"
+        ],
+        "title": "CohortCompletion",
+        "description": "``GET /api/v1/cohorts/{id}/completion`` (#85 C2): computed live from\nthe cohort's snapshot; students by name."
+      },
       "CohortCreate": {
         "properties": {
           "name": {
@@ -27835,6 +28113,164 @@
         "title": "CohortWithdrawal",
         "description": "Withdraw a student from a cohort (``POST\n/api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):\nthe enrollment's ``version`` and an optional reason (trimmed, 1-1000:\n``reason_required`` for a blank one, ``reason_too_long``)."
       },
+      "CompletionAssessment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "module_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Id"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required"
+          },
+          "min_score_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score Percent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "module_id",
+          "is_required",
+          "min_score_percent"
+        ],
+        "title": "CompletionAssessment",
+        "description": "An assessment of the snapshot (required or optional), by position;\n``module_id`` null is the whole course."
+      },
+      "CompletionCriteria": {
+        "properties": {
+          "min_attendance_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Attendance Percent"
+          },
+          "required_modules": {
+            "items": {
+              "$ref": "#/components/schemas/CompletionModule"
+            },
+            "type": "array",
+            "title": "Required Modules"
+          },
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/CompletionAssessment"
+            },
+            "type": "array",
+            "title": "Assessments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "min_attendance_percent",
+          "required_modules",
+          "assessments"
+        ],
+        "title": "CompletionCriteria",
+        "description": "The snapshot's completion criteria (never the live template)."
+      },
+      "CompletionModule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "CompletionModule",
+        "description": "A required module of the snapshot."
+      },
+      "CompletionStatus": {
+        "type": "string",
+        "enum": [
+          "in_progress",
+          "completed",
+          "not_completed"
+        ]
+      },
+      "CompletionStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "CompletionStudent"
+      },
+      "CompletionTemplate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "CompletionTemplate",
+        "description": "The template as frozen in the cohort's snapshot."
+      },
       "ConflictOverrideCreate": {
         "properties": {
           "version": {
@@ -28829,6 +29265,15 @@
         ],
         "title": "CourseTemplateWrite",
         "description": "A whole template document (``POST /api/v1/course-templates``)."
+      },
+      "CriterionStatus": {
+        "type": "string",
+        "enum": [
+          "met",
+          "not_met",
+          "pending",
+          "not_required"
+        ]
       },
       "CursorPage_AuditEventListItem_": {
         "properties": {
@@ -34138,6 +34583,63 @@
           "done"
         ]
       },
+      "ModuleCompletionItem": {
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Module Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequirementStatus"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/ModuleEvidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "module_id",
+          "title",
+          "status",
+          "basis"
+        ],
+        "title": "ModuleCompletionItem",
+        "description": "E2: a required module, evidenced by its required assessments\n(``assessments``) or covered by the course once it is final\n(``course_covered``)."
+      },
+      "ModuleEvidence": {
+        "type": "string",
+        "enum": [
+          "assessments",
+          "course_covered"
+        ]
+      },
+      "ModulesCompletion": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CriterionStatus"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleCompletionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "items"
+        ],
+        "title": "ModulesCompletion"
+      },
       "NoteBody": {
         "type": "string"
       },
@@ -37557,6 +38059,14 @@
           "retracted"
         ]
       },
+      "RequirementStatus": {
+        "type": "string",
+        "enum": [
+          "met",
+          "not_met",
+          "pending"
+        ]
+      },
       "RevocationCause": {
         "type": "string",
         "enum": [
@@ -40501,6 +41011,47 @@
           "starts_at"
         ],
         "title": "StudentAssignmentSession"
+      },
+      "StudentCompletion": {
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/CompletionStudent"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CompletionStatus"
+          },
+          "final": {
+            "type": "boolean",
+            "title": "Final"
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/AttendanceCompletion"
+          },
+          "assessments": {
+            "$ref": "#/components/schemas/AssessmentsCompletion"
+          },
+          "modules": {
+            "$ref": "#/components/schemas/ModulesCompletion"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student",
+          "enrolled_at",
+          "status",
+          "final",
+          "attendance",
+          "assessments",
+          "modules"
+        ],
+        "title": "StudentCompletion",
+        "description": "One actively enrolled student's completion (E5: ``in_progress`` until\nthe course is final for them)."
       },
       "StudentCreate": {
         "properties": {
