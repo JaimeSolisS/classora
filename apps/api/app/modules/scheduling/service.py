@@ -101,7 +101,9 @@ rules in :mod:`~app.modules.scheduling.attendance_rules`):
 marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
 reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
 #84 and #85), :func:`student_attendance_summary` (one student's counts over
-a local period, #83 progress report facts);
+a local period, #83 progress report facts), :func:`cohort_participation`
+(#85 course completion: each student's held, attended, absent, awaiting and
+remaining sessions of a cohort);
 the progress dashboard reads (#84, :mod:`~app.modules.scheduling.student_progress`
 over the same in-scope sessions): :func:`student_attendance_by_month`,
 :func:`student_session_log` and :func:`tutor_taught_student` (the former-tutor
@@ -253,7 +255,13 @@ from app.modules.scheduling.attendance import (
     AttendanceSummary as AttendanceSummary,
 )
 from app.modules.scheduling.attendance import (
+    ParticipationCounts as ParticipationCounts,
+)
+from app.modules.scheduling.attendance import (
     attendance_statuses as attendance_statuses,
+)
+from app.modules.scheduling.attendance import (
+    cohort_participation as cohort_participation,
 )
 from app.modules.scheduling.attendance import (
     correct_attendance as correct_attendance,

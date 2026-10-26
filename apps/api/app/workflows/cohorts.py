@@ -272,7 +272,9 @@ def _subject(reference: SubjectReference) -> CohortSubject:
     )
 
 
-def _status(schedule: scheduling.CohortSchedule | None) -> CohortStatus:
+def status_of(schedule: scheduling.CohortSchedule | None) -> CohortStatus:
+    """The cohort status (#65 B2) from its series rule; ``upcoming`` without
+    a series. Also #85's "the cohort has ended"."""
     if schedule is None or schedule.first_start is None:
         return "upcoming"
     last_start = schedule.last_start or schedule.first_start
@@ -477,7 +479,7 @@ async def get_cohort_detail(
             if room is None
             else min(record.max_students, room.capacity)
         ),
-        status=_status(None if read is None else read.schedule),
+        status=status_of(None if read is None else read.schedule),
         planned_session_count=record.session_count,
         session_minutes=record.session_minutes,
         first_session_on=None if read is None else read.schedule.first_session_on,
@@ -554,7 +556,7 @@ async def list_cohorts(
         ids = {
             cohort_id
             for cohort_id, schedule in schedules.items()
-            if _status(schedule) in wanted
+            if status_of(schedule) in wanted
         }
     records, next_cursor = await courses.list_cohorts(
         session,
@@ -648,7 +650,7 @@ def _list_item(
         first_session_on=None if schedule is None else schedule.first_session_on,
         last_session_on=None if schedule is None else schedule.last_session_on,
         next_starts_at=next_starts_at,
-        status=_status(schedule),
+        status=status_of(schedule),
         enrolled_count=enrolled_count,
     )
 

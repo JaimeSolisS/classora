@@ -3777,6 +3777,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cohorts/{cohort_id}/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cohort Completion
+         * @description Each actively enrolled student's progress against the course's
+         *     completion criteria, computed live from the cohort's frozen syllabus:
+         *     attendance (completed sessions attended, present or late, against the
+         *     minimum), required modules and required assessments (the latest final
+         *     evaluation counts), and an overall status: `in_progress` until the
+         *     course has ended and every started class is closed out, then
+         *     `completed` or `not_completed`. Staff with evaluation.manage and the
+         *     tutor currently teaching the cohort see every enrolled student; a
+         *     student or their guardian (an adult's only with the academic consent)
+         *     only their own. Nothing is stored and there is no override.
+         */
+        get: operations["get_cohort_completion_api_v1_cohorts__cohort_id__completion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cohorts/{cohort_id}/enrollments": {
         parameters: {
             query?: never;
@@ -4365,6 +4394,37 @@ export interface components {
         ApprovalStatus: "pending" | "approved" | "rejected" | "changes_requested" | "cancelled";
         /** @enum {string} */
         ApprovalStatusFilter: "open" | "pending" | "approved" | "rejected" | "changes_requested" | "cancelled" | "all";
+        /**
+         * AssessmentCompletionItem
+         * @description E4: the latest final, non-voided evaluation counts.
+         */
+        AssessmentCompletionItem: {
+            /**
+             * Assessment Id
+             * Format: uuid
+             */
+            assessment_id: string;
+            /** Title */
+            title: string;
+            /** Is Required */
+            is_required: boolean;
+            /** Min Score Percent */
+            min_score_percent: number | null;
+            status: components["schemas"]["AssessmentOutcome"];
+            score_percent: components["schemas"]["DecimalOut"] | null;
+            /** Evaluated On */
+            evaluated_on: string | null;
+            /** Attempts */
+            attempts: number;
+        };
+        /** @enum {string} */
+        AssessmentOutcome: "passed" | "failed" | "not_evaluated";
+        /** AssessmentsCompletion */
+        AssessmentsCompletion: {
+            status: components["schemas"]["CriterionStatus"];
+            /** Items */
+            items: components["schemas"]["AssessmentCompletionItem"][];
+        };
         /** AssignmentCounts */
         AssignmentCounts: {
             /** Recipients */
@@ -4818,6 +4878,28 @@ export interface components {
         };
         /** @enum {string} */
         AttendanceBlock: "attendance_not_recordable" | "attendance_not_started" | "attendance_locked";
+        /**
+         * AttendanceCompletion
+         * @description E3: ``held`` are the cohort's completed sessions of the student,
+         *     ``attended`` those marked present or late.
+         */
+        AttendanceCompletion: {
+            status: components["schemas"]["CriterionStatus"];
+            /** Min Percent */
+            min_percent: number | null;
+            /** Held */
+            held: number;
+            /** Attended */
+            attended: number;
+            /** Absent */
+            absent: number;
+            /** Remaining */
+            remaining: number;
+            /** Awaiting Closeout */
+            awaiting_closeout: number;
+            /** @description attended / held × 100, two places; null when nothing was held. */
+            attendance_percent: components["schemas"]["DecimalOut"] | null;
+        };
         /**
          * AttendanceCorrectionCreate
          * @description `POST /api/v1/class-sessions/{id}/attendance/corrections` (#76 D1):
@@ -7221,6 +7303,25 @@ export interface components {
             is_active?: boolean | null;
         };
         /**
+         * CohortCompletion
+         * @description ``GET /api/v1/cohorts/{id}/completion`` (#85 C2): computed live from
+         *     the cohort's snapshot; students by name.
+         */
+        CohortCompletion: {
+            /**
+             * Cohort Id
+             * Format: uuid
+             */
+            cohort_id: string;
+            /** Cohort Name */
+            cohort_name: string;
+            cohort_status: components["schemas"]["CohortStatus"];
+            template: components["schemas"]["CompletionTemplate"];
+            criteria: components["schemas"]["CompletionCriteria"];
+            /** Students */
+            students: components["schemas"]["StudentCompletion"][];
+        };
+        /**
          * CohortCreate
          * @description A cohort of a course template (``POST /api/v1/cohorts``, #65 D1).
          *
@@ -7835,6 +7936,73 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * CompletionAssessment
+         * @description An assessment of the snapshot (required or optional), by position;
+         *     ``module_id`` null is the whole course.
+         */
+        CompletionAssessment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Module Id */
+            module_id: string | null;
+            /** Is Required */
+            is_required: boolean;
+            /** Min Score Percent */
+            min_score_percent: number | null;
+        };
+        /**
+         * CompletionCriteria
+         * @description The snapshot's completion criteria (never the live template).
+         */
+        CompletionCriteria: {
+            /** Min Attendance Percent */
+            min_attendance_percent: number | null;
+            /** Required Modules */
+            required_modules: components["schemas"]["CompletionModule"][];
+            /** Assessments */
+            assessments: components["schemas"]["CompletionAssessment"][];
+        };
+        /**
+         * CompletionModule
+         * @description A required module of the snapshot.
+         */
+        CompletionModule: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** @enum {string} */
+        CompletionStatus: "in_progress" | "completed" | "not_completed";
+        /** CompletionStudent */
+        CompletionStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * CompletionTemplate
+         * @description The template as frozen in the cohort's snapshot.
+         */
+        CompletionTemplate: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * ConflictOverrideCreate
          * @description Override the soft conflicts of one ``conflict`` occurrence and schedule
          *     it (``POST /api/v1/class-sessions/{id}/conflict-overrides``, #236 G3):
@@ -8253,6 +8421,8 @@ export interface components {
             /** Assessments */
             assessments?: components["schemas"]["CourseTemplateAssessmentWrite"][];
         };
+        /** @enum {string} */
+        CriterionStatus: "met" | "not_met" | "pending" | "not_required";
         /** CursorPage[AuditEventListItem] */
         CursorPage_AuditEventListItem_: {
             /** Items */
@@ -10678,6 +10848,31 @@ export interface components {
         MarkerCode: "center_closed" | "tutor_not_qualified" | "overridden" | "reassignment_needed";
         /** @enum {string} */
         MilestoneStatus: "pending" | "in_progress" | "done";
+        /**
+         * ModuleCompletionItem
+         * @description E2: a required module, evidenced by its required assessments
+         *     (``assessments``) or covered by the course once it is final
+         *     (``course_covered``).
+         */
+        ModuleCompletionItem: {
+            /**
+             * Module Id
+             * Format: uuid
+             */
+            module_id: string;
+            /** Title */
+            title: string;
+            status: components["schemas"]["RequirementStatus"];
+            basis: components["schemas"]["ModuleEvidence"];
+        };
+        /** @enum {string} */
+        ModuleEvidence: "assessments" | "course_covered";
+        /** ModulesCompletion */
+        ModulesCompletion: {
+            status: components["schemas"]["CriterionStatus"];
+            /** Items */
+            items: components["schemas"]["ModuleCompletionItem"][];
+        };
         NoteBody: string;
         /** NotePerson */
         NotePerson: {
@@ -12176,6 +12371,8 @@ export interface components {
         ReportKind: "weekly" | "monthly" | "on_demand";
         /** @enum {string} */
         ReportStatus: "draft" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
+        /** @enum {string} */
+        RequirementStatus: "met" | "not_met" | "pending";
         /** @enum {string} */
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
@@ -13692,6 +13889,25 @@ export interface components {
              * Format: date-time
              */
             starts_at: string;
+        };
+        /**
+         * StudentCompletion
+         * @description One actively enrolled student's completion (E5: ``in_progress`` until
+         *     the course is final for them).
+         */
+        StudentCompletion: {
+            student: components["schemas"]["CompletionStudent"];
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            status: components["schemas"]["CompletionStatus"];
+            /** Final */
+            final: boolean;
+            attendance: components["schemas"]["AttendanceCompletion"];
+            assessments: components["schemas"]["AssessmentsCompletion"];
+            modules: components["schemas"]["ModulesCompletion"];
         };
         /**
          * StudentCreate
@@ -27621,6 +27837,64 @@ export interface operations {
                 };
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such cohort, or one you can't see (cohort_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_cohort_completion_api_v1_cohorts__cohort_id__completion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortCompletion"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied): course.view without evaluation.manage (Finance), for a cohort where you neither teach nor have an enrolled student of your own. */
             403: {
                 headers: {
                     [name: string]: unknown;

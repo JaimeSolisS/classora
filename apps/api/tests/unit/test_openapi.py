@@ -173,6 +173,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/cohorts",
         "/api/v1/cohorts/{cohort_id}",
         "/api/v1/cohorts/{cohort_id}/sessions",
+        "/api/v1/cohorts/{cohort_id}/completion",
         "/api/v1/cohorts/{cohort_id}/enrollments",
         "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw",
         "/api/v1/available-slots",

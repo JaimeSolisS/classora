@@ -24,6 +24,13 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
+from app.modules.courses.completion import (
+    AssessmentOutcome,
+    CompletionStatus,
+    CriterionStatus,
+    ModuleEvidence,
+    RequirementStatus,
+)
 from app.modules.courses.schemas import (
     CohortStatus,
     CohortSyllabus,
@@ -43,6 +50,7 @@ from app.modules.scheduling.schemas import (
     TutorName,
     TutorRosterItem,
 )
+from app.workflows.evaluation_schemas import DecimalOut
 
 COHORT_NAME_MAX: Final = 120
 COHORT_MAX_STUDENTS: Final = 500
@@ -344,3 +352,149 @@ class CohortSessions(BaseModel):
     """The cohort's sessions overlapping the range, by start (#65 F4)."""
 
     items: list[CohortSessionItem]
+
+
+# --- Course completion (#85) ----------------------------------------------------------
+#
+# One closed shape for every audience (C2, E6): the caller decides which
+# rows come back. No evaluation ids, feedback, criteria scores, authors,
+# change or void data, enrollment ids or withdrawn students.
+
+_CLOSED: Final = ConfigDict(extra="forbid")
+
+
+class CompletionTemplate(BaseModel):
+    """The template as frozen in the cohort's snapshot."""
+
+    model_config = _CLOSED
+
+    name: str
+    version: int
+
+
+class CompletionModule(BaseModel):
+    """A required module of the snapshot."""
+
+    model_config = _CLOSED
+
+    id: uuid.UUID
+    title: str
+
+
+class CompletionAssessment(BaseModel):
+    """An assessment of the snapshot (required or optional), by position;
+    ``module_id`` null is the whole course."""
+
+    model_config = _CLOSED
+
+    id: uuid.UUID
+    title: str
+    module_id: uuid.UUID | None
+    is_required: bool
+    min_score_percent: int | None
+
+
+class CompletionCriteria(BaseModel):
+    """The snapshot's completion criteria (never the live template)."""
+
+    model_config = _CLOSED
+
+    min_attendance_percent: int | None
+    required_modules: list[CompletionModule]
+    assessments: list[CompletionAssessment]
+
+
+class CompletionStudent(BaseModel):
+    model_config = _CLOSED
+
+    id: uuid.UUID
+    display_name: str
+
+
+class AttendanceCompletion(BaseModel):
+    """E3: ``held`` are the cohort's completed sessions of the student,
+    ``attended`` those marked present or late."""
+
+    model_config = _CLOSED
+
+    status: CriterionStatus
+    min_percent: int | None
+    held: int
+    attended: int
+    absent: int
+    remaining: int
+    awaiting_closeout: int
+    attendance_percent: DecimalOut | None = Field(
+        description="attended / held × 100, two places; null when nothing was held."
+    )
+
+
+class AssessmentCompletionItem(BaseModel):
+    """E4: the latest final, non-voided evaluation counts."""
+
+    model_config = _CLOSED
+
+    assessment_id: uuid.UUID
+    title: str
+    is_required: bool
+    min_score_percent: int | None
+    status: AssessmentOutcome
+    score_percent: DecimalOut | None
+    evaluated_on: date | None
+    attempts: int
+
+
+class AssessmentsCompletion(BaseModel):
+    model_config = _CLOSED
+
+    status: CriterionStatus
+    items: list[AssessmentCompletionItem]
+
+
+class ModuleCompletionItem(BaseModel):
+    """E2: a required module, evidenced by its required assessments
+    (``assessments``) or covered by the course once it is final
+    (``course_covered``)."""
+
+    model_config = _CLOSED
+
+    module_id: uuid.UUID
+    title: str
+    status: RequirementStatus
+    basis: ModuleEvidence
+
+
+class ModulesCompletion(BaseModel):
+    model_config = _CLOSED
+
+    status: CriterionStatus
+    items: list[ModuleCompletionItem]
+
+
+class StudentCompletion(BaseModel):
+    """One actively enrolled student's completion (E5: ``in_progress`` until
+    the course is final for them)."""
+
+    model_config = _CLOSED
+
+    student: CompletionStudent
+    enrolled_at: datetime
+    status: CompletionStatus
+    final: bool
+    attendance: AttendanceCompletion
+    assessments: AssessmentsCompletion
+    modules: ModulesCompletion
+
+
+class CohortCompletion(BaseModel):
+    """``GET /api/v1/cohorts/{id}/completion`` (#85 C2): computed live from
+    the cohort's snapshot; students by name."""
+
+    model_config = _CLOSED
+
+    cohort_id: uuid.UUID
+    cohort_name: str
+    cohort_status: CohortStatus
+    template: CompletionTemplate
+    criteria: CompletionCriteria
+    students: list[StudentCompletion]

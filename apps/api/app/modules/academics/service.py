@@ -50,7 +50,9 @@ Evaluations (#80, :mod:`~app.modules.academics.evaluation_templates`,
 final, non-voided, live evaluations); the rules module
 (:data:`evaluation_rules`) and the errors. ``app.workflows.evaluations``
 composes them with ``scheduling``, ``catalog``, ``courses``, ``families``
-and ``administration``.
+and ``administration``. #85 course completion reads
+:func:`cohort_assessment_evaluations` (the latest counted evaluation per
+student and course assessment of a cohort).
 
 Learning plans (#81, :mod:`~app.modules.academics.learning_plans`, the
 pure rules in :mod:`~app.modules.academics.learning_plan_rules`): the rows
@@ -479,12 +481,18 @@ from app.modules.academics.evaluation_templates import (
 from app.modules.academics.evaluation_templates import (
     template_with_criteria as template_with_criteria,
 )
+from app.modules.academics.evaluations import (
+    CohortAssessmentEvaluation as CohortAssessmentEvaluation,
+)
 from app.modules.academics.evaluations import CopiedCriterion as CopiedCriterion
 from app.modules.academics.evaluations import ScoreInput as ScoreInput
 from app.modules.academics.evaluations import WorkingPage as WorkingPage
 from app.modules.academics.evaluations import WorkingRow as WorkingRow
 from app.modules.academics.evaluations import (
     change_evaluation as change_evaluation,
+)
+from app.modules.academics.evaluations import (
+    cohort_assessment_evaluations as cohort_assessment_evaluations,
 )
 from app.modules.academics.evaluations import (
     create_evaluation as create_evaluation,
