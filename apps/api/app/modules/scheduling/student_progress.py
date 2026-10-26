@@ -23,6 +23,7 @@ of Work and never commits.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, cast
@@ -68,6 +69,10 @@ class SessionLogRow:
     tutor_display_name: str | None
     attendance: AttendanceStatus | None
     """The student's own mark (``None``: not recorded)."""
+    extras: tuple[tuple[Any, ...] | None, ...] = ()
+    """Per ``extras`` select of :func:`student_session_log`, the columns
+    after its first of the row joined to this session, or ``None`` when
+    none is."""
 
 
 @dataclass(frozen=True)
@@ -155,6 +160,7 @@ async def student_session_log(
     now: datetime,
     subjects: Select[*tuple[Any, ...]],
     people: Select[*tuple[Any, ...]],
+    extras: Sequence[Select[*tuple[Any, ...]]] = (),
 ) -> SessionLogPage:
     """C1: the student's in-scope sessions, newest first by ``(starts_at,
     id)`` after the cursor, at most ``limit``; only those whose local start
@@ -163,9 +169,16 @@ async def student_session_log(
     sessions that tutor taught (``time_zone``: the center's, needed only
     with a bound). ``subjects`` and ``people``: unexecuted
     ``(id, name)`` selects for the subject's and the current tutor's names.
-    ``400 invalid_cursor`` for a cursor it didn't make. One statement."""
+    ``extras``: more unexecuted selects whose **first** column is a class
+    session id, at most one row per session (the caller's own data, such
+    as ``academics``' approved summaries and note counts), outer-joined so
+    the page and its extras come in the same statement; each row carries
+    their other columns in :attr:`SessionLogRow.extras`. ``400
+    invalid_cursor`` for a cursor it didn't make. One statement."""
     subject = subjects.subquery()
     tutor = people.subquery()
+    joined = [extra.subquery() for extra in extras]
+    extra_columns = [list(sub.c)[1:] for sub in joined]
     query = in_scope_participations(
         ClassSession.id,
         ClassSession.starts_at,
@@ -175,11 +188,15 @@ async def student_session_log(
         ClassSession.tutor_user_id,
         tutor.c.display_name,
         ClassSessionAttendance.status,
+        *(column for columns in extra_columns for column in columns),
+        *(list(sub.c)[0].label(f"extra_key_{i}") for i, sub in enumerate(joined)),
         student_id=student_id,
         now=now,
     )
     query = query.outerjoin(subject, subject.c.id == ClassSession.subject_id)
     query = query.outerjoin(tutor, tutor.c.id == ClassSession.tutor_user_id)
+    for sub in joined:
+        query = query.outerjoin(sub, list(sub.c)[0] == ClassSession.id)
     if from_ is not None or to is not None:
         assert time_zone is not None  # noqa: S101 (a bound needs the zone)
         local_date = local_start_date(time_zone)
@@ -211,6 +228,7 @@ async def student_session_log(
             tutor_user_id=row[5],
             tutor_display_name=None if row[6] is None else str(row[6]),
             attendance=cast(AttendanceStatus | None, row[7]),
+            extras=_extras(tuple(row), extra_columns),
         )
         for row in result
     ]
@@ -222,6 +240,21 @@ async def student_session_log(
         else None
     )
     return SessionLogPage(rows=items, next_cursor=next_cursor)
+
+
+def _extras(
+    row: tuple[Any, ...], extra_columns: Sequence[Sequence[Any]]
+) -> tuple[tuple[Any, ...] | None, ...]:
+    """Split the extras' values (after the 8 log columns) per select; the
+    join keys follow them, ``NULL`` when no row of that select joined."""
+    found: list[tuple[Any, ...] | None] = []
+    position = 8
+    keys = 8 + sum(len(columns) for columns in extra_columns)
+    for index, columns in enumerate(extra_columns):
+        values = tuple(row[position : position + len(columns)])
+        found.append(None if row[keys + index] is None else values)
+        position += len(columns)
+    return tuple(found)
 
 
 async def tutor_taught_student(
@@ -236,7 +269,9 @@ async def tutor_taught_student(
     student: its current tutor, or one of ``taught_sessions`` (#84 E4, the
     former-tutor rule). One statement."""
     found = await session.scalar(
-        in_scope_participations(ClassSession.id, student_id=student_id, now=now)
+        in_scope_participations(
+            ClassSession.id, student_id=student_id, now=now, with_attendance=False
+        )
         .where(_taught(user_id, taught_sessions))
         .limit(1)
     )

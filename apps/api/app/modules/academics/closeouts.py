@@ -12,7 +12,7 @@ from collections.abc import Collection
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import Select, case, select
+from sqlalchemy import Select, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.academics.models import (
@@ -121,38 +121,31 @@ async def create_session_closeout(
     return row
 
 
-async def approved_summaries(
-    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
-) -> dict[uuid.UUID, CloseoutSummary]:
-    """#84 C3: the summary of each of these sessions whose closeout is
-    ``approved`` **now** and has at least one summary field, by class session
-    id. A closeout that is ``submitted`` or ``changes_requested`` (also an
-    approved one back in review after a tutor's correction request, #305:
-    its columns hold the new, unapproved text) is left out, as is a session
-    without a closeout. One statement, none for an empty collection."""
-    ids = set(class_session_ids)
-    if not ids:
-        return {}
-    rows = await session.scalars(
-        select(SessionCloseout).where(
-            SessionCloseout.class_session_id.in_(ids),
-            SessionCloseout.status == CLOSEOUT_APPROVED,
-        )
+def approved_summary_columns() -> Select[
+    uuid.UUID, str | None, str | None, str | None, str | None
+]:
+    """#84 C3: ``SELECT class_session_id, topics, performance, homework,
+    next_steps`` of the closeouts that are ``approved`` **now** and have at
+    least one summary field, **not executed** (``scheduling`` joins it into
+    the session log, so the log takes one statement). A closeout that is
+    ``submitted`` or ``changes_requested`` (also an approved one back in
+    review after a tutor's correction request, #305: its columns hold the
+    new, unapproved text) is never selected."""
+    return select(
+        SessionCloseout.class_session_id,
+        SessionCloseout.topics,
+        SessionCloseout.performance,
+        SessionCloseout.homework,
+        SessionCloseout.next_steps,
+    ).where(
+        SessionCloseout.status == CLOSEOUT_APPROVED,
+        or_(
+            SessionCloseout.topics.is_not(None),
+            SessionCloseout.performance.is_not(None),
+            SessionCloseout.homework.is_not(None),
+            SessionCloseout.next_steps.is_not(None),
+        ),
     )
-    found = {}
-    for row in rows:
-        summary = summary_of(row)
-        if any(
-            value is not None
-            for value in (
-                summary.topics,
-                summary.performance,
-                summary.homework,
-                summary.next_steps,
-            )
-        ):
-            found[row.class_session_id] = summary
-    return found
 
 
 def closeout_sessions_of(tutor_user_id: uuid.UUID) -> Select[uuid.UUID]:

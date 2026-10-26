@@ -119,9 +119,10 @@ evaluations (:func:`evaluation_scores`), the homework rows due or graded in
 a range (:func:`homework_rows`, :func:`homework_state_counts`,
 :func:`is_counted_grade`), the listed plans (:func:`dashboard_plans`,
 :func:`plan_counts`), the approved closeout summaries
-(:func:`approved_summaries`), a tutor's closeouts as a select
+(:func:`approved_summary_columns`), a tutor's closeouts as a select
 (:func:`closeout_sessions_of`) and the shared note counts
-(:func:`family_note_counts`). ``app.workflows.progress_dashboard`` composes
+(:func:`family_note_count_columns`; all three unexecuted selects that
+``scheduling`` joins). ``app.workflows.progress_dashboard`` composes
 them with ``scheduling``, ``catalog``, ``families``, ``identity`` and
 ``administration``.
 
@@ -245,7 +246,7 @@ from app.modules.academics.closeout_rules import review_block as review_block
 from app.modules.academics.closeout_rules import sees_summary as sees_summary
 from app.modules.academics.closeout_rules import summary_errors as summary_errors
 from app.modules.academics.closeouts import (
-    approved_summaries as approved_summaries,
+    approved_summary_columns as approved_summary_columns,
 )
 from app.modules.academics.closeouts import (
     closeout_for_session as closeout_for_session,
@@ -576,7 +577,7 @@ from app.modules.academics.notes import NotePage as NotePage
 from app.modules.academics.notes import NoteRow as NoteRow
 from app.modules.academics.notes import create_note as create_note
 from app.modules.academics.notes import (
-    family_note_counts as family_note_counts,
+    family_note_count_columns as family_note_count_columns,
 )
 from app.modules.academics.notes import (
     family_notes_for_student as family_notes_for_student,

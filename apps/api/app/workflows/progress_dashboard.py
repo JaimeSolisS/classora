@@ -466,9 +466,13 @@ async def session_log(
     limit: int,
 ) -> SessionLog:
     """``GET /api/v1/students/{id}/session-log`` (C1-C4). At most 6
-    statements whatever the page: the policy (up to 3, the zone included),
-    the rows (with the subjects' and tutors' names and the student's marks),
-    the approved summaries and the note counts."""
+    statements whatever the page and the caller's roles: the policy (staff:
+    1; a tutor-role caller: their assignments, then the family check (up to
+    3, the zone included) and the "taught" probe when needed) and **one**
+    read: the rows with the subjects' and tutors' names, the student's
+    marks, the approved summaries and the shared note counts joined in
+    (``academics``' unexecuted selects). The zone is read only for a date
+    bound, once per Unit of Work."""
     issue = rules.log_range_issue(from_, to)
     if issue is not None:
         raise ProgressQueryError(issue)
@@ -496,13 +500,14 @@ async def session_log(
         now=now,
         subjects=catalog.subject_name_columns(),
         people=identity.display_name_columns(),
+        extras=(
+            academics.approved_summary_columns(),
+            academics.family_note_count_columns(student_id),
+        ),
     )
-    ids = [row.class_session_id for row in page.rows]
-    summaries = await academics.approved_summaries(session, ids)
-    notes = await academics.family_note_counts(session, student_id, ids)
     items = []
     for row in page.rows:
-        summary = summaries.get(row.class_session_id)
+        summary, notes = row.extras
         items.append(
             SessionLogItem(
                 class_session_id=row.class_session_id,
@@ -519,13 +524,13 @@ async def session_log(
                     None
                     if summary is None
                     else SessionLogSummary(
-                        topics=summary.topics,
-                        performance=summary.performance,
-                        homework=summary.homework,
-                        next_steps=summary.next_steps,
+                        topics=summary[0],
+                        performance=summary[1],
+                        homework=summary[2],
+                        next_steps=summary[3],
                     )
                 ),
-                published_note_count=notes.get(row.class_session_id, 0),
+                published_note_count=0 if notes is None else int(notes[0]),
             )
         )
     return SessionLog(items=items, next_cursor=page.next_cursor)

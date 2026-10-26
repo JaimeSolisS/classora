@@ -26,12 +26,14 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AppError
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     ADMINISTRATOR,
     FINANCE_STAFF,
     GUARDIAN,
     OWNER,
+    STUDENT,
     TUTOR,
 )
 from app.workflows import progress_dashboard as workflow
@@ -1450,14 +1452,20 @@ def test_the_cursor_and_the_filters(module_seeded_url, client, owner):
 
 
 def bulk_sessions(
-    url: str, tutor: CreatedUser, student: uuid.UUID, subject: uuid.UUID, count: int
+    url: str,
+    tutor: CreatedUser,
+    student: uuid.UUID,
+    subject: uuid.UUID,
+    count: int,
+    *,
+    first: date = date(2030, 7, 1),
 ) -> list[str]:
-    """``count`` started, confirmed sessions one day apart from 2030-07-01."""
+    """``count`` started, confirmed sessions one day apart from ``first``."""
 
     async def _make(session: AsyncSession) -> list[str]:
         made = []
         for day in range(count):
-            starts_at = _utc(date(2030, 7, 1), 15) + timedelta(days=day)
+            starts_at = _utc(first, 15) + timedelta(days=day)
             row = await persist_class_session(
                 session,
                 state="confirmed",
@@ -1539,34 +1547,253 @@ def test_the_progress_budget(module_seeded_url, sessions, grades, plans):
         assert len(body.plans.items) == min(plans, 20)
 
 
-@pytest.mark.parametrize("count", [1, 50])
-def test_the_session_log_budget(module_seeded_url, count):
+def add_role(url: str, user: CreatedUser, role: str) -> None:
+    run_sql(
+        url,
+        "INSERT INTO user_roles (user_id, role_id)"
+        " SELECT :id, id FROM roles WHERE code = :role",
+        {"id": user.id, "role": role},
+    )
+
+
+@dataclass
+class Union:
+    label: str
+    principal: Any
+    student: uuid.UUID
+    progress: str
+    """The expected ``progress`` answer: ``ok``, ``consent`` or ``not_found``."""
+
+
+@pytest.fixture(scope="module")
+def unions(module_seeded_url: str) -> list[Union]:
+    """Every audience of the A1 ladder and the role unions it allows (#84 QA
+    D1), each on a student with data. The current tutor teaches every
+    student (an upcoming class keeps them current); the former tutor taught
+    the minor 45 days ago."""
     url = module_seeded_url
-    family = guardian_with_child(url)
+    tutor = a_tutor(url, "Tutora Presupuesto")
+    former = a_tutor(url, "Tutor Pasado")
+    subject = new_subject(url)
+    minor = guardian_with_child(url)
+    allowed = guardian_with_child(url, adult=True, consent=True)
+    refused = guardian_with_child(url, adult=True)
+    login, own = student_account(url)
+    # A tutor who is also the guardian of an adult who gave the consent,
+    # never their tutor: in through the family check (QA D1 case 1).
+    add_role(url, allowed.user, TUTOR)
+    # A tutor who taught the adult and is their guardian without the
+    # consent: a former tutor (QA D1 case 2).
+    add_role(url, refused.user, TUTOR)
+    # A student with a login who is also a tutor (not theirs).
+    add_role(url, login, TUTOR)
+    students = (minor.student_id, allowed.student_id, refused.student_id, own)
+    for index, student in enumerate(students):
+        bulk_sessions(url, tutor, student, subject, 1, first=date(2030, 7, 1 + index))
+        session_at(url, tutor, (student,), subject, NOW + timedelta(hours=1 + index))
+    stored(
+        url,
+        NOW - timedelta(days=45),
+        state="completed",
+        students=(minor.student_id,),
+        tutor_user_id=former.id,
+        subject_id=subject,
+    )
+    stored(
+        url,
+        NOW - timedelta(days=45),
+        state="completed",
+        students=(refused.student_id,),
+        tutor_user_id=refused.user.id,
+        subject_id=subject,
+    )
+    owner_user = create_user(url, roles=(OWNER,))
+    finance = create_user(url, roles=(FINANCE_STAFF,))
+    other = a_tutor(url, "Tutor Ajeno")
+    return [
+        Union("owner", principal_of(owner_user, OWNER), minor.student_id, "ok"),
+        Union("current tutor", principal_of(tutor, TUTOR), minor.student_id, "ok"),
+        Union(
+            "minor's guardian",
+            principal_of(minor.user, GUARDIAN),
+            minor.student_id,
+            "ok",
+        ),
+        Union(
+            "adult's guardian",
+            principal_of(allowed.user, GUARDIAN),
+            allowed.student_id,
+            "ok",
+        ),
+        Union("own student", principal_of(login, STUDENT), own, "ok"),
+        Union(
+            "former tutor", principal_of(former, TUTOR), minor.student_id, "not_found"
+        ),
+        Union(
+            "tutor + guardian with consent",
+            principal_of(allowed.user, GUARDIAN, TUTOR),
+            allowed.student_id,
+            "ok",
+        ),
+        Union(
+            "former tutor + guardian without consent",
+            principal_of(refused.user, GUARDIAN, TUTOR),
+            refused.student_id,
+            "consent",
+        ),
+        Union(
+            "guardian without consent",
+            principal_of(refused.user, GUARDIAN),
+            refused.student_id,
+            "consent",
+        ),
+        Union("tutor + own student", principal_of(login, STUDENT, TUTOR), own, "ok"),
+        Union(
+            "tutor + guardian, another student",
+            principal_of(allowed.user, GUARDIAN, TUTOR),
+            minor.student_id,
+            "not_found",
+        ),
+        Union("other tutor", principal_of(other, TUTOR), minor.student_id, "not_found"),
+        Union(
+            "finance",
+            principal_of(finance, FINANCE_STAFF),
+            minor.student_id,
+            "not_found",
+        ),
+    ]
+
+
+def counted(url: str, call: Any) -> tuple[int, Any]:
+    """``count_statements`` that also counts a refused call (returns the
+    error's code)."""
+
+    async def _call(session: AsyncSession) -> Any:
+        try:
+            return await call(session)
+        except AppError as error:
+            return error.code
+
+    return count_statements(url, _call)
+
+
+LOG_EXPECTED = {
+    "ok": "log",
+    "not_found": "not_found",
+    "consent": "student_consent_required",
+}
+
+
+def test_every_caller_stays_within_the_budgets(module_seeded_url, unions):
+    """B5 (≤ 12) and C4 (≤ 6) for every audience and role union, with and
+    without a date range, the same count for 1 and 50 sessions (QA D1, O2);
+    the answers are unchanged."""
+    url = module_seeded_url
+    counts: dict[tuple[str, str, bool], int] = {}
+    refused_student = next(
+        c.student for c in unions if c.label == "guardian without consent"
+    )
+    for size in (1, 50):
+        if size == 50:
+            for student in {case.student for case in unions}:
+                bulk_sessions(
+                    url,
+                    a_tutor(url, "Tutora Masiva"),
+                    student,
+                    new_subject(url),
+                    49,
+                    first=date(2030, 9, 1),
+                )
+        for case in unions:
+            for dated in (False, True):
+                bounds = {"from_": date(2030, 1, 1), "to": TODAY} if dated else {}
+                log_n, log = counted(
+                    url,
+                    lambda s, c=case, b=bounds: workflow.session_log(
+                        s,
+                        c.principal,
+                        c.student,
+                        from_=b.get("from_"),
+                        to=b.get("to"),
+                        subject_id=None,
+                        cursor=None,
+                        limit=50,
+                    ),
+                )
+                progress_n, progress = counted(
+                    url,
+                    lambda s, c=case, b=bounds: workflow.student_progress(
+                        s,
+                        c.principal,
+                        c.student,
+                        from_=b.get("from_"),
+                        to=b.get("to"),
+                        subject_id=None,
+                    ),
+                )
+                where = (case.label, size, dated)
+                assert log_n <= 6, (where, log_n)
+                assert progress_n <= 12, (where, progress_n)
+                expected_progress = {
+                    "ok": None,
+                    "consent": "student_consent_required",
+                    "not_found": "not_found",
+                }[case.progress]
+                if expected_progress is None:
+                    assert progress.student_id == case.student, where
+                else:
+                    assert progress == expected_progress, where
+                former = "former" in case.label
+                if case.progress == "ok" or former:
+                    assert hasattr(log, "items"), (where, log)
+                    if former:
+                        assert len(log.items) == 1, where  # only what they taught
+                    else:
+                        # 1 or 50 of the tutors' sessions; the minor and the
+                        # refused adult also have the 45-day-old one.
+                        extra = case.student in (unions[0].student, refused_student)
+                        assert len(log.items) == min(size + extra, 50), where
+                else:
+                    assert log == LOG_EXPECTED[case.progress], (where, log)
+                for route, n in (("log", log_n), ("progress", progress_n)):
+                    key = (case.label, route, dated)
+                    counts.setdefault(key, n)
+                    assert counts[key] == n, (key, size, n)
+
+
+def test_the_plan_items_are_capped_at_20(module_seeded_url):
+    url = module_seeded_url
     tutor = a_tutor(url)
     subject = new_subject(url)
-    bulk_sessions(url, tutor, family.student_id, subject, count)
-    session_at(url, tutor, (family.student_id,), subject, NOW + timedelta(hours=1))
-    for principal in (
-        principal_of(family.user, GUARDIAN),
-        principal_of(tutor, TUTOR),
-        principal_of(create_user(url, roles=(OWNER,)), OWNER),
-    ):
-        statements, body = count_statements(
+    student = new_student(url)
+    for index in range(25):
+        plan(
             url,
-            lambda s, p=principal: workflow.session_log(
-                s,
-                p,
-                family.student_id,
-                from_=date(2030, 1, 1),
-                to=TODAY,
-                subject_id=subject,
-                cursor=None,
-                limit=50,
-            ),
+            student,
+            subject,
+            tutor.id,
+            title=f"Plan {index}",
+            status="completed",
+            closed_on=date(2031, 1, 1) + timedelta(days=index),
+            milestones=(("done", None),),
         )
-        assert statements <= 6, (principal.roles, statements)
-        assert len(body.items) == count
+    owner_user = create_user(url, roles=(OWNER,))
+    _, body = count_statements(
+        url,
+        lambda s: workflow.student_progress(
+            s,
+            principal_of(owner_user, OWNER),
+            student,
+            from_=None,
+            to=None,
+            subject_id=None,
+        ),
+    )
+    assert body.plans.completed == 25
+    assert body.plans.objectives_complete == 25
+    assert [item.title for item in body.plans.items] == [
+        f"Plan {index}" for index in range(24, 4, -1)
+    ]
 
 
 def test_the_family_student_role_reads_without_a_guardian(module_seeded_url, client):

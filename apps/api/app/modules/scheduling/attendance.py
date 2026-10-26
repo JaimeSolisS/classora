@@ -565,19 +565,26 @@ SUMMARY_STATES: Final = (SessionState.CONFIRMED.value, SessionState.COMPLETED.va
 
 
 def in_scope_participations(
-    *columns: Any, student_id: uuid.UUID, now: datetime
+    *columns: Any,
+    student_id: uuid.UUID,
+    now: datetime,
+    with_attendance: bool = True,
 ) -> Select[Any]:
     """``SELECT columns`` over the student's **in-scope** sessions (#83 B2,
     #84 E6: a participant, ``confirmed`` or ``completed``, started at
     ``now``), each outer-joined to the student's own attendance mark
     (:class:`ClassSessionAttendance`), not executed. The one definition for
     :func:`student_attendance_summary` and the #84 dashboard reads
-    (``scheduling.student_progress``), so their session sets never drift."""
-    return (
+    (``scheduling.student_progress``), so their session sets never drift.
+    ``with_attendance=False`` leaves the attendance table out (a probe that
+    reads only session columns)."""
+    query = (
         select(*columns)
         .select_from(ClassSessionParticipant)
         .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
-        .outerjoin(
+    )
+    if with_attendance:
+        query = query.outerjoin(
             ClassSessionAttendance,
             and_(
                 ClassSessionAttendance.class_session_id
@@ -585,11 +592,10 @@ def in_scope_participations(
                 ClassSessionAttendance.student_id == ClassSessionParticipant.student_id,
             ),
         )
-        .where(
-            ClassSessionParticipant.student_id == student_id,
-            ClassSession.state.in_(SUMMARY_STATES),
-            ClassSession.starts_at <= now,
-        )
+    return query.where(
+        ClassSessionParticipant.student_id == student_id,
+        ClassSession.state.in_(SUMMARY_STATES),
+        ClassSession.starts_at <= now,
     )
 
 

@@ -5361,8 +5361,8 @@ audited. The web pages are #322 (M5-17b).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/students/{student_id}/progress[?from&to&subject_id]` | `authenticated()` + record policy | `StudentProgress` (below): live aggregates and monthly trends for a center-local range. At most 12 statements whatever the number of sessions, grades, homework or plans (10 for a guardian). |
-| `GET /api/v1/students/{student_id}/session-log[?from&to&subject_id&cursor&limit]` | `authenticated()` + record policy | `{items [SessionLogItem], next_cursor}`: the student's in-scope sessions, newest first by `(starts_at, id)`; optional local-date bounds (inclusive) and subject; cursor, `limit` 1-50 (default 20). At most 6 statements whatever the page. |
+| `GET /api/v1/students/{student_id}/progress[?from&to&subject_id]` | `authenticated()` + record policy | `StudentProgress` (below): live aggregates and monthly trends for a center-local range. At most 12 statements whatever the number of sessions, grades, homework or plans and whatever the caller's roles (9 at most measured). |
+| `GET /api/v1/students/{student_id}/session-log[?from&to&subject_id&cursor&limit]` | `authenticated()` + record policy | `{items [SessionLogItem], next_cursor}`: the student's in-scope sessions, newest first by `(starts_at, id)`; optional local-date bounds (inclusive) and subject; cursor, `limit` 1-50 (default 20). At most 6 statements whatever the page and the caller's roles: the approved summaries and note counts are joined into the one row read. |
 
 **Who** (one closed shape for every audience; the first that applies, so a
 user with several roles gets the union):
