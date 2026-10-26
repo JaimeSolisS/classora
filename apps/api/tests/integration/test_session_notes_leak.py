@@ -1,4 +1,4 @@
-"""The family leak walk (#79 I1, #80 I1, #81 I1; spec §2 "Internal tutor
+"""The family leak walk (#79 I1, #80 I1, #81 I1, #82, #83 I1; spec §2 "Internal tutor
 notes are not automatically shared with families", §4 "grades … visible
 according to permissions", "learning plans … visible to
 students/guardians", §16): **no** ``GET`` route a family can reach returns
@@ -38,6 +38,17 @@ milestone text of an active plan edited after its activation, and that
 active plan and a plan discontinued after its activation (visible to that
 family only: (iv) for the other family), shown on the plan list and
 detail (``test_the_active_learning_plans_reach_their_own_family``).
+#83's source writes, per student, progress reports with canaries in the
+narrative and in every reason: (i) a draft, (ii) a submitted report, (iii) a
+report sent back for changes and its reason, (iv) a report approved then
+retracted and the retract reason, (v) a deleted draft, and a report whose
+first narrative was sent back (that text and the reason hidden) and whose
+second narrative was approved (visible to that family only: (vi) for the
+other family), shown on the approved detail
+(``test_the_approved_progress_reports_reach_their_own_family``). Its facts
+are compiled after the other sources ran, so they would carry any copied
+feedback, note or reason canary ((vii),
+``test_the_approved_report_facts_copy_no_text``).
 
 **The walk** (:func:`family_get_routes`): every ``GET`` route of
 ``build_app(include_dev_routes=True)``, except
@@ -182,6 +193,12 @@ class LeakWorld:
     history positive control."""
     url: str = ""
     """The database (sources that persist rows directly, #82)."""
+    report_ids: list[str] = field(default_factory=list)
+    """Filled by the canary sources (#83: every progress report, deleted
+    and retracted ones too)."""
+    shown_reports: dict[uuid.UUID, dict[str, set[str]]] = field(default_factory=dict)
+    """Per student: the approved reports their family sees (report id → its
+    visible canaries), for the #83 positive control."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -748,11 +765,122 @@ def assignment_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     )
 
 
+def progress_report_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#83: per student (both are the world tutor's current assignments;
+    the world's Academic Coordinator reviews), progress reports with
+    canaries in the narrative: (i) a draft, (ii) a submitted report, (iii) a
+    report sent back for changes and the reason, (iv) a report approved then
+    retracted and the retract reason, (v) a deleted draft; and a report
+    whose first narrative was sent back with a reason (both hidden) and
+    whose second narrative was approved (visible to that family only)."""
+    cookie = sign_in(client, world.tutor.username)
+    reviewer = sign_in(client, world.staff.username)
+    hidden: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+
+    def canary(kind: str) -> str:
+        return f"CANARY-report-{kind}-{uuid.uuid4().hex}"
+
+    def report(student: uuid.UUID, kind: str) -> tuple[dict[str, Any], set[str]]:
+        texts = {
+            part: canary(f"{kind}-{part}")
+            for part in ("summary", "strengths", "areas", "next")
+        }
+        response = post(
+            client,
+            cookie,
+            "/api/v1/progress-reports",
+            {
+                "student_id": str(student),
+                "kind": "on_demand",
+                "period_start": "2031-02-05",
+                "period_end": "2031-03-12",
+                "summary": texts["summary"],
+                "strengths": texts["strengths"],
+                "areas_for_improvement": texts["areas"],
+                "next_steps": texts["next"],
+            },
+        )
+        assert code_of(response) == (201, None), response.text
+        view = response.json()
+        world.report_ids.append(view["id"])
+        return view, set(texts.values())
+
+    def act(caller: Any, view: dict[str, Any], action: str, **body: Any) -> Any:
+        response = post(
+            client,
+            caller,
+            f"/api/v1/progress-reports/{view['id']}/{action}",
+            {"version": view["version"], **body},
+        )
+        assert code_of(response) == (200, None), response.text
+        return response.json()
+
+    for student in world.students:
+        _, draft = report(student, "draft")
+        hidden[student] |= draft
+
+        submitted_view, submitted = report(student, "submitted")
+        act(cookie, submitted_view, "submit")
+        hidden[student] |= submitted
+
+        sent_back_view, sent_back = report(student, "sent-back")
+        sent_back_view = act(cookie, sent_back_view, "submit")
+        reason = canary("changes-reason")
+        act(reviewer, sent_back_view, "request-changes", reason=reason)
+        hidden[student] |= sent_back | {reason}
+
+        retracted_view, retracted = report(student, "retracted")
+        retracted_view = act(cookie, retracted_view, "submit")
+        retracted_view = act(reviewer, retracted_view, "approve")
+        retract_reason = canary("retract-reason")
+        act(reviewer, retracted_view, "retract", reason=retract_reason)
+        hidden[student] |= retracted | {retract_reason}
+
+        deleted_view, deleted = report(student, "deleted")
+        client.cookies.clear()
+        response = client.delete(
+            f"/api/v1/progress-reports/{deleted_view['id']}",
+            params={"version": deleted_view["version"]},
+            headers=signed_headers(cookie),
+        )
+        assert response.status_code == 204, response.text
+        hidden[student] |= deleted
+
+        approved_view, before = report(student, "before")
+        approved_view = act(cookie, approved_view, "submit")
+        first_reason = canary("first-reason")
+        approved_view = act(
+            reviewer, approved_view, "request-changes", reason=first_reason
+        )
+        shown = {
+            "summary": canary("approved-summary"),
+            "strengths": canary("approved-strengths"),
+            "areas_for_improvement": canary("approved-areas"),
+            "next_steps": canary("approved-next"),
+        }
+        response = patch(
+            client,
+            cookie,
+            f"/api/v1/progress-reports/{approved_view['id']}",
+            {"version": approved_view["version"], **shown},
+        )
+        assert code_of(response) == (200, None), response.text
+        approved_view = act(cookie, response.json(), "submit")
+        act(reviewer, approved_view, "approve")
+        hidden[student] |= before | {first_reason}
+        visible[student] |= set(shown.values())
+        world.shown_reports[student] = {approved_view["id"]: set(shown.values())}
+
+    return Canaries(hidden=hidden, visible=visible, shown_on=[])
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
     evaluation_canaries,
     learning_plan_canaries,
     assignment_canaries,
+    progress_report_canaries,
 ]
 
 
@@ -773,6 +901,7 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "plan_id": lambda w: list(w.plan_ids),
     "milestone_id": lambda w: list(w.milestone_ids),
     "assignment_id": lambda w: list(w.assignment_ids),
+    "report_id": lambda w: list(w.report_ids),
     "group_id": lambda w: [str(w.group_id)],
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
@@ -926,6 +1055,11 @@ def test_every_path_parameter_is_mapped():
         "/api/v1/assignments/{assignment_id}",
         "/api/v1/students/{student_id}/assignments",
         "/api/v1/students/{student_id}/assignments/{assignment_id}",
+        # #83 progress reports
+        "/api/v1/progress-reports",
+        "/api/v1/progress-reports/{report_id}",
+        "/api/v1/students/{student_id}/progress-reports",
+        "/api/v1/students/{student_id}/progress-reports/{report_id}",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
 
@@ -1087,3 +1221,95 @@ def test_assignment_notifications_carry_ids_only(client, walk):
             assert set(item["params"]) == keys[item["notification_type"]]
             assert item["params"]["student_id"] == str(actor.student_id)
             assert item["params"]["assignment_id"] in walk.world.assignment_ids
+
+
+def test_the_approved_progress_reports_reach_their_own_family(client, walk):
+    """#83 positive control: the approved report (its second narrative)
+    reaches its own family on the list (by id) and the detail (every
+    visible string), and the list holds nothing else."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        shown = walk.world.shown_reports[actor.student_id]
+        listed = get(
+            client, cookie, f"/api/v1/students/{actor.student_id}/progress-reports"
+        )
+        assert code_of(listed) == (200, None), (actor.label, listed.text)
+        assert {item["id"] for item in listed.json()["items"]} == set(shown)
+        for report_id, expected in shown.items():
+            detail = get(
+                client,
+                cookie,
+                f"/api/v1/students/{actor.student_id}/progress-reports/{report_id}",
+            )
+            assert code_of(detail) == (200, None), (actor.label, detail.text)
+            assert {c for c in expected if c in detail.text} == expected
+
+
+def _strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+def test_the_approved_report_facts_copy_no_text(client, walk):
+    """#83 I1 (vii): the frozen facts were compiled after every other source
+    ran (notes, evaluation feedback and comments, change and void reasons,
+    homework text, links and feedback): the only canaries they may name are
+    the titles of the student's family-visible learning plans."""
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        [report_id] = walk.world.shown_reports[actor.student_id]
+        detail = get(
+            client,
+            cookie,
+            f"/api/v1/students/{actor.student_id}/progress-reports/{report_id}",
+        )
+        assert code_of(detail) == (200, None), (actor.label, detail.text)
+        facts = detail.json()["facts"]
+        titles = {plan["title"] for plan in facts["learning_plans"]}
+        assert titles, actor.label
+        assert all(t.startswith("CANARY-plan-") for t in titles)
+        named = {text for text in _strings(facts) if "CANARY-" in text}
+        assert named == titles, actor.label
+        # The facts saw the other sources' records.
+        assert facts["evaluations"]["count"] >= 1
+        assert facts["assignments"]["count"] >= 1
+        assert facts["attendance"]["sessions"] >= 1
+
+
+def test_progress_report_notifications_carry_ids_only(client, walk):
+    """#83 E7, AM3: approving notified both families (the student's login
+    and the guardians with academic access), each about their own student,
+    with ids, the kind and the period only; families get nothing about a
+    retraction or a request for changes."""
+    keys = {
+        "student_id",
+        "report_id",
+        "kind",
+        "period_start",
+        "period_end",
+        "audience",
+    }
+    for actor in walk.world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(client, cookie, "/api/v1/notifications", limit=100)
+        assert code_of(response) == (200, None)
+        items = [
+            item
+            for item in response.json()["items"]
+            if item["notification_type"].startswith("academics.progress_report")
+        ]
+        types = {item["notification_type"] for item in items}
+        assert types == {"academics.progress_report_approved"}, actor.label
+        # Two approvals per student: the retracted one and the shown one.
+        assert len(items) == 2, actor.label
+        for item in items:
+            assert set(item["params"]) == keys
+            assert item["params"]["student_id"] == str(actor.student_id)
+            assert item["params"]["audience"] == "family"
+            assert item["params"]["report_id"] in walk.world.report_ids

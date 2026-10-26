@@ -1,5 +1,6 @@
 """Academics errors: session closeouts (#77 D2, E1; #78 C, D), notes (#79),
-evaluations (#80), learning plans (#81) and homework assignments (#82).
+evaluations (#80), learning plans (#81), homework assignments (#82) and
+progress reports (#83).
 
 The routes also answer the shared ``404 not_found``
 (:class:`~app.core.authz.RecordNotFoundError`, the same body for an unknown
@@ -734,3 +735,177 @@ class AssignmentFieldError(AppError):
         details: dict[str, str | list[str]] | None = None,
     ) -> AssignmentFieldError:
         return cls([(path, code, message)], details=details)
+
+
+# --- Progress reports (#83) --------------------------------------------------------
+# ``details`` carry ids or paths only: a report's narrative, facts or reasons
+# never reach an error body.
+
+
+class ProgressReportTutorOnlyError(AppError):
+    """``403 progress_report_tutor_only`` (#83 C2, E5): staff don't author
+    progress reports; only a tutor currently teaching the student does."""
+
+    status = 403
+    code = "progress_report_tutor_only"
+    detail = "Only a tutor who currently teaches the student writes its reports."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ReportSubjectNotAssignedError(AppError):
+    """``403 report_subject_not_assigned`` (#83 C2, E5): a subject report
+    needs a subject the tutor currently teaches the student."""
+
+    status = 403
+    code = "report_subject_not_assigned"
+    detail = "You don't currently teach this student this subject."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportAuthorOnlyError(AppError):
+    """``403 progress_report_author_only`` (#83 C3, E5): only the author
+    edits, submits or deletes a report."""
+
+    status = 403
+    code = "progress_report_author_only"
+    detail = "Only the report's author changes it."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportReadOnlyError(AppError):
+    """``403 progress_report_read_only`` (#83 E5): the student is no longer
+    one of the author's current assignments."""
+
+    status = 403
+    code = "progress_report_read_only"
+    detail = "This student is no longer assigned to you: the report is read-only."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportSelfReviewError(AppError):
+    """``403 progress_report_self_review`` (#83 E4): a reviewer doesn't
+    decide their own report, unless they hold the Owner role."""
+
+    status = 403
+    code = "progress_report_self_review"
+    detail = "Another reviewer must decide your own report."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportUnderReviewError(AppError):
+    """``409 progress_report_under_review`` (#83 C3, C4, D2): a submitted
+    report waits for a reviewer."""
+
+    status = 409
+    code = "progress_report_under_review"
+    detail = "This report is waiting for review."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportNotSubmittedError(AppError):
+    """``409 progress_report_not_submitted`` (#83 D3-D5): only a submitted
+    report is approved or sent back (or retracted before approval)."""
+
+    status = 409
+    code = "progress_report_not_submitted"
+    detail = "This report isn't waiting for review."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportClosedError(AppError):
+    """``409 progress_report_closed`` (#83 E3): an approved report never
+    changes and a retracted one is final."""
+
+    status = 409
+    code = "progress_report_closed"
+    detail = "This report is closed."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportExistsError(AppError):
+    """``409 progress_report_exists`` (#83 A1, C2): the author already has a
+    live weekly or monthly report for this student, period and subject;
+    ``details.report_id`` names it."""
+
+    status = 409
+    code = "progress_report_exists"
+    detail = "You already have a report for this student and period."
+
+    def __init__(self, report_id: str | None = None) -> None:
+        super().__init__(
+            details=None if report_id is None else {"report_id": report_id}
+        )
+
+
+class ProgressReportAuthorNotCurrentError(AppError):
+    """``409 progress_report_author_not_current`` (#83 D4): the author no
+    longer teaches the student, so the report can't go back to them;
+    approve or retract it instead."""
+
+    status = 409
+    code = "progress_report_author_not_current"
+    detail = "The author no longer teaches this student: approve or retract it."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportReviewRouteRequiredError(AppError):
+    """``409 progress_report_review_route_required`` (#83 B4, E3): the
+    inbox's generic approve, reject or request changes can't decide a
+    progress report; ``details.review_path`` is its review page, where the
+    reviewer decides with the report's version. The item stays as it
+    was."""
+
+    status = 409
+    code = "progress_report_review_route_required"
+    detail = "Review this report on its own page."
+
+    def __init__(self, review_path: str) -> None:
+        super().__init__(details={"review_path": review_path})
+
+
+class ProgressReportSummaryRequiredError(AppError):
+    """``422 summary_required`` (#83 D2): a report is submitted with a
+    summary. A top-level code: the submit body carries only the version."""
+
+    status = 422
+    code = "summary_required"
+    detail = "Write the report's summary before submitting it."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ProgressReportFieldError(AppError):
+    """``422 validation_error`` with field errors (#83 C2, D4, D5):
+    ``subject_unknown``, ``period_invalid``, ``period_in_future``,
+    ``reason_required``, ``too_long``. ``errors`` items are ``(path, code,
+    message)``."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, errors: Sequence[tuple[Sequence[str | int], str, str]]) -> None:
+        items: list[FieldError] = [
+            {"path": list(path), "code": code, "message": message}
+            for path, code, message in errors
+        ]
+        super().__init__(errors=items)

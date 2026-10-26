@@ -34,6 +34,7 @@ from app.modules.scheduling.service import (
     SESSION_REQUEST_APPROVAL_HANDLER,
 )
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
+from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 
 ALLOWED = {
@@ -156,6 +157,7 @@ REGISTERED_TYPES = {
     "scheduling.change_request",
     "staff.availability_change",
     "academics.session_closeout",
+    "academics.progress_report",
 }
 
 
@@ -202,6 +204,13 @@ def test_build_app_registers_exactly_the_real_types():
     assert closeout.supports_request_changes is True
     assert closeout.reason_required_on_reject is True
     assert closeout.inbox_decisions is False
+    # #83 B4, E3, E4: progress reports; decided on their review page.
+    report = PROGRESS_REPORT_HANDLER
+    assert report.request_type == "academics.progress_report"
+    assert report.review_permission == "progress_report.review"
+    assert report.supports_request_changes is True
+    assert report.reason_required_on_reject is True
+    assert report.inbox_decisions is False
 
 
 def test_build_app_registers_the_account_reference_resolver():
@@ -377,14 +386,19 @@ async def test_an_inbox_decided_type_ignores_the_hook(cleanup):
     assert handler.seen == []
 
 
-def test_only_the_closeout_handler_defines_the_hook():
+def test_only_the_page_decided_academic_handlers_define_the_hook():
     build_app()
     hooked = {
         request_type
         for request_type, handler in approvals._handlers.items()
         if request_type in REGISTERED_TYPES and hasattr(handler, "inbox_route_error")
     }
-    assert hooked == {"academics.session_closeout"}
+    # #312 (closeouts) and #83 B4 (progress reports).
+    assert hooked == {"academics.session_closeout", "academics.progress_report"}
+    assert approvals._inbox_route_error(PROGRESS_REPORT_HANDLER) is not None
+    assert list(
+        inspect.signature(PROGRESS_REPORT_HANDLER.inbox_route_error).parameters
+    ) == ["session", "request"]
     closeout = SESSION_CLOSEOUT_HANDLER
     assert approvals._inbox_route_error(closeout) is not None
     assert approvals._inbox_route_error(SESSION_REQUEST_APPROVAL_HANDLER) is None

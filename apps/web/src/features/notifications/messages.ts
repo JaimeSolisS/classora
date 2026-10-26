@@ -64,8 +64,14 @@ const INSTANT_PARAMS = new Set([
 ]);
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers; #80
- * evaluations; #82 homework deadlines). */
-const DATE_PARAMS = new Set(['from_date', 'evaluated_on', 'due_on']);
+ * evaluations; #82 homework deadlines; #83 progress report periods). */
+const DATE_PARAMS = new Set([
+  'from_date',
+  'evaluated_on',
+  'due_on',
+  'period_start',
+  'period_end',
+]);
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function values(
@@ -341,6 +347,9 @@ export const NOTIFICATION_LINKS: Readonly<
   'academics.assignment_set': myHomework,
   'academics.assignment_graded': myHomework,
   'academics.assignment_submitted': homeworkRoster,
+  // #83 H1: academics.progress_report_approved / _changes_requested /
+  // _retracted have their messages but no link until #315 (M5-16b) adds
+  // the report pages (the approved type's `audience` param picks the page).
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

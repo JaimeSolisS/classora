@@ -98,7 +98,9 @@ rules in :mod:`~app.modules.scheduling.attendance_rules`):
 :func:`get_session_attendance`, :func:`record_attendance` (the tutor's
 marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
 reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
-#84 and #85); :func:`register_completed_attendance_unlock` (#78 E6: the
+#84 and #85), :func:`student_attendance_summary` (one student's counts over
+a local period, #83 progress report facts);
+:func:`register_completed_attendance_unlock` (#78 E6: the
 predicate that lets the tutor mark a ``completed`` session again while its
 closeout is ``changes_requested``; ``app.wiring`` registers academics').
 
@@ -242,6 +244,9 @@ of Work and never commits.
 """
 
 from app.modules.scheduling.attendance import (
+    AttendanceSummary as AttendanceSummary,
+)
+from app.modules.scheduling.attendance import (
     attendance_statuses as attendance_statuses,
 )
 from app.modules.scheduling.attendance import (
@@ -255,6 +260,9 @@ from app.modules.scheduling.attendance import (
 )
 from app.modules.scheduling.attendance import (
     register_completed_attendance_unlock as register_completed_attendance_unlock,
+)
+from app.modules.scheduling.attendance import (
+    student_attendance_summary as student_attendance_summary,
 )
 from app.modules.scheduling.attendance_rules import (
     ATTENDANCE_STATUSES as ATTENDANCE_STATUSES,

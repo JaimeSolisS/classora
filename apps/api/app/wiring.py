@@ -24,7 +24,10 @@ assignment source of the ``families`` student record policy; #77: the
 ``app.workflows.session_closeout``; #78: the three closeout review
 notification types and the scheduling ``completed`` attendance unlock,
 ``academics.service.closeout_awaits_tutor``; #301: the
-``academics.closeout_submitted_on_behalf`` notification type) are wired
+``academics.closeout_submitted_on_behalf`` notification type; #83: the
+``academics.progress_report`` approval type,
+``app.workflows.progress_report_approval``, and its three notification
+types) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
@@ -48,6 +51,8 @@ from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.closeout_on_behalf import register_on_behalf_notifications
 from app.workflows.evaluations import register_evaluation_notifications
 from app.workflows.learning_plans import register_learning_plan_notifications
+from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
+from app.workflows.progress_reports import register_progress_report_notifications
 from app.workflows.session_cancellation import on_session_cancelled
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 from app.workflows.session_closeout_review import register_closeout_notifications
@@ -82,6 +87,8 @@ def register_approval_wiring() -> None:
     register_evaluation_notifications()
     register_learning_plan_notifications()
     register_assignment_notifications()
+    administration_service.register_approval_handler(PROGRESS_REPORT_HANDLER)
+    register_progress_report_notifications()
     scheduling_service.register_completed_attendance_unlock(
         academics_service.closeout_awaits_tutor
     )

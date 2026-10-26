@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0056"
+HEAD = "0057"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -144,6 +144,7 @@ LEARNING_PLAN_TABLES = [
     "learning_plan_milestones",
 ]
 ASSIGNMENT_TABLES = ["assignments", "assignment_submissions"]
+PROGRESS_REPORT_TABLES = ["progress_reports"]
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
     "review_reason",
@@ -363,6 +364,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *EVALUATION_TABLES,
             *LEARNING_PLAN_TABLES,
             *ASSIGNMENT_TABLES,
+            *PROGRESS_REPORT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4454,9 +4456,24 @@ def _of_0056(diff: Any) -> bool:
     return False
 
 
+def _of_0057(diff: Any) -> bool:
+    """A metadata difference that revision 0057 adds: the progress_reports
+    table and its indexes (#83 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in PROGRESS_REPORT_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in PROGRESS_REPORT_TABLES
+    return False
+
+
+def _of_0056_on(diff: Any) -> bool:
+    """A metadata difference that revision 0056 or a later one adds."""
+    return _of_0056(diff) or _of_0057(diff)
+
+
 def _of_0055_on(diff: Any) -> bool:
     """A metadata difference that revision 0055 or a later one adds."""
-    return _of_0055(diff) or _of_0056(diff)
+    return _of_0055(diff) or _of_0056_on(diff)
 
 
 def _of_0054_on(diff: Any) -> bool:
@@ -9325,7 +9342,7 @@ def test_0055_adds_the_learning_plan_tables_and_downgrade_drops_them(
     command.upgrade(config, "0055")
 
     assert version_nums(dsn) == ["0055"]
-    assert [d for d in metadata_diff(dsn) if not _of_0056(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0056_on(d)] == []
     assert public_tables(dsn) - before == set(LEARNING_PLAN_TABLES)
     run_sql(dsn, PLAN_INSERT, _plan_values(dsn))
 
@@ -9608,7 +9625,7 @@ def test_0056_adds_the_assignment_tables_and_downgrade_drops_them(
     command.upgrade(config, "0056")
 
     assert version_nums(dsn) == ["0056"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0057(d)] == []
     assert public_tables(dsn) - before == set(ASSIGNMENT_TABLES)
     [made] = run_sql(dsn, ASSIGNMENT_INSERT, _assignment_values(dsn))
     run_sql(dsn, SUBMISSION_INSERT, _submission_values(made.id, _student_row(dsn)))
@@ -9617,7 +9634,7 @@ def test_0056_adds_the_assignment_tables_and_downgrade_drops_them(
 
     assert version_nums(dsn) == ["0055"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0056(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0056_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -9824,3 +9841,356 @@ def test_assignment_rows_are_checked(fresh_database_url):
         run_sql(dsn, "DELETE FROM students WHERE id = :id", {"id": student})
     with pytest.raises(IntegrityError, match="fk_assignments_creator_user_id"):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", values)
+
+
+# --- 0057: progress reports (#83 A1) --------------------------------------------------
+
+REPORT_INSERT = (
+    "INSERT INTO progress_reports (student_id, author_user_id, subject_id, kind,"
+    " period_start, period_end, status, summary, facts, facts_computed_at,"
+    " submitted_at, changes_requested_at, changes_requested_by_user_id,"
+    " changes_requested_reason, approved_at, approved_by_user_id, retracted_at,"
+    " retracted_by_user_id, retract_reason, deleted_at, deleted_by_user_id)"
+    " VALUES (:st, :u, :sub, :kind, :start, :end, :status, :summary,"
+    " CAST(:facts AS jsonb), :facts_at, :submitted_at, :cr_at, :cr_by, :cr_reason,"
+    " :approved_at, :approved_by, :retracted_at, :retracted_by, :retract_reason,"
+    " :deleted_at, :deleted_by) RETURNING id, version"
+)
+
+
+def _report_values(dsn: str) -> dict[str, Any]:
+    return {
+        "st": _student_row(dsn),
+        "u": _user_row(dsn),
+        "sub": None,
+        "kind": "weekly",
+        "start": date(2031, 3, 3),
+        "end": date(2031, 3, 9),
+        "status": "draft",
+        "summary": None,
+        "facts": None,
+        "facts_at": None,
+        "submitted_at": None,
+        "cr_at": None,
+        "cr_by": None,
+        "cr_reason": None,
+        "approved_at": None,
+        "approved_by": None,
+        "retracted_at": None,
+        "retracted_by": None,
+        "retract_reason": None,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+
+
+def test_0057_adds_the_progress_report_table_and_downgrade_drops_it(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0056")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0057")
+
+    assert version_nums(dsn) == ["0057"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(PROGRESS_REPORT_TABLES)
+    run_sql(dsn, REPORT_INSERT, _report_values(dsn))
+
+    command.downgrade(config, "0056")
+
+    assert version_nums(dsn) == ["0056"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0057(d)] == []
+    assert not run_sql(
+        dsn,
+        "SELECT 1 FROM pg_proc WHERE proname = 'progress_reports_immutable'",
+    )
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_progress_report_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    timestamp = ("timestamp with time zone", "YES", None, None)
+    text_ = ("text", "YES", None, None)
+    uuid_ = ("uuid", "YES", None, None)
+
+    assert _columns(dsn, "progress_reports") == {
+        **STANDARD_COLUMNS,
+        "student_id": ("uuid", "NO", None, None),
+        "author_user_id": ("uuid", "NO", None, None),
+        "subject_id": uuid_,
+        "kind": ("character varying", "NO", 20, None),
+        "period_start": ("date", "NO", None, None),
+        "period_end": ("date", "NO", None, None),
+        "status": ("character varying", "NO", 20, "'draft'::character varying"),
+        "summary": text_,
+        "strengths": text_,
+        "areas_for_improvement": text_,
+        "next_steps": text_,
+        "facts": ("jsonb", "YES", None, None),
+        "facts_computed_at": timestamp,
+        "submitted_at": timestamp,
+        "changes_requested_at": timestamp,
+        "changes_requested_by_user_id": uuid_,
+        "changes_requested_reason": text_,
+        "approved_at": timestamp,
+        "approved_by_user_id": uuid_,
+        "retracted_at": timestamp,
+        "retracted_by_user_id": uuid_,
+        "retract_reason": text_,
+        "deleted_at": timestamp,
+        "deleted_by_user_id": uuid_,
+        "version": ("integer", "NO", None, "1"),
+    }
+    fks = {
+        f"fk_progress_reports_{column}_{target}"
+        for column, target in (
+            ("student_id", "students"),
+            ("author_user_id", "users"),
+            ("subject_id", "subjects"),
+            ("changes_requested_by_user_id", "users"),
+            ("approved_by_user_id", "users"),
+            ("retracted_by_user_id", "users"),
+            ("deleted_by_user_id", "users"),
+        )
+    }
+    constraints = _constraints(dsn, "progress_reports")
+    assert set(constraints) == {
+        "pk_progress_reports",
+        *fks,
+        *(
+            f"ck_progress_reports_{name}"
+            for name in (
+                "kind_valid",
+                "period_valid",
+                "weekly_period",
+                "monthly_period",
+                "status_valid",
+                "summary_valid",
+                "strengths_valid",
+                "areas_for_improvement_valid",
+                "next_steps_valid",
+                "facts_together",
+                "facts_frozen",
+                "submitted_set",
+                "changes_requested_together",
+                "changes_requested_reason_valid",
+                "changes_requested_set",
+                "approved_together",
+                "approved_set",
+                "approved_status",
+                "retracted_together",
+                "retract_reason_valid",
+                "retracted_set",
+                "deleted_together",
+                "deleted_editable",
+            )
+        ),
+    }
+    for name in fks:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    indexes = _indexes(dsn, "progress_reports")
+    assert set(indexes) == {
+        "pk_progress_reports",
+        "ix_progress_reports_student_id_approved",
+        "ix_progress_reports_author_user_id_created_at",
+        "ix_progress_reports_submitted_at",
+        "uq_progress_reports_period",
+    }
+    assert (
+        "WHERE ((status)::text = 'approved_for_family'::text)"
+        in indexes["ix_progress_reports_student_id_approved"]
+    )
+    unique = indexes["uq_progress_reports_period"]
+    assert "UNIQUE" in unique
+    assert (
+        "COALESCE(subject_id, '00000000-0000-0000-0000-000000000000'::uuid)" in unique
+    )
+    assert "deleted_at IS NULL" in unique
+    assert "'retracted'" in unique
+    assert "'on_demand'" in unique
+
+
+def test_progress_report_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _report_values(dsn)
+    now = datetime.now(UTC)
+    staff = _user_row(dsn)
+    facts = '{"schema_version": 1}'
+    submitted = {
+        "status": "submitted",
+        "facts": facts,
+        "facts_at": now,
+        "submitted_at": now,
+    }
+    for changes, constraint in (
+        ({"kind": "yearly"}, "kind_valid"),
+        ({"start": date(2031, 3, 10), "end": date(2031, 3, 9)}, "period_valid"),
+        (
+            {"kind": "on_demand", "start": date(2031, 1, 1), "end": date(2032, 1, 2)},
+            "period_valid",
+        ),
+        ({"start": date(2031, 3, 4), "end": date(2031, 3, 10)}, "weekly_period"),
+        ({"end": date(2031, 3, 10)}, "weekly_period"),
+        (
+            {"kind": "monthly", "start": date(2031, 2, 2), "end": date(2031, 3, 1)},
+            "monthly_period",
+        ),
+        (
+            {"kind": "monthly", "start": date(2031, 2, 1), "end": date(2031, 3, 1)},
+            "monthly_period",
+        ),
+        (submitted | {"status": "rejected"}, "status_valid"),
+        ({"summary": ""}, "summary_valid"),
+        ({"summary": " x"}, "summary_valid"),
+        ({"summary": "x" * 4001}, "summary_valid"),
+        ({"facts": facts}, "facts_together"),
+        ({"status": "submitted", "submitted_at": now}, "facts_frozen"),
+        ({"status": "submitted", "facts": facts, "facts_at": now}, "submitted_set"),
+        ({"cr_at": now}, "changes_requested_together"),
+        (
+            {"cr_at": now, "cr_by": staff, "cr_reason": " x"},
+            "changes_requested_reason_valid",
+        ),
+        (
+            {"cr_at": now, "cr_by": staff, "cr_reason": "x" * 1001},
+            "changes_requested_reason_valid",
+        ),
+        (submitted | {"status": "changes_requested"}, "changes_requested_set"),
+        (
+            submitted | {"status": "approved_for_family", "approved_at": now},
+            "approved_together",
+        ),
+        (submitted | {"status": "approved_for_family"}, "approved_set"),
+        (submitted | {"approved_at": now, "approved_by": staff}, "approved_status"),
+        (
+            submitted | {"status": "retracted", "retracted_at": now},
+            "retracted_together",
+        ),
+        (submitted | {"status": "retracted"}, "retracted_set"),
+        (
+            submitted
+            | {"retracted_at": now, "retracted_by": staff, "retract_reason": "x"},
+            "retracted_set",
+        ),
+        (
+            submitted
+            | {
+                "status": "retracted",
+                "retracted_at": now,
+                "retracted_by": staff,
+                "retract_reason": "",
+            },
+            "retract_reason_valid",
+        ),
+        ({"deleted_at": now}, "deleted_together"),
+        (submitted | {"deleted_at": now, "deleted_by": staff}, "deleted_editable"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, REPORT_INSERT, values | changes)
+    [made] = run_sql(dsn, REPORT_INSERT, values | {"summary": "Bien"})
+    assert made.version == 1
+    # One live weekly report per student, author, period and subject.
+    with pytest.raises(IntegrityError, match="uq_progress_reports_period"):
+        run_sql(dsn, REPORT_INSERT, values)
+    run_sql(dsn, REPORT_INSERT, values | {"sub": _subject_row(dsn)})
+    run_sql(dsn, REPORT_INSERT, values | {"deleted_at": now, "deleted_by": staff})
+    run_sql(
+        dsn,
+        REPORT_INSERT,
+        values
+        | submitted
+        | {
+            "status": "retracted",
+            "retracted_at": now,
+            "retracted_by": staff,
+            "retract_reason": "Alumno equivocado",
+        },
+    )
+    on_demand = values | {"kind": "on_demand"}
+    run_sql(dsn, REPORT_INSERT, on_demand)
+    run_sql(dsn, REPORT_INSERT, on_demand)
+    with pytest.raises(IntegrityError, match="fk_progress_reports_student_id"):
+        run_sql(dsn, "DELETE FROM students WHERE id = :st", values)
+
+
+def test_an_approved_progress_report_never_changes(fresh_database_url):
+    """E3: once approved_at is set the content and the approval are frozen
+    (42501); a retraction still passes; DELETE is always refused."""
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _report_values(dsn)
+    now = datetime.now(UTC)
+    staff = _user_row(dsn)
+    [draft] = run_sql(dsn, REPORT_INSERT, values | {"summary": "Borrador"})
+    # Before approval the content changes freely, but nothing is deleted.
+    run_sql(
+        dsn,
+        "UPDATE progress_reports SET summary = 'Otro' WHERE id = :id",
+        {"id": draft.id},
+    )
+    with pytest.raises(DBAPIError, match="never deleted") as raised:
+        run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": draft.id})
+    assert _sqlstate(raised.value) == "42501"
+    [approved] = run_sql(
+        dsn,
+        REPORT_INSERT,
+        values
+        | {
+            "start": date(2031, 3, 10),
+            "end": date(2031, 3, 16),
+            "status": "approved_for_family",
+            "summary": "Aprobado",
+            "facts": '{"schema_version": 1}',
+            "facts_at": now,
+            "submitted_at": now,
+            "approved_at": now,
+            "approved_by": staff,
+        },
+    )
+    for assignment in (
+        "summary = 'Cambiado'",
+        "strengths = 'Nuevo'",
+        "areas_for_improvement = 'Nuevo'",
+        "next_steps = 'Nuevo'",
+        "facts = '{\"schema_version\": 2}'::jsonb",
+        "facts_computed_at = now()",
+        "kind = 'on_demand'",
+        "period_end = DATE '2031-03-17'",
+        f"subject_id = '{_subject_row(dsn)}'",
+        f"student_id = '{_student_row(dsn)}'",
+        f"author_user_id = '{staff}'",
+        "approved_at = now()",
+        f"approved_by_user_id = '{_user_row(dsn)}'",
+    ):
+        with pytest.raises(DBAPIError, match="never changes") as raised:
+            run_sql(
+                dsn,
+                f"UPDATE progress_reports SET {assignment} WHERE id = :id",  # noqa: S608
+                {"id": approved.id},
+            )
+        assert _sqlstate(raised.value) == "42501", assignment
+    with pytest.raises(DBAPIError, match="never deleted"):
+        run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": approved.id})
+    # The retraction columns, the status and the version are allowed.
+    run_sql(
+        dsn,
+        "UPDATE progress_reports SET status = 'retracted', retracted_at = now(),"
+        " retracted_by_user_id = :u, retract_reason = 'Alumno equivocado',"
+        " version = version + 1, updated_at = now() WHERE id = :id",
+        {"id": approved.id, "u": staff},
+    )
+    [row] = run_sql(
+        dsn,
+        "SELECT status, summary, version FROM progress_reports WHERE id = :id",
+        {"id": approved.id},
+    )
+    assert (row.status, row.summary, row.version) == ("retracted", "Aprobado", 2)

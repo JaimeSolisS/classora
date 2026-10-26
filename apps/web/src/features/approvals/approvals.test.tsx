@@ -246,6 +246,7 @@ describe('the list (F3)', () => {
       ['scheduling.change_request', 'Change request'],
       ['staff.availability_change', 'Availability change'],
       ['academics.session_closeout', 'Session closeout'],
+      ['academics.progress_report', 'Progress report'],
     ]);
     expect([...assignee!.options].map((o) => [o.value, o.textContent])).toEqual(
       [

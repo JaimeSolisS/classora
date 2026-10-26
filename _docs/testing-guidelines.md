@@ -274,7 +274,7 @@ describes the route declarations and the 401/403/404 rule.
   checked on the raw JSON: its key sets, and a leak test that the ids and
   names it must never carry (other participants, the tutor's id) are absent
   from the body text.
-- **Family leak walk** (#79, extended by #80 for evaluations, #81 for learning plans and #82 for homework assignments): `tests/integration/test_session_notes_leak.py`
+- **Family leak walk** (#79, extended by #80 for evaluations, #81 for learning plans, #82 for homework assignments and #83 for progress reports): `tests/integration/test_session_notes_leak.py`
   calls every `GET` route a student or guardian can reach (from the app's
   routes and the static matrix) as a minor's guardian, an adult's consenting
   guardian and both students, with every mapped path parameter, and asserts

@@ -463,6 +463,52 @@ export function sessionCloseoutReviewLine(
   return parts.join(' · ');
 }
 
+interface ProgressReportSubject {
+  /** #83 AM1 (absent before it). */
+  report_id?: string;
+  student: { id: string; display_name: string };
+  author: { display_name: string };
+  kind: 'weekly' | 'monthly' | 'on_demand';
+  period_start: string;
+  period_end: string;
+  subject: { id: string; name: string } | null;
+  submitted_at: string | null;
+}
+
+function isProgressReport(subject: unknown): subject is ProgressReportSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  const student = value.student as Record<string, unknown> | null | undefined;
+  const author = value.author as Record<string, unknown> | null | undefined;
+  return (
+    typeof student === 'object' &&
+    student !== null &&
+    typeof student.display_name === 'string' &&
+    typeof author === 'object' &&
+    author !== null &&
+    typeof author.display_name === 'string' &&
+    typeof value.period_start === 'string' &&
+    typeof value.period_end === 'string' &&
+    (value.subject === null ||
+      (typeof value.subject === 'object' &&
+        typeof (value.subject as Record<string, unknown>).name === 'string'))
+  );
+}
+
+/** The progress report subject of `item` (#83 H2), or null. Decided on the
+ * report's review page (#83b adds the "Review" link): the inbox lists no
+ * decisions for it. */
+export function progressReportSubject(
+  item: ApprovalRequestItem,
+): ProgressReportSubject | null {
+  return item.request_type === 'academics.progress_report' &&
+    isProgressReport(item.subject)
+    ? item.subject
+    : null;
+}
+
 /** Formats an instant for a summary (the center zone, from useFormatters). */
 export type InstantFormatter = (instant: string) => string;
 
@@ -544,6 +590,8 @@ export function registrationSubject(
  * affected";
  * for a session closeout (#77) "<subject> · <date, time> · <tutor> ·
  * <actual> of <scheduled> min · <n> students";
+ * for a progress report (#83) "<student> · <start> – <end> · <subject> ·
+ * <author>" (no subject part for a whole-student report);
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -658,6 +706,21 @@ export function approvalSummary(
       scheduled: closeout.scheduled_minutes,
       count: closeout.participant_count,
     });
+  }
+  const report = progressReportSubject(item);
+  if (report) {
+    const shared = {
+      student: report.student.display_name,
+      start: formatDate(report.period_start),
+      end: formatDate(report.period_end),
+      author: report.author.display_name,
+    };
+    return report.subject
+      ? t('approvals.summary.progressReport', {
+          ...shared,
+          subject: report.subject.name,
+        })
+      : t('approvals.summary.progressReportNoSubject', shared);
   }
   const occurrence = occurrenceConflictSubject(item);
   if (occurrence) {

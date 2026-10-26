@@ -595,3 +595,74 @@ describe('homework notifications (#82 I1)', () => {
     expect(link({}, recipient)).toBe('/assignments');
   });
 });
+
+// #83 H1: the progress report notifications carry ids, the kind, the period
+// and the audience only, never a narrative, a number or a reason; no link
+// until #315 (M5-16b).
+
+describe('progress report notifications (#83 H1)', () => {
+  const report = {
+    student_id: '00000000-0000-4000-8000-000000000083',
+    report_id: '00000000-0000-4000-8000-000000000084',
+    kind: 'weekly',
+    period_start: '2031-03-03',
+    period_end: '2031-03-09',
+    audience: 'family',
+  };
+  const types = [
+    'academics.progress_report_approved',
+    'academics.progress_report_changes_requested',
+    'academics.progress_report_retracted',
+  ];
+
+  async function inLanguage(lng: 'es' | 'en', run: () => void): Promise<void> {
+    const previous = i18n.language;
+    await i18n.changeLanguage(lng);
+    try {
+      run();
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  }
+
+  const text = (lng: 'es' | 'en', type: string) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: report,
+    });
+
+  it('renders the three types in both languages, without an id', async () => {
+    await inLanguage('en', () => {
+      expect(text('en', 'academics.progress_report_approved')).toBe(
+        'A progress report for Mar 3, 2031 – Mar 9, 2031 was approved.',
+      );
+      expect(text('en', 'academics.progress_report_changes_requested')).toBe(
+        'A reviewer asked for changes to your progress report.',
+      );
+      expect(text('en', 'academics.progress_report_retracted')).toBe(
+        'Your progress report was retracted.',
+      );
+    });
+    await inLanguage('es', () => {
+      expect(text('es', 'academics.progress_report_approved')).toBe(
+        'Se aprobó un informe de progreso del 3 mar 2031 al 9 mar 2031.',
+      );
+      expect(text('es', 'academics.progress_report_changes_requested')).toBe(
+        'Un revisor pidió cambios en tu informe de progreso.',
+      );
+      expect(text('es', 'academics.progress_report_retracted')).toBe(
+        'Se retiró tu informe de progreso.',
+      );
+    });
+    for (const lng of ['es', 'en'] as const) {
+      for (const type of types) {
+        expect(text(lng, type)).not.toContain(report.report_id);
+        expect(text(lng, type)).not.toContain('notifications.types');
+      }
+    }
+  });
+
+  it.each(types)('%s has no link until #315', (type) => {
+    expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+  });
+});

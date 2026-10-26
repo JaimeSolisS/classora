@@ -306,7 +306,8 @@
       "scheduling_session_request": "Session request",
       "scheduling_change_request": "Change request",
       "staff_availability_change": "Availability change",
-      "academics_session_closeout": "Session closeout"
+      "academics_session_closeout": "Session closeout",
+      "academics_progress_report": "Progress report"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -326,7 +327,9 @@
       "availabilityChange_one": "{{tutor}} · {{change}} · 1 class affected",
       "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} classes affected",
       "sessionCloseout_one": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} student",
-      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} students"
+      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} students",
+      "progressReport": "{{student}} · {{start}} – {{end}} · {{subject}} · {{author}}",
+      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}"
     },
     "list": {
       "title": "Requests",
@@ -1493,7 +1496,10 @@
       "academics_learning_plan_completed": "A learning plan was completed.",
       "academics_assignment_set": "New homework is due on {{due_on}}.",
       "academics_assignment_submitted": "A student submitted homework.",
-      "academics_assignment_graded": "Homework was graded."
+      "academics_assignment_graded": "Homework was graded.",
+      "academics_progress_report_approved": "A progress report for {{period_start}} – {{period_end}} was approved.",
+      "academics_progress_report_changes_requested": "A reviewer asked for changes to your progress report.",
+      "academics_progress_report_retracted": "Your progress report was retracted."
     }
   },
   "scheduling": {

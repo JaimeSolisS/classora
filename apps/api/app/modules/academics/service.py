@@ -84,6 +84,22 @@ live assignments); the locks :func:`get_assignment_for_update`,
 composes them with ``scheduling``, ``catalog``, ``families``, ``identity``
 and ``administration``.
 
+Progress reports (#83, :mod:`~app.modules.academics.progress_reports`, the
+facts compiler :mod:`~app.modules.academics.progress_report_facts`, the pure
+rules in :mod:`~app.modules.academics.progress_report_rules`): the row
+(:class:`ProgressReport`), the reads :func:`report_with_subject`,
+:func:`reports_by_id`, :func:`progress_report_working_page`,
+:func:`approved_page` and :func:`approved_report` (the only family reads:
+approved, live reports), :func:`has_own_approved_report`; the lock
+:func:`get_report_for_update`; the writes :func:`create_report`,
+:func:`change_narrative`, :func:`submit_report`, :func:`approve_report`,
+:func:`request_report_changes`, :func:`retract_report`,
+:func:`soft_delete_report`; the facts :func:`academic_facts` and
+:func:`facts_document`; the rules module (:data:`progress_report_rules`) and
+the errors. ``app.workflows.progress_reports`` composes them with
+``scheduling``, ``catalog``, ``families``, ``identity`` and
+``administration``.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -91,6 +107,8 @@ from app.modules.academics import assignment_rules as assignment_rules
 from app.modules.academics import evaluation_rules as evaluation_rules
 from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
+from app.modules.academics import progress_report_facts as progress_report_facts
+from app.modules.academics import progress_report_rules as progress_report_rules
 from app.modules.academics.assignments import AssignmentRow as AssignmentRow
 from app.modules.academics.assignments import (
     AssignmentWorkingPage as AssignmentWorkingPage,
@@ -322,7 +340,46 @@ from app.modules.academics.errors import (
     PlanSubjectNotAssignedError as PlanSubjectNotAssignedError,
 )
 from app.modules.academics.errors import (
+    ProgressReportAuthorNotCurrentError as ProgressReportAuthorNotCurrentError,
+)
+from app.modules.academics.errors import (
+    ProgressReportAuthorOnlyError as ProgressReportAuthorOnlyError,
+)
+from app.modules.academics.errors import (
+    ProgressReportClosedError as ProgressReportClosedError,
+)
+from app.modules.academics.errors import (
+    ProgressReportExistsError as ProgressReportExistsError,
+)
+from app.modules.academics.errors import (
+    ProgressReportFieldError as ProgressReportFieldError,
+)
+from app.modules.academics.errors import (
+    ProgressReportNotSubmittedError as ProgressReportNotSubmittedError,
+)
+from app.modules.academics.errors import (
+    ProgressReportReadOnlyError as ProgressReportReadOnlyError,
+)
+from app.modules.academics.errors import (
+    ProgressReportReviewRouteRequiredError as ProgressReportReviewRouteRequiredError,
+)
+from app.modules.academics.errors import (
+    ProgressReportSelfReviewError as ProgressReportSelfReviewError,
+)
+from app.modules.academics.errors import (
+    ProgressReportSummaryRequiredError as ProgressReportSummaryRequiredError,
+)
+from app.modules.academics.errors import (
+    ProgressReportTutorOnlyError as ProgressReportTutorOnlyError,
+)
+from app.modules.academics.errors import (
+    ProgressReportUnderReviewError as ProgressReportUnderReviewError,
+)
+from app.modules.academics.errors import (
     RecipientHasSubmissionError as RecipientHasSubmissionError,
+)
+from app.modules.academics.errors import (
+    ReportSubjectNotAssignedError as ReportSubjectNotAssignedError,
 )
 from app.modules.academics.errors import (
     SessionNotAssignableError as SessionNotAssignableError,
@@ -448,6 +505,7 @@ from app.modules.academics.models import (
 from app.modules.academics.models import LearningPlan as LearningPlan
 from app.modules.academics.models import LearningPlanMilestone as LearningPlanMilestone
 from app.modules.academics.models import LearningPlanObjective as LearningPlanObjective
+from app.modules.academics.models import ProgressReport as ProgressReport
 from app.modules.academics.models import SessionCloseout as SessionCloseout
 from app.modules.academics.models import (
     SessionCloseoutApproval as SessionCloseoutApproval,
@@ -481,6 +539,60 @@ from app.modules.academics.notes import (
 )
 from app.modules.academics.notes import (
     update_note_body as update_note_body,
+)
+from app.modules.academics.progress_report_facts import (
+    academic_facts as academic_facts,
+)
+from app.modules.academics.progress_report_facts import (
+    facts_document as facts_document,
+)
+from app.modules.academics.progress_reports import (
+    ReportPage as ReportPage,
+)
+from app.modules.academics.progress_reports import (
+    ReportRow as ReportRow,
+)
+from app.modules.academics.progress_reports import (
+    approve_report as approve_report,
+)
+from app.modules.academics.progress_reports import (
+    approved_page as approved_page,
+)
+from app.modules.academics.progress_reports import (
+    approved_report as approved_report,
+)
+from app.modules.academics.progress_reports import (
+    change_narrative as change_narrative,
+)
+from app.modules.academics.progress_reports import (
+    create_report as create_report,
+)
+from app.modules.academics.progress_reports import (
+    get_report_for_update as get_report_for_update,
+)
+from app.modules.academics.progress_reports import (
+    has_own_approved_report as has_own_approved_report,
+)
+from app.modules.academics.progress_reports import (
+    progress_report_working_page as progress_report_working_page,
+)
+from app.modules.academics.progress_reports import (
+    report_with_subject as report_with_subject,
+)
+from app.modules.academics.progress_reports import (
+    reports_by_id as reports_by_id,
+)
+from app.modules.academics.progress_reports import (
+    request_report_changes as request_report_changes,
+)
+from app.modules.academics.progress_reports import (
+    retract_report as retract_report,
+)
+from app.modules.academics.progress_reports import (
+    soft_delete_report as soft_delete_report,
+)
+from app.modules.academics.progress_reports import (
+    submit_report as submit_report,
 )
 from app.modules.academics.schemas import CloseoutApprove as CloseoutApprove
 from app.modules.academics.schemas import CloseoutCorrection as CloseoutCorrection

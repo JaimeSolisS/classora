@@ -2927,6 +2927,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/progress-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Progress Reports
+         * @description Progress reports without their text: a tutor's own; for reviewers
+         *     every report that isn't a draft (plus their own drafts). With
+         *     `status=submitted` the oldest submission comes first (the review
+         *     queue); otherwise the newest report first. `mine=true` lists only your
+         *     own.
+         */
+        get: operations["list_progress_reports_api_v1_progress_reports_get"];
+        put?: never;
+        /**
+         * Create Progress Report
+         * @description Start a draft progress report about one of your current students.
+         *     Nobody sees it until you submit it, and the student and their guardians
+         *     only once a reviewer approves it.
+         */
+        post: operations["create_progress_report_api_v1_progress_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/progress-reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Progress Report
+         * @description One progress report with its narrative, its facts and its review
+         *     history (the author and reviewers).
+         */
+        get: operations["get_progress_report_api_v1_progress_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Progress Report
+         * @description Delete a draft or a report sent back for changes.
+         */
+        delete: operations["delete_progress_report_api_v1_progress_reports__report_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Progress Report
+         * @description Edit the narrative of a draft or of a report sent back for changes.
+         */
+        patch: operations["update_progress_report_api_v1_progress_reports__report_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/progress-reports/{report_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Progress Report
+         * @description Send the report for review. Its facts are compiled now and frozen;
+         *     a reviewer approves exactly this version.
+         */
+        post: operations["submit_progress_report_api_v1_progress_reports__report_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/progress-reports/{report_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Progress Report
+         * @description Approve the submitted report: the student and their guardians with
+         *     access to their academic records see it from now on and are notified,
+         *     as is the author. An approved report never changes.
+         */
+        post: operations["approve_progress_report_api_v1_progress_reports__report_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/progress-reports/{report_id}/request-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Progress Report Changes
+         * @description Send the submitted report back to its author with a reason; the
+         *     author is notified (the reason stays internal).
+         */
+        post: operations["request_progress_report_changes_api_v1_progress_reports__report_id__request_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/progress-reports/{report_id}/retract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retract Progress Report
+         * @description Retract a submitted or approved report with a reason (wrong student,
+         *     wrong content). Families never see it again; the author is notified
+         *     and may write a new one.
+         */
+        post: operations["retract_progress_report_api_v1_progress_reports__report_id__retract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/progress-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Student Progress Reports
+         * @description A student's approved progress reports, latest period first: staff
+         *     reviewers and the student's tutors, the student and their guardians
+         *     with access to their academic records (a tutor who taught the student
+         *     before: the reports they wrote). Reports that aren't approved never
+         *     appear.
+         */
+        get: operations["list_student_progress_reports_api_v1_students__student_id__progress_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/progress-reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Progress Report
+         * @description One approved progress report: the narrative and the facts exactly as
+         *     approved.
+         */
+        get: operations["get_student_progress_report_api_v1_students__student_id__progress_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -8660,6 +8850,101 @@ export interface components {
         };
         /** @enum {string} */
         ExceptionKind: "unavailable" | "available";
+        /** FactsAssignments */
+        FactsAssignments: {
+            /** Count */
+            count: number;
+            /** Pending */
+            pending: number;
+            /** Missing */
+            missing: number;
+            /** Submitted */
+            submitted: number;
+            /** Graded */
+            graded: number;
+            /** Late */
+            late: number;
+            average_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** FactsAttendance */
+        FactsAttendance: {
+            /** Sessions */
+            sessions: number;
+            /** Present */
+            present: number;
+            /** Late */
+            late: number;
+            /** Absent */
+            absent: number;
+            /** Not Recorded */
+            not_recorded: number;
+        };
+        /** FactsEvaluationEntry */
+        FactsEvaluationEntry: {
+            /**
+             * Evaluated On
+             * Format: date
+             */
+            evaluated_on: string;
+            subject: components["schemas"]["ProgressReportSubject"];
+            /** Evaluation Kind */
+            evaluation_kind: string;
+            /** Template Name */
+            template_name: string;
+            score_percent: components["schemas"]["DecimalOut"];
+        };
+        /** FactsEvaluationSubject */
+        FactsEvaluationSubject: {
+            subject: components["schemas"]["ProgressReportSubject"];
+            /** Count */
+            count: number;
+            average_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** FactsEvaluations */
+        FactsEvaluations: {
+            /** Count */
+            count: number;
+            average_percent: components["schemas"]["DecimalOut"] | null;
+            /** By Subject */
+            by_subject: components["schemas"]["FactsEvaluationSubject"][];
+            /**
+             * Entries
+             * @description At most 50, newest first.
+             */
+            entries: components["schemas"]["FactsEvaluationEntry"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** FactsLearningPlan */
+        FactsLearningPlan: {
+            /** Title */
+            title: string;
+            subject: components["schemas"]["ProgressReportSubject"];
+            /** Status */
+            status: string;
+            progress_percent: components["schemas"]["PercentOut"];
+            /** Objectives Completed */
+            objectives_completed: number;
+            /** Objectives Total */
+            objectives_total: number;
+            /** Milestones Done */
+            milestones_done: number;
+            /** Milestones Total */
+            milestones_total: number;
+        };
+        /** FactsPeriod */
+        FactsPeriod: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+        };
         /**
          * FamilyCreate
          * @description A new family (``POST /api/v1/families``): active, with no members.
@@ -10918,7 +11203,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -11007,6 +11292,394 @@ export interface components {
             details?: {
                 [key: string]: string | string[];
             };
+        };
+        /** ProgressReportApproved */
+        ProgressReportApproved: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            by: components["schemas"]["ProgressReportPerson"];
+        };
+        /** ProgressReportChangesRequested */
+        ProgressReportChangesRequested: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            by: components["schemas"]["ProgressReportPerson"];
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ProgressReportCreate
+         * @description `POST /api/v1/progress-reports` (#83 C1): a draft report about one of
+         *     your current students. Nobody sees it until you submit it, and families
+         *     only once a reviewer approves it.
+         */
+        ProgressReportCreate: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** @description weekly (a Monday to Sunday week), monthly (a calendar month) or on_demand (any period of at most 366 days). */
+            kind: components["schemas"]["ReportKind"];
+            /**
+             * Period Start
+             * Format: date
+             * @description weekly: a Monday; monthly: the 1st; not after the center's today (period_invalid / period_in_future).
+             */
+            period_start: string;
+            /**
+             * Period End
+             * @description Required for on_demand; weekly and monthly derive it (a different value is period_invalid).
+             */
+            period_end?: string | null;
+            /**
+             * Subject Id
+             * @description Optional: an active subject you currently teach the student (subject_unknown / report_subject_not_assigned). It never changes.
+             */
+            subject_id?: string | null;
+            /**
+             * Summary
+             * @description Up to 4000 characters; required to submit.
+             */
+            summary?: string | null;
+            /**
+             * Strengths
+             * @description Up to 2000 characters.
+             */
+            strengths?: string | null;
+            /**
+             * Areas For Improvement
+             * @description Up to 2000 characters.
+             */
+            areas_for_improvement?: string | null;
+            /**
+             * Next Steps
+             * @description Up to 2000 characters.
+             */
+            next_steps?: string | null;
+        };
+        /**
+         * ProgressReportFacts
+         * @description The facts the server compiled for the report's student, period and
+         *     subject (#83 B2, schema version 1): aggregates of records the family can
+         *     already see. Frozen at each submit; families see them exactly as
+         *     approved.
+         */
+        ProgressReportFacts: {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            period: components["schemas"]["FactsPeriod"];
+            subject: components["schemas"]["ProgressReportSubject"] | null;
+            attendance: components["schemas"]["FactsAttendance"];
+            evaluations: components["schemas"]["FactsEvaluations"];
+            assignments: components["schemas"]["FactsAssignments"];
+            /**
+             * Learning Plans
+             * @description At most 20.
+             */
+            learning_plans: components["schemas"]["FactsLearningPlan"][];
+            /** Learning Plans Truncated */
+            learning_plans_truncated: boolean;
+        };
+        /** ProgressReportFamilyListItem */
+        ProgressReportFamilyListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ReportKind"];
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            subject: components["schemas"]["ProgressReportSubject"] | null;
+            author: components["schemas"]["ProgressReportPerson"];
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+        };
+        /**
+         * ProgressReportFamilyPage
+         * @description A student's approved reports (#83 F3), with the caller's create hints
+         *     (AM2: not affected by the filters or the cursor).
+         */
+        ProgressReportFamilyPage: {
+            /** Items */
+            items: components["schemas"]["ProgressReportFamilyListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /**
+             * Can Create
+             * @description Whether you may write a report about this student (a tutor who currently teaches them).
+             */
+            can_create: boolean;
+            /**
+             * Creatable Subjects
+             * @description The active subjects you currently teach the student, by name; empty without can_create (a report without a subject needs none).
+             */
+            creatable_subjects: components["schemas"]["ProgressReportSubject"][];
+        };
+        /**
+         * ProgressReportFamilyView
+         * @description An approved progress report (#83 F2): the same closed shape for every
+         *     audience.
+         */
+        ProgressReportFamilyView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            kind: components["schemas"]["ReportKind"];
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            subject: components["schemas"]["ProgressReportSubject"] | null;
+            author: components["schemas"]["ProgressReportPerson"];
+            /** Summary */
+            summary: string | null;
+            /** Strengths */
+            strengths: string | null;
+            /** Areas For Improvement */
+            areas_for_improvement: string | null;
+            /** Next Steps */
+            next_steps: string | null;
+            facts: components["schemas"]["ProgressReportFacts"];
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+        };
+        /**
+         * ProgressReportListItem
+         * @description A report in the working list (#83 E2): no text.
+         */
+        ProgressReportListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["ReportStatus"];
+            student: components["schemas"]["ProgressReportStudent"];
+            author: components["schemas"]["ProgressReportPerson"];
+            kind: components["schemas"]["ReportKind"];
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            subject: components["schemas"]["ProgressReportSubject"] | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Approved At */
+            approved_at: string | null;
+        };
+        /** ProgressReportPage */
+        ProgressReportPage: {
+            /** Items */
+            items: components["schemas"]["ProgressReportListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ProgressReportPerson */
+        ProgressReportPerson: {
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * ProgressReportReason
+         * @description `POST …/request-changes` and `…/retract` (#83 D4, D5).
+         */
+        ProgressReportReason: {
+            /** Version */
+            version: number;
+            /**
+             * Reason
+             * @description 1-1000 characters after trimming (reason_required / too_long). The author reads it; families never do.
+             */
+            reason: string;
+        };
+        /** ProgressReportRetracted */
+        ProgressReportRetracted: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            by: components["schemas"]["ProgressReportPerson"];
+            /** Reason */
+            reason: string;
+        };
+        /** ProgressReportStudent */
+        ProgressReportStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** ProgressReportSubject */
+        ProgressReportSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ProgressReportUpdate
+         * @description `PATCH /api/v1/progress-reports/{id}` (#83 C3): the narrative of a
+         *     draft or a report sent back for changes. Keys left out don't change;
+         *     `null` or blank text clears a field. The student, kind, period and
+         *     subject never change.
+         */
+        ProgressReportUpdate: {
+            /** Version */
+            version: number;
+            /**
+             * Summary
+             * @description Up to 4000 characters.
+             */
+            summary?: string | null;
+            /**
+             * Strengths
+             * @description Up to 2000 characters.
+             */
+            strengths?: string | null;
+            /**
+             * Areas For Improvement
+             * @description Up to 2000 characters.
+             */
+            areas_for_improvement?: string | null;
+            /**
+             * Next Steps
+             * @description Up to 2000 characters.
+             */
+            next_steps?: string | null;
+        };
+        /**
+         * ProgressReportVersion
+         * @description `POST …/submit` and `…/approve` (#83 D2, D3): the version you read.
+         */
+        ProgressReportVersion: {
+            /** Version */
+            version: number;
+        };
+        /**
+         * ProgressReportView
+         * @description One progress report (#83 E1): the author and
+         *     `progress_report.review` holders only.
+         */
+        ProgressReportView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["ReportStatus"];
+            student: components["schemas"]["ProgressReportStudent"];
+            author: components["schemas"]["ProgressReportPerson"];
+            /** Is Own */
+            is_own: boolean;
+            kind: components["schemas"]["ReportKind"];
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            subject: components["schemas"]["ProgressReportSubject"] | null;
+            /** Summary */
+            summary: string | null;
+            /** Strengths */
+            strengths: string | null;
+            /** Areas For Improvement */
+            areas_for_improvement: string | null;
+            /** Next Steps */
+            next_steps: string | null;
+            /** @description Frozen at the last submit; null for a draft never submitted. */
+            facts: components["schemas"]["ProgressReportFacts"] | null;
+            /** Facts Computed At */
+            facts_computed_at: string | null;
+            /** @description A live compile, for the author while the report is a draft or sent back; null otherwise. */
+            facts_preview: components["schemas"]["ProgressReportFacts"] | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** @description The last request for changes (kept until approval). */
+            changes_requested: components["schemas"]["ProgressReportChangesRequested"] | null;
+            approved: components["schemas"]["ProgressReportApproved"] | null;
+            retracted: components["schemas"]["ProgressReportRetracted"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Submit */
+            can_submit: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Approve */
+            can_approve: boolean;
+            /** Can Request Changes */
+            can_request_changes: boolean;
+            /** Can Retract */
+            can_retract: boolean;
         };
         /**
          * QualificationCreate
@@ -11142,6 +11815,10 @@ export interface components {
              */
             status: "pending";
         };
+        /** @enum {string} */
+        ReportKind: "weekly" | "monthly" | "on_demand";
+        /** @enum {string} */
+        ReportStatus: "draft" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
         /** @enum {string} */
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
@@ -23803,6 +24480,743 @@ export interface operations {
                 };
             };
             /** @description No such homework, the student isn't one of its students, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_progress_reports_api_v1_progress_reports_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ReportStatus"] | null;
+                student_id?: string | null;
+                kind?: components["schemas"]["ReportKind"] | null;
+                mine?: boolean;
+                cursor?: string | null;
+                /** @description 1-50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportPage"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only tutors and progress report reviewers have a working list (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_progress_report_api_v1_progress_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Staff don't write progress reports (progress_report_tutor_only); you don't currently teach this student this subject (report_subject_not_assigned); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one of your current students (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You already have a weekly or monthly report for this student, period and subject (progress_report_exists; details.report_id). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_progress_report_api_v1_progress_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_progress_report_api_v1_progress_reports__report_id__delete: {
+        parameters: {
+            query: {
+                /** @description The report's version, as last read. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the author changes a report (progress_report_author_only); the student is no longer one of your current assignments (progress_report_read_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict), is waiting for review (progress_report_under_review) or is approved or retracted (progress_report_closed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_progress_report_api_v1_progress_reports__report_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the author changes a report (progress_report_author_only); the student is no longer one of your current assignments (progress_report_read_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict), is waiting for review (progress_report_under_review) or is approved or retracted (progress_report_closed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    submit_progress_report_api_v1_progress_reports__report_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only the author changes a report (progress_report_author_only); the student is no longer one of your current assignments (progress_report_read_only); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict), is waiting for review (progress_report_under_review) or is approved or retracted (progress_report_closed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    approve_progress_report_api_v1_progress_reports__report_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You can't review progress reports (permission_denied), or it is your own report (progress_report_self_review; the Owner may); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict) or isn't waiting for review (progress_report_not_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    request_progress_report_changes_api_v1_progress_reports__report_id__request_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You can't review progress reports (permission_denied), or it is your own report (progress_report_self_review; the Owner may); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict), isn't waiting for review (progress_report_not_submitted), or its author no longer teaches the student (progress_report_author_not_current). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    retract_progress_report_api_v1_progress_reports__report_id__retract_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportReason"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You can't review progress reports (permission_denied), or it is your own report (progress_report_self_review; the Owner may); csrf_failed; privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such progress report, it was deleted, or it isn't one you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The report changed since it was read (version_conflict), is already retracted (progress_report_closed) or was never submitted (progress_report_not_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_student_progress_reports_api_v1_students__student_id__progress_reports_get: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ReportKind"] | null;
+                subject_id?: string | null;
+                cursor?: string | null;
+                /** @description 1-50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportFamilyPage"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose progress reports you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_progress_report_api_v1_students__student_id__progress_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportFamilyView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approved report of this student, or not one you may see (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;

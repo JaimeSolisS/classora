@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -205,7 +205,15 @@ Codes in use today:
 | `submission_graded` / `submission_locked` / `submission_required` | 409 | Submitting graded homework; a student replacing their submission after the deadline; grading homework nothing was submitted for. |
 | `assignment_has_submissions` / `assignment_has_grades` / `recipient_has_submission` | 409 | Deleting homework with a submission; changing `max_score` once a student is graded; removing a recipient who submitted (`details.student_ids`). |
 | `instructions_required` / `duplicate_recipient` / `recipients_too_many` / `recipients_required` / `recipient_invalid` / `due_in_past` / `due_too_far` / `time_has_offset` / `null_not_allowed` / `version_required` / `url_invalid` / `submission_empty` / `score_not_allowed` / `feedback_required` | 422 | Homework field errors on the field they name; `recipient_invalid` has `details.student_ids` (see Homework assignments and submissions). |
-| `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). |
+| `progress_report_tutor_only` / `report_subject_not_assigned` | 403 | Creating a progress report as staff who don't teach the student; a subject report in a subject the tutor doesn't currently teach the student (see Progress reports). |
+| `progress_report_author_only` / `progress_report_read_only` | 403 | Editing, submitting or deleting a progress report as a reviewer (only the author does); the author once the student is no longer one of their current students (it stays readable). |
+| `progress_report_self_review` | 403 | Approving, sending back or retracting one's own progress report (the Owner may). |
+| `progress_report_under_review` / `progress_report_not_submitted` / `progress_report_closed` | 409 | Changing a submitted report; deciding a report that isn't waiting for review; changing an approved report or touching a retracted one. |
+| `progress_report_exists` | 409 | A second live weekly or monthly report of the same author, student, period and subject; `details.report_id` names the existing one. |
+| `progress_report_author_not_current` | 409 | Sending a report back to an author who no longer teaches the student (approve or retract it instead). |
+| `progress_report_review_route_required` | 409 | A generic inbox decision on a progress report; `details.review_path` is its review page. |
+| `period_invalid` / `period_in_future` | 422 | A progress report period that isn't a Monday-Sunday week, a calendar month or an on-demand period of at most 366 days (on `period_start` or `period_end`), or that starts after the center's today. |
+| `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
 | `exception_not_applicable` | 422 | Approving as an exception a change request that is already `excused` (every tutor request); on `["body","exception"]`. |
@@ -5043,6 +5051,172 @@ removals and deletes notify nobody. No reminders.
 `feedback` ≤ 4000, `graded_at` / `graded_on` / `graded_by_user_id` together
 and only on a submitted row, `grade_amended_at`, `last_change_reason` 1-500,
 `version`), both audited, every key `ON DELETE RESTRICT`.
+
+### Progress reports
+
+Implemented by M5-16 (#83; spec §2 "progress reports prepared by tutors",
+§4 "require admin approval before family visibility", §9, §16, W5.2, W5.3,
+W5.4; architecture §4.1, §4.2; ADR-0004) in `academics`
+(`progress_report_rules.py`: the pure rules; `progress_reports.py`: the rows;
+`progress_report_facts.py`: the facts compiler), the workflow
+`app/workflows/progress_reports.py` with its routes in
+`app/workflows/progress_reports_router.py`, bodies in
+`app/workflows/progress_report_schemas.py` and the approval type in
+`app/workflows/progress_report_approval.py`; the attendance counts come from
+`scheduling.service.student_attendance_summary`. One new permission,
+`progress_report.review` (Owner, Administrator, Academic Coordinator; not
+delegable: spec "an administrator approves" read as staff with academic
+approval authority, the ISSUE-F7 precedent). API only: the pages are #315
+(M5-16b) and scheduled placeholders #316 (M5-16c).
+
+A report is about **one student**, written by **one tutor** who currently
+teaches them, for **one period**, optionally **one subject** they teach the
+student: `weekly` (a Monday to the next Sunday, center-local dates),
+`monthly` (a calendar month) or `on_demand` (`period_start` ≤ `period_end`,
+at most 366 days; required end). The period can't start after the center's
+today. The **narrative** is plain text: `summary` (≤ 4000, required to
+submit), `strengths`, `areas_for_improvement`, `next_steps` (≤ 2000 each),
+stored trimmed (blank is `null`). **Only approved reports reach families;
+reasons never do.**
+
+**Statuses:** `draft` → `submitted` → `changes_requested` (back to the
+author with a reason; edited and resubmitted) or `approved_for_family` →
+`retracted` (final; also from `submitted`). There is no reject and no
+post-approval edit: once approved, a database trigger refuses any change to
+the student, author, subject, kind, period, narrative, facts and approval
+(SQLSTATE 42501) and every `DELETE`; a wrong approved report is retracted and
+rewritten. A draft or a report sent back can be soft-deleted.
+
+**Facts** (schema version 1, closed): at each submit the server compiles a
+**family-safe aggregate snapshot** for the student, the period and the
+subject (`null` subject: every subject) and freezes it with
+`facts_computed_at`; reviewers approve exactly it and families see it as
+approved (a later void, grade or edit never changes it; a resubmit
+recomputes). `{schema_version: 1, period {start, end}, subject {id, name} |
+null, attendance {sessions, present, late, absent, not_recorded},
+evaluations {count, average_percent, by_subject [{subject, count,
+average_percent}], entries [{evaluated_on, subject, evaluation_kind,
+template_name, score_percent}] (≤ 50, newest first), truncated}, assignments
+{count, pending, missing, submitted, graded, late, average_percent},
+learning_plans [{title, subject, status, progress_percent,
+objectives_completed, objectives_total, milestones_done, milestones_total}]
+(≤ 20), learning_plans_truncated}`. Attendance: the student's `confirmed` or
+`completed` sessions that have started, by local start date (cancelled and
+skipped never). Evaluations: final, non-voided, live, `evaluated_on` in the
+period. Homework: the student's own rows of live assignments due in the
+period, states computed at compile time. Plans: family-visible plans
+(active, completed, discontinued after activation) that started by the end
+and were active during the period or are active now, active first.
+Percentages are decimal strings, half-up to two places (plans: whole
+numbers); `null` without data. Facts never carry feedback, comments,
+submission text or links, notes, closeout summaries, names or ids of people,
+reasons or other students. The compile takes at most 6 statements whatever
+the number of rows.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/progress-reports` | `authenticated()` + record policy | `{student_id, kind, period_start, period_end?, subject_id?, summary?, strengths?, areas_for_improvement?, next_steps?}`: a draft. `201 ProgressReportView`. Nobody is notified. |
+| `GET /api/v1/progress-reports[?status&student_id&kind&mine&cursor&limit]` | `authenticated()` + record policy | The working list (no text): a tutor their own reports; reviewers every non-draft report plus their own drafts (`mine=true`: only their own); anyone else `404`. `status=submitted` is the queue, oldest submission first; otherwise newest first. Cursor, `limit` 1-50 (default 20). Items `{id, version, status, student {id, display_name}, author {display_name}, kind, period_start, period_end, subject, submitted_at, approved_at}`. At most 5 statements. |
+| `GET /api/v1/progress-reports/{report_id}` | `authenticated()` + record policy | `ProgressReportView`: the author (any status) and reviewers (not drafts). At most 6 statements, 14 with the preview. |
+| `PATCH /api/v1/progress-reports/{report_id}` | `authenticated()` + record policy | `{version, summary?, strengths?, areas_for_improvement?, next_steps?}` (the author; `draft` or `changes_requested`; the status doesn't change). Keys left out keep their value; student, kind, period and subject never change (`422 extra_forbidden`). An unchanged body writes nothing. |
+| `DELETE /api/v1/progress-reports/{report_id}?version=` | `authenticated()` + record policy | The author; `draft` or `changes_requested` (its inbox item is cancelled). `204`; every route then answers `404`. |
+| `POST /api/v1/progress-reports/{report_id}/submit` | `authenticated()` + record policy | `{version}` (the author, student still theirs). `422 summary_required` (top-level code); the facts compiled and frozen; the inbox item opened (first submit) or back to pending. Nobody is notified. |
+| `POST /api/v1/progress-reports/{report_id}/approve` | `authenticated()` + record policy + `progress_report.review` | `{version}`; only `submitted`. The inbox item is approved; the author, the student and the guardians with academic access are notified. Allowed after the author stopped teaching the student. |
+| `POST /api/v1/progress-reports/{report_id}/request-changes` | `authenticated()` + record policy + `progress_report.review` | `{version, reason}` (1-1000 trimmed: `reason_required` / `too_long`); only `submitted`; `409 progress_report_author_not_current` when the author no longer teaches the student. The author is notified. |
+| `POST /api/v1/progress-reports/{report_id}/retract` | `authenticated()` + record policy + `progress_report.review` | `{version, reason}`; from `submitted` (its inbox item is rejected with the reason) or `approved_for_family` (it leaves the family routes at once). The author is notified; families aren't. |
+| `GET /api/v1/students/{student_id}/progress-reports[?kind&subject_id&cursor&limit]` | `authenticated()` + record policy | **Approved reports only**, one closed shape for every audience: `{items [{id, kind, period_start, period_end, subject, author {display_name}, approved_at}], next_cursor, can_create, creatable_subjects [{id, name}]}`, latest `period_end` first, then `approved_at`, then id; `limit` 1-50. `can_create` (not affected by the filters or the cursor) is true only for a tutor currently teaching the student; `creatable_subjects` are the active subjects they teach the student, by name (else `[]`). At most 6 statements. |
+| `GET /api/v1/students/{student_id}/progress-reports/{report_id}` | `authenticated()` + record policy | One approved report: `{id, student_id, kind, period_start, period_end, subject, author {display_name}, summary, strengths, areas_for_improvement, next_steps, facts, approved_at}`. Never the status, version, ids of people, the approver, reasons, retraction data, `submitted_at` or the preview. A report of another student, not approved, retracted or deleted is `404`. |
+
+**Who** (the report record policy; a user with several roles gets the
+union):
+
+- a `tutor`-role user with the student in their current assignments
+  (`scheduling.service.subject_ids_for_tutor_student` not empty) creates
+  reports; a subject report needs a subject they teach the student (`403
+  report_subject_not_assigned`); several tutors of one student write
+  independent reports;
+- only the **author** edits, submits or deletes (`403
+  progress_report_author_only` for reviewers); once the student is no
+  longer theirs the author reads their reports read-only (`403
+  progress_report_read_only`); drafts are the author's only;
+- `progress_report.review` holders read every non-draft report and decide
+  it, but never their own unless they hold the Owner role (`403
+  progress_report_self_review`); they don't author (`403
+  progress_report_tutor_only`) unless they are also the current tutor; the
+  decision routes check readability (`404`) before the permission (`403
+  permission_denied`);
+- approved reports: holders, tutors currently teaching the student, a
+  former author (their own; `404` without one), the student and the linked
+  guardians of a minor or of an adult who gave that guardian
+  `guardian_academic_access` (`403 student_consent_required` otherwise, also
+  on the next request after a revocation); families get the `404` of an
+  unknown id on every working route;
+- anyone else (Finance, unlinked users, another student, other tutors, a
+  tutor who lost the role) and an unknown id get the same `404`.
+
+**Create order:** `401` → `422` schema (lengths: `too_long`) → `404`
+(unknown student, or a caller who is neither the current tutor nor a holder)
+→ `403 progress_report_tutor_only` → `422 subject_unknown` (unknown or
+inactive, `FOR SHARE`) → `403 report_subject_not_assigned` → `422
+period_invalid` → `422 period_in_future` → the draft (`409
+progress_report_exists`).
+
+**Write order** (`PATCH`, `DELETE`, submit, approve, request changes,
+retract): `401` → `422` schema → `404` (not readable) → `403` → the report
+`FOR UPDATE` → `409 version_conflict` → `409` state → `422` content
+(`summary_required`, `reason_required`, `too_long`) → the write → the
+approval request (lock order: the report, then the request) → the named
+audit event → notifications. Two decisions with one version, a decision
+racing another, an edit racing a submit and a stale approve racing a
+resubmit are serialized: the loser gets `409 version_conflict` (a reviewer
+never approves content they didn't see).
+
+**`ProgressReportView`** (closed): `{id, version, status, student {id,
+display_name}, author {display_name}, is_own, kind, period_start,
+period_end, subject {id, name} | null, summary, strengths,
+areas_for_improvement, next_steps, facts | null, facts_computed_at,
+facts_preview | null (a live compile, the author while draft or sent back),
+submitted_at, changes_requested {at, by {display_name}, reason} | null (the
+last one, kept until approval), approved {at, by} | null, retracted {at, by,
+reason} | null, created_at, updated_at, can_edit, can_submit, can_delete,
+can_approve, can_request_changes, can_retract}`.
+
+**Approval inbox:** the type `academics.progress_report` (review permission
+`progress_report.review`) is decided on the report's review page:
+`inbox_decisions = false`, so items list no `allowed_actions`, and the
+generic approve, reject and request-changes routes answer `409
+progress_report_review_route_required` with `details.review_path =
+"/progress-reports/{id}"` whatever the item's status. The item's `subject`
+is `{report_id, student {id, display_name}, author {display_name}, kind,
+period_start, period_end, subject {id, name} | null, submitted_at}` (no
+narrative, facts or reasons).
+
+**Notifications** (ids, the kind and dates only; never a narrative, a
+number or a reason; never to the person who acted):
+`academics.progress_report_approved` `{student_id, report_id, kind,
+period_start, period_end, audience}` to the author (`audience: "author"`)
+and to the student's login and the guardians with academic access
+(`"family"`; a user who is both gets `"author"`);
+`academics.progress_report_changes_requested` and
+`academics.progress_report_retracted` `{student_id, report_id}` to the
+author. Create, edit, submit and delete notify nobody.
+
+**Audit:** the row diffs plus the named events
+`academics.progress_report_submitted` `{report_id, previous_status}`,
+`academics.progress_report_approved` `{report_id, approver_user_id}`,
+`academics.progress_report_changes_requested` `{report_id, reason}` and
+`academics.progress_report_retracted` `{report_id, reason,
+previous_status}`.
+
+The family leak walk `apps/api/tests/integration/test_session_notes_leak.py`
+proves no `GET` route carries a draft, a submitted, sent-back, retracted or
+deleted report, a reason, or text copied into the facts.
+
+**Data** (revision 0057): `progress_reports` (the checks above, the
+partial unique index on student, author, kind, period start and subject for
+live non-retracted weekly and monthly reports, indexes for the approved
+list, the author's list and the queue, the immutability trigger), audited,
+every key `ON DELETE RESTRICT`.
 
 ### Change requests
 
