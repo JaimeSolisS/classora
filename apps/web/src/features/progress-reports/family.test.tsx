@@ -65,14 +65,21 @@ async function open(path: string, routes: Routes = {}, as = GUARDIAN) {
   await settleUntil(() => heading());
 }
 
+const reports = () =>
+  vi
+    .mocked(console.error)
+    .mock.calls.filter((call) => call[0] === '[classora]');
+
 beforeEach(() => {
   applyLanguage('en');
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
   app?.unmount();
   app = undefined;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
 
@@ -158,6 +165,10 @@ describe('the family list (F4)', () => {
     await settleUntil(() => text().includes("These reports aren't available."));
     expect(labelled<HTMLSelectElement>(main(), 'Whose reports')).toBeTruthy();
     expect(text()).not.toContain('Page not found');
+    // QA D1: the inline 404 is a designed state, never reported.
+    expect(
+      reports().filter((call) => JSON.stringify(call).includes('"status":404')),
+    ).toHaveLength(0);
   });
 
   it('Load more follows next_cursor', async () => {
@@ -216,6 +227,8 @@ describe('the family detail (F5, F6)', () => {
     expect(linkTo('/my-progress-reports')?.textContent).toBe(
       'Back to tutor reports',
     );
+    // QA D1: the expected 404 isn't logged to the console.
+    expect(reports()).toHaveLength(0);
   });
 
   it('a 403 consent: the consent message', async () => {
@@ -235,6 +248,8 @@ describe('the family detail (F5, F6)', () => {
       ],
     });
     await settleUntil(() => text().includes('Try again'));
+    // An unexpected failure is still reported.
+    expect(reports()).toHaveLength(1);
     await click(buttonNamed(main(), 'Try again'));
     await settleUntil(() => text().includes('Buen avance en física.'));
     await settleUntil(() => focused() === heading());

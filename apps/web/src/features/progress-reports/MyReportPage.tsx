@@ -11,6 +11,7 @@ import { ConsentRequired } from '@/features/my-schedule/ConsentRequired';
 import type { FamilyStudent } from '@/features/my-schedule/api';
 import { approvedReportKey, fetchApprovedReport, myReportsPath } from './api';
 import { useFamilyStudent } from './family';
+import { FAMILY_NOT_FOUND_META } from './queries';
 import { ProgressReportReadView } from './ProgressReportReadView';
 
 // /my-progress-reports/:reportId?student= (#315 F5, F6; the family's
@@ -69,6 +70,9 @@ function FamilyReport({
     queryKey: approvedReportKey(studentId, reportId),
     queryFn: ({ signal }) => fetchApprovedReport(studentId, reportId, signal),
     retry: false,
+    // A retracted, deleted or never-approved report: shown inline, not
+    // reported (QA D1).
+    meta: FAMILY_NOT_FOUND_META,
   });
 
   useEffect(() => {

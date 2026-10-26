@@ -24,7 +24,9 @@ import { ApprovedCard, CardList } from './ReportCards';
 
 function FamilyReports({ student }: { student: FamilyStudent }) {
   const { t } = useTranslation();
-  const { query, state } = useApprovedList(student.student_id);
+  const { query, state } = useApprovedList(student.student_id, true, {
+    family: true,
+  });
   if (
     query.error instanceof ApiError &&
     query.error.code === 'student_consent_required'
