@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0055"
+HEAD = "0056"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -143,6 +143,7 @@ LEARNING_PLAN_TABLES = [
     "learning_plan_objectives",
     "learning_plan_milestones",
 ]
+ASSIGNMENT_TABLES = ["assignments", "assignment_submissions"]
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
     "review_reason",
@@ -361,6 +362,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *NOTE_TABLES,
             *EVALUATION_TABLES,
             *LEARNING_PLAN_TABLES,
+            *ASSIGNMENT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4442,9 +4444,24 @@ def _of_0055(diff: Any) -> bool:
     return False
 
 
+def _of_0056(diff: Any) -> bool:
+    """A metadata difference that revision 0056 adds: the homework
+    assignment tables and their indexes (#82 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in ASSIGNMENT_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in ASSIGNMENT_TABLES
+    return False
+
+
+def _of_0055_on(diff: Any) -> bool:
+    """A metadata difference that revision 0055 or a later one adds."""
+    return _of_0055(diff) or _of_0056(diff)
+
+
 def _of_0054_on(diff: Any) -> bool:
     """A metadata difference that revision 0054 or a later one adds."""
-    return _of_0054(diff) or _of_0055(diff)
+    return _of_0054(diff) or _of_0055_on(diff)
 
 
 def _of_0053_on(diff: Any) -> bool:
@@ -9018,7 +9035,7 @@ def test_0054_adds_the_evaluation_tables_and_downgrade_drops_them(
     command.upgrade(config, "0054")
 
     assert version_nums(dsn) == ["0054"]
-    assert [d for d in metadata_diff(dsn) if not _of_0055(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0055_on(d)] == []
     assert public_tables(dsn) - before == set(EVALUATION_TABLES)
     run_sql(dsn, EVALUATION_INSERT, _evaluation_values(dsn))
 
@@ -9308,7 +9325,7 @@ def test_0055_adds_the_learning_plan_tables_and_downgrade_drops_them(
     command.upgrade(config, "0055")
 
     assert version_nums(dsn) == ["0055"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0056(d)] == []
     assert public_tables(dsn) - before == set(LEARNING_PLAN_TABLES)
     run_sql(dsn, PLAN_INSERT, _plan_values(dsn))
 
@@ -9316,7 +9333,7 @@ def test_0055_adds_the_learning_plan_tables_and_downgrade_drops_them(
 
     assert version_nums(dsn) == ["0054"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0055(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0055_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -9522,4 +9539,288 @@ def test_learning_plan_rows_are_checked(fresh_database_url):
             dsn, "DELETE FROM learning_plan_objectives WHERE id = :id", {"id": made.id}
         )
     with pytest.raises(IntegrityError, match="fk_learning_plans_created_by_user_id"):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", values)
+
+
+# --- 0056: homework assignments (#82 A1) ----------------------------------------------
+
+ASSIGNMENT_INSERT = (
+    "INSERT INTO assignments (creator_user_id, subject_id, class_session_id,"
+    " title, instructions, due_on, due_time, max_score, deleted_at,"
+    " deleted_by_user_id)"
+    " VALUES (:u, :sub, :cs, :title, :instructions, :due_on, :due_time,"
+    " :max_score, :deleted_at, :deleted_by) RETURNING id, version"
+)
+SUBMISSION_INSERT = (
+    "INSERT INTO assignment_submissions (assignment_id, student_id, text, url,"
+    " submitted_at, submitted_by_user_id, submitted_via, score, score_percent,"
+    " feedback, graded_at, graded_on, graded_by_user_id, grade_amended_at,"
+    " last_change_reason)"
+    " VALUES (:a, :st, :text, :url, :submitted_at, :submitted_by, :via, :score,"
+    " :percent, :feedback, :graded_at, :graded_on, :graded_by, :amended_at,"
+    " :reason) RETURNING id, version"
+)
+
+
+def _assignment_values(dsn: str) -> dict[str, Any]:
+    return {
+        "u": _user_row(dsn),
+        "sub": _subject_row(dsn),
+        "cs": None,
+        "title": "Lectura",
+        "instructions": "Leer el capítulo 3",
+        "due_on": date(2031, 3, 6),
+        "due_time": None,
+        "max_score": None,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+
+
+def _submission_values(assignment: Any, student: Any) -> dict[str, Any]:
+    return {
+        "a": assignment,
+        "st": student,
+        "text": None,
+        "url": None,
+        "submitted_at": None,
+        "submitted_by": None,
+        "via": None,
+        "score": None,
+        "percent": None,
+        "feedback": None,
+        "graded_at": None,
+        "graded_on": None,
+        "graded_by": None,
+        "amended_at": None,
+        "reason": None,
+    }
+
+
+def test_0056_adds_the_assignment_tables_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0055")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0056")
+
+    assert version_nums(dsn) == ["0056"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(ASSIGNMENT_TABLES)
+    [made] = run_sql(dsn, ASSIGNMENT_INSERT, _assignment_values(dsn))
+    run_sql(dsn, SUBMISSION_INSERT, _submission_values(made.id, _student_row(dsn)))
+
+    command.downgrade(config, "0055")
+
+    assert version_nums(dsn) == ["0055"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0056(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_assignment_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    timestamp = ("timestamp with time zone", "YES", None, None)
+
+    assert _columns(dsn, "assignments") == {
+        **STANDARD_COLUMNS,
+        "creator_user_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "NO", None, None),
+        "class_session_id": ("uuid", "YES", None, None),
+        "title": ("character varying", "NO", 200, None),
+        "instructions": ("text", "NO", None, None),
+        "due_on": ("date", "NO", None, None),
+        "due_time": ("time without time zone", "YES", None, None),
+        "max_score": ("numeric", "YES", None, None),
+        "deleted_at": timestamp,
+        "deleted_by_user_id": ("uuid", "YES", None, None),
+    }
+    assert _columns(dsn, "assignment_submissions") == {
+        **STANDARD_COLUMNS,
+        "assignment_id": ("uuid", "NO", None, None),
+        "student_id": ("uuid", "NO", None, None),
+        "text": ("text", "YES", None, None),
+        "url": ("character varying", "YES", 2000, None),
+        "submitted_at": timestamp,
+        "submitted_by_user_id": ("uuid", "YES", None, None),
+        "submitted_via": ("character varying", "YES", 10, None),
+        "score": ("numeric", "YES", None, None),
+        "score_percent": ("numeric", "YES", None, None),
+        "feedback": ("text", "YES", None, None),
+        "graded_at": timestamp,
+        "graded_on": ("date", "YES", None, None),
+        "graded_by_user_id": ("uuid", "YES", None, None),
+        "grade_amended_at": timestamp,
+        "last_change_reason": ("text", "YES", None, None),
+    }
+    assignment_fks = {
+        "fk_assignments_creator_user_id_users",
+        "fk_assignments_subject_id_subjects",
+        "fk_assignments_class_session_id_class_sessions",
+        "fk_assignments_deleted_by_user_id_users",
+    }
+    constraints = _constraints(dsn, "assignments")
+    assert set(constraints) == {
+        "pk_assignments",
+        *assignment_fks,
+        *(
+            f"ck_assignments_{name}"
+            for name in (
+                "title_valid",
+                "instructions_valid",
+                "max_score_range",
+                "deleted_together",
+            )
+        ),
+    }
+    for name in assignment_fks:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    submission_fks = {
+        "fk_assignment_submissions_assignment_id_assignments",
+        "fk_assignment_submissions_student_id_students",
+        "fk_assignment_submissions_submitted_by_user_id_users",
+        "fk_assignment_submissions_graded_by_user_id_users",
+    }
+    submission_constraints = _constraints(dsn, "assignment_submissions")
+    assert set(submission_constraints) == {
+        "pk_assignment_submissions",
+        "uq_assignment_submissions_assignment_id_student_id",
+        *submission_fks,
+        *(
+            f"ck_assignment_submissions_{name}"
+            for name in (
+                "text_valid",
+                "url_valid",
+                "submitted_via_valid",
+                "submitted_together",
+                "content_needs_submission",
+                "score_range",
+                "score_percent_range",
+                "feedback_valid",
+                "graded_needs_submission",
+                "graded_together",
+                "score_together",
+                "grade_needs_graded",
+                "last_change_reason_valid",
+                "amended_needs_graded",
+            )
+        ),
+    }
+    for name in submission_fks:
+        assert "ON DELETE RESTRICT" in submission_constraints[name]
+    indexes = _indexes(dsn, "assignments")
+    assert set(indexes) == {
+        "pk_assignments",
+        "ix_assignments_creator_user_id_due_on",
+        "ix_assignments_class_session_id",
+    }
+    assert (
+        "WHERE (deleted_at IS NULL)" in indexes["ix_assignments_creator_user_id_due_on"]
+    )
+    submission_indexes = _indexes(dsn, "assignment_submissions")
+    assert set(submission_indexes) == {
+        "pk_assignment_submissions",
+        "uq_assignment_submissions_assignment_id_student_id",
+        "ix_assignment_submissions_assignment_id",
+        "ix_assignment_submissions_student_id_assignment_id",
+        "ix_assignment_submissions_student_id_graded_on",
+    }
+    assert (
+        "WHERE (score IS NOT NULL)"
+        in submission_indexes["ix_assignment_submissions_student_id_graded_on"]
+    )
+
+
+def test_assignment_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _assignment_values(dsn)
+    now = datetime.now(UTC)
+    for changes, constraint in (
+        ({"title": " x"}, "assignments_title_valid"),
+        ({"title": ""}, "assignments_title_valid"),
+        ({"title": "x" * 201}, "value too long"),
+        ({"instructions": ""}, "instructions_valid"),
+        ({"instructions": "x" * 4001}, "instructions_valid"),
+        ({"max_score": Decimal("0.4")}, "max_score_range"),
+        ({"max_score": Decimal("1000.01")}, "max_score_range"),
+        ({"deleted_at": now}, "deleted_together"),
+    ):
+        with pytest.raises(DBAPIError, match=constraint):
+            run_sql(dsn, ASSIGNMENT_INSERT, values | changes)
+    [made] = run_sql(
+        dsn,
+        ASSIGNMENT_INSERT,
+        values | {"max_score": Decimal("10"), "due_time": time(16, 0)},
+    )
+    assert made.version == 1
+    student = _student_row(dsn)
+    row = _submission_values(made.id, student)
+    submitted = {"submitted_at": now, "submitted_by": values["u"], "via": "student"}
+    graded = {"graded_at": now, "graded_on": date(2031, 3, 6), "graded_by": values["u"]}
+    for changes, constraint in (
+        ({"text": "x"}, "content_needs_submission"),
+        ({"url": "https://example.com"}, "content_needs_submission"),
+        (submitted | {"text": ""}, "text_valid"),
+        (submitted | {"text": "x" * 10001}, "text_valid"),
+        (submitted | {"url": ""}, "url_valid"),
+        (submitted | {"via": "guardian"}, "submitted_via_valid"),
+        ({"submitted_at": now}, "submitted_together"),
+        (submitted | {"via": None}, "submitted_together"),
+        (graded, "graded_needs_submission"),
+        (submitted | graded | {"graded_on": None}, "graded_together"),
+        (submitted | graded | {"score": Decimal(1)}, "score_together"),
+        (
+            submitted | graded | {"score": Decimal(-1), "percent": Decimal(0)},
+            "score_range",
+        ),
+        (
+            submitted | graded | {"score": Decimal(1), "percent": Decimal(101)},
+            "score_percent_range",
+        ),
+        (submitted | graded | {"feedback": ""}, "feedback_valid"),
+        (submitted | {"feedback": "Bien"}, "grade_needs_graded"),
+        (
+            submitted | {"score": Decimal(1), "percent": Decimal(10)},
+            "grade_needs_graded",
+        ),
+        (submitted | graded | {"reason": " x"}, "last_change_reason_valid"),
+        (submitted | graded | {"reason": "x" * 501}, "last_change_reason_valid"),
+        (submitted | {"amended_at": now}, "amended_needs_graded"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, SUBMISSION_INSERT, row | changes)
+    [first] = run_sql(
+        dsn,
+        SUBMISSION_INSERT,
+        row
+        | submitted
+        | graded
+        | {
+            "text": "Mi respuesta",
+            "score": Decimal("7.5"),
+            "percent": Decimal("75"),
+            "feedback": "Bien",
+            "amended_at": now,
+            "reason": "Corrección",
+        },
+    )
+    assert first.version == 1
+    with pytest.raises(
+        IntegrityError, match="uq_assignment_submissions_assignment_id_student_id"
+    ):
+        run_sql(dsn, SUBMISSION_INSERT, row)
+    # A referenced assignment, student or creator can't be deleted.
+    with pytest.raises(IntegrityError, match="fk_assignment_submissions_assignment_id"):
+        run_sql(dsn, "DELETE FROM assignments WHERE id = :id", {"id": made.id})
+    with pytest.raises(IntegrityError, match="fk_assignment_submissions_student_id"):
+        run_sql(dsn, "DELETE FROM students WHERE id = :id", {"id": student})
+    with pytest.raises(IntegrityError, match="fk_assignments_creator_user_id"):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", values)

@@ -165,6 +165,68 @@ access = "authenticated"
 
 [[route]]
 method = "GET"
+path = "/api/v1/assignments"
+access = "authenticated"
+# #82 F1: tutors (their own) and assignment.review holders (all); anyone
+# else gets 403 permission_denied from the record policy (tutors hold no
+# permission for it). The matrix sends limit=0, so every signed-in role gets
+# the schema's 422 first. The 200 and 403 cases are tested in
+# tests/integration/test_assignments.py.
+query = { limit = "0" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignments"
+access = "authenticated"
+# #82 C2: tutor-role users (403 assignment_tutor_only otherwise, after the
+# schema). The matrix sends a body without the required keys, so every
+# signed-in role gets the schema's 422 first. The 201, 403, 409 and 422
+# cases are tested in tests/integration/test_assignments.py.
+json = { title = "Matrix" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 C5: the assignment record policy (the creator). The placeholder id is
+# no assignment: 404 for every role. The 204, 403 and 409 cases are tested
+# in tests/integration/test_assignments.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 F1: the creator and assignment.review holders. The placeholder id is
+# no assignment: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 C4: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/grade"
+access = "authenticated"
+# #82 D2: the creator, student still assigned. The placeholder id is no
+# assignment: 404 for every role.
+json = { version = 1 }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/submission"
+access = "authenticated"
+# #82 D1: the student (own row) or the creator. The placeholder id is no
+# assignment: 404 for every role. The guardian 403s are tested in
+# tests/integration/test_assignments.py.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/audit-events"
 access = "permission"
 permission = "audit.view"
@@ -1487,6 +1549,23 @@ permission = "family.manage"
 allow = ["owner", "administrator"]
 # An empty body gets 422 for the allowed roles: nothing is linked.
 json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments"
+access = "authenticated"
+# #82 E1: assignment.review holders and tutors teaching the student (all),
+# a former creator (own), the student and linked guardians with academic
+# access (403 student_consent_required for a guardian of an adult without
+# it); anyone else the 404 of an unknown id. The placeholder id is no
+# student: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments/{assignment_id}"
+access = "authenticated"
+# #82 E1: as the list; an assignment the student didn't receive is 404.
 
 [[route]]
 method = "GET"

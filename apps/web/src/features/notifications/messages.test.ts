@@ -495,3 +495,73 @@ describe('learning plan notifications (#81 H1)', () => {
     );
   });
 });
+
+// #82 I1: the homework notifications carry ids (and the deadline's date)
+// only, never a title, text, score or feedback, and have no link until #313.
+
+describe('homework notifications (#82 I1)', () => {
+  const homework = {
+    student_id: '00000000-0000-4000-8000-000000000082',
+    assignment_id: '00000000-0000-4000-8000-000000000083',
+    subject_id: '00000000-0000-4000-8000-000000000084',
+    due_on: '2031-03-12',
+  };
+  const types = [
+    'academics.assignment_set',
+    'academics.assignment_submitted',
+    'academics.assignment_graded',
+  ];
+
+  async function inLanguage(lng: 'es' | 'en', run: () => void): Promise<void> {
+    const previous = i18n.language;
+    await i18n.changeLanguage(lng);
+    try {
+      run();
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  }
+
+  const text = (lng: 'es' | 'en', type: string) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: homework,
+    });
+
+  it('renders the three types in both languages, without an id', async () => {
+    await inLanguage('en', () => {
+      expect(text('en', 'academics.assignment_set')).toBe(
+        'New homework is due on Mar 12, 2031.',
+      );
+      expect(text('en', 'academics.assignment_submitted')).toBe(
+        'A student submitted homework.',
+      );
+      expect(text('en', 'academics.assignment_graded')).toBe(
+        'Homework was graded.',
+      );
+    });
+    await inLanguage('es', () => {
+      expect(text('es', 'academics.assignment_set')).toBe(
+        'Hay una tarea nueva para el 12 mar 2031.',
+      );
+      expect(text('es', 'academics.assignment_submitted')).toBe(
+        'Un alumno entregó una tarea.',
+      );
+      expect(text('es', 'academics.assignment_graded')).toBe(
+        'Se calificó una tarea.',
+      );
+    });
+    for (const lng of ['es', 'en'] as const) {
+      for (const type of types) {
+        expect(text(lng, type)).not.toContain(homework.assignment_id);
+        expect(text(lng, type)).not.toContain('notifications.types');
+      }
+    }
+  });
+
+  it('only become read when activated (no page until #313)', () => {
+    for (const type of types) {
+      expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+    }
+  });
+});

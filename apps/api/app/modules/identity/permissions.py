@@ -124,6 +124,13 @@ EVALUATION_MANAGE = "evaluation.manage"
 # subject through the plan record policy (academics/learning_plan_rules.py);
 # families read active and closed plans through the same routes.
 LEARNING_PLAN_MANAGE = "learning_plan.manage"
+# Homework assignments (#82, owner-delegated decision E6 (a)): who reads every
+# homework assignment, its roster and every submission and grade (Owner,
+# Administrator, Academic Coordinator; read-only oversight, not delegable).
+# Tutors set, edit, grade and delete their own homework through the
+# assignment record policy (academics/assignment_rules.py); students submit
+# and families read through the per-student routes.
+ASSIGNMENT_REVIEW = "assignment.review"
 
 
 @dataclass(frozen=True)
@@ -165,6 +172,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(ACADEMIC_NOTE_REVIEW),
     PermissionDef(EVALUATION_MANAGE),
     PermissionDef(LEARNING_PLAN_MANAGE),
+    PermissionDef(ASSIGNMENT_REVIEW),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -210,6 +218,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 ACADEMIC_NOTE_REVIEW,
                 EVALUATION_MANAGE,
                 LEARNING_PLAN_MANAGE,
+                ASSIGNMENT_REVIEW,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -227,6 +236,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 ACADEMIC_NOTE_REVIEW,
                 EVALUATION_MANAGE,
                 LEARNING_PLAN_MANAGE,
+                ASSIGNMENT_REVIEW,
             }
         ),
         FINANCE_STAFF: frozenset(

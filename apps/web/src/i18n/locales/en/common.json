@@ -1488,7 +1488,10 @@
       "academics_evaluation_finalized": "A tutor finalized an evaluation from {{evaluated_on}}: it is in the academic history.",
       "academics_evaluation_voided": "A reviewer voided one of your evaluations.",
       "academics_learning_plan_activated": "A new learning plan is ready: see its objectives and milestones.",
-      "academics_learning_plan_completed": "A learning plan was completed."
+      "academics_learning_plan_completed": "A learning plan was completed.",
+      "academics_assignment_set": "New homework is due on {{due_on}}.",
+      "academics_assignment_submitted": "A student submitted homework.",
+      "academics_assignment_graded": "Homework was graded."
     }
   },
   "scheduling": {

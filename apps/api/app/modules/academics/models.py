@@ -63,9 +63,17 @@
   plan row is the version anchor of its objectives and milestone
   definitions; each milestone has its own ``version`` for progress.
 
-``session_closeouts``, ``session_notes``, the four evaluation tables and
-the three learning plan tables are audited (the create and update diffs
-are their record). The two append-only tables are not: a trigger
+- ``assignments`` and ``assignment_submissions`` (#82 A1): homework a
+  tutor sets (a subject, title, instructions, a center-local ``due_on`` +
+  optional ``due_time``, an optional ``max_score`` and class session; soft
+  delete) and one row per recipient with the submission (text and/or a URL,
+  by the student or recorded by the tutor) and the grade (score and
+  percentage or feedback only; a re-grade keeps an internal
+  ``last_change_reason``).
+
+``session_closeouts``, ``session_notes``, the four evaluation tables, the
+three learning plan tables and the two homework tables are audited (the
+create and update diffs are their record). The two append-only tables are not: a trigger
 rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named
 events
 (``academics.closeout_approved``, ``academics.closeout_corrected``) are
@@ -73,7 +81,7 @@ their audit record. Every foreign key is ``ON DELETE RESTRICT``.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Final
 
@@ -89,6 +97,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
     text,
@@ -865,3 +874,179 @@ class LearningPlanMilestone(Audited, VersionedMixin, Model):
     completed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+
+
+# --- Homework assignments (#82) ---------------------------------------------------
+
+SUBMISSION_UNIQUE: Final = "uq_assignment_submissions_assignment_id_student_id"
+
+
+class Assignment(Audited, SoftDeleteMixin, VersionedMixin, Model):
+    """A piece of homework a tutor sets (#82 A1, E2): the creator, a
+    subject, the title and instructions, a center-local deadline
+    (``due_on`` + optional ``due_time``; ``NULL`` = the end of the day, no
+    time-zone dependency, E3), an optional ``max_score`` (E5) and an
+    optional class session. Each recipient has an
+    :class:`AssignmentSubmission` row. Its audit diffs are its edit history
+    (spec §9)."""
+
+    __tablename__ = "assignments"
+    __table_args__ = (
+        _trimmed_text("title", 200, nullable=False),
+        _trimmed_text("instructions", 4000, nullable=False),
+        CheckConstraint(
+            "max_score IS NULL OR (max_score >= 0.5 AND max_score <= 1000)",
+            name="max_score_range",
+        ),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="deleted_together",
+        ),
+        # The working list (F1): a creator's live assignments.
+        Index(
+            "ix_assignments_creator_user_id_due_on",
+            "creator_user_id",
+            "due_on",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_assignments_class_session_id",
+            "class_session_id",
+            postgresql_where=text("class_session_id IS NOT NULL"),
+        ),
+    )
+
+    creator_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT")
+    )
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    instructions: Mapped[str] = mapped_column(Text)
+    due_on: Mapped[date] = mapped_column(Date)
+    due_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    max_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+
+
+class AssignmentSubmission(Audited, VersionedMixin, Model):
+    """One recipient of an assignment (#82 A1, E2, E4, E5): the student's
+    submission (text and/or a URL, by the student or recorded by the tutor)
+    and the grade (score and percentage when the assignment is scored,
+    feedback, the first grade's instant and center-local date; a re-grade
+    keeps an internal ``last_change_reason``). A removed recipient's row is
+    deleted (the audit keeps it)."""
+
+    __tablename__ = "assignment_submissions"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "student_id", name=SUBMISSION_UNIQUE),
+        CheckConstraint(
+            "text IS NULL OR char_length(text) BETWEEN 1 AND 10000",
+            name="text_valid",
+        ),
+        CheckConstraint(
+            "url IS NULL OR char_length(url) BETWEEN 1 AND 2000", name="url_valid"
+        ),
+        CheckConstraint(
+            "submitted_via IS NULL OR submitted_via IN ('student', 'tutor')",
+            name="submitted_via_valid",
+        ),
+        CheckConstraint(
+            "(submitted_at IS NULL) = (submitted_by_user_id IS NULL)"
+            " AND (submitted_at IS NULL) = (submitted_via IS NULL)",
+            name="submitted_together",
+        ),
+        CheckConstraint(
+            "submitted_at IS NOT NULL OR (text IS NULL AND url IS NULL)",
+            name="content_needs_submission",
+        ),
+        CheckConstraint("score IS NULL OR score >= 0", name="score_range"),
+        CheckConstraint(
+            "score_percent IS NULL OR (score_percent >= 0 AND score_percent <= 100)",
+            name="score_percent_range",
+        ),
+        CheckConstraint(
+            "feedback IS NULL OR char_length(feedback) BETWEEN 1 AND 4000",
+            name="feedback_valid",
+        ),
+        CheckConstraint(
+            "graded_at IS NULL OR submitted_at IS NOT NULL",
+            name="graded_needs_submission",
+        ),
+        CheckConstraint(
+            "(graded_at IS NULL) = (graded_on IS NULL)"
+            " AND (graded_at IS NULL) = (graded_by_user_id IS NULL)",
+            name="graded_together",
+        ),
+        CheckConstraint(
+            "(score IS NULL) = (score_percent IS NULL)", name="score_together"
+        ),
+        CheckConstraint(
+            "graded_at IS NOT NULL OR (score IS NULL AND feedback IS NULL)",
+            name="grade_needs_graded",
+        ),
+        CheckConstraint(
+            "last_change_reason IS NULL"
+            " OR (char_length(last_change_reason) BETWEEN 1 AND 500"
+            " AND last_change_reason = btrim(last_change_reason))",
+            name="last_change_reason_valid",
+        ),
+        CheckConstraint(
+            "grade_amended_at IS NULL OR graded_at IS NOT NULL",
+            name="amended_needs_graded",
+        ),
+        # A student's assignments (E3) and history (G1).
+        Index(
+            "ix_assignment_submissions_student_id_assignment_id",
+            "student_id",
+            "assignment_id",
+        ),
+        Index(
+            "ix_assignment_submissions_student_id_graded_on",
+            "student_id",
+            "graded_on",
+            postgresql_where=text("score IS NOT NULL"),
+        ),
+    )
+
+    assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assignments.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    submitted_via: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    score_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    graded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    graded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    grade_amended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Internal (E5): never returned to families."""

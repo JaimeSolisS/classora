@@ -128,6 +128,13 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/learning-plans/{plan_id}",
         "/api/v1/learning-plans/{plan_id}/transition",
         "/api/v1/learning-plan-milestones/{milestone_id}",
+        # #82 homework assignments
+        "/api/v1/assignments",
+        "/api/v1/assignments/{assignment_id}",
+        "/api/v1/assignments/{assignment_id}/students/{student_id}/submission",
+        "/api/v1/assignments/{assignment_id}/students/{student_id}/grade",
+        "/api/v1/students/{student_id}/assignments",
+        "/api/v1/students/{student_id}/assignments/{assignment_id}",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

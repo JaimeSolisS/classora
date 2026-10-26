@@ -43,6 +43,7 @@ from app.modules.staff.service import (
     register_availability_notifications,
     register_qualification_notifications,
 )
+from app.workflows.assignments import register_assignment_notifications
 from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.closeout_on_behalf import register_on_behalf_notifications
 from app.workflows.evaluations import register_evaluation_notifications
@@ -80,6 +81,7 @@ def register_approval_wiring() -> None:
     register_note_notifications()
     register_evaluation_notifications()
     register_learning_plan_notifications()
+    register_assignment_notifications()
     scheduling_service.register_completed_attendance_unlock(
         academics_service.closeout_awaits_tutor
     )

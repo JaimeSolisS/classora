@@ -16,6 +16,8 @@ import app.core.model_registry  # noqa: F401  (maps every application model)
 from app.core.audit import Audited, audited_table_names, sensitive_column_problems
 from app.core.models import Base, StandardColumns
 from app.modules.academics.models import (
+    Assignment,
+    AssignmentSubmission,
     Evaluation,
     EvaluationScore,
     EvaluationTemplate,
@@ -121,8 +123,10 @@ def test_the_guard_scans_the_real_audited_models():
     assert audited_classes(Base) == [
         AcademicPeriod,
         ApprovalRequest,
+        Assignment,
         AssignmentOffer,
         AssignmentOfferSession,
+        AssignmentSubmission,
         BusinessSettings,
         ClassGroup,
         ClassSeries,
@@ -223,6 +227,10 @@ def test_the_guard_scans_the_real_audited_models():
         LearningPlan,
         LearningPlanObjective,
         LearningPlanMilestone,
+        # #82 A2: the homework, the submissions and the grades are the
+        # record (re-grades keep prior and new values); nothing excluded.
+        Assignment,
+        AssignmentSubmission,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()

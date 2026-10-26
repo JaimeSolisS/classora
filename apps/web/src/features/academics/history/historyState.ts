@@ -18,10 +18,11 @@ export interface SubjectChoice {
   name: string;
 }
 
-/** The entries this view knows how to render (E5: others are skipped). */
+/** The entries this view knows how to render (E5: others are skipped;
+ * #82's homework grade entries until #313 renders them). */
 export function knownEntries(history: History): HistoryEntry[] {
   return history.entries.filter(
-    (entry) => (entry.kind as string) === 'evaluation',
+    (entry): entry is HistoryEntry => entry.kind === 'evaluation',
   );
 }
 

@@ -81,6 +81,9 @@ EXPECTED = {
     # Owner-delegated decision #81 E4 (a): no Finance, Tutor, Student or
     # Guardian (tutors write through the plan record policy).
     "learning_plan.manage": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
+    # Owner-delegated decision #82 E6 (a): read-only oversight; no Finance,
+    # Tutor, Student or Guardian (tutors write through the record policy).
+    "assignment.review": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
 }
 
 
@@ -94,8 +97,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 33
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 84
+    assert len(PERMISSIONS) == 34
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 87
 
 
 def test_every_code_has_the_dotted_form():

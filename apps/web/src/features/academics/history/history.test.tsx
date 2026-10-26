@@ -226,6 +226,60 @@ describe('the grouped view (E3, E5, E6)', () => {
   });
 });
 
+describe('homework grades from #82 (rendered by #313)', () => {
+  it('skips the entries and a subject or period with homework only', async () => {
+    const grade = {
+      kind: 'assignment_grade',
+      id: '00000000-0000-4000-8000-000000000820',
+      graded_on: '2026-11-10',
+      subject: { id: '00000000-0000-4000-8000-000000000821', name: 'Química' },
+      title: 'Tarea de química',
+      author: { display_name: 'Carmen Ruiz' },
+      max_score: '10.00',
+      score: '8.00',
+      score_percent: '80.00',
+      feedback: null,
+      due_on: '2026-11-09',
+      is_late: false,
+      graded_at: '2026-11-10T17:00:00Z',
+      updated: false,
+    };
+    const body = {
+      ...GROUPED,
+      entries: [grade, ...GROUPED.entries],
+      groups: [
+        ...GROUPED.groups,
+        {
+          period: {
+            id: '00000000-0000-4000-8000-000000000822',
+            name: 'Ciclo 2027-2028',
+            period_type: 'school_year',
+            starts_on: '2027-08-01',
+            ends_on: '2028-07-31',
+          },
+          subjects: [
+            {
+              subject: grade.subject,
+              count: 0,
+              average_percent: null,
+              assignment_count: 1,
+              assignment_average_percent: '80.00',
+              entry_ids: [grade.id],
+            },
+          ],
+        },
+      ],
+    };
+    stub({ [historyRoute(STUDENT_ID)]: () => jsonResponse(200, body) });
+    await open(PAGE, () => main().querySelector('article'));
+    expect(
+      [...main().querySelectorAll('h2')].map((h) => h.textContent),
+    ).toEqual(['Ciclo 2026-2027 (Aug 1, 2026 – Jul 31, 2027)', 'No period']);
+    expect(text()).not.toContain('Química');
+    expect(text()).not.toContain('null');
+  });
+});
+
 describe('the chronological view (E4)', () => {
   it('lists every entry in the API order with its subject', async () => {
     stub();

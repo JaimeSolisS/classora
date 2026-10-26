@@ -58,8 +58,8 @@ const INSTANT_PARAMS = new Set([
 ]);
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers; #80
- * evaluations). */
-const DATE_PARAMS = new Set(['from_date', 'evaluated_on']);
+ * evaluations; #82 homework deadlines). */
+const DATE_PARAMS = new Set(['from_date', 'evaluated_on', 'due_on']);
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function values(
@@ -308,6 +308,9 @@ export const NOTIFICATION_LINKS: Readonly<
   // the plan (#81 H1 messages unchanged).
   'academics.learning_plan_activated': myLearningPlan,
   'academics.learning_plan_completed': myLearningPlan,
+  // #82 I1: academics.assignment_set, academics.assignment_submitted and
+  // academics.assignment_graded have no link until #313 (M5-15b) adds the
+  // homework pages.
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

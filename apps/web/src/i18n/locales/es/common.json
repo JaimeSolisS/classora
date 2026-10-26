@@ -1496,7 +1496,10 @@
       "academics_evaluation_finalized": "Un tutor finalizó una evaluación del {{evaluated_on}}: ya está en el historial académico.",
       "academics_evaluation_voided": "Un revisor anuló una de tus evaluaciones.",
       "academics_learning_plan_activated": "Hay un nuevo plan de aprendizaje: consulta sus objetivos y sus hitos.",
-      "academics_learning_plan_completed": "Se completó un plan de aprendizaje."
+      "academics_learning_plan_completed": "Se completó un plan de aprendizaje.",
+      "academics_assignment_set": "Hay una tarea nueva para el {{due_on}}.",
+      "academics_assignment_submitted": "Un alumno entregó una tarea.",
+      "academics_assignment_graded": "Se calificó una tarea."
     }
   },
   "scheduling": {
