@@ -659,6 +659,45 @@ function validation(status: number, body: unknown): Response {
   });
 }
 
+// #322 E1 (#84 E3): the summary step says approved summaries reach the
+// class's students and families, in English and Spanish, and in the
+// resubmit mode too.
+describe('the family visibility notice (#322 E1)', () => {
+  const NOTICE =
+    "Once approved, this summary is visible to the class's students and their families.";
+
+  it('shows on the summary step only', async () => {
+    await open([OPEN]);
+    expect(text()).not.toContain(NOTICE);
+    await toSummary();
+    expect(stepHeading()).toBe('Step 3 of 4: Summary');
+    expect(text()).toContain(NOTICE);
+    await fillRequired();
+    await click(buttonNamed(main(), 'Next'));
+    expect(text()).not.toContain(NOTICE);
+  });
+
+  it('is translated', async () => {
+    applyLanguage('es');
+    await open([OPEN]);
+    await click(buttonNamed(main(), 'Siguiente'));
+    await click(buttonNamed(main(), 'Siguiente'));
+    expect(text()).toContain(
+      'Una vez aprobado, este resumen lo verán los alumnos de la clase y sus familias.',
+    );
+  });
+
+  it('shows in the resubmit mode', async () => {
+    await open([TUTOR_CHANGES_REQUESTED]);
+    await click(buttonNamed(main(), 'Edit and resubmit'));
+    await settleUntil(() => main().querySelector('fieldset') !== null);
+    await click(buttonNamed(main(), 'Next'));
+    await click(buttonNamed(main(), 'Next'));
+    expect(stepHeading()).toBe('Step 3 of 4: Summary');
+    expect(text()).toContain(NOTICE);
+  });
+});
+
 describe('the edit modes (#305)', () => {
   const RECORD_VERSION = TUTOR_CHANGES_REQUESTED.closeout!.version;
 

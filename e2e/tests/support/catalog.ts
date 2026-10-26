@@ -36,6 +36,8 @@ type Common = {
     changeRequests: string;
     // #310 G3: the family's learning plans.
     learningPlans: string;
+    // #322 G3: the family's progress page.
+    progress: string;
   };
   // #62b E1: the request dialog and My change requests.
   changeRequests: {
@@ -782,6 +784,22 @@ type Common = {
     review: Record<'reason', string>;
     facts: { evaluations: Record<'subjectAverage_one', string> };
     family: Record<'reportMissing', string>;
+  };
+  // #322 G3: the progress pages.
+  progress: {
+    percent: string;
+    family: Record<'title', string>;
+    tiles: Record<
+      | 'attendance'
+      | 'homeworkGrades'
+      | 'gradedCount_one'
+      | 'gradedCount_other'
+      | 'attended_one',
+      string
+    >;
+    chart: Record<'table', string>;
+    grades: Record<'heading', string>;
+    log: { heading: string; fields: Record<'topics', string> };
   };
   // #313 G3: the homework pages.
   assignments: {

@@ -53,7 +53,8 @@
     "assignedHomework": "Assigned homework",
     "homework": "Homework",
     "progressReports": "Progress reports",
-    "tutorReports": "Tutor reports"
+    "tutorReports": "Tutor reports",
+    "progress": "Progress"
   },
   "notFound": {
     "title": "Page not found",
@@ -3188,7 +3189,8 @@
         "submitted": "Closeout submitted on behalf of {{tutor}}.",
         "takenOver": "Closeout taken over and sent back to review."
       }
-    }
+    },
+    "familyVisibility": "Once approved, this summary is visible to the class's students and their families."
   },
   "notes": {
     "title": "Session notes",
@@ -4302,6 +4304,142 @@
         "tutorRequired": "Choose a tutor.",
         "firstPeriodRequired": "Choose the first period."
       }
+    }
+  },
+  "progress": {
+    "title": "Progress",
+    "titleFor": "Progress: {{name}}",
+    "backToStudent": "Back to student",
+    "unavailable": "This progress page isn't available.",
+    "formerTutor": "You can see the classes you taught this student. The full progress page is for the student's current tutors.",
+    "noData": "No data yet",
+    "noDataLower": "no data yet",
+    "percent": "{{value}} %",
+    "entry": {
+      "link": "Progress",
+      "linkOf": "Progress of {{name}}"
+    },
+    "family": {
+      "title": "My progress",
+      "mine": "My progress",
+      "whose": "Whose progress",
+      "noStudents": "There's no student linked to your account."
+    },
+    "links": {
+      "label": "Related pages",
+      "history": "Academic history",
+      "plans": "Learning plans",
+      "homework": "Homework",
+      "reports": "Tutor reports"
+    },
+    "controls": {
+      "period": "Period",
+      "months_one": "{{count}} month",
+      "months_other": "{{count}} months",
+      "subject": "Subject",
+      "allSubjects": "All subjects",
+      "clear": "Clear filters",
+      "reset": "Reset filters",
+      "range": "From {{from}} to {{to}}"
+    },
+    "tiles": {
+      "label": "Summary",
+      "attendance": "Attendance",
+      "attended_one": "{{attended}} of {{count}} class attended",
+      "attended_other": "{{attended}} of {{count}} classes attended",
+      "notRecorded_one": "{{count}} not recorded",
+      "notRecorded_other": "{{count}} not recorded",
+      "evaluations": "Evaluations",
+      "average": "average {{value}} %",
+      "evaluationCount_one": "{{count}} evaluation",
+      "evaluationCount_other": "{{count}} evaluations",
+      "homeworkGrades": "Homework grades",
+      "gradedCount_one": "{{count}} graded in this period",
+      "gradedCount_other": "{{count}} graded in this period",
+      "homeworkCompletion": "Homework completion",
+      "homeworkScope": "Homework due in this period",
+      "homeworkStates": "{{missing}} missing · {{late}} late · {{pending}} pending",
+      "objectives": "Learning objectives",
+      "objectivesComplete_one": "{{done}} of {{count}} objective complete",
+      "objectivesComplete_other": "{{done}} of {{count}} objectives complete",
+      "overdue_one": "{{count}} overdue milestone",
+      "overdue_other": "{{count}} overdue milestones"
+    },
+    "chart": {
+      "viewOf": "{{name}} view",
+      "chart": "Chart",
+      "table": "Table",
+      "legend": "Legend"
+    },
+    "attendance": {
+      "heading": "Attendance by month",
+      "summary": "From {{from}} to {{to}}: {{present}} present, {{late}} late, {{absent}} absent and {{notRecorded}} not recorded; attendance {{attendance}}.",
+      "empty": "No classes in this period.",
+      "caption": "Attendance by month",
+      "columns": {
+        "month": "Month",
+        "total": "Total"
+      }
+    },
+    "grades": {
+      "heading": "Grade trend",
+      "summaryEvaluations_one": "Evaluation average {{average}} over {{count}} evaluation;",
+      "summaryEvaluations_other": "Evaluation average {{average}} over {{count}} evaluations;",
+      "summaryHomework_one": "homework average {{average}} over {{count}} grade.",
+      "summaryHomework_other": "homework average {{average}} over {{count}} grades.",
+      "showHomework": "Show homework averages",
+      "tooManySubjects": "Choose a subject to see its trend chart.",
+      "empty": "No grades in this period.",
+      "caption": "Average by month and subject",
+      "series": {
+        "evaluation": "{{subject}}: evaluations",
+        "homework": "{{subject}}: homework"
+      },
+      "columns": {
+        "month": "Month",
+        "subject": "Subject",
+        "evaluationAverage": "Evaluation average",
+        "evaluations": "Evaluations",
+        "homeworkAverage": "Homework average",
+        "homeworkGrades": "Homework grades"
+      }
+    },
+    "plans": {
+      "heading": "Learning plans",
+      "summary": "{{active}} active and {{completed}} completed plans; {{done}} of {{total}} objectives complete.",
+      "empty": "No learning plans yet.",
+      "statuses": {
+        "active": "Active",
+        "completed": "Completed"
+      },
+      "overdue_one": "{{count}} overdue",
+      "overdue_other": "{{count}} overdue",
+      "target": "Target date: {{date}}",
+      "noTarget": "No target date"
+    },
+    "log": {
+      "heading": "Classes",
+      "empty": "No classes in this period.",
+      "with": "with {{name}}",
+      "kinds": {
+        "individual": "Individual",
+        "group": "Group",
+        "course": "Course"
+      },
+      "fields": {
+        "topics": "Topics",
+        "performance": "Performance",
+        "homework": "Homework",
+        "next_steps": "Next steps"
+      },
+      "noSummary": "Summary not available yet.",
+      "notes_one": "Notes from the tutor ({{count}})",
+      "notes_other": "Notes from the tutor ({{count}})",
+      "noteCount_one": "{{count}} published note",
+      "noteCount_other": "{{count}} published notes",
+      "details": "Session details",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more…"
     }
   }
 }

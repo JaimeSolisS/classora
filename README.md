@@ -17,8 +17,8 @@ app. The web app has a routed shell (layout with navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
 generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in
-Storybook) and FullCalendar for the staff calendar. Its home page only shows
-whether the API is live.
+Storybook), FullCalendar for the staff calendar and Recharts for progress
+charts. Its home page only shows whether the API is live.
 
 No email is sent: invitations and password resets produce a one-time link
 that staff hand over in person or by phone. The privacy notice text is a
@@ -270,6 +270,16 @@ unless a bullet says otherwise.
   internal. Reviewers can also schedule weekly or monthly reports per
   student: after each week or month ends, the tutor gets an empty draft and
   a notification.
+- Each student has a progress page for a chosen period (3 to 24 months) and
+  subject: attendance, evaluation and homework grade trends by month and
+  subject, homework completion, learning-plan progress, and a class log with
+  each class's approved summary. Every chart has a text summary and a data
+  table. Students and guardians with access to their academic records open
+  it from Progress (with the tutor's shared notes per class); Owners,
+  Administrators, Academic Coordinators and the student's current tutors open
+  it from the student page or My schedule, and a former tutor sees only the
+  classes they taught. Tutors and reviewers are told that an approved class
+  summary reaches the students and their families.
 
 **Courses**
 

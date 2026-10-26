@@ -5357,7 +5357,11 @@ views in `app/workflows/progress_dashboard_schemas.py`. The pure rules
 disagree; the session reads are `scheduling/student_progress.py` over the
 same in-scope sessions as `scheduling.service.student_attendance_summary`.
 No table, migration, permission or notification; nothing is written or
-audited. The web pages are #322 (M5-17b).
+audited. The web pages are #322 (M5-17b): `/my-progress` (students and
+guardians, with the family picker) and `/students/:studentId/progress`
+(`evaluation.manage` holders and tutors; a former tutor sees only the class
+log) read both routes with the same range and subject, and a family's "Notes
+from the tutor" read `learning-notes?class_session_id=` when opened.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |

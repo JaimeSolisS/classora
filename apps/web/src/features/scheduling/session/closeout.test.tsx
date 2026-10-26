@@ -341,6 +341,42 @@ describe('the review actions (#78 G1)', () => {
   });
 });
 
+// #322 E1 (#84 E3): next to Approve, muted text says the approved summary
+// reaches the class's students and families; Approve is described by it.
+// Absent without can_review.
+describe('the family visibility notice (#322 E1)', () => {
+  const NOTICE =
+    "Once approved, this summary is visible to the class's students and their families.";
+  const notice = () =>
+    [...section()!.querySelectorAll('p')].find((p) => p.textContent === NOTICE);
+
+  it('sits next to Approve, which it describes', async () => {
+    await ready(REVIEWABLE);
+    const approve = buttonNamed(section()!, 'Approve');
+    expect(notice()).toBeDefined();
+    expect(approve.getAttribute('aria-describedby')).toBe(notice()!.id);
+    expect(approve.parentElement).toBe(notice()!.parentElement);
+  });
+
+  it.each([
+    ['without the flags', STAFF_SUBMITTED],
+    ['approved (Correct only)', STAFF_APPROVED],
+    ['Finance', FINANCE_APPROVED],
+  ])('is absent %s', async (_name, view) => {
+    await ready(view);
+    expect(notice()).toBeUndefined();
+  });
+
+  it('is translated', async () => {
+    await ready(REVIEWABLE);
+    act(() => applyLanguage('es'));
+    await settleUntil(() => (main().textContent ?? '').includes('reales'));
+    expect(main().textContent).toContain(
+      'Una vez aprobado, este resumen lo verán los alumnos de la clase y sus familias.',
+    );
+  });
+});
+
 describe('the correction dialog (#78 G1)', () => {
   async function correctDialog(
     view = REVIEWABLE,
@@ -615,6 +651,13 @@ describe('close out on behalf (#301b C)', () => {
     await click(submitButton(dialog));
     expect(dialog.textContent).toContain('Fill in this part of the summary.');
     expect(api.calls(SUBMIT_ON_BEHALF)).toHaveLength(0);
+  });
+
+  it('says the approved summary reaches the families (#322 E1)', async () => {
+    const dialog = await onBehalfDialog();
+    expect(dialog.textContent).toContain(
+      "Once approved, this summary is visible to the class's students and their families.",
+    );
   });
 
   it('makes the summary optional when everyone was absent', async () => {

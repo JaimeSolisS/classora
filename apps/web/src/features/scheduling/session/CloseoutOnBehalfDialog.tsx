@@ -332,6 +332,11 @@ function OnBehalfContent({
             ) : null}
           </p>
         </div>
+        {/* #322 E1 (#84 E3): the staff on-behalf flow writes a summary that
+            reaches the families once approved. */}
+        <p className="text-sm text-muted-foreground">
+          {t('closeout.familyVisibility')}
+        </p>
         <CloseoutFields
           id={id}
           minutes={minutes}

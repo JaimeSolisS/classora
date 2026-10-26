@@ -38,8 +38,15 @@ arbitrary color classes.
 | `border` | Decorative borders and dividers | `#cbd5e1` | `#334155` |
 | `input` | Form control borders | `#64748b` | `#64748b` |
 | `ring` | Keyboard focus ring | `#1d4ed8` | `#60a5fa` |
+| `chart-1` | Chart series 1 (blue) | `#2563eb` | `#3b82f6` |
+| `chart-2` | Chart series 2 (orange) | `#c2410c` | `#ea580c` |
+| `chart-3` | Chart series 3 (teal) | `#0d9488` | `#0d9488` |
+| `chart-4` | Chart series 4 (violet) | `#9333ea` | `#a855f7` |
 
 `border` is decorative only. Borders that identify a control use `input`.
+The `chart-*` tokens (#322) are read as `var(--chart-n)` by chart code only
+(no Tailwind utility); they are assigned in this fixed order, never cycled,
+and checked as a set for colour-vision-deficiency separation.
 
 ### Contrast pairs enforced by tests
 
@@ -55,7 +62,8 @@ from `tokens.css` and checks them in both themes:
   text), `primary`/`background` (link text).
 - At least 3:1 (SC 1.4.11, non-text): `input`/`background`,
   `ring`/`background` and `primary`/`muted` (the `ProgressMeter` fill on its
-  track, #310).
+  track, #310); `chart-1` … `chart-4` against both `background` and `card`
+  (chart series, #322: 16 pairs over the two themes).
 
 ### Spacing, typography and radius
 
@@ -544,6 +552,38 @@ Loading and error primitives in `apps/web/src/components/feedback/`
 - Error messages live in the `errors` namespace, keyed by the Problem
   `code`, and are mapped in `apps/web/src/app/errors.ts` (unknown codes fall
   back to `client_error`, `server_error` or `generic`).
+
+## Charts
+
+The progress pages (#322) are the first charts (Recharts, architecture §8).
+
+- **Recharts only in lazy route chunks.** `recharts` is imported only under
+  `apps/web/src/features/progress/charts/` (an ESLint `no-restricted-imports`
+  rule and `features/progress/imports.test.ts`), and only the code-split
+  progress pages render those modules, so the entry chunk doesn't grow.
+- **Every chart is a `figure`:** an `h2` heading, a one-sentence text summary
+  built only from server fields (linked with `aria-describedby`), and a
+  **Chart / Table** toggle (two `aria-pressed` buttons in a labelled group,
+  Chart by default). The table has a `<caption>`, `th scope="col"` and
+  `scope="row"`, every value as text, and sits in the scroll region pattern
+  (`role="region"` named by the caption, `tabIndex={0}`, a focus ring), so a
+  wide table scrolls inside its container, never the page.
+- **Never colour alone:** series use `--chart-1` … `--chart-4` plus a second
+  cue: bars a fill pattern (solid, diagonal hatch, dots, cross-hatch), lines
+  a dash pattern and a marker shape (homework series hollow). A text legend
+  names each series; tooltips are never the only way to read a value.
+- **No animation** (`isAnimationActive={false}` on every series) and
+  `accessibilityLayer` on. Axis text and grid lines use `muted-foreground`
+  and `border`. A fixed height with `ResponsiveContainer` width, so a chart
+  reflows at 320 px.
+- **Text empty states** ("No classes in this period.") instead of an empty
+  chart; a single data point still renders (one bar, one marker). Lines leave
+  gaps where a month has no value (`connectNulls={false}`).
+- **Decimals as API text.** Percentages and averages are shown exactly as the
+  API sends them (`lib/decimal.ts` `decimalText`); `charts/chartValue.ts`
+  turns the text into a number for the y position only.
+- At most four series colours: with more than four subjects the grade trend
+  asks for one subject, and its table still lists everything.
 
 ## Role-adaptive layouts
 

@@ -816,6 +816,10 @@ function Steps({
 
       {step === 3 ? (
         <div className="flex min-w-0 flex-col gap-4">
+          {/* #322 E1 (#84 E3): approved summaries reach the families. */}
+          <p className="text-sm text-muted-foreground">
+            {t('closeout.familyVisibility')}
+          </p>
           {absent ? <p className="text-sm">{t('closeout.allAbsent')}</p> : null}
           {SUMMARY_FIELDS.map((field) => {
             const fieldId = `${id}-${field}`;

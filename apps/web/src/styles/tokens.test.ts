@@ -25,6 +25,10 @@ const COLOR_TOKENS = [
   'border',
   'input',
   'ring',
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
@@ -55,6 +59,14 @@ const NON_TEXT_PAIRS: [ColorToken, ColorToken][] = [
   // The ProgressMeter (#310 B5): the fill (primary) against its track
   // (muted); the track's border is the input/background pair above.
   ['primary', 'muted'],
+  // #322 C3: every chart series colour against the page and the card the
+  // charts sit on (16 pairs over both themes).
+  ...(['chart-1', 'chart-2', 'chart-3', 'chart-4'] as const).flatMap(
+    (series): [ColorToken, ColorToken][] => [
+      [series, 'background'],
+      [series, 'card'],
+    ],
+  ),
 ];
 
 function parseBlock(selector: string): Map<string, string> {

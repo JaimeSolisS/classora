@@ -34,6 +34,7 @@ import { tutorAcademicLinks } from '@/features/academics/evaluations/rules';
 import { studentPlansPath } from '@/features/learning-plans/api';
 import { newAssignmentPath } from '@/features/assignments/api';
 import { studentReportsPath } from '@/features/progress-reports/api';
+import { studentProgressPath } from '@/features/progress/access';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -58,6 +59,8 @@ import { dateText, whoText, type LabelContext } from './labels';
 // (named "Learning plans of {name}") opens their plans.
 // #315 A4: next to them, "Progress reports" (named "Progress reports of
 // {name}") opens the student's progress reports.
+// #322 A6: a tutor's confirmed or completed item links each participant's
+// progress page ("Progress of {name}").
 // #313 A4: a tutor's confirmed or completed item links to "Set homework"
 // (the homework form for this class, its participants preselected).
 // #308 D1: a tutor's confirmed or completed item lists its students, each
@@ -277,6 +280,15 @@ export function EntryDialog({
                       className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
                     >
                       {t('progressReports.entry.link')}
+                    </Link>
+                    <Link
+                      to={studentProgressPath(participant.student_id)}
+                      aria-label={t('progress.entry.linkOf', {
+                        name: participant.display_name,
+                      })}
+                      className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                    >
+                      {t('progress.entry.link')}
                     </Link>
                     {academic.evaluate ? (
                       <Link

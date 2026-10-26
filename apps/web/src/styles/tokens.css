@@ -5,8 +5,9 @@
  * rounded-md, ...), never raw values.
  *
  * Colors are hex so the contrast test (src/styles/tokens.test.ts) can read
- * them from this file. Every text pair must reach 4.5:1 and the input border
- * and focus ring 3:1 against the background, in both themes (WCAG 2.2 AA).
+ * them from this file. Every text pair must reach 4.5:1 and the input border,
+ * the focus ring and the chart series 3:1 against the background, in both
+ * themes (WCAG 2.2 AA).
  * See _docs/design-system.md.
  */
 
@@ -32,6 +33,12 @@
   --border: #cbd5e1;
   --input: #64748b;
   --ring: #1d4ed8;
+  /* Chart series (#322 C3): fixed order, each >= 3:1 against background
+     and card; never the only cue (patterns, dashes and markers too). */
+  --chart-1: #2563eb;
+  --chart-2: #c2410c;
+  --chart-3: #0d9488;
+  --chart-4: #9333ea;
 
   /* Base radius; sm/md/lg derive from it in @theme. */
   --radius: 0.5rem;
@@ -59,6 +66,10 @@
   --border: #334155;
   --input: #64748b;
   --ring: #60a5fa;
+  --chart-1: #3b82f6;
+  --chart-2: #ea580c;
+  --chart-3: #0d9488;
+  --chart-4: #a855f7;
 }
 
 @theme inline {

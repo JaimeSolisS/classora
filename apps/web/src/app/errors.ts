@@ -284,6 +284,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['schedule_subject_not_assigned', 'schedule_subject_not_assigned'],
   ['schedule_starts_on_invalid', 'schedule_starts_on_invalid'],
   ['student_inactive', 'student_inactive'],
+  // The progress dashboard's range refusal (#322 D1; #84 sends it as a
+  // field code of validation_error, mapped here too).
+  ['range_in_future', 'range_in_future'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
