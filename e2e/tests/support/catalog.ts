@@ -699,6 +699,9 @@ type Common = {
       academics_evaluation_finalized: string;
       // #310 G3: an activated learning plan (the guardian's bell).
       academics_learning_plan_activated: string;
+      // #313 G3: set and handed-in homework (the student's and tutor's bells).
+      academics_assignment_set: string;
+      academics_assignment_submitted: string;
     };
   };
   // #308 G3: the evaluation pages.
@@ -748,6 +751,20 @@ type Common = {
       | 'save',
       string
     >;
+  };
+  // #313 G3: the homework pages.
+  assignments: {
+    states: Record<'pending' | 'submitted' | 'graded', string>;
+    scoreWithPercent: string;
+    entry: Record<'setHomework', string>;
+    form: Record<
+      'title' | 'instructions' | 'dueOn' | 'maxScore' | 'save',
+      string
+    >;
+    notices: Record<'created_one' | 'handedIn', string>;
+    actions: Record<'gradeFor', string>;
+    grade: Record<'title' | 'score' | 'feedbackOptional' | 'save', string>;
+    submit: Record<'text' | 'link' | 'handIn', string>;
   };
   courses: {
     // #243: the Courses tab bar and the cohort pages.

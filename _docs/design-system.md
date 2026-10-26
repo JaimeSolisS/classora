@@ -496,6 +496,27 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   progress asks first, and Cancel or Escape returns focus to "Remove".
   "Reload" after a conflict asks before discarding typed changes, then
   remounts the editor on the fresh version and focuses the heading.
+- **User-supplied links** (`SafeLink`, `features/assignments`, #313): a
+  link a user typed (a homework submission) is an anchor only when the #82
+  rule accepts it (absolute `http`/`https` with a host, no user-info, no
+  whitespace or control characters, at most 2000 characters); it opens in a
+  new tab with `rel="noopener noreferrer nofollow"`, shows the full URL as
+  its text (`break-all`, so it wraps at 320 px) and adds a visually hidden
+  "(opens in a new tab)". Anything else, such as a stored `javascript:`
+  link, is plain text, never an anchor. Typed links use `type="url"`,
+  `inputmode="url"` and `autocomplete="url"`, with the same rule as a field
+  error.
+- **Homework state badge** (`StateBadge`, `features/assignments`, #313): one
+  bordered text badge with a decorative icon for every view ("Pending",
+  "Missing", "Handed in", "Graded"); "Late" is a separate text marker, never
+  a colour. The summary of a student's homework is four `aria-pressed`
+  filter buttons with their counts plus "All". A saved grade returns focus
+  to the row's grade button with a "Grade saved." status; other done
+  actions, and arriving from the form, focus their status message; a
+  hand-in focuses the "Your work" heading; Reload remounts on the fresh
+  data and focuses the heading. The `AcademicHistory` renders scored
+  homework as "Homework: {title}" entries (no "Details") and adds "{n}
+  homework · average {a} %" to the subject line.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.

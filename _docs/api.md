@@ -4891,8 +4891,18 @@ rows) and the workflow `app/workflows/assignments.py` with its routes in
 `app/workflows/assignments_router.py` and bodies in
 `app/workflows/assignment_schemas.py`. One new permission,
 `assignment.review` (Owner, Administrator, Academic coordinator; read-only
-oversight, not delegable). The web pages are #313 (M5-15b). "Assignment"
-here means **homework**, not a tutor's current student assignment.
+oversight, not delegable). The web pages are #313 (M5-15b,
+`apps/web/src/features/assignments/`): `/assignments` (the working list),
+`/assignments/new[?sessionId=]` (the create; a class's subject and
+participants come from `GET /class-sessions/{id}/attendance`, the tutor's
+students from `GET /students`), `/assignments/:id` (the roster, the grade,
+work recorded by the tutor and the delete), `/assignments/:id/edit` (the
+`PATCH`), `/students/:id/assignments[/:id]` (one student's homework for
+staff and tutors) and the family's `/my-homework[/:id]`
+(`/schedule/family-students`, the per-student list and item, and the
+student's submission); the academic history renders the `assignment_grade`
+entries. "Assignment" here means **homework**, not a tutor's current student
+assignment.
 
 A tutor sets **homework** (a subject, a title, instructions, a deadline, an
 optional `max_score`, an optional link to one of their classes) for **1-100

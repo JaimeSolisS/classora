@@ -49,7 +49,9 @@
     "myCourses": "Mis cursos",
     "evaluationTemplates": "Plantillas de evaluación",
     "academicHistory": "Historial académico",
-    "learningPlans": "Planes de aprendizaje"
+    "learningPlans": "Planes de aprendizaje",
+    "assignedHomework": "Tareas asignadas",
+    "homework": "Tareas"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -3616,6 +3618,17 @@
         "meta": "{{subject}} · {{date}} · por {{name}}",
         "loadMore": "Cargar más",
         "loadingMore": "Cargando…"
+      },
+      "assignmentSummary_one": "{{count}} tarea · promedio {{average}} %",
+      "assignmentSummary_many": "{{count}} tareas · promedio {{average}} %",
+      "assignmentSummary_other": "{{count}} tareas · promedio {{average}} %",
+      "homework": {
+        "heading": "Tarea: {{title}}",
+        "meta": "Calificada el {{date}}",
+        "metaWithSubject": "{{subject}} · Calificada el {{date}}",
+        "late": "Con retraso",
+        "score": "{{score}} de {{max}} · {{percent}} %",
+        "due": "Entrega: {{date}}"
       }
     }
   },
@@ -3808,6 +3821,248 @@
       "milestonesRequired": "Cada objetivo necesita al menos un hito.",
       "milestonesLimit": "Un objetivo puede tener como máximo 10 hitos.",
       "planMilestonesLimit": "Un plan puede tener como máximo 50 hitos."
+    }
+  },
+  "assignments": {
+    "states": {
+      "pending": "Pendiente",
+      "missing": "No entregada",
+      "submitted": "Entregada",
+      "graded": "Calificada"
+    },
+    "late": "Con retraso",
+    "newTab": "(se abre en una pestaña nueva)",
+    "deadline": {
+      "dateTime": "{{date}} a las {{time}}",
+      "due": "Entrega: {{when}}",
+      "missing": "No entregada: la fecha límite fue {{when}}",
+      "today": "hoy",
+      "tomorrow": "mañana",
+      "inDays_one": "en {{count}} día",
+      "inDays_many": "en {{count}} días",
+      "inDays_other": "en {{count}} días",
+      "late": "Entregada con retraso"
+    },
+    "counts": {
+      "submitted_one": "{{count}} entregada",
+      "submitted_many": "{{count}} entregadas",
+      "submitted_other": "{{count}} entregadas",
+      "graded_one": "{{count}} calificada",
+      "graded_many": "{{count}} calificadas",
+      "graded_other": "{{count}} calificadas",
+      "missing_one": "{{count}} no entregada",
+      "missing_many": "{{count}} no entregadas",
+      "missing_other": "{{count}} no entregadas",
+      "pending_one": "{{count}} pendiente",
+      "pending_many": "{{count}} pendientes",
+      "pending_other": "{{count}} pendientes",
+      "of_one": "{{parts}}, de {{count}} alumno",
+      "of_many": "{{parts}}, de {{count}} alumnos",
+      "of_other": "{{parts}}, de {{count}} alumnos",
+      "late_one": "{{count}} con retraso",
+      "late_many": "{{count}} con retraso",
+      "late_other": "{{count}} con retraso"
+    },
+    "conflict": "Esta tarea cambió en otro lugar.",
+    "busy": "Guardando",
+    "cancel": "Cancelar",
+    "reloadConfirm": {
+      "title": "¿Descartar tus cambios?",
+      "description": "Al recargar verás la versión más reciente de esta tarea. Lo que escribiste se perderá.",
+      "confirm": "Descartar y recargar"
+    },
+    "form": {
+      "newTitle": "Asignar tarea",
+      "editTitle": "Editar tarea",
+      "forClass": "Para la clase del {{when}}",
+      "sessionInvalid": "La tarea no se puede vincular a esta clase.",
+      "withoutSession": "Asignar tarea sin clase",
+      "subject": "Materia",
+      "subjectFixed": "La materia no se puede cambiar.",
+      "chooseSubject": "Elige una materia",
+      "title": "Título",
+      "instructions": "Instrucciones",
+      "dueOn": "Fecha de entrega",
+      "dueTime": "Hora de entrega (opcional)",
+      "dueTimeHelp": "Déjala vacía para el final del día (hora del centro).",
+      "maxScore": "Calificación máxima (opcional)",
+      "maxScoreHelp": "Déjala vacía para dar solo retroalimentación.",
+      "maxScoreLocked": "Ya hay calificaciones; la calificación máxima no puede cambiar.",
+      "students": "Alumnos",
+      "search": "Buscar alumnos",
+      "selectAll": "Seleccionar todos",
+      "clear": "Quitar selección",
+      "selected_one": "{{count}} seleccionado",
+      "selected_many": "{{count}} seleccionados",
+      "selected_other": "{{count}} seleccionados",
+      "truncated": "Se muestran los primeros {{max}} alumnos. Busca para acotar la lista.",
+      "studentsFailed": "No se pudieron cargar los alumnos. Busca de nuevo para reintentar.",
+      "noStudents": "No hay alumnos para elegir.",
+      "alreadyHandedIn": "Ya entregó",
+      "addedNotified": "Los alumnos que agregues reciben una notificación.",
+      "saving": "Guardando",
+      "save": "Guardar tarea",
+      "cannotEdit": "Esta tarea no se puede editar."
+    },
+    "validation": {
+      "subjectRequired": "Elige una materia.",
+      "subjectUnknown": "Esta materia ya no está disponible. Elige otra.",
+      "titleRequired": "Escribe un título.",
+      "titleTooLong": "El título puede tener como máximo 200 caracteres.",
+      "instructionsRequired": "Escribe las instrucciones.",
+      "instructionsTooLong": "Las instrucciones pueden tener como máximo 4000 caracteres.",
+      "dueRequired": "Elige la fecha de entrega.",
+      "dateInvalid": "Escribe una fecha válida.",
+      "timeInvalid": "Escribe una hora válida.",
+      "dueInPast": "La fecha de entrega no puede ser pasada.",
+      "dueTooFar": "La fecha de entrega puede ser como máximo dentro de un año.",
+      "dueTimePassed": "Esa hora ya pasó hoy.",
+      "maxScoreInvalid": "Escribe un número como 10 o 7.5.",
+      "decimalComma": "Usa punto para los decimales, como en 7.5.",
+      "maxScorePrecision": "Usa como máximo dos decimales.",
+      "maxScoreRange": "La calificación máxima va de 0.5 a 1000.",
+      "recipientsRequired": "Elige al menos un alumno.",
+      "recipientsLimit": "Elige como máximo 100 alumnos.",
+      "recipientInvalidSummary": "Algunos alumnos no pueden recibir esta tarea. Desmárcalos para continuar.",
+      "recipientInvalid": "Ya no le das clase a este alumno.",
+      "scoreRequired": "Escribe una calificación.",
+      "scoreRange": "La calificación va de 0 a la calificación máxima.",
+      "scorePrecision": "Usa como máximo dos decimales.",
+      "scoreInvalid": "Escribe un número como 8 o 7.5.",
+      "feedbackRequired": "Escribe la retroalimentación.",
+      "feedbackTooLong": "La retroalimentación puede tener como máximo 4000 caracteres.",
+      "reasonRequired": "Explica por qué cambia la calificación.",
+      "reasonTooLong": "El motivo puede tener como máximo 500 caracteres.",
+      "textTooLong": "El texto puede tener como máximo 10000 caracteres.",
+      "urlInvalid": "Usa un enlace completo que empiece con http:// o https://",
+      "workRequired": "Escribe tu respuesta o agrega un enlace."
+    },
+    "listTitle": "Tareas asignadas",
+    "rosterTitle": "Tarea",
+    "setHomework": "Asignar tarea",
+    "empty": "Aún no hay tareas.",
+    "emptyFiltered": "Ninguna tarea coincide con estos filtros.",
+    "clearFilters": "Quitar filtros",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando…",
+    "backToList": "Volver a tareas asignadas",
+    "backToRoster": "Volver a la tarea",
+    "backToStudent": "Volver al alumno",
+    "filters": {
+      "due": "Entrega",
+      "dues": {
+        "upcoming": "Próximas",
+        "past": "Pasadas",
+        "all": "Todas"
+      },
+      "subject": "Materia",
+      "allSubjects": "Todas las materias",
+      "selectedSubject": "Materia seleccionada"
+    },
+    "maxScore": "Calificación máxima {{max}}",
+    "feedbackOnly": "Solo retroalimentación",
+    "forClassOn": "Para la clase del {{date}}",
+    "setBy": "Asignada por {{name}}",
+    "handedInOn": "Entregada el {{when}}",
+    "recordedByTutor": "Registrada por el tutor",
+    "score": "{{score}} de {{max}}",
+    "scoreWithPercent": "{{score}} de {{max}} ({{percent}} %)",
+    "gradedOn": "Calificada el {{date}}",
+    "updated": "Actualizada",
+    "roster": {
+      "heading": "Alumnos",
+      "reason": "Motivo del último cambio (interno): {{reason}}"
+    },
+    "actions": {
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "record": "Registrar entrega",
+      "recordFor": "Registrar entrega: {{name}}",
+      "grade": "Calificar",
+      "gradeFor": "Calificar a {{name}}",
+      "regrade": "Cambiar calificación",
+      "regradeFor": "Cambiar calificación: {{name}}"
+    },
+    "delete": {
+      "title": "¿Eliminar esta tarea?",
+      "description": "Los alumnos y tutores familiares ya no la verán.",
+      "confirm": "Eliminar tarea"
+    },
+    "grade": {
+      "title": "Calificar a {{name}}",
+      "visible": "{{name}} y los tutores familiares con acceso ven la calificación de inmediato.",
+      "score": "Calificación",
+      "of": "de {{max}}",
+      "feedback": "Retroalimentación",
+      "feedbackOptional": "Retroalimentación (opcional)",
+      "reason": "Motivo del cambio",
+      "reasonHelp": "El motivo es interno: el alumno y los tutores familiares solo ven 'Actualizada'.",
+      "save": "Guardar calificación"
+    },
+    "record": {
+      "title": "Registrar entrega: {{name}}",
+      "help": "Úsalo para trabajos entregados en papel o en clase.",
+      "note": "Nota (opcional)",
+      "link": "Enlace (opcional)",
+      "save": "Registrar entrega"
+    },
+    "notices": {
+      "created_one": "Tarea asignada. Se notificó a {{count}} alumno.",
+      "created_many": "Tarea asignada. Se notificó a {{count}} alumnos.",
+      "created_other": "Tarea asignada. Se notificó a {{count}} alumnos.",
+      "saved": "Tarea guardada.",
+      "deleted": "Tarea eliminada.",
+      "graded": "Calificación guardada.",
+      "recorded": "Entrega registrada.",
+      "handedIn": "Trabajo entregado.",
+      "replaced": "Trabajo reemplazado."
+    },
+    "summary": {
+      "label": "Ver tareas por estado",
+      "pending": "Pendientes {{n}}",
+      "missing": "No entregadas {{n}}",
+      "submitted": "Entregadas {{n}}",
+      "graded": "Calificadas {{n}}",
+      "all": "Todas"
+    },
+    "student": {
+      "title": "Tareas",
+      "titleFor": "Tareas: {{name}}",
+      "itemTitle": "Tarea",
+      "forStudent": "Tarea de {{name}}",
+      "empty": "Aún no hay tareas.",
+      "emptyStaff": "Este alumno aún no tiene tareas.",
+      "emptyFiltered": "Ninguna tarea coincide con este filtro.",
+      "showAll": "Ver todas",
+      "listMissing": "Esta lista de tareas no está disponible.",
+      "itemMissing": "Esta tarea ya no está disponible.",
+      "toList": "Ver todas las tareas",
+      "back": "Volver a tareas",
+      "yourWork": "Tu trabajo",
+      "childWork": "Trabajo de {{name}}",
+      "submission": "Entrega",
+      "toTutor": "Entregada al tutor",
+      "closed": "La entrega cerró el {{deadline}}.",
+      "grade": "Calificación",
+      "openRoster": "Abrir lista de alumnos"
+    },
+    "family": {
+      "mine": "Mis tareas",
+      "whose": "Tareas de"
+    },
+    "submit": {
+      "text": "Texto (opcional)",
+      "link": "Enlace (opcional)",
+      "handIn": "Entregar",
+      "replace": "Reemplazar mi trabajo",
+      "help": "Puedes reemplazar tu trabajo hasta el {{deadline}}.",
+      "lateHelp": "La fecha límite ya pasó. Tu trabajo quedará marcado con retraso.",
+      "locked": "La fecha límite ya pasó; ya no puedes reemplazar tu trabajo.",
+      "graded": "Este trabajo ya fue calificado.",
+      "conflict": "Esto cambió en otro lugar."
+    },
+    "entry": {
+      "setHomework": "Asignar tarea"
     }
   }
 }

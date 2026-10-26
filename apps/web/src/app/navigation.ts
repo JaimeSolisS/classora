@@ -8,6 +8,10 @@ import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import { MY_LEARNING_PLANS_ACCESS } from '@/features/learning-plans/access';
+import {
+  ASSIGNMENT_WORK_ACCESS,
+  MY_HOMEWORK_ACCESS,
+} from '@/features/assignments/access';
 
 // The header navigation items (#28 F4). AppLayout shows only the items the
 // signed-in user may open (canAccess, the same check as the route guard).
@@ -93,6 +97,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.learningPlans',
     ...MY_LEARNING_PLANS_ACCESS,
   },
+  // Assigned homework (#313 A2): tutors (the homework they set) and
+  // assignment.review holders (every one; the API decides).
+  {
+    to: '/assignments',
+    labelKey: 'nav.assignedHomework',
+    ...ASSIGNMENT_WORK_ACCESS,
+  },
+  // Homework (#313 A2): students and guardians (the API decides whose
+  // homework each may read); students hand in work there.
+  { to: '/my-homework', labelKey: 'nav.homework', ...MY_HOMEWORK_ACCESS },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
   // Session requests (#59 F1): guardians and students (the API decides

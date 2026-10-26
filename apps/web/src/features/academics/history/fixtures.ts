@@ -1,7 +1,11 @@
 import type { FamilyStudents } from '@/features/my-schedule/api';
 import type { Evaluation } from '../evaluations/api';
 import { DRAFT, FINAL, STUDENT_ID, VOIDED } from '../evaluations/fixtures';
-import type { AcademicHistory, HistoryEntry } from './api';
+import type {
+  AcademicHistory,
+  AssignmentGradeEntry,
+  HistoryEntry,
+} from './api';
 
 // Sample histories for the history pages' tests and stories (#308 G1, G2):
 // the school year 2026-2027 with Física (two entries, two authors, one
@@ -94,11 +98,11 @@ export const OUTSIDE = entry({
   ],
 });
 
-/** An entry of a kind later issues add (#82): skipped by this view. */
+/** An entry of a kind a later issue may add: skipped by this view. */
 export const UNKNOWN_KIND = {
   ...entry({ id: '00000000-0000-4000-8000-000000308905' }),
-  kind: 'assignment_grade',
-  template_name: 'Tarea desconocida',
+  kind: 'progress_report',
+  template_name: 'Informe desconocido',
 } as unknown as HistoryEntry;
 
 export const GROUPED: AcademicHistory = {
@@ -238,3 +242,84 @@ export const SELF_ONLY: FamilyStudents = {
 
 /** The working list: a draft, a final and a voided evaluation. */
 export const WORKING_ITEMS: Evaluation[] = [DRAFT, FINAL, VOIDED];
+
+// #313 F1: scored homework grades (#82) next to evaluations: Física has
+// both, Química homework only.
+const CHEMISTRY = {
+  id: '00000000-0000-4000-8000-000000313a03',
+  name: 'Química',
+};
+
+export function homework(
+  overrides: Partial<AssignmentGradeEntry> = {},
+): AssignmentGradeEntry {
+  return {
+    kind: 'assignment_grade',
+    id: '00000000-0000-4000-8000-000000313901',
+    graded_on: '2026-11-05',
+    subject: PHYSICS,
+    title: 'Problemas de cinemática',
+    author: { display_name: 'Carmen Ruiz' },
+    max_score: '10.00',
+    score: '8.00',
+    score_percent: '80.00',
+    feedback: 'Revisa las unidades.',
+    due_on: '2026-11-04',
+    is_late: true,
+    graded_at: '2026-11-05T18:00:00Z',
+    updated: true,
+    ...overrides,
+  };
+}
+
+export const HOMEWORK = homework();
+export const HOMEWORK_ONLY = homework({
+  id: '00000000-0000-4000-8000-000000313902',
+  graded_on: '2026-10-20',
+  subject: CHEMISTRY,
+  title: 'Tabla periódica',
+  score: '9.50',
+  score_percent: '95.00',
+  feedback: null,
+  due_on: '2026-10-19',
+  is_late: false,
+  updated: false,
+});
+
+export const MIXED: AcademicHistory = {
+  student_id: STUDENT_ID,
+  group_by: 'school_year',
+  truncated: false,
+  entries: [FIRST, HOMEWORK, SECOND, HOMEWORK_ONLY, THIRD, UNKNOWN_KIND],
+  groups: [
+    {
+      period: GROUPED.groups[0]!.period,
+      subjects: [
+        {
+          subject: PHYSICS,
+          count: 2,
+          average_percent: '83.75',
+          assignment_count: 1,
+          assignment_average_percent: '80.00',
+          entry_ids: [FIRST.id, HOMEWORK.id, SECOND.id],
+        },
+        {
+          subject: CHEMISTRY,
+          count: 0,
+          average_percent: null,
+          assignment_count: 1,
+          assignment_average_percent: '95.00',
+          entry_ids: [HOMEWORK_ONLY.id],
+        },
+        {
+          subject: MATH,
+          count: 1,
+          average_percent: '60.00',
+          assignment_count: 0,
+          assignment_average_percent: null,
+          entry_ids: [THIRD.id],
+        },
+      ],
+    },
+  ],
+};

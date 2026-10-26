@@ -26,6 +26,9 @@ import {
   EMPTY,
   FAMILY_STUDENTS,
   GROUPED,
+  homework,
+  HOMEWORK,
+  MIXED,
   PHYSICS_ONLY,
   SELF_ONLY,
   SIBLING_ID,
@@ -183,7 +186,7 @@ describe('the grouped view (E3, E5, E6)', () => {
       'Curso de verano',
     ]);
     // The unknown kind is skipped.
-    expect(text()).not.toContain('Tarea desconocida');
+    expect(text()).not.toContain('Informe desconocido');
   });
 
   it('shows an entry as text, the numbers as sent', async () => {
@@ -226,57 +229,77 @@ describe('the grouped view (E3, E5, E6)', () => {
   });
 });
 
-describe('homework grades from #82 (rendered by #313)', () => {
-  it('skips the entries and a subject or period with homework only', async () => {
-    const grade = {
-      kind: 'assignment_grade',
-      id: '00000000-0000-4000-8000-000000000820',
-      graded_on: '2026-11-10',
-      subject: { id: '00000000-0000-4000-8000-000000000821', name: 'Química' },
-      title: 'Tarea de química',
-      author: { display_name: 'Carmen Ruiz' },
-      max_score: '10.00',
-      score: '8.00',
-      score_percent: '80.00',
-      feedback: null,
-      due_on: '2026-11-09',
-      is_late: false,
-      graded_at: '2026-11-10T17:00:00Z',
-      updated: false,
-    };
-    const body = {
-      ...GROUPED,
-      entries: [grade, ...GROUPED.entries],
-      groups: [
-        ...GROUPED.groups,
-        {
-          period: {
-            id: '00000000-0000-4000-8000-000000000822',
-            name: 'Ciclo 2027-2028',
-            period_type: 'school_year',
-            starts_on: '2027-08-01',
-            ends_on: '2028-07-31',
-          },
-          subjects: [
-            {
-              subject: grade.subject,
-              count: 0,
-              average_percent: null,
-              assignment_count: 1,
-              assignment_average_percent: '80.00',
-              entry_ids: [grade.id],
-            },
-          ],
-        },
-      ],
-    };
-    stub({ [historyRoute(STUDENT_ID)]: () => jsonResponse(200, body) });
+describe('homework grades (#313 F1)', () => {
+  it('renders them grouped, with the subject line and no Details', async () => {
+    stub({ [historyRoute(STUDENT_ID)]: () => jsonResponse(200, MIXED) });
     await open(PAGE, () => main().querySelector('article'));
-    expect(
-      [...main().querySelectorAll('h2')].map((h) => h.textContent),
-    ).toEqual(['Ciclo 2026-2027 (Aug 1, 2026 – Jul 31, 2027)', 'No period']);
-    expect(text()).not.toContain('Química');
+    const h3 = [...main().querySelectorAll('h3')].map((h) => h.textContent);
+    expect(h3).toEqual(['Física', 'Química', 'Matemáticas']);
+    const lines = [...main().querySelectorAll('h3 + p')].map(
+      (p) => p.textContent,
+    );
+    expect(lines).toEqual([
+      '2 evaluations · average 83.75 % · 1 homework · average 80.00 %',
+      '1 homework · average 95.00 %',
+      '1 evaluation · average 60.00 %',
+    ]);
+    const card = [...main().querySelectorAll('article')].find((article) =>
+      article.textContent?.includes('Problemas de cinemática'),
+    )!;
+    expect(card.querySelector('h4')!.textContent).toBe(
+      'Homework: Problemas de cinemática',
+    );
+    expect(card.textContent).toContain('Graded on Nov 5, 2026');
+    expect(card.textContent).toContain('by Carmen Ruiz');
+    expect(card.textContent).toContain('8.00 of 10.00 · 80.00 %');
+    expect(card.textContent).toContain('Due Nov 4, 2026');
+    expect(card.textContent).toContain('Late');
+    expect(card.textContent).toContain('Updated');
+    expect(card.textContent).toContain('Revisa las unidades.');
+    expect(card.querySelector('a')).toBeNull();
+    // The unknown kind is still skipped; nothing reads "null".
+    expect(text()).not.toContain('Informe desconocido');
     expect(text()).not.toContain('null');
+  });
+
+  it('lists them chronologically with their subject', async () => {
+    stub({ [historyRoute(STUDENT_ID)]: () => jsonResponse(200, MIXED) });
+    await open(`${PAGE}?view=list`, () => main().querySelector('article'));
+    const headings = [...main().querySelectorAll('article h2')].map(
+      (h) => h.textContent,
+    );
+    expect(headings).toEqual([
+      'Diagnóstico de física',
+      'Homework: Problemas de cinemática',
+      'Seguimiento de laboratorio',
+      'Homework: Tabla periódica',
+      'Diagnóstico de matemáticas',
+    ]);
+    expect(main().querySelectorAll('article')[3]!.textContent).toContain(
+      'Química · Graded on Oct 20, 2026',
+    );
+    const late = main().querySelectorAll('article')[3]!.textContent ?? '';
+    expect(late).not.toContain('Late');
+  });
+
+  it('families see them too, as plain text', async () => {
+    stub(
+      {
+        [historyRoute(CHILD_ID)]: () =>
+          jsonResponse(200, {
+            ...MIXED,
+            entries: MIXED.entries.map((item) =>
+              item.kind === 'assignment_grade' && item.id === HOMEWORK.id
+                ? homework({ title: '<script>alert(1)</script>' })
+                : item,
+            ),
+          }),
+      },
+      GUARDIAN,
+    );
+    await open('/my-history', () => main().querySelector('article'));
+    expect(text()).toContain('Homework: <script>alert(1)</script>');
+    expect(main().querySelector('script')).toBeNull();
   });
 });
 

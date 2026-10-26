@@ -32,6 +32,7 @@ import {
 } from '@/features/academics/evaluations/api';
 import { tutorAcademicLinks } from '@/features/academics/evaluations/rules';
 import { studentPlansPath } from '@/features/learning-plans/api';
+import { newAssignmentPath } from '@/features/assignments/api';
 import type { ScheduleEntry } from './api';
 import { EntryStateLabel } from './EntryContent';
 import { dateText, whoText, type LabelContext } from './labels';
@@ -54,6 +55,8 @@ import { dateText, whoText, type LabelContext } from './labels';
 // session's notes page); a family's shared notes come in the `action` slot.
 // #310 A4: next to each student's "Academic history", "Learning plans"
 // (named "Learning plans of {name}") opens their plans.
+// #313 A4: a tutor's confirmed or completed item links to "Set homework"
+// (the homework form for this class, its participants preselected).
 // #308 D1: a tutor's confirmed or completed item lists its students, each
 // with "Academic history" and, once the class has started, "Evaluate"
 // (the new-evaluation form linked to this class).
@@ -106,6 +109,10 @@ export function EntryDialog({
       ? tutorCloseoutLink(entry.item, now(), closeoutStatus)
       : null;
   const notesLink = entry?.audience === 'tutor' && tutorNotesLink(entry.item);
+  // #313 A4: one session-level "Set homework" (confirmed or completed).
+  const homeworkLink =
+    entry?.audience === 'tutor' &&
+    (entry.item.state === 'confirmed' || entry.item.state === 'completed');
   const academic =
     entry?.audience === 'tutor' ? tutorAcademicLinks(entry.item, now()) : null;
   return (
@@ -174,7 +181,7 @@ export function EntryDialog({
               </Row>
             ) : null}
           </dl>
-          {closeoutLink || attendanceLink || notesLink ? (
+          {closeoutLink || attendanceLink || notesLink || homeworkLink ? (
             <div className="flex flex-wrap items-center gap-3">
               {closeoutLink === 'fix' ? (
                 <span className="rounded-md border border-border px-2 py-0.5 text-sm font-medium">
@@ -213,6 +220,14 @@ export function EntryDialog({
                   className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
                 >
                   {t('notes.open')}
+                </Link>
+              ) : null}
+              {homeworkLink ? (
+                <Link
+                  to={newAssignmentPath(entry.item.id)}
+                  className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {t('assignments.entry.setHomework')}
                 </Link>
               ) : null}
             </div>

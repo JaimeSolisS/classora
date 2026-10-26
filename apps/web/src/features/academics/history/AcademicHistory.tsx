@@ -18,8 +18,11 @@ import {
   historyKey,
   HISTORY_KEY,
   type AcademicHistory as History,
+  type AssignmentGradeEntry,
   type HistoryEntry,
   type HistoryQuery,
+  type HistorySubjectGroup,
+  type KnownEntry,
 } from './api';
 import {
   GROUPS,
@@ -31,6 +34,7 @@ import {
   type HistoryControls,
 } from './urlState';
 import {
+  groupHasEntries,
   historyState,
   knownEntries,
   subjectsOf,
@@ -45,13 +49,17 @@ import {
 // From is a field error and nothing is read) and the "Grouped /
 // Chronological" toggle (aria-pressed). Grouped: a section per period in
 // the API's order (h2 with its dates, or "No period"), an h3 per subject
-// with "{count} evaluations · average {average} %", then its entries.
+// with "{count} evaluations · average {average} %" (and, #313 F1, "{n}
+// homework · average {average} %"), then its entries.
 // Chronological: every entry, newest first, each naming its subject. An
 // entry is an article with the template, the kind, the date, the author,
 // "Updated", the course, the total, every criterion and the feedback, all
 // plain text with the API's numbers as sent (no client arithmetic, no
 // colour scale); staff and tutors also get "Details" (the evaluation
-// page). An entry kind this view doesn't know is skipped. States: loading,
+// page). A scored homework grade (#82, #313 F1) is an article "Homework:
+// {title}" with its subject, date, author, score, due date, "Late",
+// "Updated" and feedback, and no "Details". An entry kind this view doesn't
+// know is skipped. States: loading,
 // error with "Try again", the truncated notice, empty, empty with filters,
 // consent required (403 student_consent_required) and "This academic
 // history isn't available." (404).
@@ -200,6 +208,132 @@ export function HistoryEntryCard({
   );
 }
 
+/** A scored homework grade (#313 F1): no "Details" (the id is a
+ * submission's, which has no page). */
+export function AssignmentGradeCard({
+  entry,
+  level,
+  showSubject,
+}: {
+  entry: AssignmentGradeEntry;
+  level: 2 | 3 | 4;
+  showSubject: boolean;
+}) {
+  const { t } = useTranslation();
+  const { formatLocalDate } = useFormatters();
+  const id = useId();
+  const date = formatLocalDate(entry.graded_on);
+  return (
+    <article
+      aria-labelledby={id}
+      className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3"
+    >
+      <Heading
+        level={level}
+        id={id}
+        className="text-base font-semibold break-words"
+      >
+        {t('academics.history.homework.heading', { title: entry.title })}
+      </Heading>
+      <p className="text-sm break-words">
+        {showSubject
+          ? t('academics.history.homework.metaWithSubject', {
+              subject: entry.subject.name,
+              date,
+            })
+          : t('academics.history.homework.meta', { date })}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="break-words">
+          {t('academics.history.entry.by', { name: entry.author.display_name })}
+        </span>
+        {entry.is_late ? (
+          <span className={BADGE_CLASS}>
+            {t('academics.history.homework.late')}
+          </span>
+        ) : null}
+        {entry.updated ? (
+          <span className={BADGE_CLASS}>
+            {t('academics.history.entry.updated')}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-sm font-semibold">
+        {t('academics.history.homework.score', {
+          score: entry.score,
+          max: entry.max_score,
+          percent: entry.score_percent,
+        })}
+      </p>
+      <p className="text-sm">
+        {t('academics.history.homework.due', {
+          date: formatLocalDate(entry.due_on),
+        })}
+      </p>
+      {entry.feedback ? (
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-sm font-medium">
+            {t('academics.history.entry.feedback')}
+          </p>
+          <p className="text-sm break-words whitespace-pre-line">
+            {entry.feedback}
+          </p>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/** Any entry this view knows, by its kind. */
+function EntryCard({
+  entry,
+  level,
+  showSubject,
+  showDetails,
+}: {
+  entry: KnownEntry;
+  level: 2 | 3 | 4;
+  showSubject: boolean;
+  showDetails: boolean;
+}) {
+  return entry.kind === 'assignment_grade' ? (
+    <AssignmentGradeCard
+      entry={entry}
+      level={level}
+      showSubject={showSubject}
+    />
+  ) : (
+    <HistoryEntryCard
+      entry={entry}
+      level={level}
+      showSubject={showSubject}
+      showDetails={showDetails}
+    />
+  );
+}
+
+/** "{n} evaluations · average {a} %" and/or "{n} homework · average {a} %". */
+function useSubjectSummary() {
+  const { t } = useTranslation();
+  return (subject: HistorySubjectGroup): string =>
+    [
+      subject.count > 0
+        ? t('academics.history.subjectSummary', {
+            count: subject.count,
+            average: subject.average_percent,
+          })
+        : null,
+      subject.assignment_count > 0
+        ? t('academics.history.assignmentSummary', {
+            count: subject.assignment_count,
+            average: subject.assignment_average_percent,
+          })
+        : null,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(' · ');
+}
+
 function DateField({
   label,
   value,
@@ -246,16 +380,19 @@ function Grouped({
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
   const id = useId();
-  const byId = new Map(knownEntries(history).map((entry) => [entry.id, entry]));
+  const summary = useSubjectSummary();
+  const byId = new Map<string, KnownEntry>(
+    knownEntries(history).map((entry) => [entry.id, entry]),
+  );
   const unnamed = history.group_by === 'none';
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {history.groups.map((group, index) => {
         const headingId = `${id}-g${index}`;
         const subjectLevel = unnamed ? 2 : 3;
-        // #82: a subject with homework grades only has no evaluation to
-        // show here (#313 renders those); a period without any is skipped.
-        const subjects = group.subjects.filter((subject) => subject.count > 0);
+        // A subject with neither evaluations nor homework grades, and a
+        // period without any such subject, are skipped.
+        const subjects = group.subjects.filter(groupHasEntries);
         if (subjects.length === 0) return null;
         return (
           <section
@@ -280,7 +417,7 @@ function Grouped({
             {subjects.map((subject) => {
               const entries = subject.entry_ids
                 .map((entryId) => byId.get(entryId))
-                .filter((entry): entry is HistoryEntry => entry !== undefined);
+                .filter((entry): entry is KnownEntry => entry !== undefined);
               return (
                 <div
                   key={subject.subject.id}
@@ -294,16 +431,13 @@ function Grouped({
                       {subject.subject.name}
                     </Heading>
                     <p className="text-sm text-muted-foreground">
-                      {t('academics.history.subjectSummary', {
-                        count: subject.count,
-                        average: subject.average_percent,
-                      })}
+                      {summary(subject)}
                     </p>
                   </div>
                   <ul className="flex min-w-0 flex-col gap-3">
                     {entries.map((entry) => (
                       <li key={entry.id} className="min-w-0">
-                        <HistoryEntryCard
+                        <EntryCard
                           entry={entry}
                           level={unnamed ? 3 : 4}
                           showSubject={false}
@@ -407,7 +541,7 @@ export function AcademicHistoryView({
           <ul className="flex min-w-0 flex-col gap-3">
             {entries.map((entry) => (
               <li key={entry.id} className="min-w-0">
-                <HistoryEntryCard
+                <EntryCard
                   entry={entry}
                   level={2}
                   showSubject

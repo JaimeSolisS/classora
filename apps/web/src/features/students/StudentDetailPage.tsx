@@ -31,6 +31,8 @@ import {
 import { FamilyLine } from '@/features/families/FamilyLine';
 import { StudentGuardiansSection } from '@/features/guardians/StudentGuardiansSection';
 import { useLearningPlanWriter } from '@/features/learning-plans/access';
+import { useAssignmentWorker } from '@/features/assignments/access';
+import { studentAssignmentsPath } from '@/features/assignments/api';
 import { studentPlansPath } from '@/features/learning-plans/api';
 import { useFormatters } from '@/lib/formatters';
 import {
@@ -79,6 +81,9 @@ export function StudentDetailPage() {
   // #310 A3: learning_plan.manage holders and tutor-role users open the
   // student's learning plans (the API decides what they hold).
   const showsPlans = useLearningPlanWriter();
+  // #313 A3: assignment.review holders and tutor-role users open the
+  // student's homework (the API decides what they read).
+  const showsHomework = useAssignmentWorker();
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -131,6 +136,7 @@ export function StudentDetailPage() {
       canManage={canManage}
       showsHistory={showsHistory}
       showsPlans={showsPlans}
+      showsHomework={showsHomework}
       initiallySaved={arrivedSaved}
       onSetActive={setActive}
       onReload={async () => {
@@ -179,6 +185,8 @@ interface StudentDetailViewProps {
   showsHistory?: boolean;
   /** #310 A3: link the learning plans (learning_plan.manage or tutor). */
   showsPlans?: boolean;
+  /** #313 A3: link the homework (assignment.review or tutor). */
+  showsHomework?: boolean;
   /** Arrived from a save: announce "Changes saved.". */
   initiallySaved?: boolean;
   /** Deactivates (false) or reactivates (true); rejects with the error. */
@@ -214,6 +222,7 @@ export function StudentDetailView({
   canManage,
   showsHistory = false,
   showsPlans = false,
+  showsHomework = false,
   initiallySaved = false,
   onSetActive,
   onReload,
@@ -266,7 +275,7 @@ export function StudentDetailView({
           <StudentAgeBadge minor={student.is_minor} />
         </p>
         <FamilyLine family={student.family} />
-        {showsHistory || showsPlans ? (
+        {showsHistory || showsPlans || showsHomework ? (
           <p className="flex flex-wrap gap-x-4 gap-y-2">
             {showsHistory ? (
               <Link
@@ -282,6 +291,14 @@ export function StudentDetailView({
                 className={TEXT_LINK_CLASS}
               >
                 {t('learningPlans.title')}
+              </Link>
+            ) : null}
+            {showsHomework ? (
+              <Link
+                to={studentAssignmentsPath(student.id)}
+                className={TEXT_LINK_CLASS}
+              >
+                {t('assignments.student.title')}
               </Link>
             ) : null}
           </p>
