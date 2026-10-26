@@ -119,6 +119,14 @@ describe('route tree', () => {
       'learning-plans/:planId/edit',
       'my-learning-plans',
       'my-learning-plans/:planId',
+      'assignments',
+      'assignments/new',
+      'assignments/:assignmentId',
+      'assignments/:assignmentId/edit',
+      'students/:studentId/assignments',
+      'students/:studentId/assignments/:assignmentId',
+      'my-homework',
+      'my-homework/:assignmentId',
       'account/password',
       'privacy-notice',
       '*',
@@ -270,10 +278,36 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[65]!.handle).toBeUndefined();
+    // #313 A1: the homework pages (all code-split). The working URLs let
+    // the family roles through, so the page can send them to /my-homework;
+    // the form is for tutors; the family pages serve students and
+    // guardians.
+    const homeworkRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'assignment.review' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [65, 67, 69, 70]) {
+      expect(children[index]!.handle).toEqual(homeworkRoute);
+    }
+    for (const index of [66, 68]) {
+      expect(children[index]!.handle).toEqual({ role: 'tutor' });
+    }
+    for (const index of [71, 72]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [65, 66, 67, 68, 69, 70, 71, 72]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[73]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[66]!.id).toBe('privacy-notice');
-    expect(children[66]!.handle).toBeUndefined();
+    expect(children[74]!.id).toBe('privacy-notice');
+    expect(children[74]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

@@ -75,3 +75,41 @@ describe('the learning plans nav item (#310 A2)', () => {
     ).toBe('nav.learningPlans');
   });
 });
+
+// #313 A2: "Assigned homework" for tutors and assignment.review holders,
+// "Homework" for students and guardians; Finance sees neither; a tutor who
+// is also a guardian sees both.
+describe('the homework nav items (#313 A2)', () => {
+  const REVIEWER = user(
+    ['academic_coordinator'],
+    ['student.view', 'assignment.review'],
+  );
+  const TUTOR_GUARDIAN = user(
+    ['tutor', 'guardian'],
+    ['student.view', 'tutor.view', 'guardian.view'],
+  );
+
+  it.each([
+    ['a tutor', TUTOR, true, false],
+    ['a Coordinator (assignment.review)', REVIEWER, true, false],
+    ['a guardian', GUARDIAN, false, true],
+    ['a student', STUDENT, false, true],
+    ['Finance', FINANCE, false, false],
+    ['a tutor who is also a guardian', TUTOR_GUARDIAN, true, true],
+  ] as const)(
+    '%s: assigned %s, homework %s',
+    (_who, as, assigned, homework) => {
+      const items = shown(as);
+      expect(items.includes('/assignments')).toBe(assigned);
+      expect(items.includes('/my-homework')).toBe(homework);
+    },
+  );
+
+  it('labels both items in the common catalog', () => {
+    expect(
+      NAV_ITEMS.filter((item) =>
+        ['/assignments', '/my-homework'].includes(item.to),
+      ).map((item) => item.labelKey),
+    ).toEqual(['nav.assignedHomework', 'nav.homework']);
+  });
+});

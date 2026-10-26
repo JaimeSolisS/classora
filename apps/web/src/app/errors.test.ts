@@ -201,6 +201,31 @@ const API_CODES = [
   'due_on_invalid',
   'objective_unknown',
   'milestone_unknown',
+  // #313 B6, C5, E6: the homework codes.
+  'assignment_tutor_only',
+  'assignment_creator_only',
+  'assignment_read_only',
+  'submission_student_only',
+  'session_not_assignable',
+  'submission_graded',
+  'submission_locked',
+  'submission_required',
+  'assignment_has_submissions',
+  'assignment_has_grades',
+  'recipient_has_submission',
+  'instructions_required',
+  'duplicate_recipient',
+  'recipients_required',
+  'recipient_invalid',
+  'due_in_past',
+  'due_too_far',
+  'time_has_offset',
+  'null_not_allowed',
+  'version_required',
+  'url_invalid',
+  'submission_empty',
+  'score_not_allowed',
+  'feedback_required',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -220,6 +245,8 @@ const RENAMED_CODES: Record<string, string> = {
   // #310: the learning plan limits.
   objectives_too_many: 'objectives_limit',
   milestones_too_many: 'milestones_limit',
+  // #313: the homework recipient limit.
+  recipients_too_many: 'recipients_limit',
 };
 
 afterEach(() => {

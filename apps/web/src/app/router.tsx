@@ -56,6 +56,11 @@ import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/acces
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
+  ASSIGNMENT_FORM_ACCESS,
+  ASSIGNMENT_ROUTE_ACCESS,
+  MY_HOMEWORK_ACCESS,
+} from '@/features/assignments/access';
+import {
   LEARNING_PLAN_ROUTE_ACCESS,
   MY_LEARNING_PLANS_ACCESS,
 } from '@/features/learning-plans/access';
@@ -603,6 +608,82 @@ export const routes: RouteObject[] = [
               ).MyLearningPlanPage,
             }),
             handle: MY_LEARNING_PLANS_ACCESS,
+          },
+          // #313 A1: homework. The working URLs (the list, a roster, a
+          // student's homework) serve tutors and assignment.review holders
+          // (the API's record policy decides); a student or guardian who
+          // opens one is sent to /my-homework (#308 QA D2, as #310), so
+          // their handle lets the family roles through. The form is for
+          // tutors only; the family pages serve students and guardians.
+          {
+            path: 'assignments',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/AssignmentsPage')
+              ).AssignmentsPage,
+            }),
+            handle: ASSIGNMENT_ROUTE_ACCESS,
+          },
+          {
+            path: 'assignments/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/AssignmentFormPage')
+              ).NewAssignmentPage,
+            }),
+            handle: ASSIGNMENT_FORM_ACCESS,
+          },
+          {
+            path: 'assignments/:assignmentId',
+            lazy: async () => ({
+              Component: (await import('@/features/assignments/RosterPage'))
+                .RosterPage,
+            }),
+            handle: ASSIGNMENT_ROUTE_ACCESS,
+          },
+          {
+            path: 'assignments/:assignmentId/edit',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/AssignmentFormPage')
+              ).EditAssignmentPage,
+            }),
+            handle: ASSIGNMENT_FORM_ACCESS,
+          },
+          {
+            path: 'students/:studentId/assignments',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/StudentAssignmentsPage')
+              ).StudentAssignmentsPage,
+            }),
+            handle: ASSIGNMENT_ROUTE_ACCESS,
+          },
+          {
+            path: 'students/:studentId/assignments/:assignmentId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/StudentAssignmentsPage')
+              ).StudentAssignmentPage,
+            }),
+            handle: ASSIGNMENT_ROUTE_ACCESS,
+          },
+          {
+            path: 'my-homework',
+            lazy: async () => ({
+              Component: (await import('@/features/assignments/MyHomeworkPage'))
+                .MyHomeworkPage,
+            }),
+            handle: MY_HOMEWORK_ACCESS,
+          },
+          {
+            path: 'my-homework/:assignmentId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/assignments/MyHomeworkDetailPage')
+              ).MyHomeworkDetailPage,
+            }),
+            handle: MY_HOMEWORK_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

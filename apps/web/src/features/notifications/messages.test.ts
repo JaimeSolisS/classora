@@ -497,7 +497,7 @@ describe('learning plan notifications (#81 H1)', () => {
 });
 
 // #82 I1: the homework notifications carry ids (and the deadline's date)
-// only, never a title, text, score or feedback, and have no link until #313.
+// only, never a title, text, score or feedback; #313 F2 links them.
 
 describe('homework notifications (#82 I1)', () => {
   const homework = {
@@ -559,9 +559,39 @@ describe('homework notifications (#82 I1)', () => {
     }
   });
 
-  it('only become read when activated (no page until #313)', () => {
-    for (const type of types) {
-      expect(NOTIFICATION_LINKS[type]).toBeUndefined();
-    }
+  // #313 F2: set and graded open the family's page of the item (with the
+  // student; the student's list without an assignment id; /my-homework
+  // without either); a submission opens the tutor's roster (/assignments
+  // without an id). Never the staff roster for a family type.
+  it.each(['academics.assignment_set', 'academics.assignment_graded'])(
+    '%s links to the family page of the item (#313 F2)',
+    (type) => {
+      const recipient = { userId: 'u-1' };
+      const link = NOTIFICATION_LINKS[type]!;
+      expect(link).toBeTypeOf('function');
+      expect(link(homework, recipient)).toBe(
+        `/my-homework/${homework.assignment_id}?student=${homework.student_id}`,
+      );
+      expect(link({ assignment_id: homework.assignment_id }, recipient)).toBe(
+        `/my-homework/${homework.assignment_id}`,
+      );
+      expect(link({ student_id: homework.student_id }, recipient)).toBe(
+        `/my-homework?student=${homework.student_id}`,
+      );
+      expect(link({}, recipient)).toBe('/my-homework');
+      expect(link(homework, recipient)).not.toContain('/assignments');
+    },
+  );
+
+  it('academics.assignment_submitted links to the roster (#313 F2)', () => {
+    const recipient = { userId: 'u-1' };
+    const link = NOTIFICATION_LINKS['academics.assignment_submitted']!;
+    expect(link(homework, recipient)).toBe(
+      `/assignments/${homework.assignment_id}`,
+    );
+    expect(link({ student_id: homework.student_id }, recipient)).toBe(
+      '/assignments',
+    );
+    expect(link({}, recipient)).toBe('/assignments');
   });
 });

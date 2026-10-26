@@ -251,6 +251,16 @@ unless a bullet says otherwise.
   shares it with the student and the guardians with access to their academic
   records, who are notified, follow its progress and overdue milestones, and
   are notified again when it is completed.
+- Tutors set homework from a phone for one or more of their students or for
+  a class, with instructions, a due date (and optional time) and an optional
+  maximum score. Students hand in text or a link from their own login and
+  can replace it until the deadline; late and missing work is flagged.
+  Tutors record work handed in on paper, grade it with a score and feedback
+  (a later change needs an internal reason), and scored homework joins the
+  academic history. Guardians with access to the student's academic records
+  follow each item, the work and the grade; students and guardians are
+  notified when homework is set and graded. Owners, Administrators and
+  Academic Coordinators read every assignment.
 
 **Courses**
 
@@ -317,8 +327,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** assignments and grades, progress
-reports, course completion, billing and payments, payroll, reporting and
+**Not built yet:** progress reports, course completion, billing and payments, payroll, reporting and
 analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).

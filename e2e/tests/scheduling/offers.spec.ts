@@ -77,22 +77,40 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // to 50 with a reason (the history shows 58 → 50), approves ("Aprobado ·
 // 50 min", axe) and the inbox no longer lists it as pending.
 //
-// Budgets (#27, ADR-0008; see support/auth.ts): 2 logins (demo.tutor, and
-// the reauthenticated Owner context of createApprovedTutor, #55), no
-// one-time-link redemption, 1 registration (the substitute, #55); the
-// attendance, closeout, review and resubmission steps add none (#76, #77,
-// #78, #305). It never
+// Homework (#313 G3), in the same test after the resubmission: the tutor
+// opens the demo class U1 (the demo seed's confirmed class with
+// demo.student) in My schedule, "Asignar tarea" (the class and the student
+// prefilled), max 10, due tomorrow, axe on the form and the roster; a new
+// demo.student context (desktop for the bell, then 390 px) follows the
+// set-homework notification to the item, hands in a text and an https link
+// (axe); the tutor's bell opens the roster (the link with rel noopener and
+// nofollow), grades 8 with feedback (axe with the dialog open); the student
+// reloads and sees "8.00 de 10.00 (80.00 %)" and no form, and its API gets
+// 404 for the sibling's homework (U2) and 403 on the working list.
+//
+// Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (demo.tutor; the
+// reauthenticated Owner context of createApprovedTutor, #55; and
+// demo.student, #313), no one-time-link redemption, 1 registration (the
+// substitute, #55); the attendance, closeout, review and resubmission steps
+// add none (#76, #77, #78, #305). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
-// specs use the first weekday two weeks ahead, 10:00–12:00).
+// specs use the first weekday two weeks ahead, 10:00–12:00). No other spec
+// logs in as demo.student, moves or cancels the demo class U1, or counts
+// demo.tutor's or demo.student's notifications (#313 parallel safety).
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-const TEST_TIMEOUT_MS = 180_000;
+// #313 G3 adds about 30 s (the homework steps): 180 → 210 s.
+const TEST_TIMEOUT_MS = 210_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
+/** The #195 demo student (#313 G3: the reserved login). */
+const DEMO_STUDENT = 'demo.student';
+const DEMO_STUDENT_NAME = 'Demo Student';
+const DEMO_STUDENT_PASSWORD = 'classora-demo-student';
 const LEVEL = 'Primaria';
 /** The subject of the session `run.sh` inserts for attendance (#76). */
 const ATTENDANCE_SUBJECT = 'E2E Attendance';
@@ -260,6 +278,108 @@ async function signInTutor(browser: Browser) {
   ).toBeVisible();
   await acceptPrivacyNoticeIfShown(page);
   return { context, page, consoleErrors };
+}
+
+// #313 G3: the student's expected 4xx: the signed-out /auth/me (401), and
+// the sibling's homework (404) and the working list (403) from its API.
+const STUDENT_EXPECTED =
+  /Failed to load resource: the server responded with a status of (401|403|404)/;
+
+/** demo.student's own login (the one login #313 adds), desktop size. */
+async function signInDemoStudent(browser: Browser) {
+  const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
+  const page = await context.newPage();
+  await recordCspViolations(page);
+  const consoleErrors = watchConsole(page, STUDENT_EXPECTED);
+  await page.goto('/login');
+  await page
+    .getByLabel(common.auth.login.username, { exact: true })
+    .fill(DEMO_STUDENT);
+  await page
+    .getByLabel(common.auth.login.password, { exact: true })
+    .fill(DEMO_STUDENT_PASSWORD);
+  await page.getByRole('button', { name: common.auth.login.submit }).click();
+  await expect(
+    page.getByRole('banner').getByText(signedInAs(common, DEMO_STUDENT_NAME)),
+  ).toBeVisible();
+  await acceptPrivacyNoticeIfShown(page);
+  return { context, page, consoleErrors };
+}
+
+interface DemoClass {
+  id: string;
+  startsAt: string;
+  subject: string;
+  studentId: string;
+  studentName: string;
+}
+
+/**
+ * The demo seed's (#299) confirmed classes of demo.tutor at 16:00: U1
+ * (Matemáticas, Secundaria, with demo.student) and U2 (Matemáticas,
+ * Primaria, with the sibling), read from the tutor's schedule.
+ */
+async function demoClasses(
+  page: Page,
+  tutorId: string,
+): Promise<{ u1: DemoClass; u2: DemoClass }> {
+  const from = new Date().toISOString();
+  const to = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const read = await api(
+    page,
+    `/api/v1/tutors/${tutorId}/schedule?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+  expect(read.status, JSON.stringify(read.body)).toBe(200);
+  const items = (
+    read.body as {
+      items: {
+        id: string;
+        kind: string;
+        state: string;
+        starts_at: string;
+        subject: { name: string; education_level_name: string };
+        participants: { student_id: string; display_name: string }[];
+      }[];
+    }
+  ).items;
+  const at16 = (level: string) => {
+    const found = items
+      .filter(
+        (item) =>
+          item.kind === 'individual' &&
+          item.state === 'confirmed' &&
+          item.subject.name === 'Matemáticas' &&
+          item.subject.education_level_name === level &&
+          new Intl.DateTimeFormat('en-GB', {
+            timeZone: ZONE,
+            hour: '2-digit',
+            minute: '2-digit',
+          }).format(new Date(item.starts_at)) === '16:00' &&
+          item.participants.length === 1,
+      )
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
+    expect(found, `the demo class (${level}) at 16:00`).toBeDefined();
+    return {
+      id: found!.id,
+      startsAt: found!.starts_at,
+      subject: found!.subject.name,
+      studentId: found!.participants[0]!.student_id,
+      studentName: found!.participants[0]!.display_name,
+    };
+  };
+  return { u1: at16('Secundaria'), u2: at16('Primaria') };
+}
+
+/** The day `days` days after today, center zone (YYYY-MM-DD). */
+function firstDayAhead(days: number): string {
+  const format = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE });
+  const [year, month, day] = format
+    .format(new Date())
+    .split('-')
+    .map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day + days, 12))
+    .toISOString()
+    .slice(0, 10);
 }
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -881,6 +1001,200 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       ),
     ).toBeVisible();
     expect(await axeViolations(tutor.page)).toEqual([]);
+
+    // 9c. Homework (#313 G3), still in the tutor's block: the tutor sets
+    // homework from the demo class U1 (demo.student's) in My schedule; a
+    // new demo.student context (the one login #313 adds) follows the bell
+    // to the item and hands in a text and a link; the tutor's bell opens
+    // the roster, where the link is safe, and grades 8 of 10; the student
+    // reloads and sees the grade; the student's API gets 404 for the
+    // sibling's homework (U2) and 403 on the working list.
+    const demo = await demoClasses(tutor.page, tutorId);
+    const homeworkTitle = `E2E homework ${suffix}`;
+    const answer = `E2E answer ${suffix}`;
+    const answerUrl = `https://example.com/e2e-${suffix}`;
+    const feedback = `E2E feedback ${suffix}`;
+    await tutor.page.setViewportSize({ width: 390, height: 844 });
+    await tutor.page.goto(
+      `/my-schedule?view=list&date=${localDateOf(demo.u1.startsAt)}`,
+    );
+    const week = tutor.page.getByRole('main').getByRole('region', {
+      name: common.mySchedule.regionLabel,
+    });
+    await expect(week).toHaveAttribute('aria-busy', 'false');
+    await week.locator(`[data-session-id="${demo.u1.id}"]`).click();
+    await tutor.page
+      .getByRole('dialog', { name: demo.u1.subject })
+      .getByRole('link', {
+        name: common.assignments.entry.setHomework,
+        exact: true,
+      })
+      .click();
+    await expect(tutor.page).toHaveURL(
+      new RegExp(`/assignments/new\\?sessionId=${demo.u1.id}$`),
+    );
+    const homeworkForm = tutor.page.getByRole('main');
+    await expect(
+      homeworkForm.getByRole('checkbox', { name: demo.u1.studentName }),
+    ).toBeChecked();
+    await homeworkForm
+      .getByLabel(common.assignments.form.title, { exact: true })
+      .fill(homeworkTitle);
+    await homeworkForm
+      .getByLabel(common.assignments.form.instructions, { exact: true })
+      .fill('Resuelve los ejercicios 1 a 5.');
+    await homeworkForm
+      .getByLabel(common.assignments.form.dueOn, { exact: true })
+      .fill(firstDayAhead(1));
+    await homeworkForm
+      .getByLabel(common.assignments.form.maxScore, { exact: true })
+      .fill('10');
+    expect(await axeViolations(tutor.page)).toEqual([]);
+    await homeworkForm
+      .getByRole('button', { name: common.assignments.form.save, exact: true })
+      .click();
+    await expect(tutor.page).toHaveURL(/\/assignments\/[0-9a-f-]{36}$/);
+    const assignmentId = tutor.page.url().split('/').pop()!;
+    await expect(
+      homeworkForm.getByText(
+        fill(common.assignments.notices.created_one, { count: 1 }),
+      ),
+    ).toBeVisible();
+    const rosterRow = homeworkForm
+      .getByRole('listitem')
+      .filter({ hasText: demo.u1.studentName });
+    await expect(rosterRow).toContainText(common.assignments.states.pending);
+    expect(await axeViolations(tutor.page)).toEqual([]);
+
+    // The student (+1 login, #313): the bell at desktop width (the header
+    // shows only the menu button at 390 px), then the phone.
+    const student = await signInDemoStudent(browser);
+    try {
+      const [unreadBefore, unreadAfter] =
+        common.notifications.bellUnread.split('{{unread}}');
+      const studentBell = student.page.getByRole('banner').getByRole('button', {
+        name: new RegExp(
+          `^${escape(unreadBefore!)}[1-9]\\d*${escape(unreadAfter!)}$`,
+        ),
+      });
+      await studentBell.click();
+      await student.page
+        .getByRole('dialog', { name: common.notifications.title })
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escape(textBefore(common.notifications.types.academics_assignment_set))}`,
+          ),
+        })
+        .first()
+        .click();
+      await expect(student.page).toHaveURL(
+        `/my-homework/${assignmentId}?student=${demo.u1.studentId}`,
+      );
+      await student.page.setViewportSize({ width: 390, height: 844 });
+      const studentMain = student.page.getByRole('main');
+      await expect(
+        studentMain.getByRole('heading', { level: 1, name: homeworkTitle }),
+      ).toBeVisible();
+      await expect(studentMain).toContainText(
+        common.assignments.states.pending,
+      );
+      await studentMain
+        .getByLabel(common.assignments.submit.text, { exact: true })
+        .fill(answer);
+      await studentMain
+        .getByLabel(common.assignments.submit.link, { exact: true })
+        .fill(answerUrl);
+      await studentMain
+        .getByRole('button', {
+          name: common.assignments.submit.handIn,
+          exact: true,
+        })
+        .click();
+      await expect(
+        studentMain.getByText(common.assignments.notices.handedIn),
+      ).toBeVisible();
+      await expect(studentMain).toContainText(
+        common.assignments.states.submitted,
+      );
+      expect(await axeViolations(student.page)).toEqual([]);
+
+      // The tutor: the bell (desktop width) opens the roster.
+      if (desktop) {
+        await tutor.page.setViewportSize(desktop);
+      }
+      await tutor.page.reload();
+      await bell.click();
+      await panel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escape(common.notifications.types.academics_assignment_submitted)}`,
+          ),
+        })
+        .first()
+        .click();
+      await expect(tutor.page).toHaveURL(`/assignments/${assignmentId}`);
+      await tutor.page.setViewportSize({ width: 390, height: 844 });
+      await expect(rosterRow).toContainText(
+        common.assignments.states.submitted,
+      );
+      await expect(rosterRow).toContainText(answer);
+      const handedLink = rosterRow.getByRole('link', {
+        name: new RegExp(escape(answerUrl)),
+      });
+      await expect(handedLink).toHaveAttribute('href', answerUrl);
+      const rel = (await handedLink.getAttribute('rel')) ?? '';
+      expect(rel).toContain('noopener');
+      expect(rel).toContain('nofollow');
+      await rosterRow
+        .getByRole('button', {
+          name: fill(common.assignments.actions.gradeFor, {
+            name: demo.u1.studentName,
+          }),
+        })
+        .click();
+      const gradeDialog = tutor.page.getByRole('dialog', {
+        name: fill(common.assignments.grade.title, {
+          name: demo.u1.studentName,
+        }),
+      });
+      await gradeDialog
+        .getByLabel(common.assignments.grade.score, { exact: true })
+        .fill('8');
+      await gradeDialog
+        .getByLabel(common.assignments.grade.feedbackOptional, { exact: true })
+        .fill(feedback);
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await gradeDialog
+        .getByRole('button', { name: common.assignments.grade.save })
+        .click();
+      await expect(gradeDialog).toBeHidden();
+      // The merged contract sends decimals as strings with two places.
+      const eightOfTen = fill(common.assignments.scoreWithPercent, {
+        score: '8.00',
+        max: '10.00',
+        percent: '80.00',
+      });
+      await expect(rosterRow).toContainText(common.assignments.states.graded);
+      await expect(rosterRow).toContainText(eightOfTen);
+
+      // The student reloads: graded, the feedback, no form.
+      await student.page.reload();
+      await expect(studentMain).toContainText(common.assignments.states.graded);
+      await expect(studentMain).toContainText(eightOfTen);
+      await expect(studentMain).toContainText(feedback);
+      await expect(studentMain.getByRole('textbox')).toHaveCount(0);
+      const sibling = await api(
+        student.page,
+        `/api/v1/students/${demo.u2.studentId}/assignments`,
+      );
+      expect(sibling.status).toBe(404);
+      const working = await api(student.page, '/api/v1/assignments');
+      expect(working.status).toBe(403);
+      expect(await cspViolations(student.page)).toEqual([]);
+      expect(student.consoleErrors).toEqual([]);
+    } finally {
+      await student.context.close();
+    }
 
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);

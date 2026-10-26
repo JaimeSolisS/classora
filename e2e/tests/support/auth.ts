@@ -42,13 +42,14 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * #43), tutors/qualifications.spec.ts 3 (the demo Owner's reauthenticated
  * API context for the tutor's role change, and the tutor; #44; and the
  * guardian who requests a session, #59; #60, #67 G8, #79 I8, #308 G3,
- * #310 G3 and #62b E1 reuse both contexts: 0 more), scheduling/offers.spec.ts 2
- * (`demo.tutor`, a #195 demo account, #52; and the demo Owner's
+ * #310 G3 and #62b E1 reuse both contexts: 0 more), scheduling/offers.spec.ts 3
+ * (`demo.tutor`, a #195 demo account, #52; the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
- * role change, #55; the #76 attendance, #77 closeout, #78 review and #305
- * resubmission steps reuse both contexts and the shared Owner session: 0
+ * role change, #55; and `demo.student`, #313 G3, the one login reserved
+ * for it; the #76 attendance, #77 closeout, #78 review and #305
+ * resubmission steps reuse the contexts and the shared Owner session: 0
  * more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
- * Owner session: 0) = 48 attempts,
+ * Owner session: 0) = 49 attempts,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example
  * courses/cohorts.spec.ts, #243). Keep the total well under both limits;
@@ -72,7 +73,7 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * tutors/qualifications.spec.ts does with createApprovedTutor, #44) or
  * rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 48;
+export const LOGIN_ATTEMPTS_PER_RUN = 49;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 20;

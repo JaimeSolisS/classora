@@ -1,5 +1,5 @@
 import { ApiError } from '@/app/api';
-import type { AcademicHistory as History, HistoryEntry } from './api';
+import type { AcademicHistory as History, KnownEntry } from './api';
 
 // The academic history's pure helpers (#308 E5, E7): the entries the view
 // renders (an unknown kind is skipped), the subjects of a history, and the
@@ -18,12 +18,22 @@ export interface SubjectChoice {
   name: string;
 }
 
-/** The entries this view knows how to render (E5: others are skipped;
- * #82's homework grade entries until #313 renders them). */
-export function knownEntries(history: History): HistoryEntry[] {
+/** The entries this view knows how to render (E5: others are skipped):
+ * evaluations and, since #313 F1, #82's scored homework grades. */
+export function knownEntries(history: History): KnownEntry[] {
   return history.entries.filter(
-    (entry): entry is HistoryEntry => entry.kind === 'evaluation',
+    (entry): entry is KnownEntry =>
+      entry.kind === 'evaluation' || entry.kind === 'assignment_grade',
   );
+}
+
+/** A subject group's line has something to show: evaluations or homework
+ * grades (#313 F1). */
+export function groupHasEntries(group: {
+  count: number;
+  assignment_count: number;
+}): boolean {
+  return group.count > 0 || group.assignment_count > 0;
 }
 
 /** The subjects of a history's entries, by name. */

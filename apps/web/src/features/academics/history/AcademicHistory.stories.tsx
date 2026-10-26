@@ -17,6 +17,7 @@ import {
   EMPTY,
   FAMILY_STUDENTS,
   GROUPED,
+  MIXED,
   STUDENT_ID,
   TRUNCATED,
   WORKING_ITEMS,
@@ -30,7 +31,7 @@ import type { HistoryControls } from './urlState';
 // The academic history (#308 G2): grouped (periods, "No period", several
 // subjects and authors, an updated entry, a course entry, a long unbroken
 // feedback), chronological, empty, empty with filters, truncated, consent
-// required, loading and error; the family page with its picker and the
+// required, loading and error; homework grades with evaluations (#313 F1); the family page with its picker and the
 // staff and tutor page with both tabs (query data seeded: no request).
 // The phone views have 320 and 390 px variants that assert the page never
 // scrolls sideways. Axe runs in light and dark (the storybook projects).
@@ -127,6 +128,32 @@ export const Grouped: Story = {
 };
 export const GroupedNarrow320 = phone(Grouped, 'narrow320');
 export const GroupedPhone390 = phone(Grouped, 'phone390');
+
+// #313 F1: homework grades next to evaluations (Física has both, Química
+// homework only), with the subject line's homework count and average.
+export const WithHomework: Story = {
+  args: { state: { status: 'ready', history: MIXED } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('heading', {
+        name: i18n.t('academics.history.homework.heading', {
+          title: 'Tabla periódica',
+        }),
+      }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(
+        i18n.t('academics.history.assignmentSummary', {
+          count: 1,
+          average: '95.00',
+        }),
+      ),
+    ).toBeVisible();
+  },
+};
+export const WithHomeworkNarrow320 = phone(WithHomework, 'narrow320');
+export const WithHomeworkPhone390 = phone(WithHomework, 'phone390');
 
 export const Chronological: Story = {
   args: { initial: { ...DEFAULT, view: 'list' } },

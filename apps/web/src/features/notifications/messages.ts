@@ -4,6 +4,12 @@ import { formatLocalDate, toLocalDate } from '@/lib/time';
 import { closeoutPath } from '@/features/tutor-portal/closeout/api';
 import { notesPath } from '@/features/tutor-portal/notes/api';
 import { myPlanPath, myPlansPath } from '@/features/learning-plans/api';
+import {
+  assignmentsPath,
+  myHomeworkItemPath,
+  myHomeworkPath,
+  rosterPath,
+} from '@/features/assignments/api';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -262,6 +268,27 @@ function myLearningPlan(params: NotificationItem['params']): string {
   );
 }
 
+/** The family's page of the homework item (#313 F2): with the student;
+ * the student's homework without an assignment id; /my-homework without
+ * either. */
+function myHomework(params: NotificationItem['params']): string {
+  const studentId =
+    typeof params.student_id === 'string' && params.student_id
+      ? params.student_id
+      : null;
+  const assignmentId = params.assignment_id;
+  return typeof assignmentId === 'string' && assignmentId
+    ? myHomeworkItemPath(assignmentId, studentId)
+    : myHomeworkPath(studentId);
+}
+
+/** The tutor's roster of the homework (#313 F2); /assignments without an
+ * id. */
+function homeworkRoster(params: NotificationItem['params']): string {
+  const id = params.assignment_id;
+  return typeof id === 'string' && id ? rosterPath(id) : assignmentsPath();
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -308,9 +335,12 @@ export const NOTIFICATION_LINKS: Readonly<
   // the plan (#81 H1 messages unchanged).
   'academics.learning_plan_activated': myLearningPlan,
   'academics.learning_plan_completed': myLearningPlan,
-  // #82 I1: academics.assignment_set, academics.assignment_submitted and
-  // academics.assignment_graded have no link until #313 (M5-15b) adds the
-  // homework pages.
+  // #313 F2: set and graded homework open the family's page of the item
+  // (the student's own login submits there); a submission opens the
+  // tutor's roster.
+  'academics.assignment_set': myHomework,
+  'academics.assignment_graded': myHomework,
+  'academics.assignment_submitted': homeworkRoster,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

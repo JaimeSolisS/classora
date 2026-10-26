@@ -11,6 +11,12 @@ import { ACADEMICS_KEY } from '../keys';
 
 export type AcademicHistory = components['schemas']['AcademicHistory'];
 export type HistoryEntry = components['schemas']['HistoryEntry'];
+/** A scored homework grade (#82 G1; rendered since #313 F1). */
+export type AssignmentGradeEntry =
+  components['schemas']['AssignmentGradeEntry'];
+/** An entry this view renders: an evaluation or a homework grade. */
+export type KnownEntry = HistoryEntry | AssignmentGradeEntry;
+export type HistorySubjectGroup = components['schemas']['HistorySubjectGroup'];
 export type HistoryGroup = components['schemas']['HistoryGroup'];
 export type GroupBy = components['schemas']['GroupBy'];
 export type WorkingPage = components['schemas']['CursorPage_EvaluationView_'];

@@ -49,7 +49,9 @@
     "myCourses": "My courses",
     "evaluationTemplates": "Evaluation templates",
     "academicHistory": "Academic history",
-    "learningPlans": "Learning plans"
+    "learningPlans": "Learning plans",
+    "assignedHomework": "Assigned homework",
+    "homework": "Homework"
   },
   "notFound": {
     "title": "Page not found",
@@ -3556,6 +3558,16 @@
         "meta": "{{subject}} · {{date}} · by {{name}}",
         "loadMore": "Load more",
         "loadingMore": "Loading…"
+      },
+      "assignmentSummary_one": "{{count}} homework · average {{average}} %",
+      "assignmentSummary_other": "{{count}} homework · average {{average}} %",
+      "homework": {
+        "heading": "Homework: {{title}}",
+        "meta": "Graded on {{date}}",
+        "metaWithSubject": "{{subject}} · Graded on {{date}}",
+        "late": "Late",
+        "score": "{{score}} of {{max}} · {{percent}} %",
+        "due": "Due {{date}}"
       }
     }
   },
@@ -3744,6 +3756,239 @@
       "milestonesRequired": "Each objective needs at least one milestone.",
       "milestonesLimit": "An objective can have at most 10 milestones.",
       "planMilestonesLimit": "A plan can have at most 50 milestones."
+    }
+  },
+  "assignments": {
+    "states": {
+      "pending": "Pending",
+      "missing": "Missing",
+      "submitted": "Handed in",
+      "graded": "Graded"
+    },
+    "late": "Late",
+    "newTab": "(opens in a new tab)",
+    "deadline": {
+      "dateTime": "{{date}} at {{time}}",
+      "due": "Due {{when}}",
+      "missing": "Missing: the deadline was {{when}}",
+      "today": "today",
+      "tomorrow": "tomorrow",
+      "inDays_one": "in {{count}} day",
+      "inDays_other": "in {{count}} days",
+      "late": "Handed in late"
+    },
+    "counts": {
+      "submitted_one": "{{count}} handed in",
+      "submitted_other": "{{count}} handed in",
+      "graded_one": "{{count}} graded",
+      "graded_other": "{{count}} graded",
+      "missing_one": "{{count}} missing",
+      "missing_other": "{{count}} missing",
+      "pending_one": "{{count}} pending",
+      "pending_other": "{{count}} pending",
+      "of_one": "{{parts}}, of {{count}} student",
+      "of_other": "{{parts}}, of {{count}} students",
+      "late_one": "{{count}} late",
+      "late_other": "{{count}} late"
+    },
+    "conflict": "This homework changed elsewhere.",
+    "busy": "Saving",
+    "cancel": "Cancel",
+    "reloadConfirm": {
+      "title": "Discard your changes?",
+      "description": "Reloading shows the latest version of this homework. What you typed will be lost.",
+      "confirm": "Discard and reload"
+    },
+    "form": {
+      "newTitle": "Set homework",
+      "editTitle": "Edit homework",
+      "forClass": "For the class on {{when}}",
+      "sessionInvalid": "Homework can't be linked to this class.",
+      "withoutSession": "Set homework without a class",
+      "subject": "Subject",
+      "subjectFixed": "The subject can't change.",
+      "chooseSubject": "Choose a subject",
+      "title": "Title",
+      "instructions": "Instructions",
+      "dueOn": "Due date",
+      "dueTime": "Due time (optional)",
+      "dueTimeHelp": "Leave empty for the end of the day (center time).",
+      "maxScore": "Max score (optional)",
+      "maxScoreHelp": "Leave empty to give feedback only.",
+      "maxScoreLocked": "Grades have been given; the max score can't change.",
+      "students": "Students",
+      "search": "Search students",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "truncated": "Showing the first {{max}} students. Search to narrow the list.",
+      "studentsFailed": "The students couldn't be loaded. Search again to retry.",
+      "noStudents": "No students to choose from.",
+      "alreadyHandedIn": "Already handed in",
+      "addedNotified": "Added students are notified.",
+      "saving": "Saving",
+      "save": "Save homework",
+      "cannotEdit": "This homework can't be edited."
+    },
+    "validation": {
+      "subjectRequired": "Choose a subject.",
+      "subjectUnknown": "This subject is no longer available. Choose another one.",
+      "titleRequired": "Write a title.",
+      "titleTooLong": "The title can have at most 200 characters.",
+      "instructionsRequired": "Write the instructions.",
+      "instructionsTooLong": "The instructions can have at most 4000 characters.",
+      "dueRequired": "Choose the due date.",
+      "dateInvalid": "Write a valid date.",
+      "timeInvalid": "Write a valid time.",
+      "dueInPast": "The due date can't be in the past.",
+      "dueTooFar": "The due date can be at most a year from today.",
+      "dueTimePassed": "That time has already passed today.",
+      "maxScoreInvalid": "Write a number such as 10 or 7.5.",
+      "decimalComma": "Use a point for decimals, as in 7.5.",
+      "maxScorePrecision": "Use at most two decimals.",
+      "maxScoreRange": "The max score is 0.5 to 1000.",
+      "recipientsRequired": "Choose at least one student.",
+      "recipientsLimit": "Choose at most 100 students.",
+      "recipientInvalidSummary": "Some students can't receive this homework. Uncheck them to continue.",
+      "recipientInvalid": "You no longer teach this student.",
+      "scoreRequired": "Give a score.",
+      "scoreRange": "The score is 0 to the max score.",
+      "scorePrecision": "Use at most two decimals.",
+      "scoreInvalid": "Write a number such as 8 or 7.5.",
+      "feedbackRequired": "Write feedback.",
+      "feedbackTooLong": "The feedback can have at most 4000 characters.",
+      "reasonRequired": "Say why the grade changes.",
+      "reasonTooLong": "The reason can have at most 500 characters.",
+      "textTooLong": "The text can have at most 10000 characters.",
+      "urlInvalid": "Use a full link starting with http:// or https://",
+      "workRequired": "Write your answer or add a link."
+    },
+    "listTitle": "Assigned homework",
+    "rosterTitle": "Homework",
+    "setHomework": "Set homework",
+    "empty": "No homework yet.",
+    "emptyFiltered": "No homework matches these filters.",
+    "clearFilters": "Clear filters",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "backToList": "Back to assigned homework",
+    "backToRoster": "Back to the homework",
+    "backToStudent": "Back to student",
+    "filters": {
+      "due": "Due",
+      "dues": {
+        "upcoming": "Upcoming",
+        "past": "Past",
+        "all": "All"
+      },
+      "subject": "Subject",
+      "allSubjects": "All subjects",
+      "selectedSubject": "Selected subject"
+    },
+    "maxScore": "Max score {{max}}",
+    "feedbackOnly": "Feedback only",
+    "forClassOn": "For the class on {{date}}",
+    "setBy": "Set by {{name}}",
+    "handedInOn": "Handed in on {{when}}",
+    "recordedByTutor": "Recorded by the tutor",
+    "score": "{{score}} of {{max}}",
+    "scoreWithPercent": "{{score}} of {{max}} ({{percent}} %)",
+    "gradedOn": "Graded on {{date}}",
+    "updated": "Updated",
+    "roster": {
+      "heading": "Students",
+      "reason": "Last change reason (internal): {{reason}}"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "record": "Record handed-in work",
+      "recordFor": "Record handed-in work: {{name}}",
+      "grade": "Grade",
+      "gradeFor": "Grade {{name}}",
+      "regrade": "Change grade",
+      "regradeFor": "Change grade: {{name}}"
+    },
+    "delete": {
+      "title": "Delete this homework?",
+      "description": "Students and guardians will no longer see it.",
+      "confirm": "Delete homework"
+    },
+    "grade": {
+      "title": "Grade {{name}}",
+      "visible": "{{name}} and guardians with access see the grade right away.",
+      "score": "Score",
+      "of": "of {{max}}",
+      "feedback": "Feedback",
+      "feedbackOptional": "Feedback (optional)",
+      "reason": "Reason for the change",
+      "reasonHelp": "The reason stays internal: the student and guardians only see 'Updated'.",
+      "save": "Save grade"
+    },
+    "record": {
+      "title": "Record handed-in work: {{name}}",
+      "help": "Use this for work handed in on paper or in class.",
+      "note": "Note (optional)",
+      "link": "Link (optional)",
+      "save": "Record work"
+    },
+    "notices": {
+      "created_one": "Homework set. {{count}} student was notified.",
+      "created_other": "Homework set. {{count}} students were notified.",
+      "saved": "Homework saved.",
+      "deleted": "Homework deleted.",
+      "graded": "Grade saved.",
+      "recorded": "Handed-in work recorded.",
+      "handedIn": "Work handed in.",
+      "replaced": "Work replaced."
+    },
+    "summary": {
+      "label": "Show homework by state",
+      "pending": "Pending {{n}}",
+      "missing": "Missing {{n}}",
+      "submitted": "Handed in {{n}}",
+      "graded": "Graded {{n}}",
+      "all": "All"
+    },
+    "student": {
+      "title": "Homework",
+      "titleFor": "Homework: {{name}}",
+      "itemTitle": "Homework",
+      "forStudent": "Homework of {{name}}",
+      "empty": "No homework yet.",
+      "emptyStaff": "This student has no homework yet.",
+      "emptyFiltered": "No homework matches this filter.",
+      "showAll": "Show all",
+      "listMissing": "This homework list isn't available.",
+      "itemMissing": "This homework is no longer available.",
+      "toList": "See all homework",
+      "back": "Back to homework",
+      "yourWork": "Your work",
+      "childWork": "{{name}}'s work",
+      "submission": "Submission",
+      "toTutor": "Handed in to the tutor",
+      "closed": "Handing in closed on {{deadline}}.",
+      "grade": "Grade",
+      "openRoster": "Open roster"
+    },
+    "family": {
+      "mine": "My homework",
+      "whose": "Whose homework"
+    },
+    "submit": {
+      "text": "Text (optional)",
+      "link": "Link (optional)",
+      "handIn": "Hand in",
+      "replace": "Replace my work",
+      "help": "You can replace your work until {{deadline}}.",
+      "lateHelp": "The deadline has passed. Your work will be marked late.",
+      "locked": "The deadline has passed; your work can no longer be replaced.",
+      "graded": "This work has been graded.",
+      "conflict": "This changed elsewhere."
+    },
+    "entry": {
+      "setHomework": "Set homework"
     }
   }
 }
