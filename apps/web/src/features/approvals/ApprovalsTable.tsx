@@ -29,6 +29,7 @@ import {
   sessionCloseoutReviewLine,
   reassignmentSubject,
   itemReviewLink,
+  progressReportReviewLink,
   typeLabel,
 } from './summary';
 
@@ -70,7 +71,9 @@ export function ApprovalsTable({
     const { items, total, limit, offset } = state.page;
     const actionable = items.some(
       (item) =>
-        item.allowed_actions.length > 0 || itemReviewLink(item) !== null,
+        item.allowed_actions.length > 0 ||
+        itemReviewLink(item) !== null ||
+        progressReportReviewLink(item) !== null,
     );
     content = (
       <>
@@ -252,6 +255,27 @@ function ActionButtons({
     (instant) => formatInstant(instant, 'dateTime'),
     (localDate) => formatLocalDate(localDate),
   );
+  const report = progressReportReviewLink(item);
+  if (report) {
+    // #315 A5: progress reports are decided on their review page.
+    return (
+      <Link
+        to={report.to}
+        aria-label={
+          report.queue
+            ? undefined
+            : t('approvals.progressReport.reviewFor', {
+                student: report.student,
+              })
+        }
+        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        {report.queue
+          ? t('approvals.progressReport.openQueue')
+          : t('approvals.progressReport.review')}
+      </Link>
+    );
+  }
   const review = itemReviewLink(item);
   if (review) {
     // #60 H2, #62 G2: session and change requests are decided on their

@@ -127,6 +127,13 @@ describe('route tree', () => {
       'students/:studentId/assignments/:assignmentId',
       'my-homework',
       'my-homework/:assignmentId',
+      'progress-reports',
+      'progress-reports/:reportId',
+      'students/:studentId/progress-reports',
+      'students/:studentId/progress-reports/new',
+      'students/:studentId/progress-reports/:reportId',
+      'my-progress-reports',
+      'my-progress-reports/:reportId',
       'account/password',
       'privacy-notice',
       '*',
@@ -305,10 +312,34 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[73]!.handle).toBeUndefined();
+    // #315 A1: the progress report pages (all code-split). The working
+    // URLs let the family roles through, so the page can send them to
+    // /my-progress-reports; the start step is for tutors; the family pages
+    // serve students and guardians.
+    const reportRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'progress_report.review' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [73, 74, 75, 77]) {
+      expect(children[index]!.handle).toEqual(reportRoute);
+    }
+    expect(children[76]!.handle).toEqual({ role: 'tutor' });
+    for (const index of [78, 79]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [73, 74, 75, 76, 77, 78, 79]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[80]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[74]!.id).toBe('privacy-notice');
-    expect(children[74]!.handle).toBeUndefined();
+    expect(children[81]!.id).toBe('privacy-notice');
+    expect(children[81]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

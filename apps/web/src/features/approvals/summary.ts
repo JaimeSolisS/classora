@@ -307,10 +307,13 @@ export function itemReviewLink(item: ApprovalRequestItem): string | null {
 const REVIEW_ROUTE_CODES: Readonly<Record<string, string>> = {
   session_request_review_route_required: '/schedule/requests/',
   change_request_review_route_required: '/schedule/change-requests/',
+  // #315 A5: a stale inbox decision on a progress report.
+  progress_report_review_route_required: '/progress-reports/',
 };
 
 /** The review page named by `409 session_request_review_route_required`
- * (#60) or `change_request_review_route_required` (#62). */
+ * (#60), `change_request_review_route_required` (#62) or
+ * `progress_report_review_route_required` (#315 A5). */
 export function reviewLinkOf(error: unknown): string | null {
   if (!(error instanceof ApiError)) {
     return null;
@@ -498,7 +501,7 @@ function isProgressReport(subject: unknown): subject is ProgressReportSubject {
 }
 
 /** The progress report subject of `item` (#83 H2), or null. Decided on the
- * report's review page (#83b adds the "Review" link): the inbox lists no
+ * report's review page (#315 A5: the "Review" link): the inbox lists no
  * decisions for it. */
 export function progressReportSubject(
   item: ApprovalRequestItem,
@@ -507,6 +510,32 @@ export function progressReportSubject(
     isProgressReport(item.subject)
     ? item.subject
     : null;
+}
+
+/**
+ * #315 A5: the review page of a pending progress report,
+ * `/progress-reports/{report_id}` (#83 AM1), or the review queue when the
+ * summary has no report id (the AM1 fallback). Null for another type or a
+ * decided item.
+ */
+export function progressReportReviewLink(
+  item: ApprovalRequestItem,
+): { to: string; queue: boolean; student: string } | null {
+  const subject = progressReportSubject(item);
+  if (!subject || item.status !== 'pending') {
+    return null;
+  }
+  return typeof subject.report_id === 'string' && subject.report_id
+    ? {
+        to: `/progress-reports/${encodeURIComponent(subject.report_id)}`,
+        queue: false,
+        student: subject.student.display_name,
+      }
+    : {
+        to: '/progress-reports?status=submitted',
+        queue: true,
+        student: subject.student.display_name,
+      };
 }
 
 /** Formats an instant for a summary (the center zone, from useFormatters). */

@@ -51,7 +51,9 @@
     "academicHistory": "Academic history",
     "learningPlans": "Learning plans",
     "assignedHomework": "Assigned homework",
-    "homework": "Homework"
+    "homework": "Homework",
+    "progressReports": "Progress reports",
+    "tutorReports": "Tutor reports"
   },
   "notFound": {
     "title": "Page not found",
@@ -421,6 +423,11 @@
       },
       "approvedMinutes": "Approved now: {{minutes}} min",
       "onBehalf": "On behalf"
+    },
+    "progressReport": {
+      "review": "Review",
+      "reviewFor": "Review the progress report for {{student}}",
+      "openQueue": "Open the review queue"
     }
   },
   "users": {
@@ -3995,6 +4002,243 @@
     },
     "entry": {
       "setHomework": "Set homework"
+    }
+  },
+  "progressReports": {
+    "title": "Progress reports",
+    "titleFor": "Progress reports: {{name}}",
+    "reportTitle": "Progress report",
+    "new": "New report",
+    "backToList": "Back to progress reports",
+    "backToStudent": "Back to student",
+    "backToStudentReports": "Back to the student's progress reports",
+    "openReviewPage": "Open review page",
+    "allSubjects": "All subjects",
+    "by": "By {{name}}",
+    "writtenBy": "Written by {{name}}",
+    "approvedOn": "Approved on {{date}}",
+    "noNarrative": "Nothing written yet.",
+    "cancel": "Cancel",
+    "kinds": {
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "on_demand": "On demand"
+    },
+    "status": {
+      "draft": "Draft",
+      "submitted": "In review",
+      "changesRequested": "Changes requested",
+      "approved": "Approved",
+      "retracted": "Retracted"
+    },
+    "period": {
+      "line": "{{kind}} · {{period}}",
+      "week": "Week of {{start}} – {{end}}",
+      "range": "{{start}} – {{end}}"
+    },
+    "fields": {
+      "summary": "Summary",
+      "strengths": "Strengths",
+      "areas": "Areas for improvement",
+      "nextSteps": "Next steps"
+    },
+    "entry": {
+      "link": "Progress reports",
+      "linkOf": "Progress reports of {{name}}"
+    },
+    "actions": {
+      "save": "Save",
+      "submit": "Submit for review",
+      "resubmit": "Resubmit",
+      "delete": "Delete report",
+      "approve": "Approve",
+      "requestChanges": "Request changes",
+      "retract": "Retract",
+      "refreshFacts": "Refresh facts"
+    },
+    "busy": {
+      "saving": "Saving",
+      "submitting": "Submitting",
+      "deleting": "Deleting",
+      "approving": "Approving",
+      "sending": "Sending",
+      "retracting": "Retracting",
+      "refreshing": "Refreshing",
+      "starting": "Starting"
+    },
+    "notices": {
+      "started": "Report started. Write it, then submit it for review.",
+      "saved": "Draft saved.",
+      "submitted": "Report submitted for review.",
+      "deleted": "Report deleted.",
+      "factsUpdated": "Facts updated.",
+      "approved": "Report approved.",
+      "changesRequested": "Changes requested.",
+      "retracted": "Report retracted."
+    },
+    "conflict": {
+      "edit": "This report changed elsewhere.",
+      "review": "This report changed since you opened it. Reload to review the latest version."
+    },
+    "start": {
+      "title": "New progress report",
+      "cannotCreate": "You can start a report only for a student you currently teach.",
+      "kind": "Report type",
+      "weekDay": "Any day in the week",
+      "thisWeek": "This week",
+      "lastWeek": "Last week",
+      "month": "Month",
+      "from": "From",
+      "to": "To",
+      "subject": "Subject",
+      "immutable": "The period and subject can't change after you start the report.",
+      "submit": "Start report",
+      "exists": "A report for this period already exists.",
+      "openExisting": "Open it",
+      "errors": {
+        "dateRequired": "Choose a date.",
+        "weekNotStarted": "The week hasn't started yet.",
+        "monthRequired": "Choose a month.",
+        "fromFuture": "The period can't start after today.",
+        "toBeforeFrom": "Choose an end on or after the start.",
+        "tooLong": "Choose a period of at most 366 days."
+      }
+    },
+    "editor": {
+      "summaryHelp": "Required to submit.",
+      "summaryRequired": "Write a summary before you submit.",
+      "tooLong": "This text is too long.",
+      "changesRequested": "Changes requested by {{by}} on {{date}}"
+    },
+    "submit": {
+      "title": "Submit for review?",
+      "titleResubmit": "Resubmit for review?",
+      "description": "A reviewer must approve it before {{student}} and guardians with access see it. The facts are compiled again and frozen when you submit."
+    },
+    "delete": {
+      "title": "Delete this report?",
+      "description": "This can't be undone.",
+      "withdrawn": "The review request is withdrawn.",
+      "confirm": "Delete"
+    },
+    "discard": {
+      "title": "Discard your changes?",
+      "description": "Reloading shows the latest version; what you typed is lost.",
+      "confirm": "Discard and reload",
+      "keep": "Keep editing"
+    },
+    "approve": {
+      "title": "Approve this report?",
+      "description": "{{student}} and guardians with access will see it right away, exactly as shown here, including the facts."
+    },
+    "changes": {
+      "title": "Request changes",
+      "description": "The reason goes to {{author}} only. Families never see it."
+    },
+    "retract": {
+      "title": "Retract this report?",
+      "description": "Retracting is final. {{author}} is notified with your reason.",
+      "warning": "{{student}} and guardians will no longer see this report."
+    },
+    "review": {
+      "reason": "Reason",
+      "selfReview": "You wrote this report, so another reviewer must review it.",
+      "authorNotCurrent": "{{author}} no longer teaches {{student}}. Approve or retract the report instead."
+    },
+    "read": {
+      "waiting": "Waiting for review since {{at}}.",
+      "approved": "Approved by {{by}} on {{date}}. {{student}} and guardians with access can read it.",
+      "asFamily": "See it as the family sees it",
+      "retracted": "Retracted by {{by}} on {{date}}. It is no longer visible to the family. You can start a new report.",
+      "toStudentReports": "See the student's progress reports",
+      "formerAuthor": "You no longer teach {{student}}. This report is read-only.",
+      "reason": "Reason: {{reason}}"
+    },
+    "history": {
+      "title": "History",
+      "submitted": "Submitted {{at}}",
+      "changes": "Changes requested by {{by}} on {{at}}: {{reason}}",
+      "approved": "Approved by {{by}} on {{at}}",
+      "retracted": "Retracted by {{by}} on {{at}}: {{reason}}"
+    },
+    "facts": {
+      "title": "Facts",
+      "preview": "Facts preview",
+      "previewNote": "Compiled now from attendance, evaluations, homework and learning plans. They are compiled again and frozen when you submit.",
+      "previewMissing": "The preview isn't available right now.",
+      "asSubmitted": "Facts as submitted on {{at}}",
+      "asApproved": "Facts as approved",
+      "unsupported": "These facts can't be shown in this version of the app.",
+      "periodLine": "Period {{start}} – {{end}} · {{subject}}",
+      "average": "average {{average}} %",
+      "noAverage": "No average",
+      "attendance": {
+        "title": "Attendance",
+        "none": "No classes in this period.",
+        "line_one": "{{count}} class: {{present}} present · {{late}} late · {{absent}} absent · {{notRecorded}} not recorded",
+        "line_other": "{{count}} classes: {{present}} present · {{late}} late · {{absent}} absent · {{notRecorded}} not recorded"
+      },
+      "evaluations": {
+        "title": "Evaluations",
+        "none": "No evaluations in this period.",
+        "entry": "{{date}} · {{subject}} · {{kind}} · {{template}} · {{percent}} %",
+        "truncated": "Showing the {{max}} most recent evaluations.",
+        "countAverage_one": "{{count}} evaluation · average {{average}} %",
+        "countAverage_other": "{{count}} evaluations · average {{average}} %",
+        "countNoAverage_one": "{{count}} evaluation · No average",
+        "countNoAverage_other": "{{count}} evaluations · No average",
+        "subjectAverage_one": "{{subject}}: {{count}} evaluation · average {{average}} %",
+        "subjectAverage_other": "{{subject}}: {{count}} evaluations · average {{average}} %",
+        "subjectNoAverage_one": "{{subject}}: {{count}} evaluation · No average",
+        "subjectNoAverage_other": "{{subject}}: {{count}} evaluations · No average"
+      },
+      "homework": {
+        "title": "Homework",
+        "none": "No homework due in this period.",
+        "line_one": "{{count}} assignment: {{pending}} pending · {{missing}} missing · {{submitted}} handed in · {{graded}} graded",
+        "line_other": "{{count}} assignments: {{pending}} pending · {{missing}} missing · {{submitted}} handed in · {{graded}} graded",
+        "late_one": "{{count}} late",
+        "late_other": "{{count}} late"
+      },
+      "plans": {
+        "title": "Learning plans",
+        "none": "No learning plans in this period.",
+        "subjectStatus": "{{subject}} · {{status}}",
+        "progress": "{{percent}} % complete",
+        "counts": "{{objectivesDone}} of {{objectivesTotal}} objectives · {{milestonesDone}} of {{milestonesTotal}} milestones",
+        "truncated": "Showing {{max}} plans."
+      }
+    },
+    "list": {
+      "status": "Status",
+      "allStatuses": "All",
+      "kind": "Report type",
+      "allKinds": "All types",
+      "onlyMine": "Only mine",
+      "waitingSince": "Waiting since {{at}}",
+      "approvedAt": "Approved {{at}}",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more",
+      "emptyQueue": "No reports are waiting for review.",
+      "emptyTutor": "You haven't written any progress reports yet.",
+      "openStudents": "Open Students",
+      "emptyFiltered": "No reports match these filters.",
+      "clearFilters": "Clear filters"
+    },
+    "student": {
+      "working": "In progress and in review",
+      "approved": "Approved",
+      "noApproved": "No approved reports yet."
+    },
+    "family": {
+      "title": "Tutor reports",
+      "whose": "Whose reports",
+      "mine": "My reports",
+      "empty": "No reports have been shared yet.",
+      "listMissing": "These reports aren't available.",
+      "reportMissing": "This report is no longer available.",
+      "toList": "Back to tutor reports",
+      "back": "Back to reports"
     }
   }
 }

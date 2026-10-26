@@ -9,6 +9,10 @@ import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import { MY_LEARNING_PLANS_ACCESS } from '@/features/learning-plans/access';
 import {
+  MY_PROGRESS_REPORTS_ACCESS,
+  PROGRESS_REPORT_WORK_ACCESS,
+} from '@/features/progress-reports/access';
+import {
   ASSIGNMENT_WORK_ACCESS,
   MY_HOMEWORK_ACCESS,
 } from '@/features/assignments/access';
@@ -107,6 +111,21 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // Homework (#313 A2): students and guardians (the API decides whose
   // homework each may read); students hand in work there.
   { to: '/my-homework', labelKey: 'nav.homework', ...MY_HOMEWORK_ACCESS },
+  // Progress reports (#315 A2): tutors (the reports they write) and
+  // progress_report.review holders (the review queue; the API decides).
+  {
+    to: '/progress-reports',
+    labelKey: 'nav.progressReports',
+    ...PROGRESS_REPORT_WORK_ACCESS,
+  },
+  // Tutor reports (#315 A2): students and guardians read the approved
+  // reports (a different label, so a tutor who is also a guardian can tell
+  // the two items apart).
+  {
+    to: '/my-progress-reports',
+    labelKey: 'nav.tutorReports',
+    ...MY_PROGRESS_REPORTS_ACCESS,
+  },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
   // Session requests (#59 F1): guardians and students (the API decides

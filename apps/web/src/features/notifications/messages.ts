@@ -5,6 +5,12 @@ import { closeoutPath } from '@/features/tutor-portal/closeout/api';
 import { notesPath } from '@/features/tutor-portal/notes/api';
 import { myPlanPath, myPlansPath } from '@/features/learning-plans/api';
 import {
+  myReportPath,
+  myReportsPath,
+  reportPath,
+  reportsPath,
+} from '@/features/progress-reports/api';
+import {
   assignmentsPath,
   myHomeworkItemPath,
   myHomeworkPath,
@@ -295,6 +301,32 @@ function homeworkRoster(params: NotificationItem['params']): string {
   return typeof id === 'string' && id ? rosterPath(id) : assignmentsPath();
 }
 
+/** The author's report page (#315 G1); the working list without an id. */
+function authorReport(params: NotificationItem['params']): string {
+  const id = params.report_id;
+  return typeof id === 'string' && id ? reportPath(id) : reportsPath();
+}
+
+/**
+ * An approved report (#315 G1, #83 AM3): `audience: "author"` opens the
+ * author's report page; the family (and any other value) the family page of
+ * the report with its student, the student's reports without a report id,
+ * /my-progress-reports without either.
+ */
+function approvedReport(params: NotificationItem['params']): string {
+  if (params.audience === 'author') {
+    return authorReport(params);
+  }
+  const studentId =
+    typeof params.student_id === 'string' && params.student_id
+      ? params.student_id
+      : null;
+  const reportId = params.report_id;
+  return typeof reportId === 'string' && reportId
+    ? myReportPath(reportId, studentId)
+    : myReportsPath(studentId);
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -347,9 +379,11 @@ export const NOTIFICATION_LINKS: Readonly<
   'academics.assignment_set': myHomework,
   'academics.assignment_graded': myHomework,
   'academics.assignment_submitted': homeworkRoster,
-  // #83 H1: academics.progress_report_approved / _changes_requested /
-  // _retracted have their messages but no link until #315 (M5-16b) adds
-  // the report pages (the approved type's `audience` param picks the page).
+  // #315 G1: an approved report opens the page of its audience (#83 AM3);
+  // a request for changes or a retraction opens the author's report page.
+  'academics.progress_report_approved': approvedReport,
+  'academics.progress_report_changes_requested': authorReport,
+  'academics.progress_report_retracted': authorReport,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

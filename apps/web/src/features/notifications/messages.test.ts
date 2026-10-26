@@ -597,8 +597,8 @@ describe('homework notifications (#82 I1)', () => {
 });
 
 // #83 H1: the progress report notifications carry ids, the kind, the period
-// and the audience only, never a narrative, a number or a reason; no link
-// until #315 (M5-16b).
+// and the audience only, never a narrative, a number or a reason; #315 G1
+// links them.
 
 describe('progress report notifications (#83 H1)', () => {
   const report = {
@@ -662,7 +662,55 @@ describe('progress report notifications (#83 H1)', () => {
     }
   });
 
-  it.each(types)('%s has no link until #315', (type) => {
-    expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+  // #315 G1: the approved type opens the family's page of the report
+  // (audience "family") or the author's report page (audience "author");
+  // the other two open the author's report page. Missing ids fall back to
+  // the lists.
+  const recipient = { userId: 'u-1' };
+
+  it('academics.progress_report_approved links by audience (#315 G1)', () => {
+    const link = NOTIFICATION_LINKS['academics.progress_report_approved']!;
+    expect(link).toBeTypeOf('function');
+    expect(link(report, recipient)).toBe(
+      `/my-progress-reports/${report.report_id}?student=${report.student_id}`,
+    );
+    expect(link({ ...report, audience: 'author' }, recipient)).toBe(
+      `/progress-reports/${report.report_id}`,
+    );
+    // Family fallbacks: the student's reports, then the list.
+    expect(
+      link({ student_id: report.student_id, audience: 'family' }, recipient),
+    ).toBe(`/my-progress-reports?student=${report.student_id}`);
+    expect(link({ audience: 'family' }, recipient)).toBe(
+      '/my-progress-reports',
+    );
+    expect(
+      link({ report_id: report.report_id, audience: 'family' }, recipient),
+    ).toBe(`/my-progress-reports/${report.report_id}`);
+    // The author's fallback: the working list.
+    expect(link({ audience: 'author' }, recipient)).toBe('/progress-reports');
+    // An unknown or missing audience is treated as the family's (the page
+    // a family member can open; an author lands on the redirect-safe list).
+    expect(link({ ...report, audience: null }, recipient)).toBe(
+      `/my-progress-reports/${report.report_id}?student=${report.student_id}`,
+    );
+  });
+
+  it.each([
+    'academics.progress_report_changes_requested',
+    'academics.progress_report_retracted',
+  ])("%s links to the author's report page (#315 G1)", (type) => {
+    const link = NOTIFICATION_LINKS[type]!;
+    expect(link).toBeTypeOf('function');
+    expect(
+      link(
+        { student_id: report.student_id, report_id: report.report_id },
+        recipient,
+      ),
+    ).toBe(`/progress-reports/${report.report_id}`);
+    expect(link({ student_id: report.student_id }, recipient)).toBe(
+      '/progress-reports',
+    );
+    expect(link({ report_id: '' }, recipient)).toBe('/progress-reports');
   });
 });

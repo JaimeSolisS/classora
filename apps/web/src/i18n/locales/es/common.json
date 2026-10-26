@@ -51,7 +51,9 @@
     "academicHistory": "Historial académico",
     "learningPlans": "Planes de aprendizaje",
     "assignedHomework": "Tareas asignadas",
-    "homework": "Tareas"
+    "homework": "Tareas",
+    "progressReports": "Informes de progreso",
+    "tutorReports": "Informes del tutor"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -426,6 +428,11 @@
       },
       "approvedMinutes": "Aprobado vigente: {{minutes}} min",
       "onBehalf": "En nombre del tutor"
+    },
+    "progressReport": {
+      "review": "Revisar",
+      "reviewFor": "Revisar el informe de progreso de {{student}}",
+      "openQueue": "Abrir la cola de revisión"
     }
   },
   "users": {
@@ -4069,6 +4076,250 @@
     },
     "entry": {
       "setHomework": "Asignar tarea"
+    }
+  },
+  "progressReports": {
+    "title": "Informes de progreso",
+    "titleFor": "Informes de progreso: {{name}}",
+    "reportTitle": "Informe de progreso",
+    "new": "Nuevo informe",
+    "backToList": "Volver a informes de progreso",
+    "backToStudent": "Volver al estudiante",
+    "backToStudentReports": "Volver a los informes de progreso del estudiante",
+    "openReviewPage": "Abrir la página de revisión",
+    "allSubjects": "Todas las materias",
+    "by": "Por {{name}}",
+    "writtenBy": "Escrito por {{name}}",
+    "approvedOn": "Aprobado el {{date}}",
+    "noNarrative": "Todavía no hay nada escrito.",
+    "cancel": "Cancelar",
+    "kinds": {
+      "weekly": "Semanal",
+      "monthly": "Mensual",
+      "on_demand": "A solicitud"
+    },
+    "status": {
+      "draft": "Borrador",
+      "submitted": "En revisión",
+      "changesRequested": "Cambios solicitados",
+      "approved": "Aprobado",
+      "retracted": "Retirado"
+    },
+    "period": {
+      "line": "{{kind}} · {{period}}",
+      "week": "Semana del {{start}} al {{end}}",
+      "range": "{{start}} – {{end}}"
+    },
+    "fields": {
+      "summary": "Resumen",
+      "strengths": "Fortalezas",
+      "areas": "Áreas de mejora",
+      "nextSteps": "Próximos pasos"
+    },
+    "entry": {
+      "link": "Informes de progreso",
+      "linkOf": "Informes de progreso de {{name}}"
+    },
+    "actions": {
+      "save": "Guardar",
+      "submit": "Enviar a revisión",
+      "resubmit": "Reenviar",
+      "delete": "Eliminar informe",
+      "approve": "Aprobar",
+      "requestChanges": "Solicitar cambios",
+      "retract": "Retirar",
+      "refreshFacts": "Actualizar datos"
+    },
+    "busy": {
+      "saving": "Guardando",
+      "submitting": "Enviando",
+      "deleting": "Eliminando",
+      "approving": "Aprobando",
+      "sending": "Enviando",
+      "retracting": "Retirando",
+      "refreshing": "Actualizando",
+      "starting": "Iniciando"
+    },
+    "notices": {
+      "started": "Informe iniciado. Escríbelo y envíalo a revisión.",
+      "saved": "Borrador guardado.",
+      "submitted": "Informe enviado a revisión.",
+      "deleted": "Informe eliminado.",
+      "factsUpdated": "Datos actualizados.",
+      "approved": "Informe aprobado.",
+      "changesRequested": "Cambios solicitados.",
+      "retracted": "Informe retirado."
+    },
+    "conflict": {
+      "edit": "Este informe cambió en otro lugar.",
+      "review": "Este informe cambió desde que lo abriste. Recarga para revisar la versión más reciente."
+    },
+    "start": {
+      "title": "Nuevo informe de progreso",
+      "cannotCreate": "Solo puedes iniciar un informe de un estudiante al que das clase actualmente.",
+      "kind": "Tipo de informe",
+      "weekDay": "Cualquier día de la semana",
+      "thisWeek": "Esta semana",
+      "lastWeek": "La semana pasada",
+      "month": "Mes",
+      "from": "Desde",
+      "to": "Hasta",
+      "subject": "Materia",
+      "immutable": "El periodo y la materia no pueden cambiar después de iniciar el informe.",
+      "submit": "Iniciar informe",
+      "exists": "Ya existe un informe para este periodo.",
+      "openExisting": "Abrirlo",
+      "errors": {
+        "dateRequired": "Elige una fecha.",
+        "weekNotStarted": "La semana todavía no ha empezado.",
+        "monthRequired": "Elige un mes.",
+        "fromFuture": "El periodo no puede empezar después de hoy.",
+        "toBeforeFrom": "Elige un fin igual o posterior al inicio.",
+        "tooLong": "Elige un periodo de 366 días como máximo."
+      }
+    },
+    "editor": {
+      "summaryHelp": "Obligatorio para enviar.",
+      "summaryRequired": "Escribe un resumen antes de enviar.",
+      "tooLong": "Este texto es demasiado largo.",
+      "changesRequested": "{{by}} solicitó cambios el {{date}}"
+    },
+    "submit": {
+      "title": "¿Enviar a revisión?",
+      "titleResubmit": "¿Reenviar a revisión?",
+      "description": "Un revisor debe aprobarlo antes de que {{student}} y los tutores legales con acceso lo vean. Los datos se vuelven a compilar y se congelan al enviarlo."
+    },
+    "delete": {
+      "title": "¿Eliminar este informe?",
+      "description": "No se puede deshacer.",
+      "withdrawn": "La solicitud de revisión se retira.",
+      "confirm": "Eliminar"
+    },
+    "discard": {
+      "title": "¿Descartar tus cambios?",
+      "description": "Al recargar se muestra la versión más reciente; lo que escribiste se pierde.",
+      "confirm": "Descartar y recargar",
+      "keep": "Seguir editando"
+    },
+    "approve": {
+      "title": "¿Aprobar este informe?",
+      "description": "{{student}} y los tutores legales con acceso lo verán de inmediato, exactamente como se muestra aquí, incluidos los datos."
+    },
+    "changes": {
+      "title": "Solicitar cambios",
+      "description": "El motivo solo lo recibe {{author}}. Las familias nunca lo ven."
+    },
+    "retract": {
+      "title": "¿Retirar este informe?",
+      "description": "Retirar es definitivo. {{author}} recibe un aviso con tu motivo.",
+      "warning": "{{student}} y los tutores legales dejarán de ver este informe."
+    },
+    "review": {
+      "reason": "Motivo",
+      "selfReview": "Tú escribiste este informe, así que debe revisarlo otra persona.",
+      "authorNotCurrent": "{{author}} ya no da clase a {{student}}. Aprueba o retira el informe."
+    },
+    "read": {
+      "waiting": "En espera de revisión desde {{at}}.",
+      "approved": "Aprobado por {{by}} el {{date}}. {{student}} y los tutores legales con acceso pueden leerlo.",
+      "asFamily": "Verlo como lo ve la familia",
+      "retracted": "Retirado por {{by}} el {{date}}. La familia ya no lo ve. Puedes iniciar un informe nuevo.",
+      "toStudentReports": "Ver los informes de progreso del estudiante",
+      "formerAuthor": "Ya no das clase a {{student}}. Este informe es de solo lectura.",
+      "reason": "Motivo: {{reason}}"
+    },
+    "history": {
+      "title": "Historial",
+      "submitted": "Enviado {{at}}",
+      "changes": "{{by}} solicitó cambios el {{at}}: {{reason}}",
+      "approved": "Aprobado por {{by}} el {{at}}",
+      "retracted": "Retirado por {{by}} el {{at}}: {{reason}}"
+    },
+    "facts": {
+      "title": "Datos",
+      "preview": "Vista previa de los datos",
+      "previewNote": "Compilados ahora a partir de asistencia, evaluaciones, tareas y planes de aprendizaje. Se vuelven a compilar y se congelan al enviar.",
+      "previewMissing": "La vista previa no está disponible en este momento.",
+      "asSubmitted": "Datos tal como se enviaron el {{at}}",
+      "asApproved": "Datos tal como se aprobaron",
+      "unsupported": "Estos datos no se pueden mostrar en esta versión de la aplicación.",
+      "periodLine": "Periodo {{start}} – {{end}} · {{subject}}",
+      "average": "promedio {{average}} %",
+      "noAverage": "Sin promedio",
+      "attendance": {
+        "title": "Asistencia",
+        "none": "No hubo clases en este periodo.",
+        "line_one": "{{count}} clase: con asistencia {{present}} · con retraso {{late}} · con falta {{absent}} · sin registrar {{notRecorded}}",
+        "line_many": "{{count}} clases: con asistencia {{present}} · con retraso {{late}} · con falta {{absent}} · sin registrar {{notRecorded}}",
+        "line_other": "{{count}} clases: con asistencia {{present}} · con retraso {{late}} · con falta {{absent}} · sin registrar {{notRecorded}}"
+      },
+      "evaluations": {
+        "title": "Evaluaciones",
+        "none": "No hubo evaluaciones en este periodo.",
+        "entry": "{{date}} · {{subject}} · {{kind}} · {{template}} · {{percent}} %",
+        "truncated": "Se muestran las {{max}} evaluaciones más recientes.",
+        "countAverage_one": "{{count}} evaluación · promedio {{average}} %",
+        "countAverage_many": "{{count}} evaluaciones · promedio {{average}} %",
+        "countAverage_other": "{{count}} evaluaciones · promedio {{average}} %",
+        "countNoAverage_one": "{{count}} evaluación · Sin promedio",
+        "countNoAverage_many": "{{count}} evaluaciones · Sin promedio",
+        "countNoAverage_other": "{{count}} evaluaciones · Sin promedio",
+        "subjectAverage_one": "{{subject}}: {{count}} evaluación · promedio {{average}} %",
+        "subjectAverage_many": "{{subject}}: {{count}} evaluaciones · promedio {{average}} %",
+        "subjectAverage_other": "{{subject}}: {{count}} evaluaciones · promedio {{average}} %",
+        "subjectNoAverage_one": "{{subject}}: {{count}} evaluación · Sin promedio",
+        "subjectNoAverage_many": "{{subject}}: {{count}} evaluaciones · Sin promedio",
+        "subjectNoAverage_other": "{{subject}}: {{count}} evaluaciones · Sin promedio"
+      },
+      "homework": {
+        "title": "Tareas",
+        "none": "No hubo tareas con entrega en este periodo.",
+        "line_one": "{{count}} tarea: pendientes {{pending}} · sin entregar {{missing}} · entregadas {{submitted}} · calificadas {{graded}}",
+        "line_many": "{{count}} tareas: pendientes {{pending}} · sin entregar {{missing}} · entregadas {{submitted}} · calificadas {{graded}}",
+        "line_other": "{{count}} tareas: pendientes {{pending}} · sin entregar {{missing}} · entregadas {{submitted}} · calificadas {{graded}}",
+        "late_one": "{{count}} con retraso",
+        "late_many": "{{count}} con retraso",
+        "late_other": "{{count}} con retraso"
+      },
+      "plans": {
+        "title": "Planes de aprendizaje",
+        "none": "No hubo planes de aprendizaje en este periodo.",
+        "subjectStatus": "{{subject}} · {{status}}",
+        "progress": "{{percent}} % completado",
+        "counts": "{{objectivesDone}} de {{objectivesTotal}} objetivos · {{milestonesDone}} de {{milestonesTotal}} hitos",
+        "truncated": "Se muestran {{max}} planes."
+      }
+    },
+    "list": {
+      "status": "Estado",
+      "allStatuses": "Todos",
+      "kind": "Tipo de informe",
+      "allKinds": "Todos los tipos",
+      "onlyMine": "Solo los míos",
+      "waitingSince": "En espera desde {{at}}",
+      "approvedAt": "Aprobado {{at}}",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más",
+      "emptyQueue": "No hay informes en espera de revisión.",
+      "emptyTutor": "Todavía no has escrito informes de progreso.",
+      "openStudents": "Abrir Estudiantes",
+      "emptyFiltered": "Ningún informe coincide con estos filtros.",
+      "clearFilters": "Quitar filtros"
+    },
+    "student": {
+      "working": "En curso y en revisión",
+      "approved": "Aprobados",
+      "noApproved": "Todavía no hay informes aprobados."
+    },
+    "family": {
+      "title": "Informes del tutor",
+      "whose": "De quién son los informes",
+      "mine": "Mis informes",
+      "empty": "Todavía no se ha compartido ningún informe.",
+      "listMissing": "Estos informes no están disponibles.",
+      "reportMissing": "Este informe ya no está disponible.",
+      "toList": "Volver a informes del tutor",
+      "back": "Volver a los informes"
     }
   }
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './api';
 import {
   createQueryClient,
+  isExpectedQueryError,
   MAX_QUERY_RETRIES,
   shouldRetryQuery,
 } from './queryClient';
@@ -66,13 +67,17 @@ describe('shouldRetryQuery', () => {
 });
 
 describe('createQueryClient queries', () => {
-  async function runQuery(error: ApiError): Promise<number> {
+  async function runQuery(
+    error: ApiError,
+    meta?: Record<string, unknown>,
+  ): Promise<number> {
     const client = createQueryClient();
     const queryFn = vi.fn(() => Promise.reject(error));
     const observer = new QueryObserver(client, {
       queryKey: ['test', error.status],
       queryFn,
       retryDelay: 0,
+      meta,
     });
     const unsubscribe = observer.subscribe(() => {});
     await vi.waitFor(() =>
@@ -103,6 +108,56 @@ describe('createQueryClient queries', () => {
       status: 404,
       requestId: 'req-404',
     });
+  });
+});
+
+// #315 QA D1: a query whose meta lists a status as expected (a designed
+// state such as "This report is no longer available.") isn't reported for
+// it; any other failure of that query still is.
+describe('expected query errors (#315 QA D1)', () => {
+  const reports = () =>
+    vi
+      .mocked(console.error)
+      .mock.calls.filter((call) => call[0] === '[classora]');
+
+  async function run(error: ApiError, meta?: Record<string, unknown>) {
+    const client = createQueryClient();
+    const observer = new QueryObserver(client, {
+      queryKey: ['expected', error.status],
+      queryFn: () => Promise.reject(error),
+      retry: false,
+      meta,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().status).toBe('error'),
+    );
+    unsubscribe();
+    client.clear();
+  }
+
+  it('does not report an expected 404', async () => {
+    await run(httpError(404, 'not_found'), { expectedStatuses: [404] });
+    expect(reports()).toHaveLength(0);
+  });
+
+  it.each([
+    ['a 500', 500, 'internal_error'],
+    ['a 403', 403, 'student_consent_required'],
+  ])('still reports %s on the same query', async (_name, status, code) => {
+    await run(httpError(status, code), { expectedStatuses: [404] });
+    expect(reports()).toHaveLength(1);
+  });
+
+  it('reports a 404 without the meta, and non-ApiErrors', async () => {
+    await run(httpError(404, 'not_found'));
+    expect(reports()).toHaveLength(1);
+    expect(
+      isExpectedQueryError(new Error('x'), { expectedStatuses: [404] }),
+    ).toBe(false);
+    expect(
+      isExpectedQueryError(httpError(404), { expectedStatuses: 'x' }),
+    ).toBe(false);
   });
 });
 

@@ -268,5 +268,18 @@
   "url_invalid": "Usa un enlace completo que empiece con http o https.",
   "submission_empty": "Escribe una respuesta o agrega un enlace.",
   "score_not_allowed": "Esta tarea se califica solo con retroalimentación.",
-  "feedback_required": "Escribe la retroalimentación."
+  "feedback_required": "Escribe la retroalimentación.",
+  "progress_report_tutor_only": "Solo un tutor que da clase actualmente a este estudiante puede escribir un informe de progreso.",
+  "report_subject_not_assigned": "No le das esa materia a este estudiante. Elige otra o todas las materias.",
+  "progress_report_author_only": "Solo el tutor que escribió este informe puede cambiarlo.",
+  "progress_report_read_only": "Ya no das clase a este estudiante, así que este informe es de solo lectura.",
+  "progress_report_self_review": "Tú escribiste este informe, así que debe revisarlo otra persona.",
+  "progress_report_under_review": "Este informe está en espera de revisión, así que no se puede cambiar ahora.",
+  "progress_report_not_submitted": "Este informe ya no está en espera de revisión.",
+  "progress_report_closed": "Este informe está cerrado y no se puede cambiar.",
+  "progress_report_exists": "Ya existe un informe para este periodo.",
+  "progress_report_author_not_current": "El autor ya no da clase a este estudiante. Aprueba o retira el informe.",
+  "progress_report_review_route_required": "Este informe de progreso se decide en su propia página de revisión.",
+  "period_invalid": "Elige un periodo válido: un lunes para un informe semanal, el primer día del mes para uno mensual o un periodo a solicitud de un año como máximo.",
+  "period_in_future": "El periodo no puede empezar después de hoy."
 }

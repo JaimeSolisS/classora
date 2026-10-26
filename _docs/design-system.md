@@ -517,6 +517,24 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   data and focuses the heading. The `AcademicHistory` renders scored
   homework as "Homework: {title}" entries (no "Details") and adds "{n}
   homework · average {a} %" to the subject line.
+- **`ProgressReportFacts`** (`features/progress-reports`, #315): the
+  figures the server compiled for a report, text first: one section per
+  block (attendance, evaluations, homework, learning plans) with sentences
+  such as "6 classes: 4 present · 1 late · …". Numbers are the API's;
+  decimal strings go through `lib/decimal` (never a float), and the client
+  adds no totals or averages. A `null` average reads "No average", never
+  "0 %". A plan's bar is decorative (`aria-hidden`, the `ProgressMeter`
+  fill and track tokens): its value is in the text next to it. An unknown
+  schema version shows only "can't be shown". The editor shows the live
+  preview with "Refresh facts"; every other view shows the frozen facts.
+- **Disabled with a reason** (the progress report self-review, #315): an
+  action the user may not take for a reason they should know (a reviewer's
+  own report) stays visible as a button with `aria-disabled="true"`, never
+  the `disabled` attribute, so it keeps focus; it is described by the
+  reason with `aria-describedby`, the reason is shown next to it, and
+  activating it opens nothing. A submit or a review decision moves focus to
+  the page heading with a status message; Save and Refresh to the status
+  message.
 - **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
   Cancel/confirm buttons; focus returns to the button that opened it. Used
   to deactivate a guardian and to unlink a guardian from a student.
