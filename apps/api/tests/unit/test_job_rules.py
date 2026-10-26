@@ -221,6 +221,7 @@ MODULE_TASKS = {
     "ratelimit:purge_counters",
     "scheduling:expire_offers",
     "scheduling:materialize_series",
+    "academics:create_progress_report_placeholders",
 }
 
 
@@ -271,6 +272,31 @@ def test_the_series_materialization_runs_nightly_at_08_utc():
     assert jobs.task_parameter_types(app)["scheduling:materialize_series"] == {
         "timestamp": int
     }
+
+
+def test_the_progress_report_placeholders_run_daily_at_07_utc():
+    # #316 D1: one job a day (01:00 in Mexico City); correctness depends only
+    # on the center-local today of the run.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "academics:create_progress_report_placeholders"
+    ]
+    assert periodic.cron == "0 7 * * *"
+    assert periodic.periodic_id == "academics-progress-report-placeholders"
+    assert (
+        periodic.configure_kwargs["queueing_lock"]
+        == "academics-progress-report-placeholders"
+    )
+    assert (
+        app.tasks["academics:create_progress_report_placeholders"].queueing_lock
+        == "academics-progress-report-placeholders"
+    )
+    assert jobs.task_parameter_types(app)[
+        "academics:create_progress_report_placeholders"
+    ] == {"timestamp": int}
 
 
 def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():

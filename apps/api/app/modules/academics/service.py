@@ -100,6 +100,18 @@ the errors. ``app.workflows.progress_reports`` composes them with
 ``scheduling``, ``catalog``, ``families``, ``identity`` and
 ``administration``.
 
+Progress report schedules (#316,
+:mod:`~app.modules.academics.progress_report_schedules`, the pure rules in
+:mod:`~app.modules.academics.progress_report_schedule_rules`): the row
+(:class:`ProgressReportSchedule`), :func:`schedules_for_student`,
+:func:`get_schedule_for_update`, :func:`create_schedule`,
+:func:`deactivate_schedule`, :func:`reactivate_schedule`, the period reads
+:func:`period_reports` / :func:`split_period_reports` (:class:`PeriodKey`),
+the job's :func:`due_schedule_ids` and :func:`insert_placeholder`; the rules
+module (:data:`progress_report_schedule_rules`) and the errors.
+``app.workflows.progress_report_schedules`` (routes) and
+``app.workflows.progress_report_schedule_tasks`` (the job) compose them.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -109,6 +121,9 @@ from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
 from app.modules.academics import progress_report_facts as progress_report_facts
 from app.modules.academics import progress_report_rules as progress_report_rules
+from app.modules.academics import (
+    progress_report_schedule_rules as progress_report_schedule_rules,
+)
 from app.modules.academics.assignments import AssignmentRow as AssignmentRow
 from app.modules.academics.assignments import (
     AssignmentWorkingPage as AssignmentWorkingPage,
@@ -364,6 +379,12 @@ from app.modules.academics.errors import (
     ProgressReportReviewRouteRequiredError as ProgressReportReviewRouteRequiredError,
 )
 from app.modules.academics.errors import (
+    ProgressReportScheduleExistsError as ProgressReportScheduleExistsError,
+)
+from app.modules.academics.errors import (
+    ProgressReportScheduleFieldError as ProgressReportScheduleFieldError,
+)
+from app.modules.academics.errors import (
     ProgressReportSelfReviewError as ProgressReportSelfReviewError,
 )
 from app.modules.academics.errors import (
@@ -380,6 +401,18 @@ from app.modules.academics.errors import (
 )
 from app.modules.academics.errors import (
     ReportSubjectNotAssignedError as ReportSubjectNotAssignedError,
+)
+from app.modules.academics.errors import (
+    ScheduleAuthorInvalidError as ScheduleAuthorInvalidError,
+)
+from app.modules.academics.errors import (
+    ScheduleStudentInactiveError as ScheduleStudentInactiveError,
+)
+from app.modules.academics.errors import (
+    ScheduleSubjectNotAssignedError as ScheduleSubjectNotAssignedError,
+)
+from app.modules.academics.errors import (
+    ScheduleSubjectUnknownError as ScheduleSubjectUnknownError,
 )
 from app.modules.academics.errors import (
     SessionNotAssignableError as SessionNotAssignableError,
@@ -506,6 +539,9 @@ from app.modules.academics.models import LearningPlan as LearningPlan
 from app.modules.academics.models import LearningPlanMilestone as LearningPlanMilestone
 from app.modules.academics.models import LearningPlanObjective as LearningPlanObjective
 from app.modules.academics.models import ProgressReport as ProgressReport
+from app.modules.academics.models import (
+    ProgressReportSchedule as ProgressReportSchedule,
+)
 from app.modules.academics.models import SessionCloseout as SessionCloseout
 from app.modules.academics.models import (
     SessionCloseoutApproval as SessionCloseoutApproval,
@@ -545,6 +581,39 @@ from app.modules.academics.progress_report_facts import (
 )
 from app.modules.academics.progress_report_facts import (
     facts_document as facts_document,
+)
+from app.modules.academics.progress_report_schedules import (
+    PeriodKey as PeriodKey,
+)
+from app.modules.academics.progress_report_schedules import (
+    PeriodReportRow as PeriodReportRow,
+)
+from app.modules.academics.progress_report_schedules import (
+    create_schedule as create_schedule,
+)
+from app.modules.academics.progress_report_schedules import (
+    deactivate_schedule as deactivate_schedule,
+)
+from app.modules.academics.progress_report_schedules import (
+    due_schedule_ids as due_schedule_ids,
+)
+from app.modules.academics.progress_report_schedules import (
+    get_schedule_for_update as get_schedule_for_update,
+)
+from app.modules.academics.progress_report_schedules import (
+    insert_placeholder as insert_placeholder,
+)
+from app.modules.academics.progress_report_schedules import (
+    period_reports as period_reports,
+)
+from app.modules.academics.progress_report_schedules import (
+    reactivate_schedule as reactivate_schedule,
+)
+from app.modules.academics.progress_report_schedules import (
+    schedules_for_student as schedules_for_student,
+)
+from app.modules.academics.progress_report_schedules import (
+    split_period_reports as split_period_reports,
 )
 from app.modules.academics.progress_reports import (
     ReportPage as ReportPage,

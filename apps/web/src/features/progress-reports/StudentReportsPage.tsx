@@ -18,6 +18,7 @@ import {
 } from './api';
 import { useApprovedList, useWorkingList } from './queries';
 import { ApprovedCard, CardList, WorkingCard } from './ReportCards';
+import { ReportSchedulePanel } from './ReportSchedulePanel';
 
 // /students/:studentId/progress-reports (#315 F2), for reviewers and tutors
 // (the API decides): the h1 "Progress reports" with the student's name
@@ -27,8 +28,8 @@ import { ApprovedCard, CardList, WorkingCard } from './ReportCards';
 // student: a tutor's own reports, drafts included; a reviewer's every
 // non-draft report; hidden when empty) and "Approved" (R10, with "Load
 // more"). A 404 on R10 shows the not-found page. After a delete, "Report
-// deleted." takes focus. A student or guardian goes to their own page. #316
-// adds its schedule panel for reviewers below the header. Code-split.
+// deleted." takes focus. A student or guardian goes to their own page. #316:
+// the "Report schedule" panel for reviewers, below the header. Code-split.
 
 export function StudentReportsPage() {
   const { t } = useTranslation();
@@ -101,6 +102,9 @@ export function StudentReportsPage() {
         >
           {t('progressReports.new')}
         </Link>
+      ) : null}
+      {reviewer ? (
+        <ReportSchedulePanel studentId={studentId} studentName={name} />
       ) : null}
       {working.state.status === 'ready' &&
       working.state.items.length === 0 ? null : (

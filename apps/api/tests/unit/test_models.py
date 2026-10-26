@@ -67,7 +67,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # evaluation_templates, evaluation_template_criteria, evaluations and
     # evaluation_scores, M5-13; learning_plans, learning_plan_objectives and
     # learning_plan_milestones, M5-14; assignments and
-    # assignment_submissions, M5-15; progress_reports, M5-16), then
+    # assignment_submissions, M5-15; progress_reports, M5-16;
+    # progress_report_schedules, M5-16c), then
     # courses (course_templates, _subjects, _modules, _assessments and
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
@@ -118,6 +119,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "assignments",
         "assignment_submissions",
         "progress_reports",
+        "progress_report_schedules",
         "users",
         "roles",
         "permissions",

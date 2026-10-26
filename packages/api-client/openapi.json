@@ -15634,6 +15634,266 @@
         }
       }
     },
+    "/api/v1/students/{student_id}/progress-report-schedules": {
+      "get": {
+        "tags": [
+          "progress-reports"
+        ],
+        "summary": "List Progress Report Schedules",
+        "description": "The student's weekly and monthly report schedules (active first, at\nmost 100), each with what exists for its latest ended period and why no\ndraft would be created now, and the tutors who could own a new one.",
+        "operationId": "list_progress_report_schedules_api_v1_students__student_id__progress_report_schedules_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressReportScheduleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "progress-reports"
+        ],
+        "summary": "Create Progress Report Schedule",
+        "description": "Have a tutor who currently teaches the student get an empty draft\nreport after each week or month ends. A reviewer still approves each\nreport before the family sees it. Nobody is notified now.",
+        "operationId": "create_progress_report_schedule_api_v1_students__student_id__progress_report_schedules_post",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressReportScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressReportScheduleView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The tutor already has an active schedule of this cadence for this student and subject (progress_report_schedule_exists; details.schedule_id).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/progress-report-schedules/{schedule_id}": {
+      "patch": {
+        "tags": [
+          "progress-reports"
+        ],
+        "summary": "Update Progress Report Schedule",
+        "description": "Deactivate a schedule (no new drafts; reports already written stay)\nor reactivate it (the next draft is for the first period that ends from\nnow on).",
+        "operationId": "update_progress_report_schedule_api_v1_progress_report_schedules__schedule_id__patch",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressReportScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressReportScheduleView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such schedule (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The schedule changed since it was read (version_conflict), or another active schedule has the same tutor, cadence and subject (progress_report_schedule_exists; details.schedule_id).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -28602,6 +28862,35 @@
         "title": "EducationLevelUpdate",
         "description": "A change to a level (``PATCH /api/v1/education-levels/{level_id}``)\nwith the ``version`` the caller loaded. Fields not sent stay unchanged."
       },
+      "EligibleAuthor": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/app__workflows__progress_report_schedule_schemas__ScheduleSubject"
+            },
+            "type": "array",
+            "title": "Subjects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "subjects"
+        ],
+        "title": "EligibleAuthor",
+        "description": "A tutor who currently teaches the student, with the active subjects\nthey teach them."
+      },
       "EmergencyContact": {
         "properties": {
           "id": {
@@ -30422,7 +30711,7 @@
             "title": "Ends At"
           },
           "subject": {
-            "$ref": "#/components/schemas/ScheduleSubject"
+            "$ref": "#/components/schemas/app__modules__scheduling__schedule_schemas__ScheduleSubject"
           },
           "tutor": {
             "anyOf": [
@@ -35711,6 +36000,192 @@
         ],
         "title": "ProgressReportRetracted"
       },
+      "ProgressReportScheduleCreate": {
+        "properties": {
+          "author_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Author User Id",
+            "description": "An active tutor who currently teaches the student (schedule_author_invalid otherwise)."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/ScheduleCadence",
+            "description": "weekly (Monday to Sunday) or monthly (a calendar month), in the center's local dates."
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "Optional: an active subject the tutor currently teaches the student (subject_unknown / schedule_subject_not_assigned). Without it the reports cover all subjects."
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On",
+            "description": "The first period that gets a draft: a Monday (weekly) or the 1st (monthly), from the current period on and at most 366 days ahead (schedule_starts_on_invalid). Default: the current period."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "author_user_id",
+          "cadence"
+        ],
+        "title": "ProgressReportScheduleCreate",
+        "description": "`POST /api/v1/students/{id}/progress-report-schedules` (#316 C2)."
+      },
+      "ProgressReportScheduleList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressReportScheduleView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "eligible_authors": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleAuthor"
+            },
+            "type": "array",
+            "title": "Eligible Authors"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "eligible_authors"
+        ],
+        "title": "ProgressReportScheduleList",
+        "description": "`GET /api/v1/students/{id}/progress-report-schedules` (#316 C1):\nactive schedules first, then the newest, at most 100."
+      },
+      "ProgressReportScheduleUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "is_active"
+        ],
+        "title": "ProgressReportScheduleUpdate",
+        "description": "`PATCH /api/v1/progress-report-schedules/{id}` (#316 C3): deactivate\nor reactivate. To change the tutor, cadence or subject, deactivate it\nand add another."
+      },
+      "ProgressReportScheduleView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "author": {
+            "$ref": "#/components/schemas/ScheduleAuthor"
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/ScheduleCadence"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app__workflows__progress_report_schedule_schemas__ScheduleSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the reports cover all subjects."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/SchedulePerson"
+          },
+          "ineligible_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleIneligibleReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why no draft would be created now (the first failing rule), or null."
+          },
+          "latest_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleLatestPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null for an inactive schedule or before its first period has ended."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "student_id",
+          "author",
+          "cadence",
+          "subject",
+          "starts_on",
+          "is_active",
+          "created_at",
+          "created_by",
+          "ineligible_reason",
+          "latest_period"
+        ],
+        "title": "ProgressReportScheduleView",
+        "description": "One schedule (#316 C1)."
+      },
       "ProgressReportStudent": {
         "properties": {
           "id": {
@@ -36554,31 +37029,109 @@
           "consent_required"
         ]
       },
-      "ScheduleSubject": {
+      "ScheduleAuthor": {
         "properties": {
-          "id": {
+          "user_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Id"
+            "title": "User Id"
           },
-          "name": {
+          "display_name": {
             "type": "string",
-            "title": "Name"
-          },
-          "education_level_name": {
-            "type": "string",
-            "title": "Education Level Name"
+            "title": "Display Name"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "id",
-          "name",
-          "education_level_name"
+          "user_id",
+          "display_name"
         ],
-        "title": "ScheduleSubject",
-        "description": "The session's subject with its level's name."
+        "title": "ScheduleAuthor"
+      },
+      "ScheduleCadence": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "monthly"
+        ]
+      },
+      "ScheduleIneligibleReason": {
+        "type": "string",
+        "enum": [
+          "student_inactive",
+          "author_not_tutor",
+          "author_not_current",
+          "subject_inactive",
+          "subject_not_assigned"
+        ]
+      },
+      "ScheduleLatestPeriod": {
+        "properties": {
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SchedulePeriodStatus",
+            "description": "not_created; draft (the tutor's, no link); deleted (the tutor deleted the placeholder: it is never created again); submitted, changes_requested, approved_for_family or retracted (with report_id)."
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id",
+            "description": "Only for submitted, changes_requested, approved_for_family and retracted reports."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period_start",
+          "period_end",
+          "status",
+          "report_id"
+        ],
+        "title": "ScheduleLatestPeriod",
+        "description": "The latest ended period of an active schedule and what exists for it\n(computed when read; nothing is stored)."
+      },
+      "SchedulePeriodStatus": {
+        "type": "string",
+        "enum": [
+          "not_created",
+          "draft",
+          "deleted",
+          "submitted",
+          "changes_requested",
+          "approved_for_family",
+          "retracted"
+        ]
+      },
+      "SchedulePerson": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "SchedulePerson"
       },
       "SchedulingConflict": {
         "additionalProperties": false,
@@ -37160,7 +37713,7 @@
             "title": "Ends At"
           },
           "subject": {
-            "$ref": "#/components/schemas/ScheduleSubject"
+            "$ref": "#/components/schemas/app__modules__scheduling__schedule_schemas__ScheduleSubject"
           },
           "can_mark": {
             "type": "boolean",
@@ -40589,7 +41142,7 @@
             "title": "Ends At"
           },
           "subject": {
-            "$ref": "#/components/schemas/ScheduleSubject"
+            "$ref": "#/components/schemas/app__modules__scheduling__schedule_schemas__ScheduleSubject"
           },
           "classroom": {
             "anyOf": [
@@ -41203,6 +41756,52 @@
         ],
         "title": "WeeklyAvailabilityUpdate",
         "description": "The tutor's full list of weekly windows\n(``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears\nthem."
+      },
+      "app__modules__scheduling__schedule_schemas__ScheduleSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_name"
+        ],
+        "title": "ScheduleSubject",
+        "description": "The session's subject with its level's name."
+      },
+      "app__workflows__progress_report_schedule_schemas__ScheduleSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ScheduleSubject"
       }
     }
   }

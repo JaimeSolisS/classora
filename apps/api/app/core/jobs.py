@@ -4,8 +4,10 @@ This module is the one place that builds the Procrastinate :class:`App` and its
 connectors. Task modules expose ``register(app)``; :func:`create_job_app`
 calls them, so the API process and the ``worker`` container see the same
 tasks. Like ``app.core.model_registry``, it is the registry that imports the
-modules' task files (lazily, inside :func:`create_job_app`); module code never
-imports another module's ``tasks`` (ADR-0002).
+modules' task files (lazily, inside :func:`create_job_app`), and the one
+workflow task file (``app.workflows.progress_report_schedule_tasks``, #316: a
+job that composes modules); module code never imports another module's
+``tasks`` (ADR-0002).
 
 Rules for every job (ADR-0003, ISSUE-J1 to J4):
 
@@ -212,7 +214,9 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
 
     Core and module tasks (the hourly purges of rate-limit counters, #27, and
     of sessions, #25; the five-minute offer expiry, #52; the nightly series
-    materialization, #53) are registered in every environment. The demo tasks
+    materialization, #53; the daily progress report placeholders, #316,
+    whose task file is ``app/workflows/progress_report_schedule_tasks.py``
+    because it composes modules) are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
@@ -220,11 +224,13 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     from app.core import demo_jobs, ratelimit_tasks
     from app.modules.identity import tasks as identity_tasks
     from app.modules.scheduling import tasks as scheduling_tasks
+    from app.workflows import progress_report_schedule_tasks
 
     app = App(connector=connector)
     ratelimit_tasks.register(app)
     identity_tasks.register(app)
     scheduling_tasks.register(app)
+    progress_report_schedule_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

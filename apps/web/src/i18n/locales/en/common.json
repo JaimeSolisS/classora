@@ -1506,7 +1506,8 @@
       "academics_assignment_graded": "Homework was graded.",
       "academics_progress_report_approved": "A progress report for {{period_start}} – {{period_end}} was approved.",
       "academics_progress_report_changes_requested": "A reviewer asked for changes to your progress report.",
-      "academics_progress_report_retracted": "Your progress report was retracted."
+      "academics_progress_report_retracted": "Your progress report was retracted.",
+      "academics_progress_report_due": "Your draft progress report for {{period_start}} – {{period_end}} is ready to write."
     }
   },
   "scheduling": {
@@ -4239,6 +4240,68 @@
       "reportMissing": "This report is no longer available.",
       "toList": "Back to tutor reports",
       "back": "Back to reports"
+    },
+    "schedule": {
+      "heading": "Report schedule",
+      "intro": "The tutor gets an empty draft after each week or month ends. A reviewer still approves it before families see it.",
+      "add": "Add schedule",
+      "addTitle": "Add a report schedule",
+      "addDescription": "Choose who writes the reports, how often and from which period.",
+      "tutor": "Tutor",
+      "chooseTutor": "Choose a tutor",
+      "cadence": "Cadence",
+      "subject": "Subject",
+      "firstPeriod": "First period",
+      "weekOf": "Week of {{date}}",
+      "adding": "Adding…",
+      "noTutor": "No tutor currently teaches {{student}}.",
+      "thisStudent": "this student",
+      "empty": "No report schedule yet.",
+      "inactive": "Inactive schedules",
+      "allSubjects": "All subjects",
+      "since": "Since {{date}}",
+      "summary": "{{cadence}} · {{subject}}",
+      "latest": "{{period}}: {{status}}",
+      "periodStatus": {
+        "not_created": "not created yet",
+        "draft": "draft started",
+        "deleted": "deleted by the tutor",
+        "submitted": "submitted",
+        "changes_requested": "changes requested",
+        "approved_for_family": "approved",
+        "retracted": "retracted"
+      },
+      "ineligible": {
+        "student_inactive": "The student is inactive.",
+        "author_not_tutor": "{{tutor}} no longer has the tutor role.",
+        "author_not_current": "{{tutor}} no longer teaches {{student}}, so no draft is created.",
+        "subject_inactive": "The subject is inactive.",
+        "subject_not_assigned": "{{tutor}} no longer teaches this subject to {{student}}."
+      },
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "actionLabel": "{{action}}: {{tutor}}, {{summary}}",
+      "deactivateTitle": "Deactivate this schedule?",
+      "deactivateText": "No new drafts are created. Reports already written stay as they are.",
+      "reactivateTitle": "Reactivate this schedule?",
+      "reactivateText": "The next draft is for the first period that ends from now on.",
+      "deactivating": "Deactivating…",
+      "reactivating": "Reactivating…",
+      "exists": "This tutor already has an active {{cadence}} schedule for this subject.",
+      "conflict": "This schedule changed elsewhere.",
+      "cadenceLower": {
+        "weekly": "weekly",
+        "monthly": "monthly"
+      },
+      "notices": {
+        "added": "Schedule added.",
+        "deactivated": "Schedule deactivated.",
+        "reactivated": "Schedule reactivated."
+      },
+      "errors": {
+        "tutorRequired": "Choose a tutor.",
+        "firstPeriodRequired": "Choose the first period."
+      }
     }
   }
 }

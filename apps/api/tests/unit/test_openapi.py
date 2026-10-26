@@ -144,6 +144,9 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/progress-reports/{report_id}/retract",
         "/api/v1/students/{student_id}/progress-reports",
         "/api/v1/students/{student_id}/progress-reports/{report_id}",
+        # #316 report schedules
+        "/api/v1/students/{student_id}/progress-report-schedules",
+        "/api/v1/progress-report-schedules/{schedule_id}",
         "/api/v1/class-sessions/{class_session_id}/cancel",
         "/api/v1/assignment-offers",
         "/api/v1/assignment-offers/{offer_id}/accept",

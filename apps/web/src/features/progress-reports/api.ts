@@ -24,6 +24,18 @@ export type ReportUpdate = components['schemas']['ProgressReportUpdate'];
 export type ReportSubject = components['schemas']['ProgressReportSubject'];
 export type ReportKind = components['schemas']['ReportKind'];
 export type ReportStatus = components['schemas']['ReportStatus'];
+export type ReportSchedule =
+  components['schemas']['ProgressReportScheduleView'];
+export type ReportScheduleList =
+  components['schemas']['ProgressReportScheduleList'];
+export type ScheduleCreate =
+  components['schemas']['ProgressReportScheduleCreate'];
+export type EligibleAuthor = components['schemas']['EligibleAuthor'];
+export type ScheduleCadence = components['schemas']['ScheduleCadence'];
+export type SchedulePeriodStatus =
+  components['schemas']['SchedulePeriodStatus'];
+export type ScheduleIneligibleReason =
+  components['schemas']['ScheduleIneligibleReason'];
 
 export const REPORT_KINDS: readonly ReportKind[] = [
   'weekly',
@@ -232,6 +244,52 @@ export function retractReport(
     api.POST('/api/v1/progress-reports/{report_id}/retract', {
       params: { path: { report_id: report.id } },
       body: { version: report.version, reason },
+    }),
+  );
+}
+
+// -------------------------------------------------- report schedules (#316)
+
+/** A student's report schedules (S1). */
+export function schedulesKey(studentId: string) {
+  return [...PROGRESS_REPORTS_KEY, 'schedules', studentId] as const;
+}
+
+export function fetchSchedules(
+  studentId: string,
+  signal?: AbortSignal,
+): Promise<ReportScheduleList> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/students/{student_id}/progress-report-schedules', {
+        params: { path: { student_id: studentId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function createSchedule(
+  studentId: string,
+  body: ScheduleCreate,
+): Promise<ReportSchedule> {
+  return apiCall(() =>
+    api.POST('/api/v1/students/{student_id}/progress-report-schedules', {
+      params: { path: { student_id: studentId } },
+      body,
+    }),
+  );
+}
+
+/** Deactivate or reactivate (S3) with the version the panel read. */
+export function setScheduleActive(
+  schedule: Pick<ReportSchedule, 'id' | 'version'>,
+  isActive: boolean,
+): Promise<ReportSchedule> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/progress-report-schedules/{schedule_id}', {
+      params: { path: { schedule_id: schedule.id } },
+      body: { version: schedule.version, is_active: isActive },
     }),
   );
 }

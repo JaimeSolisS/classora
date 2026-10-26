@@ -1397,6 +1397,17 @@ notice_exempt = true
 json = {}
 
 [[route]]
+method = "PATCH"
+path = "/api/v1/progress-report-schedules/{schedule_id}"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C3 (E4): checked before anything is read. The placeholder id is no
+# schedule: 404 for the allowed roles. The 200, 409 and 422 cases are tested
+# in tests/integration/test_progress_report_schedules.py.
+json = { version = 1, is_active = false }
+
+[[route]]
 method = "GET"
 path = "/api/v1/progress-reports"
 access = "authenticated"
@@ -1728,6 +1739,25 @@ access = "authenticated"
 # #79 E2: the record policy (reviewers, tutors with the student assigned, a
 # former tutor for their own notes). The placeholder id is no student: 404
 # for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-report-schedules"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C1 (E4): staff only, checked before anything is read (families and
+# tutors 403). The placeholder student is unknown: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/progress-report-schedules"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C2: as GET. The 201, 409 and 422 cases are tested in
+# tests/integration/test_progress_report_schedules.py.
+json = { author_user_id = "00000000-0000-4000-8000-000000000316", cadence = "weekly" }
 
 [[route]]
 method = "GET"

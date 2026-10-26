@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -213,6 +213,8 @@ Codes in use today:
 | `progress_report_author_not_current` | 409 | Sending a report back to an author who no longer teaches the student (approve or retract it instead). |
 | `progress_report_review_route_required` | 409 | A generic inbox decision on a progress report; `details.review_path` is its review page. |
 | `period_invalid` / `period_in_future` | 422 | A progress report period that isn't a Monday-Sunday week, a calendar month or an on-demand period of at most 366 days (on `period_start` or `period_end`), or that starts after the center's today. |
+| `progress_report_schedule_exists` | 409 | Adding or reactivating a report schedule when the tutor already has an active one of that cadence for the student and subject; `details.schedule_id` names it (see Report schedules). |
+| `schedule_author_invalid` / `schedule_subject_not_assigned` / `schedule_starts_on_invalid` | 422 | A report schedule's tutor isn't an active tutor who currently teaches the student; its subject isn't one they teach the student; its first period is before the current one, not a Monday / the 1st, or more than a year ahead. Field errors at `body.author_user_id`, `body.subject_id`, `body.starts_on` on the add; top-level codes on a reactivation (as are `student_inactive` and `subject_unknown` there). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -5077,7 +5079,8 @@ reports and approved list with `can_create`), `/students/:id/progress-reports/ne
 `/students/:id/progress-reports/:rid` (one approved report) and the
 family's `/my-progress-reports[/:rid]` (`/schedule/family-students`, then
 the approved list and report); the approval inbox links each item to its
-`review_path`. Scheduled placeholders are #316 (M5-16c).
+`review_path`. Report schedules and their placeholders are #316 (M5-16c,
+below).
 
 A report is about **one student**, written by **one tutor** who currently
 teaches them, for **one period**, optionally **one subject** they teach the
@@ -5227,6 +5230,115 @@ partial unique index on student, author, kind, period start and subject for
 live non-retracted weekly and monthly reports, indexes for the approved
 list, the author's list and the queue, the immutability trigger), audited,
 every key `ON DELETE RESTRICT`.
+
+#### Report schedules
+
+Implemented by M5-16c (#316; spec §4 "weekly/monthly … progress reports
+prepared by tutors require admin approval before family visibility", §10,
+§16; architecture §4.1, §4.2, §6; ADR-0003, ADR-0004) in `academics`
+(`progress_report_schedule_rules.py`: the pure rules;
+`progress_report_schedules.py`: the rows and the placeholder insert), the
+workflow `app/workflows/progress_report_schedules.py` with its routes in
+`app/workflows/progress_report_schedules_router.py` and bodies in
+`app/workflows/progress_report_schedule_schemas.py`, the job in
+`app/workflows/progress_report_schedule_tasks.py`, and the scheduling seam
+`scheduling.service.current_tutor_subjects_for_student` (a student's current
+tutors with the subjects they teach them). The web panel is on
+`/students/:id/progress-reports` (`features/progress-reports/
+ReportSchedulePanel.tsx`), for `progress_report.review` holders.
+
+A **schedule** says which current tutor owes a `weekly` (Monday-Sunday) or
+`monthly` (calendar month) report about one student, for one subject or all
+(`subject: null`), from `starts_on` (a Monday or the 1st; center-local).
+After each period ends the worker creates that tutor's **empty draft** for
+it (a **placeholder**), which then follows the progress report workflow
+above: author-only until submitted, approved by a reviewer before families
+see it. At most one **active** schedule per student, tutor, cadence and
+subject; inactive ones are kept. To change the tutor, cadence or subject,
+deactivate it and add another; schedules are never deleted.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/students/{student_id}/progress-report-schedules` | `require("progress_report.review")` | `ProgressReportScheduleList`: `{items [ProgressReportScheduleView], eligible_authors [{user_id, display_name, subjects [{id, name}]}]}`. Items active first, then the newest, at most 100 (no pagination). `eligible_authors`: the student's current tutors who are active tutor-role users, with their active subjects, by name. At most 7 statements for 1 and 20 schedules. |
+| `POST /api/v1/students/{student_id}/progress-report-schedules` | `require("progress_report.review")` | `{author_user_id, cadence, subject_id?, starts_on?}` (closed; `starts_on` defaults to the current period). `201 ProgressReportScheduleView`. Nobody is notified. |
+| `PATCH /api/v1/progress-report-schedules/{schedule_id}` | `require("progress_report.review")` | `{version, is_active}` (closed): deactivate (reports already written stay) or reactivate; an unchanged value writes nothing. `200 ProgressReportScheduleView`. |
+
+The permission is checked before anything is read: everyone else (Finance,
+tutors, students, guardians) gets `403 permission_denied`; an unknown student
+or schedule is `404`.
+
+**Add order:** `401` → `403` → `422` schema → `404` (unknown student) → `422
+student_inactive` (top-level) → `422 schedule_author_invalid` at
+`body.author_user_id` (an unknown or inactive user, no tutor role, or not
+teaching the student now: one code) → `422 subject_unknown` at
+`body.subject_id` (unknown or inactive subject or level) → `422
+schedule_subject_not_assigned` → `422 schedule_starts_on_invalid` at
+`body.starts_on` (not a Monday / the 1st, before the current period, or more
+than 366 days after today) → the insert → `409
+progress_report_schedule_exists` (`details.schedule_id`).
+
+**Change order:** `401` → `403` → `422` → `404` → the schedule `FOR UPDATE` →
+`409 version_conflict` → unchanged (`200`, no write) → deactivate; or
+reactivate: the add's student, tutor and subject checks again at now (as
+top-level codes `student_inactive`, `schedule_author_invalid`,
+`subject_unknown`, `schedule_subject_not_assigned`), `starts_on` moves to the
+current period's start when it was earlier (never retroactive), `409
+progress_report_schedule_exists` when another active schedule holds the key.
+
+**`ProgressReportScheduleView`** (closed): `{id, version, student_id, author
+{user_id, display_name}, cadence, subject {id, name} | null, starts_on,
+is_active, created_at, created_by {display_name}, ineligible_reason,
+latest_period}`, computed when read (the job stores nothing on the schedule):
+
+- `ineligible_reason`: why no draft would be created now, the first of
+  `student_inactive`, `author_not_tutor` (an inactive user or no tutor role),
+  `author_not_current` (the student isn't one of the tutor's current
+  assignments), `subject_inactive`, `subject_not_assigned`; or `null`;
+- `latest_period` (`null` for an inactive schedule or before its first period
+  has ended): `{period_start, period_end, status, report_id}` for the latest
+  ended period. `status` is the schedule's own placeholder's when there is one
+  (`deleted` when the tutor deleted it), else the status of a live,
+  non-retracted report of the same student, tutor, kind, period and subject
+  the tutor wrote, else `not_created`. `report_id` is set only for
+  `submitted`, `changes_requested`, `approved_for_family` and `retracted`:
+  drafts and deleted placeholders belong to their author.
+
+**Placeholders** (the job `academics:create_progress_report_placeholders`,
+every day at 07:00 UTC, 01:00 in Mexico City; registered in every
+environment; the only argument is Procrastinate's `timestamp`; one job per
+tick through its `queueing_lock`). Each run reads the center's zone and takes
+today there (a zone change applies on the next run; no time-zone dependency
+is registered). It fills only the **latest ended period** of each active
+schedule (last week, or last month) when `starts_on` covers it: after an
+outage older periods are never filled (the tutor can write them by hand). It
+selects at most 500 schedules per run, by id, in one statement; each one is
+handled in its own Unit of Work with no actor: the schedule `FOR UPDATE`,
+skipped when it is no longer active or the period no longer covered, or when
+it isn't eligible now (the reasons above); else one `INSERT … ON CONFLICT DO
+NOTHING` of the empty `draft` (`kind` = the cadence, `schedule_id` set).
+**At most one placeholder per schedule and period, ever** (a unique index on
+`(schedule_id, period_start)` that includes deleted and retracted reports): a
+placeholder the tutor deleted is never created again. A report the tutor
+already wrote for the period (#83's live-period index) makes the insert a
+no-op too, and the tutor's own `POST` after a placeholder exists answers `409
+progress_report_exists` with its id. Only when a row was inserted, the
+`academics.progress_report_due` notification `{student_id, report_id, kind,
+period_start, period_end}` goes to the author (no text) and the audit event
+`academics.progress_report_placeholder_created` `{report_id, schedule_id,
+period_start}` is recorded (the insert runs on the session's connection, so
+this named event is its audit record). A failing schedule is logged with its
+id and the error class and retried by the next run; the run logs counts only.
+Running twice, concurrently, or racing a deactivation or the tutor's own
+create still gives at most one report and one notification. By hand:
+`app.workflows.progress_report_schedule_tasks.run_progress_report_placeholders`
+(see its docstring).
+
+**Data** (revision 0058): `progress_report_schedules` (`cadence`,
+`starts_on` with its Monday / 1st CHECKs, `is_active`, `created_by_user_id`,
+`version`; the partial unique index on student, author, cadence and
+`COALESCE(subject_id, nil)` where active; indexes by student and for the
+active scan), audited; `progress_reports.schedule_id` (set only by the job)
+with the unique index above. Every key `ON DELETE RESTRICT`.
 
 ### Change requests
 
