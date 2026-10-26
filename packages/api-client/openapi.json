@@ -15894,6 +15894,304 @@
         }
       }
     },
+    "/api/v1/students/{student_id}/progress": {
+      "get": {
+        "tags": [
+          "progress-dashboard"
+        ],
+        "summary": "Get Student Progress",
+        "description": "A student's progress for a period (by default the last 12 calendar\nmonths up to today): attendance, evaluation and homework averages by\nsubject and month, homework completion and learning-plan progress. For\nstaff with evaluation.manage, the student's current tutors, the student\nand their guardians with access to their academic records.",
+        "operationId": "get_student_progress_api_v1_students__student_id__progress_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First center-local date (inclusive).",
+              "title": "From"
+            },
+            "description": "First center-local date (inclusive)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last center-local date (inclusive).",
+              "title": "To"
+            },
+            "description": "Last center-local date (inclusive)."
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose progress you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/students/{student_id}/session-log": {
+      "get": {
+        "tags": [
+          "progress-dashboard"
+        ],
+        "summary": "Get Student Session Log",
+        "description": "A student's started classes, newest first: the subject, the tutor,\nthe student's own attendance and the class summary once a reviewer\napproved it. A former tutor sees only the classes they taught.",
+        "operationId": "get_student_session_log_api_v1_students__student_id__session_log_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First center-local date (inclusive).",
+              "title": "From"
+            },
+            "description": "First center-local date (inclusive)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last center-local date (inclusive).",
+              "title": "To"
+            },
+            "description": "Last center-local date (inclusive)."
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "1-50, default 20.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "1-50, default 20."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionLog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor is not valid (invalid_cursor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such student, or not one whose classes you may see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule/tutor-options": {
       "get": {
         "tags": [
@@ -35416,6 +35714,423 @@
         "title": "ProblemDetails",
         "type": "object"
       },
+      "ProgressAttendance": {
+        "properties": {
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions",
+            "description": "In-scope sessions (started, confirmed or completed)."
+          },
+          "present": {
+            "type": "integer",
+            "title": "Present"
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late"
+          },
+          "absent": {
+            "type": "integer",
+            "title": "Absent"
+          },
+          "not_recorded": {
+            "type": "integer",
+            "title": "Not Recorded"
+          },
+          "attendance_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(present + late) / (present + late + absent) × 100, two places; null with no marked session."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sessions",
+          "present",
+          "late",
+          "absent",
+          "not_recorded",
+          "attendance_percent"
+        ],
+        "title": "ProgressAttendance"
+      },
+      "ProgressAttendanceMonth": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "Center-local YYYY-MM.",
+            "examples": [
+              "2031-03"
+            ]
+          },
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions"
+          },
+          "present": {
+            "type": "integer",
+            "title": "Present"
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late"
+          },
+          "absent": {
+            "type": "integer",
+            "title": "Absent"
+          },
+          "not_recorded": {
+            "type": "integer",
+            "title": "Not Recorded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "month",
+          "sessions",
+          "present",
+          "late",
+          "absent",
+          "not_recorded"
+        ],
+        "title": "ProgressAttendanceMonth"
+      },
+      "ProgressGradeMonth": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "Center-local YYYY-MM.",
+            "examples": [
+              "2031-03"
+            ]
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ProgressSubject"
+          },
+          "evaluation_count": {
+            "type": "integer",
+            "title": "Evaluation Count"
+          },
+          "evaluation_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignment_count": {
+            "type": "integer",
+            "title": "Assignment Count"
+          },
+          "assignment_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "month",
+          "subject",
+          "evaluation_count",
+          "evaluation_average_percent",
+          "assignment_count",
+          "assignment_average_percent"
+        ],
+        "title": "ProgressGradeMonth"
+      },
+      "ProgressGradeSubject": {
+        "properties": {
+          "subject": {
+            "$ref": "#/components/schemas/ProgressSubject"
+          },
+          "evaluation_count": {
+            "type": "integer",
+            "title": "Evaluation Count"
+          },
+          "evaluation_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignment_count": {
+            "type": "integer",
+            "title": "Assignment Count"
+          },
+          "assignment_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject",
+          "evaluation_count",
+          "evaluation_average_percent",
+          "assignment_count",
+          "assignment_average_percent"
+        ],
+        "title": "ProgressGradeSubject"
+      },
+      "ProgressGrades": {
+        "properties": {
+          "evaluation_count": {
+            "type": "integer",
+            "title": "Evaluation Count",
+            "description": "Final, non-voided evaluations with evaluated_on in the range."
+          },
+          "evaluation_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignment_count": {
+            "type": "integer",
+            "title": "Assignment Count",
+            "description": "Scored homework grades with graded_on in the range."
+          },
+          "assignment_average_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by_subject": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressGradeSubject"
+            },
+            "type": "array",
+            "title": "By Subject",
+            "description": "Subjects with a value, by name (casefold), then id."
+          },
+          "by_month": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressGradeMonth"
+            },
+            "type": "array",
+            "title": "By Month",
+            "description": "(month, subject) pairs with a value, by month, then subject name."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evaluation_count",
+          "evaluation_average_percent",
+          "assignment_count",
+          "assignment_average_percent",
+          "by_subject",
+          "by_month"
+        ],
+        "title": "ProgressGrades"
+      },
+      "ProgressHomework": {
+        "properties": {
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "submitted": {
+            "type": "integer",
+            "title": "Submitted"
+          },
+          "graded": {
+            "type": "integer",
+            "title": "Graded"
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late"
+          },
+          "completion_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(submitted + graded) / (submitted + graded + missing) × 100 over the homework due in the range; null when none counts."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pending",
+          "missing",
+          "submitted",
+          "graded",
+          "late",
+          "completion_percent"
+        ],
+        "title": "ProgressHomework"
+      },
+      "ProgressPlanItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ProgressSubject"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProgressPlanStatus"
+          },
+          "progress_percent": {
+            "$ref": "#/components/schemas/PercentOut",
+            "description": "Done milestones / milestones × 100, a whole number (#81)."
+          },
+          "objectives_complete": {
+            "type": "integer",
+            "title": "Objectives Complete"
+          },
+          "objectives_total": {
+            "type": "integer",
+            "title": "Objectives Total"
+          },
+          "milestones_done": {
+            "type": "integer",
+            "title": "Milestones Done"
+          },
+          "milestones_total": {
+            "type": "integer",
+            "title": "Milestones Total"
+          },
+          "milestones_overdue": {
+            "type": "integer",
+            "title": "Milestones Overdue"
+          },
+          "target_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "subject",
+          "status",
+          "progress_percent",
+          "objectives_complete",
+          "objectives_total",
+          "milestones_done",
+          "milestones_total",
+          "milestones_overdue",
+          "target_on"
+        ],
+        "title": "ProgressPlanItem"
+      },
+      "ProgressPlanStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "completed"
+        ]
+      },
+      "ProgressPlans": {
+        "properties": {
+          "active": {
+            "type": "integer",
+            "title": "Active"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "objectives_complete": {
+            "type": "integer",
+            "title": "Objectives Complete"
+          },
+          "objectives_total": {
+            "type": "integer",
+            "title": "Objectives Total"
+          },
+          "milestones_overdue": {
+            "type": "integer",
+            "title": "Milestones Overdue"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressPlanItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "At most 20: active plans first by target date (none last), then completed plans, the latest completed first."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "active",
+          "completed",
+          "objectives_complete",
+          "objectives_total",
+          "milestones_overdue",
+          "items"
+        ],
+        "title": "ProgressPlans"
+      },
       "ProgressReportApproved": {
         "properties": {
           "at": {
@@ -36542,6 +37257,26 @@
         ],
         "title": "ProgressReportView",
         "description": "One progress report (#83 E1): the author and\n`progress_report.review` holders only."
+      },
+      "ProgressSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ProgressSubject"
       },
       "QualificationCreate": {
         "properties": {
@@ -38105,6 +38840,195 @@
           "group",
           "course"
         ]
+      },
+      "SessionLog": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionLogItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SessionLog",
+        "description": "`GET /api/v1/students/{id}/session-log` (#84 C1, C2)."
+      },
+      "SessionLogItem": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ProgressSubject"
+          },
+          "session_kind": {
+            "$ref": "#/components/schemas/SessionLogKind"
+          },
+          "tutor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionLogTutor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The session's current tutor."
+          },
+          "attendance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionLogMark"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This student's own mark (null: not recorded)."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionLogSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only while the session's closeout is approved (null when none, under review, sent back or empty)."
+          },
+          "published_note_count": {
+            "type": "integer",
+            "title": "Published Note Count",
+            "description": "The tutor's notes about this student in this session that are shared with the family."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "starts_at",
+          "subject",
+          "session_kind",
+          "tutor",
+          "attendance",
+          "summary",
+          "published_note_count"
+        ],
+        "title": "SessionLogItem"
+      },
+      "SessionLogKind": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group",
+          "course"
+        ]
+      },
+      "SessionLogMark": {
+        "type": "string",
+        "enum": [
+          "present",
+          "late",
+          "absent"
+        ]
+      },
+      "SessionLogSummary": {
+        "properties": {
+          "topics": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topics"
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performance"
+          },
+          "homework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Homework"
+          },
+          "next_steps": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "topics",
+          "performance",
+          "homework",
+          "next_steps"
+        ],
+        "title": "SessionLogSummary",
+        "description": "The approved closeout summary (`null` members: left empty)."
+      },
+      "SessionLogTutor": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "SessionLogTutor"
       },
       "SessionNoteCreate": {
         "properties": {
@@ -40032,6 +40956,80 @@
         ],
         "title": "StudentPersonal",
         "description": "The personal part of a profile, only for full-access viewers."
+      },
+      "StudentProgress": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProgressSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The subject filter (null: every subject)."
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressSubject"
+            },
+            "type": "array",
+            "title": "Subjects",
+            "description": "Every subject of the range whatever the subject filter (sessions, counted grades, homework, listed plans), by name (casefold), then id: the options of a subject filter."
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/ProgressAttendance"
+          },
+          "attendance_by_month": {
+            "items": {
+              "$ref": "#/components/schemas/ProgressAttendanceMonth"
+            },
+            "type": "array",
+            "title": "Attendance By Month",
+            "description": "Every month of the range, oldest first, zeros included."
+          },
+          "grades": {
+            "$ref": "#/components/schemas/ProgressGrades"
+          },
+          "homework": {
+            "$ref": "#/components/schemas/ProgressHomework"
+          },
+          "plans": {
+            "$ref": "#/components/schemas/ProgressPlans"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "from",
+          "to",
+          "subject",
+          "subjects",
+          "attendance",
+          "attendance_by_month",
+          "grades",
+          "homework",
+          "plans"
+        ],
+        "title": "StudentProgress",
+        "description": "`GET /api/v1/students/{id}/progress` (#84 B2, AM1)."
       },
       "StudentStatus": {
         "type": "string",

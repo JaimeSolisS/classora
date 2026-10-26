@@ -49,6 +49,17 @@ other family), shown on the approved detail
 are compiled after the other sources ran, so they would carry any copied
 feedback, note or reason canary ((vii),
 ``test_the_approved_report_facts_copy_no_text``).
+#84's source closes out new past sessions of the world tutor, per student:
+(i) a submitted closeout's summary, (ii) a sent-back closeout's summary and
+its reason, (iii) the new summary and the tutor's note of an approved
+closeout back in review after the tutor's correction request (#305), (iv) a
+staff correction's reason and an on-behalf submission's reason (#301), (v)
+an internal note on a closed session; and an approved, staff-corrected
+individual summary and an approved on-behalf summary (visible to that family
+only: (vi) for the other family), shown on the session log. A group session
+of both students, approved, is the positive control
+(``test_the_approved_summaries_reach_their_own_family``): its summary on
+both families' logs, each with only their own child's attendance.
 
 **The walk** (:func:`family_get_routes`): every ``GET`` route of
 ``build_app(include_dev_routes=True)``, except
@@ -99,6 +110,7 @@ from app.modules.families.models import Guardian, Student
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     GUARDIAN,
+    OWNER,
     STUDENT,
     TUTOR,
 )
@@ -199,6 +211,15 @@ class LeakWorld:
     shown_reports: dict[uuid.UUID, dict[str, set[str]]] = field(default_factory=dict)
     """Per student: the approved reports their family sees (report id → its
     visible canaries), for the #83 positive control."""
+    shown_summaries: dict[uuid.UUID, dict[str, set[str]]] = field(default_factory=dict)
+    """Per student: the sessions whose approved summary their family sees on
+    the session log (session id → the summary's canaries), for the #84
+    positive control."""
+    closeout_group: str = ""
+    """#84: the approved group session of both students (the minor present,
+    the adult absent)."""
+    closeout_group_summary: set[str] = field(default_factory=set)
+    """#84: its approved summary, on both families' session logs."""
 
     @property
     def actors(self) -> list[LeakActor]:
@@ -875,12 +896,200 @@ def progress_report_canaries(client: TestClient, world: LeakWorld) -> Canaries:
     return Canaries(hidden=hidden, visible=visible, shown_on=[])
 
 
+def closeout_canaries(client: TestClient, world: LeakWorld) -> Canaries:
+    """#84: per student, new past individual sessions of the world tutor
+    closed out with canaries in every summary field: (i) submitted, (ii) sent
+    back (and the reason), (iii) approved, then back in review after the
+    tutor's correction request (the new text and the tutor's note), (iv) a
+    staff correction's reason and an on-behalf submission's reason, (v) an
+    internal note; an approved, staff-corrected summary and an on-behalf
+    summary approved by an Owner (visible to that family only). Then a group
+    session of both students, approved (the positive control)."""
+    tutor = sign_in(client, world.tutor.username)
+    reviewer = sign_in(client, world.staff.username)
+    boss_user = create_user(world.url, roles=(OWNER,), display_name="Dueña Fuga")
+    boss = sign_in(client, boss_user.username)
+    hidden: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    visible: dict[uuid.UUID, set[str]] = {s: set() for s in world.students}
+    days = iter(range(20, 0, -1))
+
+    def canary(kind: str) -> str:
+        return f"CANARY-closeout-{kind}-{uuid.uuid4().hex}"
+
+    def summary(kind: str) -> dict[str, str]:
+        return {
+            part: canary(f"{kind}-{part}")
+            for part in ("topics", "performance", "homework", "next_steps")
+        }
+
+    def closeout_path(session_id: str, action: str = "") -> str:
+        return f"/api/v1/class-sessions/{session_id}/closeout{action}"
+
+    def session_of(*students: uuid.UUID, kind: str = "individual") -> str:
+        return stored(
+            world.url,
+            NOW - timedelta(days=next(days)),
+            students=students,
+            tutor_user_id=world.tutor.id,
+            kind=kind,
+        )
+
+    def marked(session_id: str, marks: dict[uuid.UUID, str]) -> int:
+        client.cookies.clear()
+        response = client.put(
+            f"/api/v1/class-sessions/{session_id}/attendance",
+            json={
+                "version": 1,
+                "marks": [
+                    {"student_id": str(s), "status": m} for s, m in marks.items()
+                ],
+            },
+            headers=signed_headers(tutor),
+        )
+        assert code_of(response) == (200, None), response.text
+        return int(response.json()["version"])
+
+    def submitted(session_id: str, student: uuid.UUID, text: dict[str, str]) -> int:
+        version = marked(session_id, {student: "present"})
+        response = post(
+            client,
+            tutor,
+            closeout_path(session_id),
+            {"version": version, "actual_minutes": 55, "summary": text},
+        )
+        assert code_of(response) == (201, None), response.text
+        return int(response.json()["closeout"]["version"])
+
+    def decided(caller: Any, session_id: str, action: str, **body: Any) -> int:
+        response = post(client, caller, closeout_path(session_id, action), body)
+        assert code_of(response) == (200, None), response.text
+        return int(response.json()["closeout"]["version"])
+
+    for student in world.students:
+        world.shown_summaries[student] = {}
+
+        # (i) submitted.
+        text = summary("submitted")
+        submitted(session_of(student), student, text)
+        hidden[student] |= set(text.values())
+
+        # (ii) sent back, with the reason.
+        session_id = session_of(student)
+        text = summary("sent-back")
+        version = submitted(session_id, student, text)
+        reason = canary("review-reason")
+        decided(
+            reviewer, session_id, "/request-changes", version=version, reason=reason
+        )
+        hidden[student] |= set(text.values()) | {reason}
+
+        # (iii) approved, then the tutor's correction request under review.
+        session_id = session_of(student)
+        version = submitted(session_id, student, summary("first-approved"))
+        version = decided(reviewer, session_id, "/approve", version=version)
+        text = summary("correction-request")
+        note = canary("tutor-note")
+        client.cookies.clear()
+        response = client.put(
+            closeout_path(session_id),
+            json={
+                "version": version,
+                "actual_minutes": 55,
+                "summary": text,
+                "reason": note,
+            },
+            headers=signed_headers(tutor),
+        )
+        assert code_of(response) == (200, None), response.text
+        assert response.json()["closeout"]["status"] == "submitted"
+        hidden[student] |= set(text.values()) | {note}
+
+        # (iv) a staff correction's reason: the corrected summary is shown.
+        session_id = session_of(student)
+        version = submitted(session_id, student, summary("before-correction"))
+        version = decided(reviewer, session_id, "/approve", version=version)
+        text = summary("corrected")
+        correction_reason = canary("correction-reason")
+        decided(
+            reviewer,
+            session_id,
+            "/corrections",
+            version=version,
+            summary=text,
+            reason=correction_reason,
+        )
+        hidden[student].add(correction_reason)
+        visible[student] |= set(text.values())
+        world.shown_summaries[student][session_id] = set(text.values())
+
+        # (v) an internal note on that session.
+        internal = canary("internal-note")
+        response = post(
+            client,
+            tutor,
+            f"/api/v1/class-sessions/{session_id}/notes",
+            {"student_id": str(student), "body": internal},
+        )
+        assert code_of(response) == (201, None), response.text
+        world.note_ids.append(str(response.json()["id"]))
+        hidden[student].add(internal)
+
+        # (iv) an on-behalf reason: approved by an Owner, its summary shown.
+        session_id = session_of(student)
+        version = marked(session_id, {student: "present"})
+        text = summary("on-behalf")
+        on_behalf_reason = canary("on-behalf-reason")
+        response = post(
+            client,
+            reviewer,
+            closeout_path(session_id, "/on-behalf"),
+            {
+                "version": version,
+                "actual_minutes": 50,
+                "summary": text,
+                "reason": on_behalf_reason,
+            },
+        )
+        assert code_of(response) == (201, None), response.text
+        decided(
+            boss,
+            session_id,
+            "/approve",
+            version=int(response.json()["closeout"]["version"]),
+        )
+        hidden[student].add(on_behalf_reason)
+        visible[student] |= set(text.values())
+        world.shown_summaries[student][session_id] = set(text.values())
+
+    # The positive control: a group session of both, approved.
+    group = session_of(*world.students, kind="group")
+    version = marked(group, {world.minor: "present", world.adult: "absent"})
+    text = summary("group")
+    response = post(
+        client,
+        tutor,
+        closeout_path(group),
+        {"version": version, "actual_minutes": 55, "summary": text},
+    )
+    assert code_of(response) == (201, None), response.text
+    decided(
+        reviewer,
+        group,
+        "/approve",
+        version=int(response.json()["closeout"]["version"]),
+    )
+    world.closeout_group = group
+    world.closeout_group_summary = set(text.values())
+    return Canaries(hidden=hidden, visible=visible, shown_on=[])
+
+
 CANARY_SOURCES: list[Callable[[TestClient, LeakWorld], Canaries]] = [
     session_note_canaries,
     evaluation_canaries,
     learning_plan_canaries,
     assignment_canaries,
     progress_report_canaries,
+    closeout_canaries,
 ]
 
 
@@ -1064,6 +1273,9 @@ def test_every_path_parameter_is_mapped():
         "/api/v1/progress-reports/{report_id}",
         "/api/v1/students/{student_id}/progress-reports",
         "/api/v1/students/{student_id}/progress-reports/{report_id}",
+        # #84 progress dashboard
+        "/api/v1/students/{student_id}/progress",
+        "/api/v1/students/{student_id}/session-log",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
     # #316: the report schedules are staff-only (the matrix gates them behind
@@ -1349,3 +1561,28 @@ def test_report_schedules_are_staff_only(client, walk):
             assert code_of(response) == (403, "permission_denied"), response.text
             for hidden in (*schedule_ids, str(world.tutor.id)):
                 assert hidden not in response.text
+
+
+def test_the_approved_summaries_reach_their_own_family(client, walk):
+    """#84 positive control: each family's session log shows its own child's
+    approved summaries (and never the other child's, nor any hidden one: the
+    walk), the shared group summary, and only its own child's attendance."""
+    world = walk.world
+    expected_mark = {world.minor: "present", world.adult: "absent"}
+    for actor in world.actors:
+        cookie = sign_in(client, actor.user.username)
+        response = get(
+            client, cookie, f"/api/v1/students/{actor.student_id}/session-log"
+        )
+        assert response.status_code == 200, response.text
+        items = {item["class_session_id"]: item for item in response.json()["items"]}
+        for session_id, texts in world.shown_summaries[actor.student_id].items():
+            assert set(items[session_id]["summary"].values()) == texts, actor.label
+        group = items[world.closeout_group]
+        assert set(group["summary"].values()) == world.closeout_group_summary
+        assert group["attendance"] == expected_mark[actor.student_id], actor.label
+        assert group["session_kind"] == "group"
+        # The progress summary of the same student answers too (no text).
+        progress = get(client, cookie, f"/api/v1/students/{actor.student_id}/progress")
+        assert progress.status_code == 200, progress.text
+        assert progress.json()["attendance"]["sessions"] >= 1

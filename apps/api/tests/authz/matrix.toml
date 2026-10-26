@@ -1742,6 +1742,18 @@ access = "authenticated"
 
 [[route]]
 method = "GET"
+path = "/api/v1/students/{student_id}/progress"
+access = "authenticated"
+# #84 A1, B: evaluation.manage holders, the student's current tutors, the
+# student and linked guardians with academic access (403
+# student_consent_required for a guardian of an adult without it); a former
+# tutor and anyone else the 404 of an unknown id. The placeholder id is no
+# student: 404 for every role. The 200 and 403 cases are in
+# tests/integration/test_progress_dashboard.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/students/{student_id}/progress-report-schedules"
 access = "permission"
 permission = "progress_report.review"
@@ -1786,6 +1798,14 @@ allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tut
 # every allowed role. The 200 and 403 student_consent_required cases are in
 # tests/integration/test_family_schedule.py.
 query = { from = "2031-01-06T00:00:00Z", to = "2031-01-13T00:00:00Z" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/session-log"
+access = "authenticated"
+# #84 A1, C: as /progress, plus a former tutor (taught an in-scope session of
+# the student) for the sessions they taught. The placeholder id is no
+# student: 404 for every role.
 
 [[route]]
 method = "GET"

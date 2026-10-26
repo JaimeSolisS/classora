@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import InvalidCursorError, decode_cursor, encode_cursor
@@ -192,6 +192,22 @@ async def family_notes_for_student(
     if class_session_id is not None:
         query = query.where(SessionNote.class_session_id == class_session_id)
     return await _page(session, query, cursor=cursor, limit=limit)
+
+
+def family_note_count_columns(student_id: uuid.UUID) -> Select[uuid.UUID, int]:
+    """#84 C2: ``SELECT class_session_id, count(*)`` of the student's
+    **shared** (``visibility = 'family'``) live notes per session, **not
+    executed** (``scheduling`` joins it into the session log, so the log
+    takes one statement)."""
+    return (
+        select(SessionNote.class_session_id, func.count().label("note_count"))
+        .where(
+            SessionNote.student_id == student_id,
+            SessionNote.visibility == NOTE_FAMILY,
+            SessionNote.deleted_at.is_(None),
+        )
+        .group_by(SessionNote.class_session_id)
+    )
 
 
 # --- Writes ---------------------------------------------------------------------------

@@ -24,6 +24,10 @@ can already see, and only aggregates of them:
 Never: notes (#79), closeout summaries (#77), other students, names or ids
 of people, reasons of any kind.
 
+The evaluation and homework conditions and the homework state counts are
+shared with the progress dashboard (#84 B4,
+:mod:`~app.modules.academics.progress_aggregates`).
+
 :func:`academic_facts` reads the three academic sources in at most four
 statements, whatever the number of rows; :func:`facts_document` assembles
 the closed JSON (``schema_version`` 1; :data:`FACT_KEYS` and friends are
@@ -43,7 +47,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.academics import assignment_rules, learning_plan_rules
-from app.modules.academics.evaluation_rules import FINAL, average_percent
+from app.modules.academics.evaluation_rules import average_percent
 from app.modules.academics.learning_plans import (
     family_visible_condition,
     milestone_facts,
@@ -53,6 +57,11 @@ from app.modules.academics.models import (
     AssignmentSubmission,
     Evaluation,
     LearningPlan,
+)
+from app.modules.academics.progress_aggregates import (
+    counted_evaluation_conditions,
+    homework_conditions,
+    homework_state_counts,
 )
 from app.modules.academics.progress_report_rules import (
     FACT_EVALUATIONS_MAX,
@@ -129,14 +138,7 @@ async def _evaluations(
             Evaluation.score_percent,
         )
         .outerjoin(joined, joined.c.id == Evaluation.subject_id)
-        .where(
-            Evaluation.student_id == student_id,
-            Evaluation.status == FINAL,
-            Evaluation.voided_at.is_(None),
-            Evaluation.deleted_at.is_(None),
-            Evaluation.evaluated_on >= start,
-            Evaluation.evaluated_on <= end,
-        )
+        .where(*counted_evaluation_conditions(student_id, start, end))
         .order_by(
             Evaluation.evaluated_on.desc(),
             Evaluation.finalized_at.desc(),
@@ -197,32 +199,22 @@ async def _assignments(
         )
         .join(AssignmentSubmission, AssignmentSubmission.assignment_id == Assignment.id)
         .where(
-            AssignmentSubmission.student_id == student_id,
-            Assignment.deleted_at.is_(None),
+            *homework_conditions(student_id),
             Assignment.due_on >= start,
             Assignment.due_on <= end,
         )
     )
     if subject_id is not None:
         query = query.where(Assignment.subject_id == subject_id)
-    counts = dict.fromkeys(assignment_rules.STATES, 0)
-    late = 0
-    scored: list[Decimal] = []
     rows = list(await session.execute(query))
-    for row in rows:
-        deadline = assignment_rules.deadline_instant(row.due_on, row.due_time, zone)
-        state = assignment_rules.submission_state(
-            row.submitted_at, row.graded_at, deadline, now
-        )
-        counts[state] += 1
-        if assignment_rules.is_late(row.submitted_at, deadline):
-            late += 1
-        if row.graded_at is not None and row.score_percent is not None:
-            scored.append(row.score_percent)
+    scored: list[Decimal] = [
+        row.score_percent
+        for row in rows
+        if row.graded_at is not None and row.score_percent is not None
+    ]
     return {
         "count": len(rows),
-        **counts,
-        "late": late,
+        **homework_state_counts(rows, zone=zone, now=now),
         "average_percent": _decimal(assignment_rules.average_percent(scored)),
     }
 

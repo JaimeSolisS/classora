@@ -60,7 +60,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Final, cast
 
-from sqlalchemy import Date, and_, func, select
+from sqlalchemy import Date, Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -564,6 +564,59 @@ SUMMARY_STATES: Final = (SessionState.CONFIRMED.value, SessionState.COMPLETED.va
 """The states a progress report counts (cancelled and skipped never)."""
 
 
+def in_scope_participations(
+    *columns: Any,
+    student_id: uuid.UUID,
+    now: datetime,
+    with_attendance: bool = True,
+) -> Select[Any]:
+    """``SELECT columns`` over the student's **in-scope** sessions (#83 B2,
+    #84 E6: a participant, ``confirmed`` or ``completed``, started at
+    ``now``), each outer-joined to the student's own attendance mark
+    (:class:`ClassSessionAttendance`), not executed. The one definition for
+    :func:`student_attendance_summary` and the #84 dashboard reads
+    (``scheduling.student_progress``), so their session sets never drift.
+    ``with_attendance=False`` leaves the attendance table out (a probe that
+    reads only session columns)."""
+    query = (
+        select(*columns)
+        .select_from(ClassSessionParticipant)
+        .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
+    )
+    if with_attendance:
+        query = query.outerjoin(
+            ClassSessionAttendance,
+            and_(
+                ClassSessionAttendance.class_session_id
+                == ClassSessionParticipant.class_session_id,
+                ClassSessionAttendance.student_id == ClassSessionParticipant.student_id,
+            ),
+        )
+    return query.where(
+        ClassSessionParticipant.student_id == student_id,
+        ClassSession.state.in_(SUMMARY_STATES),
+        ClassSession.starts_at <= now,
+    )
+
+
+def local_start_date(time_zone: str) -> Any:
+    """The session's center-local start date (SQL)."""
+    return cast(Any, func.timezone(time_zone, ClassSession.starts_at)).cast(Date)
+
+
+def attendance_counts() -> tuple[Any, ...]:
+    """``count(*)`` and the counts per mark (``present``, ``late``,
+    ``absent``, not recorded), in that order (SQL)."""
+    status = ClassSessionAttendance.status
+    return (
+        func.count(),
+        func.count().filter(status == "present"),
+        func.count().filter(status == "late"),
+        func.count().filter(status == "absent"),
+        func.count().filter(status.is_(None)),
+    )
+
+
 async def student_attendance_summary(
     session: AsyncSession,
     student_id: uuid.UUID,
@@ -579,34 +632,10 @@ async def student_attendance_summary(
     ``time_zone``) is in ``[start, end]`` (only ``subject_id``'s when given),
     counted by the student's mark: ``present``, ``late``, ``absent`` or not
     recorded. One statement."""
-    local_date = cast(Any, func.timezone(time_zone, ClassSession.starts_at)).cast(Date)
-    status = ClassSessionAttendance.status
-    query = (
-        select(
-            func.count(),
-            func.count().filter(status == "present"),
-            func.count().filter(status == "late"),
-            func.count().filter(status == "absent"),
-            func.count().filter(status.is_(None)),
-        )
-        .select_from(ClassSessionParticipant)
-        .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
-        .outerjoin(
-            ClassSessionAttendance,
-            and_(
-                ClassSessionAttendance.class_session_id
-                == ClassSessionParticipant.class_session_id,
-                ClassSessionAttendance.student_id == ClassSessionParticipant.student_id,
-            ),
-        )
-        .where(
-            ClassSessionParticipant.student_id == student_id,
-            ClassSession.state.in_(SUMMARY_STATES),
-            ClassSession.starts_at <= now,
-            local_date >= start,
-            local_date <= end,
-        )
-    )
+    local_date = local_start_date(time_zone)
+    query = in_scope_participations(
+        *attendance_counts(), student_id=student_id, now=now
+    ).where(local_date >= start, local_date <= end)
     if subject_id is not None:
         query = query.where(ClassSession.subject_id == subject_id)
     sessions, present, late, absent, not_recorded = (await session.execute(query)).one()

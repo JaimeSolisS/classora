@@ -102,6 +102,10 @@ marks; #77 closeout reuses it), :func:`correct_attendance` (staff, with a
 reason) and :func:`attendance_statuses` (the statuses of sessions, for #77,
 #84 and #85), :func:`student_attendance_summary` (one student's counts over
 a local period, #83 progress report facts);
+the progress dashboard reads (#84, :mod:`~app.modules.scheduling.student_progress`
+over the same in-scope sessions): :func:`student_attendance_by_month`,
+:func:`student_session_log` and :func:`tutor_taught_student` (the former-tutor
+rule);
 :func:`register_completed_attendance_unlock` (#78 E6: the
 predicate that lets the tutor mark a ``completed`` session again while its
 closeout is ``changes_requested``; ``app.wiring`` registers academics').
@@ -469,6 +473,9 @@ from app.modules.scheduling.errors import (
 from app.modules.scheduling.errors import (
     SessionValidationError as SessionValidationError,
 )
+from app.modules.scheduling.errors import (
+    StudentConsentRequiredError as StudentConsentRequiredError,
+)
 from app.modules.scheduling.evaluation_context import (
     EvaluationSession as EvaluationSession,
 )
@@ -753,6 +760,24 @@ from app.modules.scheduling.states import can_transition as can_transition
 from app.modules.scheduling.states import is_family_visible as is_family_visible
 from app.modules.scheduling.states import (
     is_tutor_visible as is_tutor_visible,
+)
+from app.modules.scheduling.student_progress import (
+    MonthAttendance as MonthAttendance,
+)
+from app.modules.scheduling.student_progress import (
+    SessionLogPage as SessionLogPage,
+)
+from app.modules.scheduling.student_progress import (
+    SessionLogRow as SessionLogRow,
+)
+from app.modules.scheduling.student_progress import (
+    student_attendance_by_month as student_attendance_by_month,
+)
+from app.modules.scheduling.student_progress import (
+    student_session_log as student_session_log,
+)
+from app.modules.scheduling.student_progress import (
+    tutor_taught_student as tutor_taught_student,
 )
 from app.modules.scheduling.substitution_flow import (
     list_session_substitutions as list_session_substitutions,

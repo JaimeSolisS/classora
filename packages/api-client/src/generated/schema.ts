@@ -3167,6 +3167,52 @@ export interface paths {
         patch: operations["update_progress_report_schedule_api_v1_progress_report_schedules__schedule_id__patch"];
         trace?: never;
     };
+    "/api/v1/students/{student_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Progress
+         * @description A student's progress for a period (by default the last 12 calendar
+         *     months up to today): attendance, evaluation and homework averages by
+         *     subject and month, homework completion and learning-plan progress. For
+         *     staff with evaluation.manage, the student's current tutors, the student
+         *     and their guardians with access to their academic records.
+         */
+        get: operations["get_student_progress_api_v1_students__student_id__progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/students/{student_id}/session-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Session Log
+         * @description A student's started classes, newest first: the subject, the tutor,
+         *     the student's own attendance and the class summary once a reviewer
+         *     approved it. A former tutor sees only the classes they taught.
+         */
+        get: operations["get_student_session_log_api_v1_students__student_id__session_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -11359,6 +11405,155 @@ export interface components {
                 [key: string]: string | string[];
             };
         };
+        /** ProgressAttendance */
+        ProgressAttendance: {
+            /**
+             * Sessions
+             * @description In-scope sessions (started, confirmed or completed).
+             */
+            sessions: number;
+            /** Present */
+            present: number;
+            /** Late */
+            late: number;
+            /** Absent */
+            absent: number;
+            /** Not Recorded */
+            not_recorded: number;
+            /** @description (present + late) / (present + late + absent) × 100, two places; null with no marked session. */
+            attendance_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** ProgressAttendanceMonth */
+        ProgressAttendanceMonth: {
+            /**
+             * Month
+             * @description Center-local YYYY-MM.
+             * @example 2031-03
+             */
+            month: string;
+            /** Sessions */
+            sessions: number;
+            /** Present */
+            present: number;
+            /** Late */
+            late: number;
+            /** Absent */
+            absent: number;
+            /** Not Recorded */
+            not_recorded: number;
+        };
+        /** ProgressGradeMonth */
+        ProgressGradeMonth: {
+            /**
+             * Month
+             * @description Center-local YYYY-MM.
+             * @example 2031-03
+             */
+            month: string;
+            subject: components["schemas"]["ProgressSubject"];
+            /** Evaluation Count */
+            evaluation_count: number;
+            evaluation_average_percent: components["schemas"]["DecimalOut"] | null;
+            /** Assignment Count */
+            assignment_count: number;
+            assignment_average_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** ProgressGradeSubject */
+        ProgressGradeSubject: {
+            subject: components["schemas"]["ProgressSubject"];
+            /** Evaluation Count */
+            evaluation_count: number;
+            evaluation_average_percent: components["schemas"]["DecimalOut"] | null;
+            /** Assignment Count */
+            assignment_count: number;
+            assignment_average_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** ProgressGrades */
+        ProgressGrades: {
+            /**
+             * Evaluation Count
+             * @description Final, non-voided evaluations with evaluated_on in the range.
+             */
+            evaluation_count: number;
+            evaluation_average_percent: components["schemas"]["DecimalOut"] | null;
+            /**
+             * Assignment Count
+             * @description Scored homework grades with graded_on in the range.
+             */
+            assignment_count: number;
+            assignment_average_percent: components["schemas"]["DecimalOut"] | null;
+            /**
+             * By Subject
+             * @description Subjects with a value, by name (casefold), then id.
+             */
+            by_subject: components["schemas"]["ProgressGradeSubject"][];
+            /**
+             * By Month
+             * @description (month, subject) pairs with a value, by month, then subject name.
+             */
+            by_month: components["schemas"]["ProgressGradeMonth"][];
+        };
+        /** ProgressHomework */
+        ProgressHomework: {
+            /** Pending */
+            pending: number;
+            /** Missing */
+            missing: number;
+            /** Submitted */
+            submitted: number;
+            /** Graded */
+            graded: number;
+            /** Late */
+            late: number;
+            /** @description (submitted + graded) / (submitted + graded + missing) × 100 over the homework due in the range; null when none counts. */
+            completion_percent: components["schemas"]["DecimalOut"] | null;
+        };
+        /** ProgressPlanItem */
+        ProgressPlanItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            subject: components["schemas"]["ProgressSubject"];
+            status: components["schemas"]["ProgressPlanStatus"];
+            /** @description Done milestones / milestones × 100, a whole number (#81). */
+            progress_percent: components["schemas"]["PercentOut"];
+            /** Objectives Complete */
+            objectives_complete: number;
+            /** Objectives Total */
+            objectives_total: number;
+            /** Milestones Done */
+            milestones_done: number;
+            /** Milestones Total */
+            milestones_total: number;
+            /** Milestones Overdue */
+            milestones_overdue: number;
+            /** Target On */
+            target_on: string | null;
+        };
+        /** @enum {string} */
+        ProgressPlanStatus: "active" | "completed";
+        /** ProgressPlans */
+        ProgressPlans: {
+            /** Active */
+            active: number;
+            /** Completed */
+            completed: number;
+            /** Objectives Complete */
+            objectives_complete: number;
+            /** Objectives Total */
+            objectives_total: number;
+            /** Milestones Overdue */
+            milestones_overdue: number;
+            /**
+             * Items
+             * @description At most 20: active plans first by target date (none last), then completed plans, the latest completed first.
+             */
+            items: components["schemas"]["ProgressPlanItem"][];
+        };
         /** ProgressReportApproved */
         ProgressReportApproved: {
             /**
@@ -11832,6 +12027,16 @@ export interface components {
             can_request_changes: boolean;
             /** Can Retract */
             can_retract: boolean;
+        };
+        /** ProgressSubject */
+        ProgressSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * QualificationCreate
@@ -12650,6 +12855,65 @@ export interface components {
         };
         /** @enum {string} */
         SessionKindCode: "individual" | "group" | "course";
+        /**
+         * SessionLog
+         * @description `GET /api/v1/students/{id}/session-log` (#84 C1, C2).
+         */
+        SessionLog: {
+            /** Items */
+            items: components["schemas"]["SessionLogItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** SessionLogItem */
+        SessionLogItem: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            subject: components["schemas"]["ProgressSubject"];
+            session_kind: components["schemas"]["SessionLogKind"];
+            /** @description The session's current tutor. */
+            tutor: components["schemas"]["SessionLogTutor"] | null;
+            /** @description This student's own mark (null: not recorded). */
+            attendance: components["schemas"]["SessionLogMark"] | null;
+            /** @description Only while the session's closeout is approved (null when none, under review, sent back or empty). */
+            summary: components["schemas"]["SessionLogSummary"] | null;
+            /**
+             * Published Note Count
+             * @description The tutor's notes about this student in this session that are shared with the family.
+             */
+            published_note_count: number;
+        };
+        /** @enum {string} */
+        SessionLogKind: "individual" | "group" | "course";
+        /** @enum {string} */
+        SessionLogMark: "present" | "late" | "absent";
+        /**
+         * SessionLogSummary
+         * @description The approved closeout summary (`null` members: left empty).
+         */
+        SessionLogSummary: {
+            /** Topics */
+            topics: string | null;
+            /** Performance */
+            performance: string | null;
+            /** Homework */
+            homework: string | null;
+            /** Next Steps */
+            next_steps: string | null;
+        };
+        /** SessionLogTutor */
+        SessionLogTutor: {
+            /** Display Name */
+            display_name: string;
+        };
         /**
          * SessionNoteCreate
          * @description `POST /api/v1/class-sessions/{id}/notes` (#79 C1): a note about one
@@ -13616,6 +13880,43 @@ export interface components {
              * @description In position order.
              */
             emergency_contacts: components["schemas"]["EmergencyContact"][];
+        };
+        /**
+         * StudentProgress
+         * @description `GET /api/v1/students/{id}/progress` (#84 B2, AM1).
+         */
+        StudentProgress: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** @description The subject filter (null: every subject). */
+            subject: components["schemas"]["ProgressSubject"] | null;
+            /**
+             * Subjects
+             * @description Every subject of the range whatever the subject filter (sessions, counted grades, homework, listed plans), by name (casefold), then id: the options of a subject filter.
+             */
+            subjects: components["schemas"]["ProgressSubject"][];
+            attendance: components["schemas"]["ProgressAttendance"];
+            /**
+             * Attendance By Month
+             * @description Every month of the range, oldest first, zeros included.
+             */
+            attendance_by_month: components["schemas"]["ProgressAttendanceMonth"][];
+            grades: components["schemas"]["ProgressGrades"];
+            homework: components["schemas"]["ProgressHomework"];
+            plans: components["schemas"]["ProgressPlans"];
         };
         /** @enum {string} */
         StudentStatus: "active" | "inactive" | "all";
@@ -25625,6 +25926,146 @@ export interface operations {
             };
             /** @description The schedule changed since it was read (version_conflict), or another active schedule has the same tutor, cadence and subject (progress_report_schedule_exists; details.schedule_id). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_progress_api_v1_students__student_id__progress_get: {
+        parameters: {
+            query?: {
+                /** @description First center-local date (inclusive). */
+                from?: string | null;
+                /** @description Last center-local date (inclusive). */
+                to?: string | null;
+                subject_id?: string | null;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProgress"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose progress you may see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_session_log_api_v1_students__student_id__session_log_get: {
+        parameters: {
+            query?: {
+                /** @description First center-local date (inclusive). */
+                from?: string | null;
+                /** @description Last center-local date (inclusive). */
+                to?: string | null;
+                subject_id?: string | null;
+                cursor?: string | null;
+                /** @description 1-50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionLog"];
+                };
+            };
+            /** @description The cursor is not valid (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The adult student hasn't given you access to their academic records (student_consent_required); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student, or not one whose classes you may see (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

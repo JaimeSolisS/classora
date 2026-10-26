@@ -215,6 +215,7 @@ Codes in use today:
 | `period_invalid` / `period_in_future` | 422 | A progress report period that isn't a Monday-Sunday week, a calendar month or an on-demand period of at most 366 days (on `period_start` or `period_end`), or that starts after the center's today. |
 | `progress_report_schedule_exists` | 409 | Adding or reactivating a report schedule when the tutor already has an active one of that cadence for the student and subject; `details.schedule_id` names it (see Report schedules). |
 | `schedule_author_invalid` / `schedule_subject_not_assigned` / `schedule_starts_on_invalid` | 422 | A report schedule's tutor isn't an active tutor who currently teaches the student; its subject isn't one they teach the student; its first period is before the current one, not a Monday / the 1st, or more than a year ahead. Field errors at `body.author_user_id`, `body.subject_id`, `body.starts_on` on the add; top-level codes on a reactivation (as are `student_inactive` and `subject_unknown` there). |
+| `range_in_future` / `range_too_long` | 422 | A progress dashboard range whose `to` is after the center's today (on `["query","to"]`) or that covers more than 24 calendar months (on `["query","from"]`); with `range_invalid` (`from` after `to` or before 2000-01-01) and `subject_unknown` (on `["query","subject_id"]`) as `validation_error` field errors (see Progress dashboard). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
 | `proposal_in_past` / `proposal_unchanged` | 422 | A reschedule proposal at or before now, or equal to the session's start; on `["body","proposed_starts_at"]`. |
@@ -5339,6 +5340,140 @@ create still gives at most one report and one notification. By hand:
 `COALESCE(subject_id, nil)` where active; indexes by student and for the
 active scan), audited; `progress_reports.schedule_id` (set only by the job)
 with the unique index above. Every key `ON DELETE RESTRICT`.
+
+### Progress dashboard
+
+Implemented by M5-17 (#84; spec §2 current and former tutor access, §3
+"linked attendance … and approved summaries where permitted", §4 "progress
+dashboards with grade trends, attendance, completed objectives and learning
+goals", §16, W5.3, W5.4; architecture §4.1, §4.2; ADR-0002, ADR-0004) as two
+read-only routes in the workflow `app/workflows/progress_dashboard.py`, with
+the routes in `app/workflows/progress_dashboard_router.py` and the closed
+views in `app/workflows/progress_dashboard_schemas.py`. The pure rules
+(audience, percentages, months, range) are
+`academics/progress_dashboard_rules.py`; the academic reads are
+`academics/progress_aggregates.py`, shared with the progress report facts
+(#83) so a live number and a report compiled for the same scope never
+disagree; the session reads are `scheduling/student_progress.py` over the
+same in-scope sessions as `scheduling.service.student_attendance_summary`.
+No table, migration, permission or notification; nothing is written or
+audited. The web pages are #322 (M5-17b).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/students/{student_id}/progress[?from&to&subject_id]` | `authenticated()` + record policy | `StudentProgress` (below): live aggregates and monthly trends for a center-local range. At most 12 statements whatever the number of sessions, grades, homework or plans and whatever the caller's roles (9 at most measured). |
+| `GET /api/v1/students/{student_id}/session-log[?from&to&subject_id&cursor&limit]` | `authenticated()` + record policy | `{items [SessionLogItem], next_cursor}`: the student's in-scope sessions, newest first by `(starts_at, id)`; optional local-date bounds (inclusive) and subject; cursor, `limit` 1-50 (default 20). At most 6 statements whatever the page and the caller's roles: the approved summaries and note counts are joined into the one row read. |
+
+**Who** (one closed shape for every audience; the first that applies, so a
+user with several roles gets the union):
+
+| Actor | `progress` | `session-log` |
+| ----- | ---------- | ------------- |
+| Owner, Administrator, Academic Coordinator (`evaluation.manage`) | 200 | 200, all sessions |
+| Tutor with the student in their current assignments (`scheduling.service.student_ids_for_tutor`) | 200 | 200, all sessions (every tutor's) |
+| The student (own login); a linked guardian of a minor, or of an adult with `guardian_academic_access` | 200 | 200 |
+| A linked guardian of an adult without that consent | 403 `student_consent_required` | 403 `student_consent_required` |
+| Former tutor (taught an in-scope session: its current tutor or its closeout's tutor; not current) | 404 | 200, only the sessions they taught |
+| Other tutors, a tutor who lost the role, the original tutor after a substitution who never taught a started session, Finance, unlinked users; an unknown id | 404 | 404 |
+
+Every `404` has the body of an unknown id. Consent is checked on every
+request (a revocation applies to the next one). A tutor who taught an adult
+and is that adult's guardian without the consent reads their own sessions
+on the log (the union) and gets the `403` on `progress`.
+
+**Order:** `401` → `422` schema → `422` query (`range_invalid`,
+`range_in_future`, `range_too_long`, `subject_unknown`, as
+`validation_error` field errors on the query parameter) → the record policy
+(`evaluation.manage` → current tutor → the family check →
+former tutor, `session-log` only → `404`) → the reads. A `403` or `404`
+reads no academic data.
+
+**Definitions** (all computed on the server; percentages and averages are
+`Decimal` half-up to two places, JSON strings such as `"66.67"`, `null` for a
+zero denominator; plan progress is a whole number such as `"67"`):
+
+- **In-scope sessions:** the student is a participant, the state is
+  `confirmed` or `completed`, the session has started, and its center-local
+  start date is in `[from, to]` (and the subject when filtered); cancelled,
+  skipped, conflict, unassigned and offered sessions never count.
+- **Attendance:** counts of `present`, `late`, `absent` and `not_recorded`;
+  `attendance_percent = (present + late) / (present + late + absent) ×
+  100` (late counts as attended; unrecorded sessions are shown, not rated).
+- **Grades:** evaluations that are final, non-voided and live with
+  `evaluated_on` in the range; homework grades with a score (feedback-only
+  grades have none), `graded_on` in the range, of live assignments;
+  averages are the mean of `score_percent`, evaluations and homework kept
+  apart.
+- **Homework:** the student's rows of live assignments **due** in the range,
+  in the #82 states at the moment of the request (`pending`, `missing`,
+  `submitted`, `graded`) plus `late`; `completion_percent = (submitted +
+  graded) / (submitted + graded + missing) × 100` (pending work isn't counted
+  yet). Work graded before its due date counts in the averages at once and in
+  the states once its due date is in the range.
+- **Learning plans:** the student's live `active` and `completed` plans, not
+  range-filtered (subject-filtered), with the #81 progress, the objectives
+  whose milestones are all done, and the milestones overdue at the center's
+  today.
+- **Range:** `to` defaults to the center's today, `from` to the first day of
+  the month 11 months before `to`'s month (12 calendar months). `from` after
+  `to` or before 2000-01-01 is `range_invalid` (on `from`), `to` after today
+  `range_in_future` (on `to`), more than 24 calendar months `range_too_long`
+  (on `from`); `subject_id` unknown is `subject_unknown` (an inactive
+  subject is allowed: history). The log's bounds are optional (`from` after
+  `to` is `range_invalid`) with no maximum.
+
+**`StudentProgress`** (closed): `{student_id, from, to, subject {id, name} |
+null, subjects [{id, name}], attendance {sessions, present, late, absent,
+not_recorded, attendance_percent}, attendance_by_month [{month, sessions,
+present, late, absent, not_recorded}], grades {evaluation_count,
+evaluation_average_percent, assignment_count, assignment_average_percent,
+by_subject [{subject, evaluation_count, evaluation_average_percent,
+assignment_count, assignment_average_percent}], by_month [{month, subject,
+…the same four}]}, homework {pending, missing, submitted, graded, late,
+completion_percent}, plans {active, completed, objectives_complete,
+objectives_total, milestones_overdue, items [{id, title, subject, status,
+progress_percent, objectives_complete, objectives_total, milestones_done,
+milestones_total, milestones_overdue, target_on}]}}`.
+
+- `subjects`: the subjects of the unfiltered range, for filters (in-scope
+  sessions, counted grades, homework rows, listed plans), whatever
+  `subject_id` is.
+- `month` is the center-local `"YYYY-MM"`. `attendance_by_month` has every
+  month of the range, oldest first, zeros included; `by_month` only the
+  (month, subject) pairs with a value, by month then subject name;
+  `by_subject` and `subjects` are by name (casefold), then id.
+- `plans.items`: at most 20, active plans first by `target_on` (none last),
+  then completed ones, the latest completed first; the counts cover every
+  listed plan.
+- Only numbers, dates, subject names and plan titles: never feedback,
+  comments, instructions, submission text, notes, summaries or reasons.
+
+**`SessionLogItem`** (closed): `{class_session_id, starts_at, subject {id,
+name}, session_kind (individual | group | course), tutor {display_name} |
+null (the session's current tutor), attendance (present | late | absent |
+null: the student's own live mark), summary {topics, performance, homework,
+next_steps} | null, published_note_count}`. Never user ids, the closeout's
+status or minutes, review or correction reasons, the tutor's note, on-behalf
+data, or other participants' names, ids or attendance.
+
+- **Summary rule:** `summary` is shown only while the session's closeout is
+  `approved` and has at least one summary field, the same for every audience
+  (staff read the full closeout on the session page). It is `null` with no
+  closeout, while `submitted` or `changes_requested`, and while an approved
+  closeout is back in review after the tutor's correction request (#305: its
+  columns hold the new, unapproved text; the summary isn't snapshotted per
+  approval). A group or course summary describes the class and shows to
+  every participant. A staff attendance correction after approval changes
+  `attendance`, not the summary.
+- `published_note_count`: the student's live notes in that session shared
+  with the family (#79); families read their text through
+  `GET /students/{id}/learning-notes?class_session_id=`.
+
+The family leak walk `apps/api/tests/integration/test_session_notes_leak.py`
+proves no `GET` route carries a submitted, sent-back or under-review
+summary, a review, correction or on-behalf reason, a tutor's note, an
+internal note or another family's summary, and that each family's log shows
+its own child's approved summaries and attendance.
 
 ### Change requests
 
