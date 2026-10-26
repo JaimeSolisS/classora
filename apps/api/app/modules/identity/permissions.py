@@ -131,6 +131,14 @@ LEARNING_PLAN_MANAGE = "learning_plan.manage"
 # assignment record policy (academics/assignment_rules.py); students submit
 # and families read through the per-student routes.
 ASSIGNMENT_REVIEW = "assignment.review"
+# Progress reports (#83, owner-delegated decision E4 (a)): who reads every
+# non-draft progress report and approves it for families, sends it back to its
+# author or retracts it (Owner, Administrator, Academic Coordinator; spec W5.2
+# "an administrator approves", read as staff with academic approval authority,
+# the ISSUE-F7 precedent; not delegable). A reviewer never decides their own
+# report unless they hold the Owner role. Tutors write their reports through
+# the report record policy (academics/progress_report_rules.py).
+PROGRESS_REPORT_REVIEW = "progress_report.review"
 
 
 @dataclass(frozen=True)
@@ -173,6 +181,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(EVALUATION_MANAGE),
     PermissionDef(LEARNING_PLAN_MANAGE),
     PermissionDef(ASSIGNMENT_REVIEW),
+    PermissionDef(PROGRESS_REPORT_REVIEW),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -219,6 +228,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 EVALUATION_MANAGE,
                 LEARNING_PLAN_MANAGE,
                 ASSIGNMENT_REVIEW,
+                PROGRESS_REPORT_REVIEW,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -237,6 +247,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 EVALUATION_MANAGE,
                 LEARNING_PLAN_MANAGE,
                 ASSIGNMENT_REVIEW,
+                PROGRESS_REPORT_REVIEW,
             }
         ),
         FINANCE_STAFF: frozenset(

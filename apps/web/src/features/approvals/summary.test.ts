@@ -15,6 +15,7 @@ import {
   itemName,
   occurrenceCodeName,
   occurrenceConflictSubject,
+  progressReportSubject,
   sessionCloseoutLink,
   sessionCloseoutReviewLine,
   sessionCloseoutSubject,
@@ -259,6 +260,78 @@ describe('academics.session_closeout (#77 G4)', () => {
       sessionCloseoutSubject({
         ...AVAILABILITY_CHANGE,
         subject: SESSION_CLOSEOUT.subject,
+      }),
+    ).toBeNull();
+  });
+});
+
+// #83 H2: a progress report waiting for review: the student, the period, the
+// subject (when the report has one) and the author; never the narrative.
+
+const PROGRESS_REPORT: ApprovalRequestItem = {
+  id: '00000000-0000-4000-8000-000000000831',
+  request_type: 'academics.progress_report',
+  status: 'pending',
+  priority: 'normal',
+  requester: {
+    id: '00000000-0000-4000-8000-000000000832',
+    display_name: 'Carmen Ruiz',
+  },
+  assignee: null,
+  created_at: '2031-03-05T18:00:00Z',
+  resolved_at: null,
+  resolved_by: null,
+  reason: null,
+  subject: {
+    report_id: '00000000-0000-4000-8000-000000000833',
+    student: {
+      id: '00000000-0000-4000-8000-000000000834',
+      display_name: 'Ana López',
+    },
+    author: { display_name: 'Carmen Ruiz' },
+    kind: 'weekly',
+    period_start: '2031-03-03',
+    period_end: '2031-03-09',
+    subject: {
+      id: '00000000-0000-4000-8000-000000000835',
+      name: 'Matemáticas',
+    },
+    submitted_at: '2031-03-05T18:00:00Z',
+  },
+  allowed_actions: [],
+  version: 1,
+};
+
+describe('academics.progress_report (#83 H2)', () => {
+  const date = (localDate: string) => localDate.split('-').reverse().join('/');
+
+  it('summarizes the student, the period, the subject and the author', () => {
+    expect(approvalSummary(PROGRESS_REPORT, en, undefined, date)).toBe(
+      'Ana López · 03/03/2031 – 09/03/2031 · Matemáticas · Carmen Ruiz',
+    );
+    const whole = {
+      ...PROGRESS_REPORT,
+      subject: {
+        ...(PROGRESS_REPORT.subject as Record<string, unknown>),
+        subject: null,
+      },
+    };
+    expect(approvalSummary(whole, es, undefined, date)).toBe(
+      'Ana López · 03/03/2031 – 09/03/2031 · Carmen Ruiz',
+    );
+    expect(typeLabel('academics.progress_report', en)).toBe('Progress report');
+    expect(typeLabel('academics.progress_report', es)).toBe(
+      'Informe de progreso',
+    );
+  });
+
+  it('reads the subject only for its own type', () => {
+    expect(progressReportSubject(PROGRESS_REPORT)?.kind).toBe('weekly');
+    expect(progressReportSubject(AVAILABILITY_CHANGE)).toBeNull();
+    expect(
+      progressReportSubject({
+        ...PROGRESS_REPORT,
+        subject: { kind: 'weekly' },
       }),
     ).toBeNull();
   });

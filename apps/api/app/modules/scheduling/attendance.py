@@ -56,10 +56,11 @@ Every function runs in the caller's Unit of Work and never commits.
 
 import uuid
 from collections.abc import Awaitable, Callable, Collection, Iterable, Sequence
-from datetime import UTC
-from typing import Final, cast
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from typing import Any, Final, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -546,6 +547,76 @@ async def attendance_statuses(
         (class_session_id, student_id): cast(AttendanceStatus, status)
         for class_session_id, student_id, status in rows
     }
+
+
+@dataclass(frozen=True)
+class AttendanceSummary:
+    """One student's attendance counts over a period (#83 B2)."""
+
+    sessions: int
+    present: int
+    late: int
+    absent: int
+    not_recorded: int
+
+
+SUMMARY_STATES: Final = (SessionState.CONFIRMED.value, SessionState.COMPLETED.value)
+"""The states a progress report counts (cancelled and skipped never)."""
+
+
+async def student_attendance_summary(
+    session: AsyncSession,
+    student_id: uuid.UUID,
+    start: date,
+    end: date,
+    *,
+    subject_id: uuid.UUID | None,
+    time_zone: str,
+    now: datetime,
+) -> AttendanceSummary:
+    """#83 B2: the student's ``confirmed`` or ``completed`` sessions that have
+    started (``starts_at <= now``) and whose local start date (in
+    ``time_zone``) is in ``[start, end]`` (only ``subject_id``'s when given),
+    counted by the student's mark: ``present``, ``late``, ``absent`` or not
+    recorded. One statement."""
+    local_date = cast(Any, func.timezone(time_zone, ClassSession.starts_at)).cast(Date)
+    status = ClassSessionAttendance.status
+    query = (
+        select(
+            func.count(),
+            func.count().filter(status == "present"),
+            func.count().filter(status == "late"),
+            func.count().filter(status == "absent"),
+            func.count().filter(status.is_(None)),
+        )
+        .select_from(ClassSessionParticipant)
+        .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
+        .outerjoin(
+            ClassSessionAttendance,
+            and_(
+                ClassSessionAttendance.class_session_id
+                == ClassSessionParticipant.class_session_id,
+                ClassSessionAttendance.student_id == ClassSessionParticipant.student_id,
+            ),
+        )
+        .where(
+            ClassSessionParticipant.student_id == student_id,
+            ClassSession.state.in_(SUMMARY_STATES),
+            ClassSession.starts_at <= now,
+            local_date >= start,
+            local_date <= end,
+        )
+    )
+    if subject_id is not None:
+        query = query.where(ClassSession.subject_id == subject_id)
+    sessions, present, late, absent, not_recorded = (await session.execute(query)).one()
+    return AttendanceSummary(
+        sessions=sessions,
+        present=present,
+        late=late,
+        absent=absent,
+        not_recorded=not_recorded,
+    )
 
 
 async def student_attendance(

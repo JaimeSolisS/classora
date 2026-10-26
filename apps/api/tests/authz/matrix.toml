@@ -1398,6 +1398,78 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/progress-reports"
+access = "authenticated"
+# #83 E2: a tutor's own reports; progress_report.review holders every
+# non-draft report. Anyone else gets 404 (the 200 cases are tested in
+# tests/integration/test_progress_reports.py).
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports"
+access = "authenticated"
+# #83 C2: a tutor-role user currently teaching the student. The placeholder
+# student is unknown: 404 for every role. The 201, 403
+# progress_report_tutor_only / report_subject_not_assigned and 409 cases are
+# tested in tests/integration/test_progress_reports.py.
+json = { student_id = "00000000-0000-4000-8000-000000000083", kind = "on_demand", period_start = "2026-01-05", period_end = "2026-01-11" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 C4: the report record policy (the author). The placeholder id is no
+# report: 404 for every role.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 E1: the author and progress_report.review holders (non-draft). The
+# placeholder id is no report: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 C3: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/approve"
+access = "authenticated"
+# #83 D1, D3: the record policy, then 403 permission_denied without
+# progress_report.review (after the 404: a hidden report stays hidden). The
+# placeholder id is no report: 404 for every role. The 200, 403 and 409
+# cases are tested in tests/integration/test_progress_reports.py.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/request-changes"
+access = "authenticated"
+# #83 D1, D4: as approve, with a reason.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/retract"
+access = "authenticated"
+# #83 D1, D5: as approve, with a reason.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/submit"
+access = "authenticated"
+# #83 D2: as DELETE (the author), with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "GET"
 path = "/api/v1/schedule/family-students"
 access = "permission"
 permission = "student.view"
@@ -1656,6 +1728,22 @@ access = "authenticated"
 # #79 E2: the record policy (reviewers, tutors with the student assigned, a
 # former tutor for their own notes). The placeholder id is no student: 404
 # for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports"
+access = "authenticated"
+# #83 F1, F3: approved reports only, closed family-safe shape: holders, the
+# student's current tutors, a former author (own), the student and guardians
+# with academic access (403 student_consent_required for an adult's guardian
+# without the consent). The placeholder id is no student: 404 for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports/{report_id}"
+access = "authenticated"
+# #83 F1, F2: as the list; a report that isn't an approved report of the
+# student is 404.
 
 [[route]]
 method = "GET"

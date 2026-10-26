@@ -49,6 +49,7 @@ type PermissionCode = Literal[
     "guardian.view",
     "learning_plan.manage",
     "payroll.finalize",
+    "progress_report.review",
     "qualification.review",
     "registration.review",
     "schedule.assign",

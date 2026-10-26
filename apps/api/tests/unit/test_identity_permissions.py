@@ -84,6 +84,10 @@ EXPECTED = {
     # Owner-delegated decision #82 E6 (a): read-only oversight; no Finance,
     # Tutor, Student or Guardian (tutors write through the record policy).
     "assignment.review": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
+    # Owner-delegated decision #83 E4 (a): "an administrator approves" read as
+    # staff with academic approval authority (ISSUE-F7); no Finance, Tutor,
+    # Student or Guardian (tutors write through the report record policy).
+    "progress_report.review": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
 }
 
 
@@ -97,8 +101,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 34
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 87
+    assert len(PERMISSIONS) == 35
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 90
 
 
 def test_every_code_has_the_dotted_form():

@@ -71,8 +71,16 @@
   percentage or feedback only; a re-grade keeps an internal
   ``last_change_reason``).
 
+- ``progress_reports`` (#83 A1): a tutor's report about one student for a
+  weekly, monthly or on-demand period (optionally one subject): the
+  narrative, the facts snapshot frozen at each submit, and the review
+  (``draft`` → ``submitted`` → ``changes_requested`` |
+  ``approved_for_family`` → ``retracted``). A trigger freezes an approved
+  report's content (42501) and refuses every ``DELETE``.
+
 ``session_closeouts``, ``session_notes``, the four evaluation tables, the
-three learning plan tables and the two homework tables are audited (the
+three learning plan tables, the two homework tables and ``progress_reports``
+are audited (the
 create and update diffs are their record). The two append-only tables are not: a trigger
 rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named
 events
@@ -1050,3 +1058,209 @@ class AssignmentSubmission(Audited, VersionedMixin, Model):
     )
     last_change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     """Internal (E5): never returned to families."""
+
+
+# --- Progress reports (#83) -------------------------------------------------------
+
+PROGRESS_REPORT_KINDS: Final = ("weekly", "monthly", "on_demand")
+PROGRESS_REPORT_STATUSES: Final = (
+    "draft",
+    "submitted",
+    "changes_requested",
+    "approved_for_family",
+    "retracted",
+)
+PROGRESS_REPORT_PERIOD_UNIQUE: Final = "uq_progress_reports_period"
+PROGRESS_REPORT_PROTECTED: Final = (
+    "student_id",
+    "author_user_id",
+    "subject_id",
+    "kind",
+    "period_start",
+    "period_end",
+    "summary",
+    "strengths",
+    "areas_for_improvement",
+    "next_steps",
+    "facts",
+    "facts_computed_at",
+    "approved_at",
+    "approved_by_user_id",
+)
+"""The columns the immutability trigger freezes once ``approved_at`` is set
+(#83 A1, E3; migration 0057)."""
+
+
+class ProgressReport(Audited, SoftDeleteMixin, VersionedMixin, Model):
+    """A tutor's progress report about one student for one period (#83 A1,
+    E2, E3): an optional subject, the narrative (``summary`` required to
+    submit, ``strengths``, ``areas_for_improvement``, ``next_steps``; stored
+    trimmed), the family-safe ``facts`` snapshot frozen at each submit, and
+    the review: ``draft`` → ``submitted`` → ``changes_requested`` |
+    ``approved_for_family`` (the only status families ever see) →
+    ``retracted`` (final). Once ``approved_at`` is set a trigger refuses
+    any change to the content and the approval (42501), and every
+    ``DELETE``. A soft delete is allowed in ``draft`` and
+    ``changes_requested``. Its audit diffs are its edit history (spec
+    §9)."""
+
+    __tablename__ = "progress_reports"
+    __table_args__ = (
+        CheckConstraint(_in("kind", PROGRESS_REPORT_KINDS), name="kind_valid"),
+        CheckConstraint(
+            "period_start <= period_end AND period_end - period_start <= 365",
+            name="period_valid",
+        ),
+        CheckConstraint(
+            "kind <> 'weekly' OR (extract(isodow from period_start) = 1"
+            " AND period_end = period_start + 6)",
+            name="weekly_period",
+        ),
+        CheckConstraint(
+            "kind <> 'monthly' OR (extract(day from period_start) = 1"
+            " AND period_end = (period_start + interval '1 month'"
+            " - interval '1 day')::date)",
+            name="monthly_period",
+        ),
+        CheckConstraint(_in("status", PROGRESS_REPORT_STATUSES), name="status_valid"),
+        _trimmed_text("summary", 4000, nullable=True),
+        _trimmed_text("strengths", 2000, nullable=True),
+        _trimmed_text("areas_for_improvement", 2000, nullable=True),
+        _trimmed_text("next_steps", 2000, nullable=True),
+        CheckConstraint(
+            "(facts IS NULL) = (facts_computed_at IS NULL)", name="facts_together"
+        ),
+        CheckConstraint("status = 'draft' OR facts IS NOT NULL", name="facts_frozen"),
+        CheckConstraint(
+            "status = 'draft' OR submitted_at IS NOT NULL", name="submitted_set"
+        ),
+        CheckConstraint(
+            "(changes_requested_at IS NULL) = (changes_requested_by_user_id IS NULL)"
+            " AND (changes_requested_at IS NULL) = (changes_requested_reason IS NULL)",
+            name="changes_requested_together",
+        ),
+        _reason_check("changes_requested_reason", nullable=True),
+        CheckConstraint(
+            "status <> 'changes_requested' OR changes_requested_at IS NOT NULL",
+            name="changes_requested_set",
+        ),
+        CheckConstraint(
+            "(approved_at IS NULL) = (approved_by_user_id IS NULL)",
+            name="approved_together",
+        ),
+        CheckConstraint(
+            "(status = 'approved_for_family') <= (approved_at IS NOT NULL)",
+            name="approved_set",
+        ),
+        CheckConstraint(
+            "approved_at IS NULL OR status IN ('approved_for_family', 'retracted')",
+            name="approved_status",
+        ),
+        CheckConstraint(
+            "(retracted_at IS NULL) = (retracted_by_user_id IS NULL)"
+            " AND (retracted_at IS NULL) = (retract_reason IS NULL)",
+            name="retracted_together",
+        ),
+        _reason_check("retract_reason", nullable=True),
+        CheckConstraint(
+            "(status = 'retracted') = (retracted_at IS NOT NULL)",
+            name="retracted_set",
+        ),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="deleted_together",
+        ),
+        CheckConstraint(
+            "deleted_at IS NULL OR status IN ('draft', 'changes_requested')",
+            name="deleted_editable",
+        ),
+        # R10: a student's approved reports.
+        Index(
+            "ix_progress_reports_student_id_approved",
+            "student_id",
+            "period_end",
+            "id",
+            postgresql_where=text("status = 'approved_for_family'"),
+        ),
+        # R2 (mine): an author's live reports.
+        Index(
+            "ix_progress_reports_author_user_id_created_at",
+            "author_user_id",
+            "created_at",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        # The reviewer queue.
+        Index(
+            "ix_progress_reports_submitted_at",
+            "submitted_at",
+            "id",
+            postgresql_where=text("status = 'submitted'"),
+        ),
+        # One live weekly/monthly report per student, author, period and
+        # subject (#83c's placeholders rely on it).
+        Index(
+            PROGRESS_REPORT_PERIOD_UNIQUE,
+            "student_id",
+            "author_user_id",
+            "kind",
+            "period_start",
+            text("COALESCE(subject_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+            postgresql_where=text(
+                "kind <> 'on_demand' AND deleted_at IS NULL AND status <> 'retracted'"
+            ),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subjects.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'draft'"))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strengths: Mapped[str | None] = mapped_column(Text, nullable=True)
+    areas_for_improvement: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_steps: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facts: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    facts_computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    changes_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    changes_requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    changes_requested_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Internal (E6): never in the family shape."""
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    retracted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retracted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    retract_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Internal (E6): never in the family shape."""
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )

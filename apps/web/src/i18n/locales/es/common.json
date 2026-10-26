@@ -306,7 +306,8 @@
       "scheduling_session_request": "Solicitud de sesión",
       "scheduling_change_request": "Solicitud de cambio",
       "staff_availability_change": "Cambio de disponibilidad",
-      "academics_session_closeout": "Cierre de clase"
+      "academics_session_closeout": "Cierre de clase",
+      "academics_progress_report": "Informe de progreso"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -330,7 +331,9 @@
       "availabilityChange_other": "{{tutor}} · {{change}} · {{count}} clases afectadas",
       "sessionCloseout_one": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiante",
       "sessionCloseout_many": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes",
-      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes"
+      "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes",
+      "progressReport": "{{student}} · {{start}} – {{end}} · {{subject}} · {{author}}",
+      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -1501,7 +1504,10 @@
       "academics_learning_plan_completed": "Se completó un plan de aprendizaje.",
       "academics_assignment_set": "Hay una tarea nueva para el {{due_on}}.",
       "academics_assignment_submitted": "Un alumno entregó una tarea.",
-      "academics_assignment_graded": "Se calificó una tarea."
+      "academics_assignment_graded": "Se calificó una tarea.",
+      "academics_progress_report_approved": "Se aprobó un informe de progreso del {{period_start}} al {{period_end}}.",
+      "academics_progress_report_changes_requested": "Un revisor pidió cambios en tu informe de progreso.",
+      "academics_progress_report_retracted": "Se retiró tu informe de progreso."
     }
   },
   "scheduling": {

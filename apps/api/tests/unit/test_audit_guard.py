@@ -25,6 +25,7 @@ from app.modules.academics.models import (
     LearningPlan,
     LearningPlanMilestone,
     LearningPlanObjective,
+    ProgressReport,
     SessionCloseout,
     SessionNote,
 )
@@ -162,6 +163,7 @@ def test_the_guard_scans_the_real_audited_models():
         LearningPlanObjective,
         OperatingHours,
         PrivacyNoticeAcceptance,
+        ProgressReport,
         RegistrationRequest,
         SchedulingPolicy,
         SessionChangeRequest,
@@ -231,6 +233,9 @@ def test_the_guard_scans_the_real_audited_models():
         # record (re-grades keep prior and new values); nothing excluded.
         Assignment,
         AssignmentSubmission,
+        # #83 A2: a report's narrative, facts and review are the record
+        # (its audit diffs are its edit history); nothing excluded.
+        ProgressReport,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()
