@@ -113,3 +113,41 @@ describe('the homework nav items (#313 A2)', () => {
     ).toEqual(['nav.assignedHomework', 'nav.homework']);
   });
 });
+
+// #315 A2: "Progress reports" for tutors and progress_report.review holders,
+// "Tutor reports" for students and guardians; Finance sees neither; a tutor
+// who is also a guardian sees both.
+describe('the progress report nav items (#315 A2)', () => {
+  const REVIEWER = user(
+    ['academic_coordinator'],
+    ['student.view', 'progress_report.review'],
+  );
+  const TUTOR_GUARDIAN = user(
+    ['tutor', 'guardian'],
+    ['student.view', 'tutor.view', 'guardian.view'],
+  );
+
+  it.each([
+    ['a tutor', TUTOR, true, false],
+    ['a Coordinator (progress_report.review)', REVIEWER, true, false],
+    ['a guardian', GUARDIAN, false, true],
+    ['a student', STUDENT, false, true],
+    ['Finance', FINANCE, false, false],
+    ['a tutor who is also a guardian', TUTOR_GUARDIAN, true, true],
+  ] as const)(
+    '%s: progress reports %s, tutor reports %s',
+    (_who, as, working, family) => {
+      const items = shown(as);
+      expect(items.includes('/progress-reports')).toBe(working);
+      expect(items.includes('/my-progress-reports')).toBe(family);
+    },
+  );
+
+  it('labels both items in the common catalog', () => {
+    expect(
+      NAV_ITEMS.filter((item) =>
+        ['/progress-reports', '/my-progress-reports'].includes(item.to),
+      ).map((item) => item.labelKey),
+    ).toEqual(['nav.progressReports', 'nav.tutorReports']);
+  });
+});

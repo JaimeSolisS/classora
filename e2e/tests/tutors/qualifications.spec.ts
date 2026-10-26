@@ -93,9 +93,21 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // no control), and the "Learning plans" nav item lists it for the child.
 // Axe on the editor and the family view.
 //
+// #315 H3 (after #310, before #62b, whose cancellation ends the tutor's
+// assignment): the tutor (phone) follows "Progress reports of {child}" to
+// "New report" and starts an on-demand report (its facts preview has
+// #308's final evaluation), saves and submits it; the guardian's API reads
+// never carry it. The Owner follows "Review" from the inbox and requests
+// changes; the tutor's bell opens the report with the reason, and the
+// tutor resubmits; the Owner approves it from the queue; the guardian's
+// bell opens the family page (no reason). The Owner retracts it: the
+// guardian's page says it's no longer available, and no guardian body
+// carries it or the retract reason. Axe on the editor, the review page,
+// the queue and the family page.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
-// guardian; #79, #308 and #310 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
+// guardian; #79, #308, #310 and #315 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
 // the guardian's createApprovedAccount). Every `make e2e` starts from an
 // empty database, so names are unique per run.
 
@@ -1356,6 +1368,298 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(
         familyPlanMain.getByRole('link', { name: planTitle }),
       ).toBeVisible();
+      // #315 H3: progress reports (after #310, before #62b, whose
+      // cancellation ends the tutor's assignment). The tutor (phone) follows
+      // "Progress reports of {child}" from the class's details to the
+      // per-student page ("No approved reports yet.") → "New report" → On
+      // demand (the last 7 days), all subjects → "Start report": the draft's
+      // facts preview has #308's final evaluation (dated today). Save, axe,
+      // submit → "In review". The guardian's API reads don't carry it. The
+      // Owner follows "Review" from the inbox (axe) and requests changes;
+      // the tutor's bell (desktop width: the header shows only ☰ at 390 px)
+      // opens the report, whose banner has the reason; the tutor resubmits.
+      // The Owner approves it from the queue (axe on the queue); the
+      // guardian's bell opens the family page (axe), without the reason.
+      // The Owner retracts it: the guardian's page says it's no longer
+      // available, and no guardian body carries it or the retract reason.
+      const reports = common.progressReports;
+      const reportDraft = `E2E report draft ${suffix}`;
+      const reportApproved = `E2E report approved ${suffix}`;
+      const reportReason = `E2E report reason ${suffix}`;
+      const reportRetract = `E2E report retract ${suffix}`;
+      const evaluationFacts = fill(
+        reports.facts.evaluations.subjectAverage_one,
+        { subject: physics, count: 1, average: '87.50' },
+      );
+      const reportsPage = tutor.page.url();
+      const reportsSize = tutor.page.viewportSize();
+      await tutor.page.setViewportSize(PHONE);
+      await tutor.page.goto(`/my-schedule?date=${day.date}`);
+      await expect(calendarOf(tutor.page)).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await calendarOf(tutor.page)
+        .getByRole('button', {
+          name: sessionName(common.mySchedule.states.confirmed, studentName),
+        })
+        .click();
+      await tutor.page
+        .getByRole('dialog', { name: physics })
+        .getByRole('link', {
+          name: fill(reports.entry.linkOf, { name: studentName }),
+        })
+        .click();
+      await expect(tutor.page).toHaveURL(
+        `/students/${childId}/progress-reports`,
+      );
+      const reportsMain = tutor.page.getByRole('main');
+      await expect(reportsMain).toContainText(reports.student.noApproved);
+      await reportsMain
+        .getByRole('link', { name: reports.new, exact: true })
+        .click();
+      await expect(tutor.page).toHaveURL(
+        `/students/${childId}/progress-reports/new`,
+      );
+      await expect(
+        reportsMain.getByLabel(reports.kinds.on_demand, { exact: true }),
+      ).toBeChecked();
+      await reportsMain
+        .getByRole('button', { name: reports.start.submit })
+        .click();
+      await expect(tutor.page).toHaveURL(/\/progress-reports\/[0-9a-f-]{36}$/);
+      const reportId = new URL(tutor.page.url()).pathname.split('/').pop()!;
+      await expect(reportsMain).toContainText(reports.status.draft);
+      await expect(reportsMain).toContainText(evaluationFacts);
+      await reportsMain
+        .getByLabel(reports.fields.summary, { exact: true })
+        .fill(reportDraft);
+      await reportsMain
+        .getByRole('button', { name: reports.actions.save, exact: true })
+        .click();
+      await expect(
+        reportsMain
+          .getByRole('status')
+          .filter({ hasText: reports.notices.saved }),
+      ).toBeVisible();
+      expect(await axeViolations(tutor.page)).toEqual([]);
+      await reportsMain
+        .getByRole('button', { name: reports.actions.submit, exact: true })
+        .click();
+      const submitDialog = tutor.page.getByRole('dialog', {
+        name: reports.submit.title,
+      });
+      await submitDialog
+        .getByRole('button', { name: reports.actions.submit })
+        .click();
+      await expect(submitDialog).toBeHidden();
+      await expect(
+        reportsMain
+          .getByRole('status')
+          .filter({ hasText: reports.notices.submitted }),
+      ).toBeVisible();
+      await expect(reportsMain).toContainText(reports.status.submitted);
+
+      // The guardian's API reads: a submitted report is in neither.
+      const familyReports = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports`,
+      );
+      expect(familyReports.status).toBe(200);
+      expect(JSON.stringify(familyReports.body)).not.toContain(reportId);
+      expect(JSON.stringify(familyReports.body)).not.toContain(reportDraft);
+      const familySubmitted = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports/${reportId}`,
+      );
+      expect(familySubmitted.status).toBe(404);
+
+      // The Owner: the inbox's "Review" link → the review page; request
+      // changes with a reason.
+      const reviewMain = page.getByRole('main');
+      await page.goto('/approvals?type=academics.progress_report');
+      await reviewMain
+        .getByRole('link', {
+          name: fill(common.approvals.progressReport.reviewFor, {
+            student: studentName,
+          }),
+        })
+        .click();
+      await expect(page).toHaveURL(`/progress-reports/${reportId}`);
+      await expect(reviewMain).toContainText(reportDraft);
+      await expect(reviewMain).toContainText(evaluationFacts);
+      expect(await axeViolations(page)).toEqual([]);
+      await reviewMain
+        .getByRole('button', {
+          name: reports.actions.requestChanges,
+          exact: true,
+        })
+        .click();
+      const changesDialog = page.getByRole('dialog', {
+        name: reports.changes.title,
+      });
+      await changesDialog
+        .getByLabel(reports.review.reason, { exact: true })
+        .fill(reportReason);
+      await changesDialog
+        .getByRole('button', { name: reports.actions.requestChanges })
+        .click();
+      await expect(changesDialog).toBeHidden();
+      await expect(reviewMain).toContainText(reports.status.changesRequested);
+
+      // The tutor's bell (desktop width) opens the report; at 390 px the
+      // banner has the reason; the tutor rewrites the summary and resubmits.
+      if (reportsSize) {
+        await tutor.page.setViewportSize(reportsSize);
+      }
+      await tutor.page.reload();
+      await bell.click();
+      await panel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escape(
+              common.notifications.types
+                .academics_progress_report_changes_requested,
+            )}`,
+          ),
+        })
+        .click();
+      await expect(tutor.page).toHaveURL(`/progress-reports/${reportId}`);
+      await tutor.page.setViewportSize(PHONE);
+      await expect(reportsMain).toContainText(reportReason);
+      await reportsMain
+        .getByLabel(reports.fields.summary, { exact: true })
+        .fill(reportApproved);
+      await reportsMain
+        .getByRole('button', { name: reports.actions.resubmit, exact: true })
+        .click();
+      const resubmitDialog = tutor.page.getByRole('dialog', {
+        name: reports.submit.titleResubmit,
+      });
+      await resubmitDialog
+        .getByRole('button', { name: reports.actions.resubmit })
+        .click();
+      await expect(resubmitDialog).toBeHidden();
+      await expect(reportsMain).toContainText(reports.status.submitted);
+      if (reportsSize) {
+        await tutor.page.setViewportSize(reportsSize);
+      }
+      await tutor.page.goto(reportsPage);
+
+      // The Owner: the queue (the default list) → the report → Approve.
+      await page.goto('/progress-reports');
+      const queued = reviewMain.getByRole('link', {
+        name: studentName,
+        exact: true,
+      });
+      await expect(queued).toBeVisible();
+      expect(await axeViolations(page)).toEqual([]);
+      await queued.click();
+      await expect(page).toHaveURL(`/progress-reports/${reportId}`);
+      await expect(reviewMain).toContainText(reportApproved);
+      await reviewMain
+        .getByRole('button', { name: reports.actions.approve, exact: true })
+        .click();
+      const approveDialog = page.getByRole('dialog', {
+        name: reports.approve.title,
+      });
+      await approveDialog
+        .getByRole('button', { name: reports.actions.approve })
+        .click();
+      await expect(approveDialog).toBeHidden();
+      await expect(
+        reviewMain
+          .getByRole('status')
+          .filter({ hasText: reports.notices.approved }),
+      ).toBeVisible();
+
+      // The guardian's bell (desktop width) opens the family page of the
+      // report (#83 AM3: audience "family"); at 390 px the approved text,
+      // the author and the facts, never the reason (axe).
+      if (parentViewport) {
+        await parent.page.setViewportSize(parentViewport);
+      }
+      await parent.page.reload();
+      await parentBell.click();
+      await parentPanel
+        .getByRole('button', {
+          name: new RegExp(
+            `^${escapeText(
+              common.notifications.types.academics_progress_report_approved.split(
+                '{{period_start}}',
+              )[0]!,
+            )}`,
+          ),
+        })
+        .click();
+      await expect(parent.page).toHaveURL(
+        `/my-progress-reports/${reportId}?student=${childId}`,
+      );
+      await parent.page.setViewportSize(PHONE);
+      const familyReportMain = parent.page.getByRole('main');
+      await expect(familyReportMain).toContainText(reportApproved);
+      await expect(familyReportMain).toContainText(
+        fill(reports.writtenBy, { name: TUTOR_NAME }),
+      );
+      await expect(familyReportMain).toContainText(evaluationFacts);
+      await expect(familyReportMain).not.toContainText(reportReason);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      const approvedList = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports`,
+      );
+      const approvedDetail = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports/${reportId}`,
+      );
+      expect(approvedList.status).toBe(200);
+      expect(approvedDetail.status).toBe(200);
+      expect(JSON.stringify(approvedList.body)).toContain(reportId);
+      expect(JSON.stringify(approvedDetail.body)).toContain(reportApproved);
+      for (const body of [approvedList.body, approvedDetail.body]) {
+        expect(JSON.stringify(body)).not.toContain(reportDraft);
+        expect(JSON.stringify(body)).not.toContain(reportReason);
+      }
+
+      // The Owner retracts it (the dialog warns about the family); the
+      // guardian's page then says it's no longer available.
+      await page.goto(`/progress-reports/${reportId}`);
+      await reviewMain
+        .getByRole('button', { name: reports.actions.retract, exact: true })
+        .click();
+      const retractDialog = page.getByRole('dialog', {
+        name: reports.retract.title,
+      });
+      await expect(retractDialog).toContainText(
+        fill(reports.retract.warning, { student: studentName }),
+      );
+      await retractDialog
+        .getByLabel(reports.review.reason, { exact: true })
+        .fill(reportRetract);
+      await retractDialog
+        .getByRole('button', { name: reports.actions.retract })
+        .click();
+      await expect(retractDialog).toBeHidden();
+      await expect(reviewMain).toContainText(reports.status.retracted);
+      await parent.page.reload();
+      await expect(familyReportMain).toContainText(
+        reports.family.reportMissing,
+      );
+      const retractedList = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports`,
+      );
+      const retractedDetail = await api(
+        parent.page,
+        `/api/v1/students/${childId}/progress-reports/${reportId}`,
+      );
+      expect(retractedList.status).toBe(200);
+      expect(JSON.stringify(retractedList.body)).not.toContain(reportId);
+      expect(retractedDetail.status).toBe(404);
+      for (const body of [retractedList.body, retractedDetail.body]) {
+        expect(JSON.stringify(body)).not.toContain(reportRetract);
+      }
+
       await parent.page.goto(`/my-schedule?date=${day.date}`);
       await whose.selectOption({ label: studentName });
       await expect(calendarOf(parent.page)).toHaveAttribute(

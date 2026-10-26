@@ -226,6 +226,20 @@ const API_CODES = [
   'submission_empty',
   'score_not_allowed',
   'feedback_required',
+  // #315 B6, C9, E4: the progress report codes.
+  'progress_report_tutor_only',
+  'report_subject_not_assigned',
+  'progress_report_author_only',
+  'progress_report_read_only',
+  'progress_report_self_review',
+  'progress_report_under_review',
+  'progress_report_not_submitted',
+  'progress_report_closed',
+  'progress_report_exists',
+  'progress_report_author_not_current',
+  'progress_report_review_route_required',
+  'period_invalid',
+  'period_in_future',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

@@ -189,3 +189,39 @@ export const SESSION_CLOSEOUT_ON_BEHALF: ApprovalRequestItem = {
     on_behalf_by_display_name: 'Laura Méndez',
   },
 };
+
+// #83 H2, #315 A5: a progress report waiting for review (with AM1's
+// report_id).
+export const PROGRESS_REPORT: ApprovalRequestItem = {
+  id: '00000000-0000-4000-8000-000000000831',
+  request_type: 'academics.progress_report',
+  status: 'pending',
+  priority: 'normal',
+  requester: {
+    id: '00000000-0000-4000-8000-000000000832',
+    display_name: 'Carmen Ruiz',
+  },
+  assignee: null,
+  created_at: '2031-03-05T18:00:00Z',
+  resolved_at: null,
+  resolved_by: null,
+  reason: null,
+  subject: {
+    report_id: '00000000-0000-4000-8000-000000000833',
+    student: {
+      id: '00000000-0000-4000-8000-000000000834',
+      display_name: 'Ana López',
+    },
+    author: { display_name: 'Carmen Ruiz' },
+    kind: 'weekly',
+    period_start: '2031-03-03',
+    period_end: '2031-03-09',
+    subject: {
+      id: '00000000-0000-4000-8000-000000000835',
+      name: 'Matemáticas',
+    },
+    submitted_at: '2031-03-05T18:00:00Z',
+  },
+  allowed_actions: [],
+  version: 1,
+};

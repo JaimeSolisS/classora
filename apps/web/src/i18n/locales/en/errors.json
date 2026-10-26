@@ -268,5 +268,18 @@
   "url_invalid": "Use a full link starting with http or https.",
   "submission_empty": "Write an answer or add a link.",
   "score_not_allowed": "This homework is graded with feedback only.",
-  "feedback_required": "Write feedback."
+  "feedback_required": "Write feedback.",
+  "progress_report_tutor_only": "Only a tutor who currently teaches this student can write a progress report.",
+  "report_subject_not_assigned": "You don't teach this student that subject. Choose another one or all subjects.",
+  "progress_report_author_only": "Only the tutor who wrote this report can change it.",
+  "progress_report_read_only": "You no longer teach this student, so this report is read-only.",
+  "progress_report_self_review": "You wrote this report, so another reviewer must review it.",
+  "progress_report_under_review": "This report is waiting for review, so it can't be changed now.",
+  "progress_report_not_submitted": "This report isn't waiting for review any more.",
+  "progress_report_closed": "This report is closed and can't be changed.",
+  "progress_report_exists": "A report for this period already exists.",
+  "progress_report_author_not_current": "The author no longer teaches this student. Approve or retract the report instead.",
+  "progress_report_review_route_required": "This progress report is decided on its own review page.",
+  "period_invalid": "Choose a valid period: a Monday for a weekly report, the 1st for a monthly one, or an on-demand period of up to a year.",
+  "period_in_future": "The period can't start after today."
 }

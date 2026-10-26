@@ -42,7 +42,8 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * #43), tutors/qualifications.spec.ts 3 (the demo Owner's reauthenticated
  * API context for the tutor's role change, and the tutor; #44; and the
  * guardian who requests a session, #59; #60, #67 G8, #79 I8, #308 G3,
- * #310 G3 and #62b E1 reuse both contexts: 0 more), scheduling/offers.spec.ts 3
+ * #310 G3, #315 H3 and #62b E1 reuse both contexts: 0 more),
+ * scheduling/offers.spec.ts 3
  * (`demo.tutor`, a #195 demo account, #52; the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55; and `demo.student`, #313 G3, the one login reserved

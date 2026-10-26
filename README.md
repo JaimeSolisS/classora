@@ -261,6 +261,13 @@ unless a bullet says otherwise.
   follow each item, the work and the grade; students and guardians are
   notified when homework is set and graded. Owners, Administrators and
   Academic Coordinators read every assignment.
+- Tutors write weekly, monthly or on-demand progress reports from a phone,
+  next to the attendance, evaluation, homework and learning-plan figures the
+  app compiles for the period. A reviewer (Owner, Administrator or Academic
+  Coordinator) approves each report, sends it back with a reason or
+  retracts it; only approved reports reach the student and the guardians
+  with access to their academic records, who are notified, and reasons stay
+  internal.
 
 **Courses**
 
@@ -292,10 +299,10 @@ unless a bullet says otherwise.
   didn't answer an offer, families' session requests (reviewed on their
   own page), families' and tutors' cancellation and reschedule requests
   (also reviewed on their own page), tutor availability changes that
-  affect scheduled classes and tutors' session closeouts (reviewed on the
-  session page);
-  staff approve or reject them (session closeouts are approved or sent back
-  for changes on the session page, never rejected). Approving an account request
+  affect scheduled classes, tutors' session closeouts (reviewed on the
+  session page) and progress reports (reviewed on their own page);
+  staff approve or reject them (session closeouts and progress reports are
+  approved or sent back for changes on their own page, never rejected). Approving an account request
   never enrolls anyone.
 
 **Notifications**
@@ -327,7 +334,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** progress reports, course completion, billing and payments, payroll, reporting and
+**Not built yet:** course completion, billing and payments, payroll, reporting and
 analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).

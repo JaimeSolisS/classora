@@ -64,6 +64,11 @@ import {
   LEARNING_PLAN_ROUTE_ACCESS,
   MY_LEARNING_PLANS_ACCESS,
 } from '@/features/learning-plans/access';
+import {
+  MY_PROGRESS_REPORTS_ACCESS,
+  PROGRESS_REPORT_ROUTE_ACCESS,
+  PROGRESS_REPORT_START_ACCESS,
+} from '@/features/progress-reports/access';
 import { COHORTS_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
@@ -684,6 +689,76 @@ export const routes: RouteObject[] = [
               ).MyHomeworkDetailPage,
             }),
             handle: MY_HOMEWORK_ACCESS,
+          },
+          // #315 A1: progress reports. The working URLs (the list and
+          // review queue, a report, a student's reports, an approved report)
+          // serve tutors and progress_report.review holders (the API's
+          // record policy decides); a student or guardian who opens one is
+          // sent to /my-progress-reports (#308 QA D2, as #310 and #313), so
+          // their handle lets the family roles through. The start step is
+          // for tutors only; the family pages serve students and guardians.
+          {
+            path: 'progress-reports',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/ReportsPage')
+              ).ReportsPage,
+            }),
+            handle: PROGRESS_REPORT_ROUTE_ACCESS,
+          },
+          {
+            path: 'progress-reports/:reportId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/ReportPage')
+              ).ReportPage,
+            }),
+            handle: PROGRESS_REPORT_ROUTE_ACCESS,
+          },
+          {
+            path: 'students/:studentId/progress-reports',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/StudentReportsPage')
+              ).StudentReportsPage,
+            }),
+            handle: PROGRESS_REPORT_ROUTE_ACCESS,
+          },
+          {
+            path: 'students/:studentId/progress-reports/new',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/StartReportPage')
+              ).StartReportPage,
+            }),
+            handle: PROGRESS_REPORT_START_ACCESS,
+          },
+          {
+            path: 'students/:studentId/progress-reports/:reportId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/StudentReportPage')
+              ).StudentReportPage,
+            }),
+            handle: PROGRESS_REPORT_ROUTE_ACCESS,
+          },
+          {
+            path: 'my-progress-reports',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/MyReportsPage')
+              ).MyReportsPage,
+            }),
+            handle: MY_PROGRESS_REPORTS_ACCESS,
+          },
+          {
+            path: 'my-progress-reports/:reportId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress-reports/MyReportPage')
+              ).MyReportPage,
+            }),
+            handle: MY_PROGRESS_REPORTS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

@@ -7,6 +7,7 @@ import { ApprovalsTable } from './ApprovalsTable';
 import {
   MIXED_ITEMS,
   PENDING_REGISTRATION,
+  PROGRESS_REPORT,
   SESSION_CLOSEOUT,
   SESSION_CLOSEOUT_CORRECTION,
   SESSION_CLOSEOUT_ON_BEHALF,
@@ -171,5 +172,35 @@ export const SessionCloseoutOnBehalfRow: Story = {
     await expect(
       canvas.getByRole('link', { name: i18n.t('approvals.closeout.review') }),
     ).toBeVisible();
+  },
+};
+
+// #315 A5: a pending progress report links to its review page ("Review",
+// named with the student); there are no decision buttons.
+export const ProgressReportRow: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      page: { items: [PROGRESS_REPORT], total: 1, limit: 10, offset: 0 },
+    },
+  },
+  render: (args) => (
+    <StoryRouter
+      routes={[{ path: '/', element: <ApprovalsTable {...args} /> }]}
+    />
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    const link = await canvas.findByRole('link', {
+      name: i18n.t('approvals.progressReport.reviewFor', {
+        student: 'Ana López',
+      }),
+    });
+    await expect(link).toHaveAttribute(
+      'href',
+      '/progress-reports/00000000-0000-4000-8000-000000000833',
+    );
+    await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
+      0,
+    );
   },
 };

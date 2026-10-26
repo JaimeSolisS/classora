@@ -5066,8 +5066,18 @@ W5.4; architecture §4.1, §4.2; ADR-0004) in `academics`
 `scheduling.service.student_attendance_summary`. One new permission,
 `progress_report.review` (Owner, Administrator, Academic Coordinator; not
 delegable: spec "an administrator approves" read as staff with academic
-approval authority, the ISSUE-F7 precedent). API only: the pages are #315
-(M5-16b) and scheduled placeholders #316 (M5-16c).
+approval authority, the ISSUE-F7 precedent). The web pages are #315
+(M5-16b, `apps/web/src/features/progress-reports/`): `/progress-reports`
+(the working list `GET /progress-reports`; reviewers start on the queue,
+`status=submitted`), `/progress-reports/:id` (the editor and review page:
+`GET`, `PATCH`, `DELETE`, submit and the three decisions, each with the
+version it read), `/students/:id/progress-reports` (the student's working
+reports and approved list with `can_create`), `/students/:id/progress-reports/new`
+(the start step: the create hints, then `POST`),
+`/students/:id/progress-reports/:rid` (one approved report) and the
+family's `/my-progress-reports[/:rid]` (`/schedule/family-students`, then
+the approved list and report); the approval inbox links each item to its
+`review_path`. Scheduled placeholders are #316 (M5-16c).
 
 A report is about **one student**, written by **one tutor** who currently
 teaches them, for **one period**, optionally **one subject** they teach the

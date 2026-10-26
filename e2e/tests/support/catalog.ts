@@ -651,6 +651,8 @@ type Common = {
       onBehalf: string;
     };
     availabilityChange: { affectedTitle: string };
+    // #315 H3: the inbox link of a progress report.
+    progressReport: { reviewFor: string };
     dialog: { reasonRequiredLabel: string };
     done: { approved: string; rejected: string };
   };
@@ -702,6 +704,9 @@ type Common = {
       // #313 G3: set and handed-in homework (the student's and tutor's bells).
       academics_assignment_set: string;
       academics_assignment_submitted: string;
+      // #315 H3: the tutor's and the guardian's progress report bells.
+      academics_progress_report_changes_requested: string;
+      academics_progress_report_approved: string;
     };
   };
   // #308 G3: the evaluation pages.
@@ -751,6 +756,32 @@ type Common = {
       | 'save',
       string
     >;
+  };
+  // #315 H3: the progress report pages.
+  progressReports: {
+    new: string;
+    writtenBy: string;
+    kinds: Record<'on_demand', string>;
+    status: Record<
+      'draft' | 'submitted' | 'changesRequested' | 'approved' | 'retracted',
+      string
+    >;
+    fields: Record<'summary', string>;
+    entry: Record<'linkOf', string>;
+    actions: Record<
+      'save' | 'submit' | 'resubmit' | 'approve' | 'requestChanges' | 'retract',
+      string
+    >;
+    notices: Record<'saved' | 'submitted' | 'approved', string>;
+    start: Record<'submit', string>;
+    student: Record<'noApproved', string>;
+    submit: Record<'title' | 'titleResubmit', string>;
+    approve: Record<'title', string>;
+    changes: Record<'title', string>;
+    retract: Record<'title' | 'warning', string>;
+    review: Record<'reason', string>;
+    facts: { evaluations: Record<'subjectAverage_one', string> };
+    family: Record<'reportMissing', string>;
   };
   // #313 G3: the homework pages.
   assignments: {

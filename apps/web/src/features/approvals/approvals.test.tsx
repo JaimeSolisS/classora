@@ -16,11 +16,13 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
+  settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
 import type { ApprovalRequestItem } from './api';
 import {
   AVAILABILITY_CHANGE,
+  PROGRESS_REPORT,
   SESSION_CLOSEOUT,
   SESSION_CLOSEOUT_ON_BEHALF,
 } from './fixtures';
@@ -533,5 +535,64 @@ describe('session closeouts (#77 G4)', () => {
     expect(link?.getAttribute('href')).toBe(
       '/schedule/sessions/00000000-0000-4000-8000-0000000000f2#closeout',
     );
+  });
+});
+
+// #315 A5: a pending progress report links ("Review", named with the
+// student) to /progress-reports/{report_id} and has no decision buttons; a
+// summary without the id links to the review queue; a decided item has no
+// link.
+describe('progress reports (#315 A5)', () => {
+  const COORDINATOR: SessionUserBody = {
+    ...TEST_USER,
+    roles: ['academic_coordinator'],
+    permissions: ['progress_report.review'],
+  };
+  const reviewLinks = () =>
+    [...main().querySelectorAll('a')].filter((anchor) =>
+      (anchor.getAttribute('href') ?? '').startsWith('/progress-reports'),
+    );
+
+  it('the row links to the report page and offers no decisions', async () => {
+    stub(COORDINATOR, { [LIST]: () => page([PROGRESS_REPORT]) });
+    app = await renderApp('/approvals');
+
+    expect(main().textContent).toContain('Progress report');
+    const [link] = reviewLinks();
+    expect(link?.textContent).toBe('Review');
+    expect(link?.getAttribute('aria-label')).toBe(
+      'Review the progress report for Ana López',
+    );
+    expect(link?.getAttribute('href')).toBe(
+      '/progress-reports/00000000-0000-4000-8000-000000000833',
+    );
+    expect(
+      [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
+    ).toEqual([]);
+  });
+
+  it('links to the review queue without a report id', async () => {
+    const subject = { ...(PROGRESS_REPORT.subject as Record<string, unknown>) };
+    delete subject.report_id;
+    stub(COORDINATOR, {
+      [LIST]: () => page([{ ...PROGRESS_REPORT, subject }]),
+    });
+    app = await renderApp('/approvals');
+
+    const [link] = reviewLinks();
+    expect(link?.textContent).toBe('Open the review queue');
+    expect(link?.getAttribute('href')).toBe(
+      '/progress-reports?status=submitted',
+    );
+  });
+
+  it('a decided item has no link', async () => {
+    stub(COORDINATOR, {
+      [LIST]: () =>
+        page([{ ...PROGRESS_REPORT, status: 'approved', resolved_at: null }]),
+    });
+    app = await renderApp('/approvals');
+    await settleUntil(() => main().textContent?.includes('Ana López'));
+    expect(reviewLinks()).toHaveLength(0);
   });
 });

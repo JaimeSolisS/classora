@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { formatInstant } from '@/lib/time';
 import type { ApprovalRequestItem } from './api';
@@ -7,6 +8,7 @@ import {
   SESSION_CLOSEOUT,
   SESSION_CLOSEOUT_CORRECTION,
   SESSION_CLOSEOUT_ON_BEHALF,
+  PROGRESS_REPORT,
 } from './fixtures';
 import {
   approvalSummary,
@@ -15,7 +17,9 @@ import {
   itemName,
   occurrenceCodeName,
   occurrenceConflictSubject,
+  progressReportReviewLink,
   progressReportSubject,
+  reviewLinkOf,
   sessionCloseoutLink,
   sessionCloseoutReviewLine,
   sessionCloseoutSubject,
@@ -268,40 +272,6 @@ describe('academics.session_closeout (#77 G4)', () => {
 // #83 H2: a progress report waiting for review: the student, the period, the
 // subject (when the report has one) and the author; never the narrative.
 
-const PROGRESS_REPORT: ApprovalRequestItem = {
-  id: '00000000-0000-4000-8000-000000000831',
-  request_type: 'academics.progress_report',
-  status: 'pending',
-  priority: 'normal',
-  requester: {
-    id: '00000000-0000-4000-8000-000000000832',
-    display_name: 'Carmen Ruiz',
-  },
-  assignee: null,
-  created_at: '2031-03-05T18:00:00Z',
-  resolved_at: null,
-  resolved_by: null,
-  reason: null,
-  subject: {
-    report_id: '00000000-0000-4000-8000-000000000833',
-    student: {
-      id: '00000000-0000-4000-8000-000000000834',
-      display_name: 'Ana López',
-    },
-    author: { display_name: 'Carmen Ruiz' },
-    kind: 'weekly',
-    period_start: '2031-03-03',
-    period_end: '2031-03-09',
-    subject: {
-      id: '00000000-0000-4000-8000-000000000835',
-      name: 'Matemáticas',
-    },
-    submitted_at: '2031-03-05T18:00:00Z',
-  },
-  allowed_actions: [],
-  version: 1,
-};
-
 describe('academics.progress_report (#83 H2)', () => {
   const date = (localDate: string) => localDate.split('-').reverse().join('/');
 
@@ -334,5 +304,61 @@ describe('academics.progress_report (#83 H2)', () => {
         subject: { kind: 'weekly' },
       }),
     ).toBeNull();
+  });
+});
+
+// #315 A5: the inbox "Review" link of a pending progress report: the report
+// page by its id (#83 AM1), or the review queue without one; decided items
+// get none. A stale generic decision names the page in review_path.
+describe('progress report review link (#315 A5)', () => {
+  it('links a pending item to its report page', () => {
+    expect(progressReportReviewLink(PROGRESS_REPORT)).toEqual({
+      to: '/progress-reports/00000000-0000-4000-8000-000000000833',
+      queue: false,
+      student: 'Ana López',
+    });
+  });
+
+  it('links to the review queue without a report id (AM1 fallback)', () => {
+    const subject = { ...(PROGRESS_REPORT.subject as Record<string, unknown>) };
+    delete subject.report_id;
+    expect(progressReportReviewLink({ ...PROGRESS_REPORT, subject })).toEqual({
+      to: '/progress-reports?status=submitted',
+      queue: true,
+      student: 'Ana López',
+    });
+  });
+
+  it.each(['approved', 'rejected', 'cancelled'] as const)(
+    'gives a %s item no link',
+    (status) => {
+      expect(
+        progressReportReviewLink({ ...PROGRESS_REPORT, status }),
+      ).toBeNull();
+    },
+  );
+
+  it('gives another type no link', () => {
+    expect(progressReportReviewLink(SESSION_CLOSEOUT)).toBeNull();
+  });
+
+  it('reads review_path from progress_report_review_route_required', () => {
+    const error = (path: unknown) =>
+      new ApiError({
+        code: 'progress_report_review_route_required',
+        status: 409,
+        problem: {
+          type: 'about:blank',
+          title: 'Conflict',
+          status: 409,
+          code: 'progress_report_review_route_required',
+          request_id: 'req',
+          details: { review_path: path as string },
+        },
+      });
+    expect(reviewLinkOf(error('/progress-reports/abc'))).toBe(
+      '/progress-reports/abc',
+    );
+    expect(reviewLinkOf(error('https://evil.example/x'))).toBeNull();
   });
 });
