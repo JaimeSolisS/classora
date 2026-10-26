@@ -264,6 +264,7 @@ export function CloseoutSection({
               {closeout.can_review ? (
                 <Button
                   type="button"
+                  aria-describedby={`${id}-family-visibility`}
                   onClick={(event) => show('approve', event.currentTarget)}
                 >
                   {t('closeout.review.approve')}
@@ -286,6 +287,16 @@ export function CloseoutSection({
                 >
                   {t('closeout.review.correct')}
                 </Button>
+              ) : null}
+              {/* #322 E1 (#84 E3): approving shows the summary to the
+                  class's students and families. */}
+              {closeout.can_review ? (
+                <p
+                  id={`${id}-family-visibility`}
+                  className="basis-full text-sm text-muted-foreground"
+                >
+                  {t('closeout.familyVisibility')}
+                </p>
               ) : null}
             </div>
           ) : null}

@@ -47,9 +47,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * (`demo.tutor`, a #195 demo account, #52; the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55; and `demo.student`, #313 G3, the one login reserved
- * for it; the #76 attendance, #77 closeout, #78 review and #305
- * resubmission steps reuse the contexts and the shared Owner session: 0
- * more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
+ * for it; the #76 attendance, #77 closeout, #78 review, #305
+ * resubmission and #322 progress steps reuse the contexts and the shared
+ * Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
  * Owner session: 0) = 49 attempts,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example

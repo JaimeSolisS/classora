@@ -88,11 +88,23 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // reloads and sees "8.00 de 10.00 (80.00 %)" and no form, and its API gets
 // 404 for the sibling's homework (U2) and 403 on the working list.
 //
+// Progress (#322 G3), on the same contexts: right after the homework steps
+// the demo.student context (390 px) opens "Progreso" from the menu; the
+// homework grades tile counts at least 1 graded and the grade trend's table
+// shows the current month's Matemáticas homework average 80.00 (axe in
+// chart and table view; no CSP violation). After the closeout is approved
+// (#78), the Owner opens the closeout student's progress page (the id from
+// the session's participants): the class log shows "Fracciones
+// equivalentes" under Temas and "Presente", the attendance tile 1 of 1
+// (axe). Then demo.student's API: its own session log doesn't contain that
+// text and the closeout student's progress is 404. The student context
+// stays open until then.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (demo.tutor; the
 // reauthenticated Owner context of createApprovedTutor, #55; and
 // demo.student, #313), no one-time-link redemption, 1 registration (the
-// substitute, #55); the attendance, closeout, review and resubmission steps
-// add none (#76, #77, #78, #305). It never
+// substitute, #55); the attendance, closeout, review, resubmission and
+// progress steps add none (#76, #77, #78, #305, #322). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -102,8 +114,9 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-// #313 G3 adds about 30 s (the homework steps): 180 → 210 s.
-const TEST_TIMEOUT_MS = 210_000;
+// #313 G3 adds about 30 s (the homework steps): 180 → 210 s. #322 G3 adds
+// about 20 s (the progress steps): 210 → 230 s.
+const TEST_TIMEOUT_MS = 230_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
@@ -528,6 +541,9 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   const seriesDate = firstWeekdayAhead(42 + 14 * testInfo.retry);
   await recordCspViolations(page);
   const ownerErrors = watchConsole(page, CONFLICT_409);
+  // demo.student's context (#313): kept open until the #322 API checks
+  // after the closeout approval (closed early only on a failure).
+  let student: Awaited<ReturnType<typeof signInDemoStudent>> | undefined;
 
   // 1. Setup through the API with the shared Owner session.
   await page.goto('/');
@@ -1068,7 +1084,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
 
     // The student (+1 login, #313): the bell at desktop width (the header
     // shows only the menu button at 390 px), then the phone.
-    const student = await signInDemoStudent(browser);
+    student = await signInDemoStudent(browser);
     try {
       const [unreadBefore, unreadAfter] =
         common.notifications.bellUnread.split('{{unread}}');
@@ -1190,10 +1206,74 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       expect(sibling.status).toBe(404);
       const working = await api(student.page, '/api/v1/assignments');
       expect(working.status).toBe(403);
+
+      // 9d. Progress (#322 G3), still demo.student at 390 px: the menu →
+      // "Progreso"; the homework grades tile counts the grade just given;
+      // the grade trend's table has the current month's Matemáticas
+      // homework average (8 of 10 → 80.00). Axe in both views.
+      await student.page
+        .getByRole('banner')
+        .getByRole('button', { name: common.nav.toggle })
+        .click();
+      await student.page
+        .getByRole('banner')
+        .getByRole('link', { name: common.nav.progress, exact: true })
+        .click();
+      await expect(student.page).toHaveURL(/\/my-progress$/);
+      const progressMain = student.page.getByRole('main');
+      await expect(
+        progressMain.getByRole('heading', {
+          level: 1,
+          name: common.progress.family.title,
+        }),
+      ).toBeVisible();
+      const gradedTile = progressMain
+        .getByRole('article')
+        .filter({ hasText: common.progress.tiles.homeworkGrades });
+      const [gradedOne, gradedOther] = [
+        common.progress.tiles.gradedCount_one,
+        common.progress.tiles.gradedCount_other,
+      ].map((template) => escape(template.split('{{count}}')[1]!));
+      await expect(gradedTile).toContainText(
+        new RegExp(`[1-9]\\d*(${gradedOne}|${gradedOther})`),
+      );
+      const trend = progressMain.getByRole('figure', {
+        name: common.progress.grades.heading,
+      });
+      await expect(trend).toBeVisible();
+      expect(await axeViolations(student.page)).toEqual([]);
+      await trend
+        .getByRole('button', { name: common.progress.chart.table, exact: true })
+        .click();
+      // The month label as the app formats it (same browser Intl).
+      const month = await student.page.evaluate((zone) => {
+        const today = new Intl.DateTimeFormat('en-CA', {
+          timeZone: zone,
+        }).format(new Date());
+        const [year, monthNumber] = today.split('-').map(Number) as [
+          number,
+          number,
+        ];
+        return new Intl.DateTimeFormat('es', {
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'UTC',
+        }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+      }, ZONE);
+      const mathRow = trend
+        .getByRole('row')
+        .filter({ hasText: month })
+        .filter({ hasText: demo.u1.subject });
+      await expect(mathRow).toContainText(
+        fill(common.progress.percent, { value: '80.00' }),
+      );
+      expect(await axeViolations(student.page)).toEqual([]);
       expect(await cspViolations(student.page)).toEqual([]);
       expect(student.consoleErrors).toEqual([]);
-    } finally {
+    } catch (error) {
       await student.context.close();
+      student = undefined;
+      throw error;
     }
 
     expect(await cspViolations(tutor.page)).toEqual([]);
@@ -1370,6 +1450,62 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       .getByRole('row')
       .filter({ hasText: CLOSEOUT_SUBJECT }),
   ).toHaveCount(0);
+
+  // 12. Progress (#322 G3): the Owner opens the closeout student's progress
+  // page (the id from the session's participants); the class log has the
+  // approved summary and the mark, the attendance tile 1 of 1 (axe).
+  const closeoutDetail = await api(page, `/api/v1/class-sessions/${closed.id}`);
+  expect(closeoutDetail.status).toBe(200);
+  const closeoutStudentId = (
+    closeoutDetail.body as { participants: { student_id: string }[] }
+  ).participants[0]!.student_id;
+  await page.goto(`/students/${closeoutStudentId}/progress`);
+  const staffProgress = page.getByRole('main');
+  const classes = staffProgress.getByRole('region', {
+    name: common.progress.log.heading,
+  });
+  const closedItem = classes
+    .getByRole('article')
+    .filter({ hasText: 'Fracciones equivalentes' });
+  await expect(closedItem).toContainText(common.progress.log.fields.topics);
+  await expect(closedItem).toContainText(common.attendance.statuses.present);
+  await expect(
+    staffProgress
+      .getByRole('article')
+      .filter({ hasText: common.progress.tiles.attendance }),
+  ).toContainText(
+    fill(common.progress.tiles.attended_one, { attended: 1, count: 1 }),
+  );
+  expect(await axeViolations(page)).toEqual([]);
+
+  // demo.student's API (#322 G3): its own class log doesn't carry the
+  // closeout student's summary; that student's progress is 404.
+  try {
+    expect(student).toBeDefined();
+    const family = await api(student!.page, '/api/v1/schedule/family-students');
+    expect(family.status).toBe(200);
+    const self = (
+      family.body as { items: { student_id: string; relation: string }[] }
+    ).items.find((item) => item.relation === 'self');
+    expect(self).toBeDefined();
+    const ownLog = await api(
+      student!.page,
+      `/api/v1/students/${self!.student_id}/session-log`,
+    );
+    expect(ownLog.status).toBe(200);
+    expect(JSON.stringify(ownLog.body)).not.toContain(
+      'Fracciones equivalentes',
+    );
+    const foreign = await api(
+      student!.page,
+      `/api/v1/students/${closeoutStudentId}/progress`,
+    );
+    expect(foreign.status).toBe(404);
+    expect(await cspViolations(student!.page)).toEqual([]);
+    expect(student!.consoleErrors).toEqual([]);
+  } finally {
+    await student?.context.close();
+  }
   expect(await cspViolations(page)).toEqual([]);
   expect(ownerErrors).toEqual([]);
 });

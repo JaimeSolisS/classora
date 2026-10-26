@@ -8,6 +8,7 @@ import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import { MY_LEARNING_PLANS_ACCESS } from '@/features/learning-plans/access';
+import { MY_PROGRESS_ACCESS } from '@/features/progress/access';
 import {
   MY_PROGRESS_REPORTS_ACCESS,
   PROGRESS_REPORT_WORK_ACCESS,
@@ -126,6 +127,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.tutorReports',
     ...MY_PROGRESS_REPORTS_ACCESS,
   },
+  // Progress (#322 A4): students and guardians (per child; the API
+  // decides). Staff and tutors open a student's progress from the student
+  // page and My schedule; no staff or tutor item.
+  { to: '/my-progress', labelKey: 'nav.progress', ...MY_PROGRESS_ACCESS },
   // The tutor's offers (#52 H1): tutors only (the API lists the caller's).
   { to: '/offers', labelKey: 'nav.offers', role: 'tutor' },
   // Session requests (#59 F1): guardians and students (the API decides

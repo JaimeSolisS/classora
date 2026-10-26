@@ -36,6 +36,10 @@ import { studentAssignmentsPath } from '@/features/assignments/api';
 import { studentPlansPath } from '@/features/learning-plans/api';
 import { useReportWorker } from '@/features/progress-reports/access';
 import { studentReportsPath } from '@/features/progress-reports/api';
+import {
+  studentProgressPath,
+  useProgressWorker,
+} from '@/features/progress/access';
 import { useFormatters } from '@/lib/formatters';
 import {
   fetchStudent,
@@ -89,6 +93,9 @@ export function StudentDetailPage() {
   // #315 A3: progress_report.review holders and tutor-role users open the
   // student's progress reports (the API decides what they read).
   const showsReports = useReportWorker();
+  // #322 A5: evaluation.manage holders and tutor-role users open the
+  // student's progress (the API decides what it holds).
+  const showsProgress = useProgressWorker();
   const key = studentDetailKey(studentId);
   const detail = useQuery({
     queryKey: key,
@@ -143,6 +150,7 @@ export function StudentDetailPage() {
       showsPlans={showsPlans}
       showsHomework={showsHomework}
       showsReports={showsReports}
+      showsProgress={showsProgress}
       initiallySaved={arrivedSaved}
       onSetActive={setActive}
       onReload={async () => {
@@ -195,6 +203,8 @@ interface StudentDetailViewProps {
   showsHomework?: boolean;
   /** #315 A3: link the progress reports (progress_report.review or tutor). */
   showsReports?: boolean;
+  /** #322 A5: link the progress page (evaluation.manage or tutor). */
+  showsProgress?: boolean;
   /** Arrived from a save: announce "Changes saved.". */
   initiallySaved?: boolean;
   /** Deactivates (false) or reactivates (true); rejects with the error. */
@@ -232,6 +242,7 @@ export function StudentDetailView({
   showsPlans = false,
   showsHomework = false,
   showsReports = false,
+  showsProgress = false,
   initiallySaved = false,
   onSetActive,
   onReload,
@@ -284,7 +295,11 @@ export function StudentDetailView({
           <StudentAgeBadge minor={student.is_minor} />
         </p>
         <FamilyLine family={student.family} />
-        {showsHistory || showsPlans || showsHomework || showsReports ? (
+        {showsHistory ||
+        showsPlans ||
+        showsHomework ||
+        showsReports ||
+        showsProgress ? (
           <p className="flex flex-wrap gap-x-4 gap-y-2">
             {showsHistory ? (
               <Link
@@ -316,6 +331,14 @@ export function StudentDetailView({
                 className={TEXT_LINK_CLASS}
               >
                 {t('progressReports.title')}
+              </Link>
+            ) : null}
+            {showsProgress ? (
+              <Link
+                to={studentProgressPath(student.id)}
+                className={TEXT_LINK_CLASS}
+              >
+                {t('progress.title')}
               </Link>
             ) : null}
           </p>

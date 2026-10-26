@@ -101,6 +101,10 @@ export const Reviewable: Story = {
         canvas.getByRole('button', { name: i18n.t(`closeout.review.${name}`) }),
       ).toBeVisible();
     }
+    // #322 E1: the notice next to Approve describes it.
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('closeout.review.approve') }),
+    ).toHaveAccessibleDescription(i18n.t('closeout.familyVisibility'));
   },
 };
 

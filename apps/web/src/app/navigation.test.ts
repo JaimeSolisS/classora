@@ -151,3 +151,29 @@ describe('the progress report nav items (#315 A2)', () => {
     ).toEqual(['nav.progressReports', 'nav.tutorReports']);
   });
 });
+
+// #322 A4: "Progress" for students and guardians (per child); staff and
+// tutors open a student's progress from the student page and My schedule.
+describe('the progress nav item (#322 A4)', () => {
+  const TUTOR_GUARDIAN = user(
+    ['tutor', 'guardian'],
+    ['student.view', 'tutor.view', 'guardian.view'],
+  );
+
+  it.each([
+    ['a guardian', GUARDIAN, true],
+    ['a student', STUDENT, true],
+    ['a Coordinator', COORDINATOR, false],
+    ['Finance', FINANCE, false],
+    ['a tutor-only user', TUTOR, false],
+    ['a tutor who is also a guardian', TUTOR_GUARDIAN, true],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/my-progress')).toBe(visible);
+  });
+
+  it('is labelled "Progress" in the common catalog', () => {
+    expect(NAV_ITEMS.find((item) => item.to === '/my-progress')?.labelKey).toBe(
+      'nav.progress',
+    );
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  decimalText,
   compareHundredths,
   formatHundredths,
   hundredthsOf,
@@ -107,5 +108,20 @@ describe('scoreError (0 to the criterion maximum)', () => {
     ['0.5', '0.50', undefined],
   ])('%s of %s → %s', (text, max, error) => {
     expect(scoreError(text, max)).toBe(error);
+  });
+});
+
+// #322 B5: the API's decimal text is shown as sent (no rounding, no
+// re-formatting, never through Number()).
+describe('decimalText', () => {
+  it.each(['66.67', '80.00', '0.00', '100.00', '7.5', '12'])(
+    '%s is shown exactly as sent',
+    (value) => {
+      expect(decimalText(value)).toBe(value);
+    },
+  );
+
+  it('null stays null (the caller shows "No data yet")', () => {
+    expect(decimalText(null)).toBeNull();
   });
 });

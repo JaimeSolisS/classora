@@ -285,5 +285,7 @@
   "progress_report_schedule_exists": "This tutor already has an active schedule like this one.",
   "schedule_author_invalid": "This tutor doesn't currently teach the student. Choose another tutor.",
   "schedule_subject_not_assigned": "The tutor doesn't currently teach the student this subject.",
-  "schedule_starts_on_invalid": "Choose the current period or a later one, at most a year ahead."
+  "schedule_starts_on_invalid": "Choose the current period or a later one, at most a year ahead.",
+  "range_in_future": "The period can't end after today.",
+  "progress_range_too_long": "Choose a period of at most 24 months."
 }

@@ -103,3 +103,13 @@ export function scoreError(
     ? 'range'
     : undefined;
 }
+
+/**
+ * A percentage or an average the API sent as decimal text ("66.67"), for
+ * display exactly as sent (#322 B5, #308 E6): a passthrough, never
+ * `Number()` or `parseFloat`, so nothing is rounded or recomputed on the
+ * client. `null` (no data) stays `null`; the caller shows "No data yet".
+ */
+export function decimalText(value: string | null): string | null {
+  return value;
+}

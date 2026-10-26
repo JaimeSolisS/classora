@@ -117,7 +117,13 @@ export const TimeStepNarrow320: Story = {
 
 export const SummaryStep: Story = {
   args: { initialStep: 3 },
-  play: async ({ canvasElement }) => onStep(canvasElement, 3),
+  play: async ({ canvasElement }) => {
+    await onStep(canvasElement, 3);
+    // #322 E1: approved summaries reach the families.
+    await expect(
+      within(canvasElement).getByText(i18n.t('closeout.familyVisibility')),
+    ).toBeVisible();
+  },
 };
 
 export const SummaryStepNarrow320: Story = {

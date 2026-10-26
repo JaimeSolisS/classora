@@ -246,6 +246,8 @@ const API_CODES = [
   'schedule_subject_not_assigned',
   'schedule_starts_on_invalid',
   'student_inactive',
+  // #322 D1: the progress dashboard's range in the future.
+  'range_in_future',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -443,5 +445,27 @@ describe('reportError', () => {
       { code: 'not_found', status: 404, requestId: 'req-9' },
     );
     expect(JSON.stringify(spy.mock.calls)).not.toContain('SERVER DETAIL');
+  });
+});
+
+// #322 D1: the progress pages' range and subject refusals each have a
+// message in both languages (range_too_long uses its own progress text:
+// the catalog's range_too_long is the calendar's 45-day limit).
+describe('the progress range messages (#322 D1)', () => {
+  it.each([
+    'range_invalid',
+    'range_in_future',
+    'progress_range_too_long',
+    'subject_unknown',
+  ])('%s has a message in both languages', (key) => {
+    for (const language of LANGUAGES) {
+      expect(i18n.exists(key, { lng: language, ns: 'errors' })).toBe(true);
+    }
+  });
+
+  it('the progress period limit names 24 months, not the calendar limit', () => {
+    expect(i18n.t('progress_range_too_long', { lng: 'en', ns: 'errors' })).toBe(
+      'Choose a period of at most 24 months.',
+    );
   });
 });

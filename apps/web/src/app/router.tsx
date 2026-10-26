@@ -69,6 +69,10 @@ import {
   PROGRESS_REPORT_ROUTE_ACCESS,
   PROGRESS_REPORT_START_ACCESS,
 } from '@/features/progress-reports/access';
+import {
+  MY_PROGRESS_ACCESS,
+  STUDENT_PROGRESS_ACCESS,
+} from '@/features/progress/access';
 import { COHORTS_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { PRIVACY_NOTICE_ROUTE_ID, RouteGuard } from './RouteGuard';
@@ -759,6 +763,29 @@ export const routes: RouteObject[] = [
               ).MyReportPage,
             }),
             handle: MY_PROGRESS_REPORTS_ACCESS,
+          },
+          // #322 A2: the progress dashboards (code-split; Recharts stays in
+          // their chunk, A3). The staff URL serves evaluation.manage holders
+          // and tutors (the API's progress policy decides); a student or
+          // guardian who opens it is sent to /my-progress (#308 QA D2, as
+          // #310, #313 and #315), so its handle lets the family roles
+          // through. The family page serves students and guardians.
+          {
+            path: 'students/:studentId/progress',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/progress/StudentProgressPage')
+              ).StudentProgressPage,
+            }),
+            handle: STUDENT_PROGRESS_ACCESS,
+          },
+          {
+            path: 'my-progress',
+            lazy: async () => ({
+              Component: (await import('@/features/progress/MyProgressPage'))
+                .MyProgressPage,
+            }),
+            handle: MY_PROGRESS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

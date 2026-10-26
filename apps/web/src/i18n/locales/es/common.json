@@ -53,7 +53,8 @@
     "assignedHomework": "Tareas asignadas",
     "homework": "Tareas",
     "progressReports": "Informes de progreso",
-    "tutorReports": "Informes del tutor"
+    "tutorReports": "Informes del tutor",
+    "progress": "Progreso"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -3247,7 +3248,8 @@
         "submitted": "Cierre enviado en nombre de {{tutor}}.",
         "takenOver": "Tomaste el cierre y volvió a revisión."
       }
-    }
+    },
+    "familyVisibility": "Una vez aprobado, este resumen lo verán los alumnos de la clase y sus familias."
   },
   "notes": {
     "title": "Notas de la clase",
@@ -4383,6 +4385,154 @@
         "tutorRequired": "Elige un tutor.",
         "firstPeriodRequired": "Elige el primer periodo."
       }
+    }
+  },
+  "progress": {
+    "title": "Progreso",
+    "titleFor": "Progreso: {{name}}",
+    "backToStudent": "Volver al estudiante",
+    "unavailable": "Esta página de progreso no está disponible.",
+    "formerTutor": "Puedes ver las clases que le diste a este estudiante. La página de progreso completa es para sus tutores actuales.",
+    "noData": "Sin datos aún",
+    "noDataLower": "sin datos aún",
+    "percent": "{{value}} %",
+    "entry": {
+      "link": "Progreso",
+      "linkOf": "Progreso de {{name}}"
+    },
+    "family": {
+      "title": "Mi progreso",
+      "mine": "Mi progreso",
+      "whose": "Progreso de",
+      "noStudents": "No hay ningún estudiante vinculado a tu cuenta."
+    },
+    "links": {
+      "label": "Páginas relacionadas",
+      "history": "Historial académico",
+      "plans": "Planes de aprendizaje",
+      "homework": "Tareas",
+      "reports": "Informes del tutor"
+    },
+    "controls": {
+      "period": "Periodo",
+      "months_one": "{{count}} mes",
+      "months_many": "{{count}} meses",
+      "months_other": "{{count}} meses",
+      "subject": "Materia",
+      "allSubjects": "Todas las materias",
+      "clear": "Quitar filtros",
+      "reset": "Restablecer filtros",
+      "range": "Del {{from}} al {{to}}"
+    },
+    "tiles": {
+      "label": "Resumen",
+      "attendance": "Asistencia",
+      "attended_one": "{{attended}} de {{count}} clase con asistencia",
+      "attended_many": "{{attended}} de {{count}} clases con asistencia",
+      "attended_other": "{{attended}} de {{count}} clases con asistencia",
+      "notRecorded_one": "{{count}} sin registrar",
+      "notRecorded_many": "{{count}} sin registrar",
+      "notRecorded_other": "{{count}} sin registrar",
+      "evaluations": "Evaluaciones",
+      "average": "promedio {{value}} %",
+      "evaluationCount_one": "{{count}} evaluación",
+      "evaluationCount_many": "{{count}} evaluaciones",
+      "evaluationCount_other": "{{count}} evaluaciones",
+      "homeworkGrades": "Calificaciones de tareas",
+      "gradedCount_one": "{{count}} calificada en este periodo",
+      "gradedCount_many": "{{count}} calificadas en este periodo",
+      "gradedCount_other": "{{count}} calificadas en este periodo",
+      "homeworkCompletion": "Tareas entregadas",
+      "homeworkScope": "Tareas con entrega en este periodo",
+      "homeworkStates": "{{missing}} sin entregar · {{late}} con retraso · {{pending}} pendientes",
+      "objectives": "Objetivos de aprendizaje",
+      "objectivesComplete_one": "{{done}} de {{count}} objetivo cumplido",
+      "objectivesComplete_many": "{{done}} de {{count}} objetivos cumplidos",
+      "objectivesComplete_other": "{{done}} de {{count}} objetivos cumplidos",
+      "overdue_one": "{{count}} hito vencido",
+      "overdue_many": "{{count}} hitos vencidos",
+      "overdue_other": "{{count}} hitos vencidos"
+    },
+    "chart": {
+      "viewOf": "Vista de {{name}}",
+      "chart": "Gráfica",
+      "table": "Tabla",
+      "legend": "Leyenda"
+    },
+    "attendance": {
+      "heading": "Asistencia por mes",
+      "summary": "Del {{from}} al {{to}}: {{present}} presente, {{late}} con retardo, {{absent}} ausente y {{notRecorded}} sin registrar; asistencia {{attendance}}.",
+      "empty": "No hay clases en este periodo.",
+      "caption": "Asistencia por mes",
+      "columns": {
+        "month": "Mes",
+        "total": "Total"
+      }
+    },
+    "grades": {
+      "heading": "Tendencia de calificaciones",
+      "summaryEvaluations_one": "Promedio de evaluaciones {{average}} en {{count}} evaluación;",
+      "summaryEvaluations_many": "Promedio de evaluaciones {{average}} en {{count}} evaluaciones;",
+      "summaryEvaluations_other": "Promedio de evaluaciones {{average}} en {{count}} evaluaciones;",
+      "summaryHomework_one": "promedio de tareas {{average}} en {{count}} calificación.",
+      "summaryHomework_many": "promedio de tareas {{average}} en {{count}} calificaciones.",
+      "summaryHomework_other": "promedio de tareas {{average}} en {{count}} calificaciones.",
+      "showHomework": "Mostrar promedios de tareas",
+      "tooManySubjects": "Elige una materia para ver su gráfica de tendencia.",
+      "empty": "No hay calificaciones en este periodo.",
+      "caption": "Promedio por mes y materia",
+      "series": {
+        "evaluation": "{{subject}}: evaluaciones",
+        "homework": "{{subject}}: tareas"
+      },
+      "columns": {
+        "month": "Mes",
+        "subject": "Materia",
+        "evaluationAverage": "Promedio de evaluaciones",
+        "evaluations": "Evaluaciones",
+        "homeworkAverage": "Promedio de tareas",
+        "homeworkGrades": "Calificaciones de tareas"
+      }
+    },
+    "plans": {
+      "heading": "Planes de aprendizaje",
+      "summary": "{{active}} planes activos y {{completed}} completados; {{done}} de {{total}} objetivos cumplidos.",
+      "empty": "Aún no hay planes de aprendizaje.",
+      "statuses": {
+        "active": "Activo",
+        "completed": "Completado"
+      },
+      "overdue_one": "{{count}} vencido",
+      "overdue_many": "{{count}} vencidos",
+      "overdue_other": "{{count}} vencidos",
+      "target": "Fecha objetivo: {{date}}",
+      "noTarget": "Sin fecha objetivo"
+    },
+    "log": {
+      "heading": "Clases",
+      "empty": "No hay clases en este periodo.",
+      "with": "con {{name}}",
+      "kinds": {
+        "individual": "Individual",
+        "group": "Grupal",
+        "course": "Curso"
+      },
+      "fields": {
+        "topics": "Temas",
+        "performance": "Desempeño",
+        "homework": "Tarea",
+        "next_steps": "Próximos pasos"
+      },
+      "noSummary": "El resumen aún no está disponible.",
+      "notes_one": "Notas del tutor ({{count}})",
+      "notes_many": "Notas del tutor ({{count}})",
+      "notes_other": "Notas del tutor ({{count}})",
+      "noteCount_one": "{{count}} nota compartida",
+      "noteCount_many": "{{count}} notas compartidas",
+      "noteCount_other": "{{count}} notas compartidas",
+      "details": "Detalles de la sesión",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más…"
     }
   }
 }

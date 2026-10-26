@@ -211,7 +211,7 @@ Decision: → ISSUE-A3 (accepted on issue #22).
 - **TanStack Query** for server state and caching. **Zustand** for UI-only state. React Hook Form + Zod for forms.
 - Tailwind + shadcn/ui, central design tokens, Storybook, light/dark/system themes with preferences stored in the database.
 - FullCalendar v7 standard views (MIT; no premium resource views) → ADR-0005. Daily/weekly/monthly; drag-and-drop validated by the server.
-- Recharts and TanStack Table for analytics. Customizable dashboards → ISSUE-X3.
+- Recharts and TanStack Table for analytics; pinned `recharts` 3.10.1, added by #322 (lazy route chunk only). Customizable dashboards → ISSUE-X3.
 - Centralized error handling, safe retries, skeleton states. **No optimistic updates on financial mutations.**
 - Layouts adapt by role: desktop-first admin, mobile-friendly tutor, student and guardian views. Target is WCAG 2.2 AA.
 

@@ -285,5 +285,7 @@
   "progress_report_schedule_exists": "Este tutor ya tiene una programación activa como esta.",
   "schedule_author_invalid": "Este tutor no le da clases al estudiante actualmente. Elige otro tutor.",
   "schedule_subject_not_assigned": "El tutor no le da esta materia al estudiante actualmente.",
-  "schedule_starts_on_invalid": "Elige el periodo actual o uno posterior, como máximo a un año."
+  "schedule_starts_on_invalid": "Elige el periodo actual o uno posterior, como máximo a un año.",
+  "range_in_future": "El periodo no puede terminar después de hoy.",
+  "progress_range_too_long": "Elige un periodo de 24 meses como máximo."
 }
