@@ -3117,6 +3117,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/students/{student_id}/progress-report-schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Progress Report Schedules
+         * @description The student's weekly and monthly report schedules (active first, at
+         *     most 100), each with what exists for its latest ended period and why no
+         *     draft would be created now, and the tutors who could own a new one.
+         */
+        get: operations["list_progress_report_schedules_api_v1_students__student_id__progress_report_schedules_get"];
+        put?: never;
+        /**
+         * Create Progress Report Schedule
+         * @description Have a tutor who currently teaches the student get an empty draft
+         *     report after each week or month ends. A reviewer still approves each
+         *     report before the family sees it. Nobody is notified now.
+         */
+        post: operations["create_progress_report_schedule_api_v1_students__student_id__progress_report_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/progress-report-schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Progress Report Schedule
+         * @description Deactivate a schedule (no new drafts; reports already written stay)
+         *     or reactivate it (the next draft is for the first period that ends from
+         *     now on).
+         */
+        patch: operations["update_progress_report_schedule_api_v1_progress_report_schedules__schedule_id__patch"];
+        trace?: never;
+    };
     "/api/v1/schedule/tutor-options": {
         parameters: {
             query?: never;
@@ -8283,6 +8333,22 @@ export interface components {
             is_active?: boolean | null;
         };
         /**
+         * EligibleAuthor
+         * @description A tutor who currently teaches the student, with the active subjects
+         *     they teach them.
+         */
+        EligibleAuthor: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Subjects */
+            subjects: components["schemas"]["app__workflows__progress_report_schedule_schemas__ScheduleSubject"][];
+        };
+        /**
          * EmergencyContact
          * @description One emergency contact; ``position`` 1 is called first.
          */
@@ -9132,7 +9198,7 @@ export interface components {
              * Format: date-time
              */
             ends_at: string;
-            subject: components["schemas"]["ScheduleSubject"];
+            subject: components["schemas"]["app__modules__scheduling__schedule_schemas__ScheduleSubject"];
             tutor: components["schemas"]["FamilyScheduleTutor"] | null;
             classroom: components["schemas"]["FamilyScheduleClassroom"] | null;
             /**
@@ -11549,6 +11615,92 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * ProgressReportScheduleCreate
+         * @description `POST /api/v1/students/{id}/progress-report-schedules` (#316 C2).
+         */
+        ProgressReportScheduleCreate: {
+            /**
+             * Author User Id
+             * Format: uuid
+             * @description An active tutor who currently teaches the student (schedule_author_invalid otherwise).
+             */
+            author_user_id: string;
+            /** @description weekly (Monday to Sunday) or monthly (a calendar month), in the center's local dates. */
+            cadence: components["schemas"]["ScheduleCadence"];
+            /**
+             * Subject Id
+             * @description Optional: an active subject the tutor currently teaches the student (subject_unknown / schedule_subject_not_assigned). Without it the reports cover all subjects.
+             */
+            subject_id?: string | null;
+            /**
+             * Starts On
+             * @description The first period that gets a draft: a Monday (weekly) or the 1st (monthly), from the current period on and at most 366 days ahead (schedule_starts_on_invalid). Default: the current period.
+             */
+            starts_on?: string | null;
+        };
+        /**
+         * ProgressReportScheduleList
+         * @description `GET /api/v1/students/{id}/progress-report-schedules` (#316 C1):
+         *     active schedules first, then the newest, at most 100.
+         */
+        ProgressReportScheduleList: {
+            /** Items */
+            items: components["schemas"]["ProgressReportScheduleView"][];
+            /** Eligible Authors */
+            eligible_authors: components["schemas"]["EligibleAuthor"][];
+        };
+        /**
+         * ProgressReportScheduleUpdate
+         * @description `PATCH /api/v1/progress-report-schedules/{id}` (#316 C3): deactivate
+         *     or reactivate. To change the tutor, cadence or subject, deactivate it
+         *     and add another.
+         */
+        ProgressReportScheduleUpdate: {
+            /** Version */
+            version: number;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * ProgressReportScheduleView
+         * @description One schedule (#316 C1).
+         */
+        ProgressReportScheduleView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            author: components["schemas"]["ScheduleAuthor"];
+            cadence: components["schemas"]["ScheduleCadence"];
+            /** @description null: the reports cover all subjects. */
+            subject: components["schemas"]["app__workflows__progress_report_schedule_schemas__ScheduleSubject"] | null;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by: components["schemas"]["SchedulePerson"];
+            /** @description Why no draft would be created now (the first failing rule), or null. */
+            ineligible_reason: components["schemas"]["ScheduleIneligibleReason"] | null;
+            /** @description null for an inactive schedule or before its first period has ended. */
+            latest_period: components["schemas"]["ScheduleLatestPeriod"] | null;
+        };
         /** ProgressReportStudent */
         ProgressReportStudent: {
             /**
@@ -11878,20 +12030,50 @@ export interface components {
         };
         /** @enum {string} */
         ScheduleAccessCode: "allowed" | "consent_required";
-        /**
-         * ScheduleSubject
-         * @description The session's subject with its level's name.
-         */
-        ScheduleSubject: {
+        /** ScheduleAuthor */
+        ScheduleAuthor: {
             /**
-             * Id
+             * User Id
              * Format: uuid
              */
-            id: string;
-            /** Name */
-            name: string;
-            /** Education Level Name */
-            education_level_name: string;
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** @enum {string} */
+        ScheduleCadence: "weekly" | "monthly";
+        /** @enum {string} */
+        ScheduleIneligibleReason: "student_inactive" | "author_not_tutor" | "author_not_current" | "subject_inactive" | "subject_not_assigned";
+        /**
+         * ScheduleLatestPeriod
+         * @description The latest ended period of an active schedule and what exists for it
+         *     (computed when read; nothing is stored).
+         */
+        ScheduleLatestPeriod: {
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** @description not_created; draft (the tutor's, no link); deleted (the tutor deleted the placeholder: it is never created again); submitted, changes_requested, approved_for_family or retracted (with report_id). */
+            status: components["schemas"]["SchedulePeriodStatus"];
+            /**
+             * Report Id
+             * @description Only for submitted, changes_requested, approved_for_family and retracted reports.
+             */
+            report_id: string | null;
+        };
+        /** @enum {string} */
+        SchedulePeriodStatus: "not_created" | "draft" | "deleted" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
+        /** SchedulePerson */
+        SchedulePerson: {
+            /** Display Name */
+            display_name: string;
         };
         /**
          * SchedulingConflict
@@ -12272,7 +12454,7 @@ export interface components {
              * Format: date-time
              */
             ends_at: string;
-            subject: components["schemas"]["ScheduleSubject"];
+            subject: components["schemas"]["app__modules__scheduling__schedule_schemas__ScheduleSubject"];
             /** Can Mark */
             can_mark: boolean;
             /** Can Correct */
@@ -13915,7 +14097,7 @@ export interface components {
              * Format: date-time
              */
             ends_at: string;
-            subject: components["schemas"]["ScheduleSubject"];
+            subject: components["schemas"]["app__modules__scheduling__schedule_schemas__ScheduleSubject"];
             classroom: components["schemas"]["TutorScheduleClassroom"] | null;
             /**
              * Participants
@@ -14207,6 +14389,31 @@ export interface components {
              * @description At most 42 windows; windows of one weekday may touch but not overlap. Local wall-clock times of the center.
              */
             windows: components["schemas"]["AvailabilityWindow"][];
+        };
+        /**
+         * ScheduleSubject
+         * @description The session's subject with its level's name.
+         */
+        app__modules__scheduling__schedule_schemas__ScheduleSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /** ScheduleSubject */
+        app__workflows__progress_report_schedule_schemas__ScheduleSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
     };
     responses: never;
@@ -25218,6 +25425,206 @@ export interface operations {
             };
             /** @description No such approved report of this student, or not one you may see (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_progress_report_schedules_api_v1_students__student_id__progress_report_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportScheduleList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_progress_report_schedule_api_v1_students__student_id__progress_report_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportScheduleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportScheduleView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such student (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The tutor already has an active schedule of this cadence for this student and subject (progress_report_schedule_exists; details.schedule_id). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_progress_report_schedule_api_v1_progress_report_schedules__schedule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressReportScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressReportScheduleView"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such schedule (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The schedule changed since it was read (version_conflict), or another active schedule has the same tutor, cadence and subject (progress_report_schedule_exists; details.schedule_id). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

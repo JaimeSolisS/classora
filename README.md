@@ -267,7 +267,9 @@ unless a bullet says otherwise.
   Coordinator) approves each report, sends it back with a reason or
   retracts it; only approved reports reach the student and the guardians
   with access to their academic records, who are notified, and reasons stay
-  internal.
+  internal. Reviewers can also schedule weekly or monthly reports per
+  student: after each week or month ends, the tutor gets an empty draft and
+  a notification.
 
 **Courses**
 

@@ -917,6 +917,10 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "closure_id": _unknown,
     "classroom_id": _unknown,
     "consent_id": _unknown,
+    # #316: no family-reachable GET route takes it today (the schedule
+    # routes are staff-only, PATCH /progress-report-schedules/{id} isn't a
+    # GET); mapped so a future GET route is still walked.
+    "schedule_id": _unknown,
 }
 """Every path parameter name of a family-reachable ``GET`` route → the
 values to try. A missing name fails ``test_every_path_parameter_is_mapped``."""
@@ -1062,6 +1066,10 @@ def test_every_path_parameter_is_mapped():
         "/api/v1/students/{student_id}/progress-reports/{report_id}",
     } <= paths
     assert "/api/v1/notifications/stream" not in paths
+    # #316: the report schedules are staff-only (the matrix gates them behind
+    # progress_report.review), so the walk leaves them out;
+    # test_report_schedules_are_staff_only checks the 403.
+    assert "/api/v1/students/{student_id}/progress-report-schedules" not in paths
 
 
 def test_no_family_response_carries_a_hidden_note(client, walk):
@@ -1313,3 +1321,31 @@ def test_progress_report_notifications_carry_ids_only(client, walk):
             assert item["params"]["student_id"] == str(actor.student_id)
             assert item["params"]["audience"] == "family"
             assert item["params"]["report_id"] in walk.world.report_ids
+
+
+def test_report_schedules_are_staff_only(client, walk):
+    """#316 F6 (E4): a schedule of each world student exists (the world's
+    Academic Coordinator adds it for the world tutor); every family actor
+    gets ``403 permission_denied`` on S1 for either student, and the body
+    names neither the tutor nor the schedule. The world tutor too."""
+    world = walk.world
+    staff = sign_in(client, world.staff.username)
+    schedule_ids = []
+    for student in world.students:
+        added = post(
+            client,
+            staff,
+            f"/api/v1/students/{student}/progress-report-schedules",
+            {"author_user_id": str(world.tutor.id), "cadence": "monthly"},
+        )
+        assert code_of(added) == (201, None), added.text
+        schedule_ids.append(added.json()["id"])
+    for user in [actor.user for actor in world.actors] + [world.tutor]:
+        cookie = sign_in(client, user.username)
+        for student in world.students:
+            response = get(
+                client, cookie, f"/api/v1/students/{student}/progress-report-schedules"
+            )
+            assert code_of(response) == (403, "permission_denied"), response.text
+            for hidden in (*schedule_ids, str(world.tutor.id)):
+                assert hidden not in response.text

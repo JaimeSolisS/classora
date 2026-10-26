@@ -281,5 +281,9 @@
   "progress_report_author_not_current": "The author no longer teaches this student. Approve or retract the report instead.",
   "progress_report_review_route_required": "This progress report is decided on its own review page.",
   "period_invalid": "Choose a valid period: a Monday for a weekly report, the 1st for a monthly one, or an on-demand period of up to a year.",
-  "period_in_future": "The period can't start after today."
+  "period_in_future": "The period can't start after today.",
+  "progress_report_schedule_exists": "This tutor already has an active schedule like this one.",
+  "schedule_author_invalid": "This tutor doesn't currently teach the student. Choose another tutor.",
+  "schedule_subject_not_assigned": "The tutor doesn't currently teach the student this subject.",
+  "schedule_starts_on_invalid": "Choose the current period or a later one, at most a year ahead."
 }

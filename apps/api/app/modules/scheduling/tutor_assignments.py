@@ -8,7 +8,9 @@ than :data:`TUTOR_ASSIGNMENT_LOOKBACK_DAYS` days ago or haven't ended.
 don't count, and a substitution or a decline (which change or clear
 ``tutor_user_id``) ends the link at once.
 :func:`subject_ids_for_tutor_student` gives the subjects of the same
-sessions for one student (#81 E4). Former students' read-only history is a
+sessions for one student (#81 E4), and
+:func:`current_tutor_subjects_for_student` the reverse: a student's current
+tutors with those subjects (#316 B1). Former students' read-only history is a
 separate fact set (M5).
 
 ``families`` never imports ``scheduling`` (ADR-0002): ``app/wiring.py``
@@ -36,24 +38,33 @@ ASSIGNMENT_STATES: Final = TUTOR_OCCUPYING_STATES
 """``offered``, ``confirmed`` and ``completed`` (#67 E5)."""
 
 
-def _current_assignments(
-    columns: Any, tutor_user_id: uuid.UUID, now: datetime
-) -> Select[Any]:
-    """The participants of ``tutor_user_id``'s current assignment sessions
-    at ``now`` (one definition for :func:`student_ids_for_tutor` and
-    :func:`subject_ids_for_tutor_student`, so their states and window never
-    drift apart)."""
+def _assignments(*columns: Any, now: datetime) -> Select[Any]:
+    """The participants of every current assignment session at ``now`` (one
+    definition for :func:`student_ids_for_tutor`,
+    :func:`subject_ids_for_tutor_student` and
+    :func:`current_tutor_subjects_for_student`, so their states and window
+    never drift apart)."""
     since = now - timedelta(days=TUTOR_ASSIGNMENT_LOOKBACK_DAYS)
     return (
-        select(columns)
+        select(*columns)
         .select_from(ClassSessionParticipant)
         .join(ClassSession, ClassSession.id == ClassSessionParticipant.class_session_id)
         .where(
-            ClassSession.tutor_user_id == tutor_user_id,
+            ClassSession.tutor_user_id.is_not(None),
             ClassSession.state.in_(sorted(state.value for state in ASSIGNMENT_STATES)),
             ClassSession.ends_at > since,
         )
         .distinct()
+    )
+
+
+def _current_assignments(
+    columns: Any, tutor_user_id: uuid.UUID, now: datetime
+) -> Select[Any]:
+    """The participants of ``tutor_user_id``'s current assignment sessions
+    at ``now``."""
+    return _assignments(columns, now=now).where(
+        ClassSession.tutor_user_id == tutor_user_id
     )
 
 
@@ -86,6 +97,24 @@ async def subject_ids_for_tutor_student(
         )
     )
     return frozenset(found)
+
+
+async def current_tutor_subjects_for_student(
+    session: AsyncSession, student_id: uuid.UUID, *, now: datetime
+) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+    """The tutors who currently teach ``student_id`` at ``now`` (those whose
+    :func:`student_ids_for_tutor` holds the student), each with the subjects
+    :func:`subject_ids_for_tutor_student` gives for them (#316 B1: the
+    eligible authors of a report schedule). One statement."""
+    rows = await session.execute(
+        _assignments(
+            ClassSession.tutor_user_id, ClassSession.subject_id, now=now
+        ).where(ClassSessionParticipant.student_id == student_id)
+    )
+    found: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for tutor_user_id, subject_id in rows:
+        found.setdefault(tutor_user_id, set()).add(subject_id)
+    return {tutor: frozenset(subjects) for tutor, subjects in found.items()}
 
 
 class SchedulingTutorAssignments:

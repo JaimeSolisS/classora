@@ -240,6 +240,12 @@ const API_CODES = [
   'progress_report_review_route_required',
   'period_invalid',
   'period_in_future',
+  // #316 E5: the report schedule codes.
+  'progress_report_schedule_exists',
+  'schedule_author_invalid',
+  'schedule_subject_not_assigned',
+  'schedule_starts_on_invalid',
+  'student_inactive',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

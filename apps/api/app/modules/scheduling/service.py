@@ -91,7 +91,9 @@ The tutor assignment source of the ``families`` student record policy
 :func:`student_ids_for_tutor` and :data:`TUTOR_ASSIGNMENT_SOURCE`, which
 ``app.wiring`` registers; :func:`subject_ids_for_tutor_student` (#81: the
 subjects in which a tutor currently teaches one student, for the learning
-plan subject rule in ``app.workflows.learning_plans``).
+plan subject rule in ``app.workflows.learning_plans``);
+:func:`current_tutor_subjects_for_student` (#316 B1: a student's current
+tutors with those subjects, for the report schedules).
 
 Attendance (#76, :mod:`~app.modules.scheduling.attendance`; the pure
 rules in :mod:`~app.modules.scheduling.attendance_rules`):
@@ -783,6 +785,9 @@ from app.modules.scheduling.tutor_assignments import (
 )
 from app.modules.scheduling.tutor_assignments import (
     TUTOR_ASSIGNMENT_SOURCE as TUTOR_ASSIGNMENT_SOURCE,
+)
+from app.modules.scheduling.tutor_assignments import (
+    current_tutor_subjects_for_student as current_tutor_subjects_for_student,
 )
 from app.modules.scheduling.tutor_assignments import (
     student_ids_for_tutor as student_ids_for_tutor,

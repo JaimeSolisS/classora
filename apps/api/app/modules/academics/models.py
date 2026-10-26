@@ -78,8 +78,14 @@
   ``approved_for_family`` → ``retracted``). A trigger freezes an approved
   report's content (42501) and refuses every ``DELETE``.
 
+- ``progress_report_schedules`` (#316 A1): which tutor owes a weekly or
+  monthly report about one student (optionally one subject) from
+  ``starts_on``; the periodic job creates that tutor's empty draft after
+  each period (``progress_reports.schedule_id``, unique per period).
+
 ``session_closeouts``, ``session_notes``, the four evaluation tables, the
-three learning plan tables, the two homework tables and ``progress_reports``
+three learning plan tables, the two homework tables, ``progress_reports``
+and ``progress_report_schedules``
 are audited (the
 create and update diffs are their record). The two append-only tables are not: a trigger
 rejects ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (42501), and their named
@@ -1071,6 +1077,11 @@ PROGRESS_REPORT_STATUSES: Final = (
     "retracted",
 )
 PROGRESS_REPORT_PERIOD_UNIQUE: Final = "uq_progress_reports_period"
+PROGRESS_REPORT_SCHEDULE_PERIOD_UNIQUE: Final = "uq_progress_reports_schedule_period"
+"""#316 A2: at most one placeholder per schedule and period, ever (deleted
+and retracted placeholders included)."""
+PROGRESS_REPORT_SCHEDULE_CADENCES: Final = ("weekly", "monthly")
+PROGRESS_REPORT_SCHEDULE_ACTIVE_UNIQUE: Final = "uq_progress_report_schedules_active"
 PROGRESS_REPORT_PROTECTED: Final = (
     "student_id",
     "author_user_id",
@@ -1211,6 +1222,16 @@ class ProgressReport(Audited, SoftDeleteMixin, VersionedMixin, Model):
                 "kind <> 'on_demand' AND deleted_at IS NULL AND status <> 'retracted'"
             ),
         ),
+        # #316 A2: one placeholder per schedule and period, ever (not
+        # filtered on deleted_at or status, so a deleted placeholder is
+        # never created again).
+        Index(
+            PROGRESS_REPORT_SCHEDULE_PERIOD_UNIQUE,
+            "schedule_id",
+            "period_start",
+            unique=True,
+            postgresql_where=text("schedule_id IS NOT NULL"),
+        ),
     )
 
     student_id: Mapped[uuid.UUID] = mapped_column(
@@ -1263,4 +1284,75 @@ class ProgressReport(Audited, SoftDeleteMixin, VersionedMixin, Model):
     """Internal (E6): never in the family shape."""
     deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("progress_report_schedules.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """#316 A2: the schedule whose job created this placeholder; set only by
+    the job (never in a write body)."""
+
+
+class ProgressReportSchedule(Audited, VersionedMixin, Model):
+    """Which tutor owes a weekly or monthly report about one student,
+    optionally for one subject (#316 A1). After each period ends, the job
+    creates that tutor's empty draft for it (``progress_reports.schedule_id``).
+    ``starts_on`` is the first period start that may get one (a Monday for
+    ``weekly``, the 1st for ``monthly``; center-local). An inactive schedule
+    is kept (audit, the reports' foreign key); at most one active schedule
+    per student, author, cadence and subject (``NULL`` = all subjects)."""
+
+    __tablename__ = "progress_report_schedules"
+    __table_args__ = (
+        CheckConstraint(
+            _in("cadence", PROGRESS_REPORT_SCHEDULE_CADENCES), name="cadence_valid"
+        ),
+        CheckConstraint(
+            "cadence <> 'weekly' OR extract(isodow from starts_on) = 1",
+            name="weekly_starts_on",
+        ),
+        CheckConstraint(
+            "cadence <> 'monthly' OR extract(day from starts_on) = 1",
+            name="monthly_starts_on",
+        ),
+        Index(
+            PROGRESS_REPORT_SCHEDULE_ACTIVE_UNIQUE,
+            "student_id",
+            "author_user_id",
+            "cadence",
+            text("COALESCE(subject_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        # S1: a student's schedules.
+        Index(
+            "ix_progress_report_schedules_student_id_created_at",
+            "student_id",
+            "created_at",
+        ),
+        # D2: the job's scan of the active schedules.
+        Index(
+            "ix_progress_report_schedules_active_id",
+            "id",
+            postgresql_where=text("is_active"),
+        ),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT")
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subjects.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cadence: Mapped[str] = mapped_column(String(20))
+    starts_on: Mapped[date] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )

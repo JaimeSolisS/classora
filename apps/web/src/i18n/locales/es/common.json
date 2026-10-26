@@ -1514,7 +1514,8 @@
       "academics_assignment_graded": "Se calificó una tarea.",
       "academics_progress_report_approved": "Se aprobó un informe de progreso del {{period_start}} al {{period_end}}.",
       "academics_progress_report_changes_requested": "Un revisor pidió cambios en tu informe de progreso.",
-      "academics_progress_report_retracted": "Se retiró tu informe de progreso."
+      "academics_progress_report_retracted": "Se retiró tu informe de progreso.",
+      "academics_progress_report_due": "Tu borrador de informe de progreso del {{period_start}} al {{period_end}} está listo para escribirse."
     }
   },
   "scheduling": {
@@ -4320,6 +4321,68 @@
       "reportMissing": "Este informe ya no está disponible.",
       "toList": "Volver a informes del tutor",
       "back": "Volver a los informes"
+    },
+    "schedule": {
+      "heading": "Programación de informes",
+      "intro": "El tutor recibe un borrador vacío al terminar cada semana o mes. Un revisor lo aprueba antes de que lo vea la familia.",
+      "add": "Agregar programación",
+      "addTitle": "Agregar una programación de informes",
+      "addDescription": "Elige quién escribe los informes, cada cuánto y desde qué periodo.",
+      "tutor": "Tutor",
+      "chooseTutor": "Elige un tutor",
+      "cadence": "Frecuencia",
+      "subject": "Materia",
+      "firstPeriod": "Primer periodo",
+      "weekOf": "Semana del {{date}}",
+      "adding": "Agregando…",
+      "noTutor": "Ningún tutor le da clases a {{student}} actualmente.",
+      "thisStudent": "este estudiante",
+      "empty": "Todavía no hay programación de informes.",
+      "inactive": "Programaciones inactivas",
+      "allSubjects": "Todas las materias",
+      "since": "Desde el {{date}}",
+      "summary": "{{cadence}} · {{subject}}",
+      "latest": "{{period}}: {{status}}",
+      "periodStatus": {
+        "not_created": "no creado todavía",
+        "draft": "borrador iniciado",
+        "deleted": "eliminado por el tutor",
+        "submitted": "enviado",
+        "changes_requested": "con cambios solicitados",
+        "approved_for_family": "aprobado",
+        "retracted": "retirado"
+      },
+      "ineligible": {
+        "student_inactive": "El estudiante está inactivo.",
+        "author_not_tutor": "{{tutor}} ya no tiene el rol de tutor.",
+        "author_not_current": "{{tutor}} ya no le da clases a {{student}}, así que no se crea ningún borrador.",
+        "subject_inactive": "La materia está inactiva.",
+        "subject_not_assigned": "{{tutor}} ya no le da esta materia a {{student}}."
+      },
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "actionLabel": "{{action}}: {{tutor}}, {{summary}}",
+      "deactivateTitle": "¿Desactivar esta programación?",
+      "deactivateText": "Ya no se crean borradores nuevos. Los informes ya escritos se quedan como están.",
+      "reactivateTitle": "¿Reactivar esta programación?",
+      "reactivateText": "El siguiente borrador es para el primer periodo que termine a partir de ahora.",
+      "deactivating": "Desactivando…",
+      "reactivating": "Reactivando…",
+      "exists": "Este tutor ya tiene una programación {{cadence}} activa para esta materia.",
+      "conflict": "Esta programación cambió en otro lugar.",
+      "cadenceLower": {
+        "weekly": "semanal",
+        "monthly": "mensual"
+      },
+      "notices": {
+        "added": "Programación agregada.",
+        "deactivated": "Programación desactivada.",
+        "reactivated": "Programación reactivada."
+      },
+      "errors": {
+        "tutorRequired": "Elige un tutor.",
+        "firstPeriodRequired": "Elige el primer periodo."
+      }
     }
   }
 }

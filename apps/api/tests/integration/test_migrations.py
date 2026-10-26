@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0057"
+HEAD = "0058"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -145,6 +145,9 @@ LEARNING_PLAN_TABLES = [
 ]
 ASSIGNMENT_TABLES = ["assignments", "assignment_submissions"]
 PROGRESS_REPORT_TABLES = ["progress_reports"]
+SCHEDULE_TABLES = ["progress_report_schedules"]
+SCHEDULE_PERIOD_UNIQUE = "uq_progress_reports_schedule_period"
+SCHEDULE_FK = "fk_progress_reports_schedule_id_progress_report_schedules"
 CLOSEOUT_REVIEW_COLUMNS = {
     "last_submitted_at",
     "review_reason",
@@ -365,6 +368,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *LEARNING_PLAN_TABLES,
             *ASSIGNMENT_TABLES,
             *PROGRESS_REPORT_TABLES,
+            *SCHEDULE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4466,9 +4470,32 @@ def _of_0057(diff: Any) -> bool:
     return False
 
 
+def _of_0058(diff: Any) -> bool:
+    """A metadata difference that revision 0058 adds: the
+    progress_report_schedules table and its indexes, and
+    progress_reports.schedule_id with its key and index (#316 A1, A2)."""
+    if diff[0] == "add_table":
+        return diff[1].name in SCHEDULE_TABLES
+    if diff[0] == "add_index":
+        return (
+            diff[1].table.name in SCHEDULE_TABLES
+            or diff[1].name == SCHEDULE_PERIOD_UNIQUE
+        )
+    if diff[0] == "add_column":
+        return diff[2] == "progress_reports" and diff[3].name == "schedule_id"
+    if diff[0] == "add_fk":
+        return diff[1].name == SCHEDULE_FK
+    return False
+
+
+def _of_0057_on(diff: Any) -> bool:
+    """A metadata difference that revision 0057 or a later one adds."""
+    return _of_0057(diff) or _of_0058(diff)
+
+
 def _of_0056_on(diff: Any) -> bool:
     """A metadata difference that revision 0056 or a later one adds."""
-    return _of_0056(diff) or _of_0057(diff)
+    return _of_0056(diff) or _of_0057_on(diff)
 
 
 def _of_0055_on(diff: Any) -> bool:
@@ -9625,7 +9652,7 @@ def test_0056_adds_the_assignment_tables_and_downgrade_drops_them(
     command.upgrade(config, "0056")
 
     assert version_nums(dsn) == ["0056"]
-    assert [d for d in metadata_diff(dsn) if not _of_0057(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0057_on(d)] == []
     assert public_tables(dsn) - before == set(ASSIGNMENT_TABLES)
     [made] = run_sql(dsn, ASSIGNMENT_INSERT, _assignment_values(dsn))
     run_sql(dsn, SUBMISSION_INSERT, _submission_values(made.id, _student_row(dsn)))
@@ -9895,7 +9922,7 @@ def test_0057_adds_the_progress_report_table_and_downgrade_drops_it(
     command.upgrade(config, "0057")
 
     assert version_nums(dsn) == ["0057"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0058(d)] == []
     assert public_tables(dsn) - before == set(PROGRESS_REPORT_TABLES)
     run_sql(dsn, REPORT_INSERT, _report_values(dsn))
 
@@ -9903,7 +9930,7 @@ def test_0057_adds_the_progress_report_table_and_downgrade_drops_it(
 
     assert version_nums(dsn) == ["0056"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0057(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0057_on(d)] == []
     assert not run_sql(
         dsn,
         "SELECT 1 FROM pg_proc WHERE proname = 'progress_reports_immutable'",
@@ -9947,6 +9974,7 @@ def test_progress_report_columns_constraints_and_indexes(fresh_database_url):
         "retract_reason": text_,
         "deleted_at": timestamp,
         "deleted_by_user_id": uuid_,
+        "schedule_id": uuid_,
         "version": ("integer", "NO", None, "1"),
     }
     fks = {
@@ -9959,6 +9987,7 @@ def test_progress_report_columns_constraints_and_indexes(fresh_database_url):
             ("approved_by_user_id", "users"),
             ("retracted_by_user_id", "users"),
             ("deleted_by_user_id", "users"),
+            ("schedule_id", "progress_report_schedules"),
         )
     }
     constraints = _constraints(dsn, "progress_reports")
@@ -10003,6 +10032,7 @@ def test_progress_report_columns_constraints_and_indexes(fresh_database_url):
         "ix_progress_reports_author_user_id_created_at",
         "ix_progress_reports_submitted_at",
         "uq_progress_reports_period",
+        SCHEDULE_PERIOD_UNIQUE,
     }
     assert (
         "WHERE ((status)::text = 'approved_for_family'::text)"
@@ -10194,3 +10224,174 @@ def test_an_approved_progress_report_never_changes(fresh_database_url):
         {"id": approved.id},
     )
     assert (row.status, row.summary, row.version) == ("retracted", "Aprobado", 2)
+
+
+# --- 0058: progress report schedules (#316 A1, A2) ------------------------------------
+
+SCHEDULE_INSERT = (
+    "INSERT INTO progress_report_schedules (student_id, author_user_id,"
+    " subject_id, cadence, starts_on, is_active, created_by_user_id)"
+    " VALUES (:st, :u, :sub, :cadence, :starts_on, :active, :u) RETURNING id, version"
+)
+
+
+def _schedule_values(dsn: str) -> dict[str, Any]:
+    return {
+        "st": _student_row(dsn),
+        "u": _user_row(dsn),
+        "sub": None,
+        "cadence": "weekly",
+        "starts_on": date(2031, 3, 3),
+        "active": True,
+    }
+
+
+def test_0058_adds_the_schedules_and_downgrade_drops_them(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0057")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0058")
+
+    assert version_nums(dsn) == ["0058"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(SCHEDULE_TABLES)
+    [schedule] = run_sql(dsn, SCHEDULE_INSERT, _schedule_values(dsn))
+    [report] = run_sql(dsn, REPORT_INSERT, _report_values(dsn))
+    run_sql(
+        dsn,
+        "UPDATE progress_reports SET schedule_id = :s WHERE id = :id",
+        {"s": schedule.id, "id": report.id},
+    )
+
+    command.downgrade(config, "0057")
+
+    assert version_nums(dsn) == ["0057"]
+    assert public_tables(dsn) == before
+    assert "schedule_id" not in _columns(dsn, "progress_reports")
+    assert [d for d in metadata_diff(dsn) if not _of_0058(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_schedule_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, "progress_report_schedules") == {
+        **STANDARD_COLUMNS,
+        "student_id": ("uuid", "NO", None, None),
+        "author_user_id": ("uuid", "NO", None, None),
+        "subject_id": ("uuid", "YES", None, None),
+        "cadence": ("character varying", "NO", 20, None),
+        "starts_on": ("date", "NO", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+        "created_by_user_id": ("uuid", "NO", None, None),
+        "version": ("integer", "NO", None, "1"),
+    }
+    fks = {
+        f"fk_progress_report_schedules_{column}_{target}"
+        for column, target in (
+            ("student_id", "students"),
+            ("author_user_id", "users"),
+            ("subject_id", "subjects"),
+            ("created_by_user_id", "users"),
+        )
+    }
+    constraints = _constraints(dsn, "progress_report_schedules")
+    assert set(constraints) == {
+        "pk_progress_report_schedules",
+        *fks,
+        "ck_progress_report_schedules_cadence_valid",
+        "ck_progress_report_schedules_weekly_starts_on",
+        "ck_progress_report_schedules_monthly_starts_on",
+    }
+    for name in fks:
+        assert "ON DELETE RESTRICT" in constraints[name]
+    assert "ON DELETE RESTRICT" in _constraints(dsn, "progress_reports")[SCHEDULE_FK]
+    indexes = _indexes(dsn, "progress_report_schedules")
+    assert set(indexes) == {
+        "pk_progress_report_schedules",
+        "uq_progress_report_schedules_active",
+        "ix_progress_report_schedules_student_id_created_at",
+        "ix_progress_report_schedules_active_id",
+    }
+    active = indexes["uq_progress_report_schedules_active"]
+    assert "UNIQUE" in active
+    assert "WHERE is_active" in active
+    assert (
+        "COALESCE(subject_id, '00000000-0000-0000-0000-000000000000'::uuid)" in active
+    )
+    assert "WHERE is_active" in indexes["ix_progress_report_schedules_active_id"]
+    period = _indexes(dsn, "progress_reports")[SCHEDULE_PERIOD_UNIQUE]
+    assert "UNIQUE" in period
+    assert "(schedule_id, period_start)" in period
+    assert "WHERE (schedule_id IS NOT NULL)" in period
+    # E2: never filtered on the soft delete or the status.
+    assert "deleted_at" not in period
+    assert "status" not in period
+
+
+def test_schedule_rows_are_checked(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _schedule_values(dsn)
+    for changes, constraint in (
+        ({"cadence": "daily"}, "cadence_valid"),
+        ({"starts_on": date(2031, 3, 4)}, "weekly_starts_on"),
+        ({"cadence": "monthly", "starts_on": date(2031, 3, 3)}, "monthly_starts_on"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(dsn, SCHEDULE_INSERT, values | changes)
+    [made] = run_sql(dsn, SCHEDULE_INSERT, values)
+    assert made.version == 1
+    # One active schedule per student, author, cadence and subject.
+    with pytest.raises(IntegrityError, match="uq_progress_report_schedules_active"):
+        run_sql(dsn, SCHEDULE_INSERT, values | {"starts_on": date(2031, 3, 10)})
+    run_sql(dsn, SCHEDULE_INSERT, values | {"active": False})
+    run_sql(
+        dsn,
+        SCHEDULE_INSERT,
+        values | {"cadence": "monthly", "starts_on": date(2031, 3, 1)},
+    )
+    run_sql(dsn, SCHEDULE_INSERT, values | {"sub": _subject_row(dsn)})
+
+
+def test_one_placeholder_per_schedule_and_period_ever(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    [schedule] = run_sql(dsn, SCHEDULE_INSERT, _schedule_values(dsn))
+    values = _report_values(dsn)
+    [first] = run_sql(dsn, REPORT_INSERT, values)
+    run_sql(
+        dsn,
+        "UPDATE progress_reports SET schedule_id = :s, deleted_at = now(),"
+        " deleted_by_user_id = author_user_id WHERE id = :id",
+        {"s": schedule.id, "id": first.id},
+    )
+    # A deleted placeholder still holds its period for the schedule (E2)...
+    insert_placeholder = (
+        "INSERT INTO progress_reports (student_id, author_user_id, kind,"
+        " period_start, period_end, schedule_id) VALUES (:st, :u, 'weekly',"
+        " :start, :end, :s)"
+    )
+    params = {
+        "st": values["st"],
+        "u": values["u"],
+        "start": values["start"],
+        "end": values["end"],
+        "s": schedule.id,
+    }
+    with pytest.raises(IntegrityError, match=SCHEDULE_PERIOD_UNIQUE):
+        run_sql(dsn, insert_placeholder, params)
+    # ...while the tutor may still write that period by hand (#83's index
+    # ignores deleted reports), and the schedule's next period is free.
+    run_sql(dsn, REPORT_INSERT, values)
+    run_sql(
+        dsn,
+        insert_placeholder,
+        params | {"start": date(2031, 3, 10), "end": date(2031, 3, 16)},
+    )

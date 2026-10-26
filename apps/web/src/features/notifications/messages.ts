@@ -70,7 +70,8 @@ const INSTANT_PARAMS = new Set([
 ]);
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers; #80
- * evaluations; #82 homework deadlines; #83 progress report periods). */
+ * evaluations; #82 homework deadlines; #83 progress report periods, also
+ * of #316's due placeholders). */
 const DATE_PARAMS = new Set([
   'from_date',
   'evaluated_on',
@@ -384,6 +385,8 @@ export const NOTIFICATION_LINKS: Readonly<
   'academics.progress_report_approved': approvedReport,
   'academics.progress_report_changes_requested': authorReport,
   'academics.progress_report_retracted': authorReport,
+  // #316 E6: the placeholder the job created for the author.
+  'academics.progress_report_due': authorReport,
   'staff.qualification_approved': ownQualifications,
   'staff.qualification_rejected': ownQualifications,
   'staff.qualification_revoked': ownQualifications,

@@ -714,3 +714,61 @@ describe('progress report notifications (#83 H1)', () => {
     expect(link({ report_id: '' }, recipient)).toBe('/progress-reports');
   });
 });
+
+// #316 E6: the job's due placeholder notifies its author with ids, the kind
+// and the period only; the link opens the draft, the list without an id.
+
+describe('the due placeholder notification (#316 E6)', () => {
+  const due = {
+    student_id: '00000000-0000-4000-8000-000000000316',
+    report_id: '00000000-0000-4000-8000-000000000317',
+    kind: 'weekly',
+    period_start: '2026-10-19',
+    period_end: '2026-10-25',
+  };
+  const type = 'academics.progress_report_due';
+
+  async function inLanguage(lng: 'es' | 'en', run: () => void): Promise<void> {
+    const previous = i18n.language;
+    await i18n.changeLanguage(lng);
+    try {
+      run();
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  }
+
+  const text = (lng: 'es' | 'en') =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: due,
+    });
+
+  it('renders the period in both languages, without an id', async () => {
+    await inLanguage('en', () => {
+      expect(text('en')).toBe(
+        'Your draft progress report for Oct 19, 2026 – Oct 25, 2026 is ready to write.',
+      );
+    });
+    await inLanguage('es', () => {
+      expect(text('es')).toBe(
+        'Tu borrador de informe de progreso del 19 oct 2026 al 25 oct 2026 está listo para escribirse.',
+      );
+    });
+    for (const lng of ['es', 'en'] as const) {
+      expect(text(lng)).not.toContain(due.report_id);
+      expect(text(lng)).not.toContain('notifications.types');
+    }
+  });
+
+  it("links to the author's draft, the list without an id", () => {
+    const link = NOTIFICATION_LINKS[type]!;
+    const recipient = { userId: 'u-1' };
+    expect(link).toBeTypeOf('function');
+    expect(link(due, recipient)).toBe(`/progress-reports/${due.report_id}`);
+    expect(link({ student_id: due.student_id }, recipient)).toBe(
+      '/progress-reports',
+    );
+    expect(link({ report_id: '' }, recipient)).toBe('/progress-reports');
+  });
+});

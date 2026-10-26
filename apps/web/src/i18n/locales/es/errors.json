@@ -281,5 +281,9 @@
   "progress_report_author_not_current": "El autor ya no da clase a este estudiante. Aprueba o retira el informe.",
   "progress_report_review_route_required": "Este informe de progreso se decide en su propia página de revisión.",
   "period_invalid": "Elige un periodo válido: un lunes para un informe semanal, el primer día del mes para uno mensual o un periodo a solicitud de un año como máximo.",
-  "period_in_future": "El periodo no puede empezar después de hoy."
+  "period_in_future": "El periodo no puede empezar después de hoy.",
+  "progress_report_schedule_exists": "Este tutor ya tiene una programación activa como esta.",
+  "schedule_author_invalid": "Este tutor no le da clases al estudiante actualmente. Elige otro tutor.",
+  "schedule_subject_not_assigned": "El tutor no le da esta materia al estudiante actualmente.",
+  "schedule_starts_on_invalid": "Elige el periodo actual o uno posterior, como máximo a un año."
 }

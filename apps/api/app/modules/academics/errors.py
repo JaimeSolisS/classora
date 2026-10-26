@@ -1,6 +1,6 @@
 """Academics errors: session closeouts (#77 D2, E1; #78 C, D), notes (#79),
-evaluations (#80), learning plans (#81), homework assignments (#82) and
-progress reports (#83).
+evaluations (#80), learning plans (#81), homework assignments (#82),
+progress reports (#83) and progress report schedules (#316).
 
 The routes also answer the shared ``404 not_found``
 (:class:`~app.core.authz.RecordNotFoundError`, the same body for an unknown
@@ -909,3 +909,87 @@ class ProgressReportFieldError(AppError):
             for path, code, message in errors
         ]
         super().__init__(errors=items)
+
+
+# --- Progress report schedules (#316) -------------------------------------------------
+
+
+class ProgressReportScheduleExistsError(AppError):
+    """``409 progress_report_schedule_exists`` (#316 C2, C3): the tutor
+    already has an active schedule of this cadence for this student and
+    subject; ``details.schedule_id`` names it."""
+
+    status = 409
+    code = "progress_report_schedule_exists"
+    detail = "This tutor already has an active schedule like this one."
+
+    def __init__(self, schedule_id: str | None = None) -> None:
+        super().__init__(
+            details=None if schedule_id is None else {"schedule_id": schedule_id}
+        )
+
+
+class ProgressReportScheduleFieldError(AppError):
+    """``422 validation_error`` with field errors (#316 C2): the add body's
+    references, at ``body.author_user_id`` (``schedule_author_invalid``),
+    ``body.subject_id`` (``subject_unknown``,
+    ``schedule_subject_not_assigned``) or ``body.starts_on``
+    (``schedule_starts_on_invalid``)."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, field: str, code: str, message: str) -> None:
+        super().__init__(
+            errors=[{"path": ["body", field], "code": code, "message": message}]
+        )
+
+
+class ScheduleStudentInactiveError(AppError):
+    """``422 student_inactive`` (#316 C2, C3): schedules are for active
+    students (the student is the path's, so the code is top-level)."""
+
+    status = 422
+    code = "student_inactive"
+    detail = "The student is inactive."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ScheduleAuthorInvalidError(AppError):
+    """``422 schedule_author_invalid`` (#316 C3, top-level): on reactivation
+    the author is no longer an active tutor who currently teaches the
+    student (one code whatever the user's state)."""
+
+    status = 422
+    code = "schedule_author_invalid"
+    detail = "This tutor doesn't currently teach the student."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ScheduleSubjectUnknownError(AppError):
+    """``422 subject_unknown`` (#316 C3, top-level): on reactivation the
+    schedule's subject (or its level) is inactive."""
+
+    status = 422
+    code = "subject_unknown"
+    detail = "The subject is inactive."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ScheduleSubjectNotAssignedError(AppError):
+    """``422 schedule_subject_not_assigned`` (#316 C3, top-level): on
+    reactivation the tutor no longer teaches the student this subject."""
+
+    status = 422
+    code = "schedule_subject_not_assigned"
+    detail = "The tutor doesn't currently teach the student this subject."
+
+    def __init__(self) -> None:
+        super().__init__()

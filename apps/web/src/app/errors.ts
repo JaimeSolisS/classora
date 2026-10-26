@@ -278,6 +278,12 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ],
   ['period_invalid', 'period_invalid'],
   ['period_in_future', 'period_in_future'],
+  // Report schedules (#316 E5), problem and field codes.
+  ['progress_report_schedule_exists', 'progress_report_schedule_exists'],
+  ['schedule_author_invalid', 'schedule_author_invalid'],
+  ['schedule_subject_not_assigned', 'schedule_subject_not_assigned'],
+  ['schedule_starts_on_invalid', 'schedule_starts_on_invalid'],
+  ['student_inactive', 'student_inactive'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
