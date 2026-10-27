@@ -108,7 +108,7 @@ function RosterTable({
       role="region"
       aria-labelledby={captionId}
       tabIndex={0}
-      className="relative min-w-0 overflow-x-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring"
+      className="@container relative min-w-0 overflow-x-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring"
     >
       <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
         <caption id={captionId} className="sr-only">
@@ -192,7 +192,12 @@ function RosterTable({
                 >
                   <td colSpan={COLUMNS} className="pt-1 pb-4">
                     {expanded ? (
-                      <StudentCompletionDetail student={student} />
+                      // As wide as the visible region (a query container),
+                      // pinned to its left edge: on a phone the detail
+                      // reflows instead of scrolling with the table.
+                      <div className="sticky left-0 w-[100cqw]">
+                        <StudentCompletionDetail student={student} />
+                      </div>
                     ) : null}
                   </td>
                 </tr>

@@ -132,8 +132,35 @@ export const Roster: Story = {
     await expect(bruno).toHaveAttribute('aria-expanded', 'false');
   },
 };
-export const RosterNarrow320 = at(Roster, 'narrow320');
-export const RosterPhone390 = at(Roster, 'phone390');
+/** The open detail reflows inside the visible region, never beyond it. */
+async function detailFits(canvasElement: HTMLElement) {
+  const region = await tableRegion(canvasElement);
+  const ana = within(canvasElement).getByRole('button', {
+    name: i18n.t(`${key}.detailsFor`, { name: 'Ana López' }),
+  });
+  const detail = canvasElement.ownerDocument.getElementById(
+    ana.getAttribute('aria-controls')!,
+  )!;
+  const content = detail.querySelector('td > div')!;
+  await expect(content.getBoundingClientRect().width).toBeLessThanOrEqual(
+    region.clientWidth,
+  );
+}
+
+const phone = (value: 'narrow320' | 'phone390'): Story => {
+  const story = at(Roster, value);
+  return {
+    ...story,
+    play: async (context) => {
+      await story.play?.(context);
+      const region = await tableRegion(context.canvasElement);
+      await expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
+      await detailFits(context.canvasElement);
+    },
+  };
+};
+export const RosterNarrow320 = phone('narrow320');
+export const RosterPhone390 = phone('phone390');
 export const RosterDesktop1280: Story = {
   ...at(Roster, 'desktop1280'),
   play: async (context) => {

@@ -429,8 +429,10 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   name is a button (`aria-expanded`, `aria-controls` the detail `<tr>`,
   accessible name "Details for {name}", focus stays on it when toggled), and
   the detail row is one cell spanning every column, `hidden` until opened,
-  holding `StudentCompletionDetail` (lists, never a nested table, so it
-  reflows at 320 px). Statuses ("In progress", "Met", "Passed", …) are
+  holding `StudentCompletionDetail` (lists, never a nested table). The
+  region is a query container (`@container`) and the detail is pinned to
+  its visible width (`sticky left-0 w-[100cqw]`), so on a phone the detail
+  reflows at 320 px instead of scrolling sideways with the table. Statuses ("In progress", "Met", "Passed", …) are
   bordered text badges with an icon, dashed while pending, never colour
   alone. Decimals are shown as the API's text (`decimalText`).
 - **`CloseoutOnBehalfDialog`** (`features/scheduling/session`, #301b): a
