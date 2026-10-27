@@ -1518,10 +1518,15 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     // one row, the student's own, and "Mi progreso" shows a status badge
     // (axe). Read-only: nothing is written.
     const completion = common.courses.cohorts.completion;
-    await student!.page
+    // The shell keeps the phone menu open after 9d's navigation: open it
+    // only when it is closed (a second click would close it).
+    const menuToggle = student!.page
       .getByRole('banner')
-      .getByRole('button', { name: common.nav.toggle })
-      .click();
+      .getByRole('button', { name: common.nav.toggle });
+    if ((await menuToggle.getAttribute('aria-expanded')) !== 'true') {
+      await menuToggle.click();
+    }
+    await expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
     await student!.page
       .getByRole('banner')
       .getByRole('link', { name: common.nav.myCourses, exact: true })
