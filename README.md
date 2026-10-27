@@ -504,13 +504,20 @@ demo data:
   templates; and evaluations, one still a draft. They show in the session log,
   the academic history, the progress dashboard and the cohort's completion
   (the cohort is under the "ended" or "all" filter of the cohort list).
+- **Learning plans, homework and progress reports**: for `demo.student`, an
+  active learning plan with one overdue milestone and a completed plan;
+  homework that is assigned, handed in and graded; progress reports in draft,
+  waiting for review (on Approvals) and approved for the family; and a weekly
+  report schedule for `demo.tutor` (the worker adds the next draft after each
+  week ends).
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
-or the classes held and results, were added keeps its schedule and skips them
-(`make seed-demo` says so) until you reset the same way. The pending offer expires after the scheduling
-policy's 48 hours and then also waits on Approvals. With classes scheduled, the
+the classes held and results, or the learning plans, homework and progress
+reports were added keeps its schedule and skips them (`make seed-demo` says
+so) until you reset the same way. The pending offer expires after the
+scheduling policy's 48 hours and then also waits on Approvals. With classes scheduled, the
 center time zone can no longer be changed. `make bootstrap-owner` (below) is
 refused once any Owner exists, so locally use either the demo Owner or
 `make bootstrap-owner`, not both.

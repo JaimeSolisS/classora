@@ -20,11 +20,11 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 6. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-The registered generators (#23, #195, #299, #303, #353) write nothing on a
-rerun (``0 rows``), even on a later day: the #299, #303 and #353 data keep
-the dates of their first run. A future generator may add rows on a rerun
-unless its issue says otherwise. To start over, reset with ``docker compose
-down -v``, then ``make migrate`` and ``make seed-demo``.
+The registered generators (#23, #195, #299, #303, #353, #354) write nothing
+on a rerun (``0 rows``), even on a later day: the #299, #303, #353 and #354
+data keep the dates of their first run. A future generator may add rows on a
+rerun unless its issue says otherwise. To start over, reset with ``docker
+compose down -v``, then ``make migrate`` and ``make seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -62,6 +62,11 @@ from tests.factories.demo_academics import (
 )
 from tests.factories.demo_changes import DemoChangesGenerator
 from tests.factories.demo_courses import DemoCoursesGenerator
+from tests.factories.demo_learning import (
+    DemoHomeworkGenerator,
+    DemoLearningPlansGenerator,
+    DemoProgressReportsGenerator,
+)
 from tests.factories.demo_past_cohort import DemoPastCohortGenerator
 from tests.factories.demo_schedule import DemoScheduleGenerator
 from tests.factories.families import DemoFamiliesGenerator
@@ -97,6 +102,9 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     DemoPastCohortGenerator(),
     DemoNotesGenerator(),
     DemoEvaluationsGenerator(),
+    DemoLearningPlansGenerator(),
+    DemoHomeworkGenerator(),
+    DemoProgressReportsGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -141,7 +149,19 @@ their factories (``persist`` / ``persist_batch``; never commit).
   ``demo.tutor``'s evaluations (one still a draft) and the finished cohort's
   course evaluations, so its completion shows ``completed`` and
   ``not_completed``, ``APP_ENV=local`` only. The four #353 generators also
-  skip a database whose #299 schedule is from an earlier day."""
+  skip a database whose #299 schedule is from an earlier day.
+- ``academics.demo_learning_plans`` (#354): ``demo.tutor``'s learning plans
+  for ``demo.student``, one active with an overdue milestone and one
+  completed, through the services under the seed clock, ``APP_ENV=local``
+  only.
+- ``academics.demo_homework`` (#354): ``demo.tutor``'s homework for
+  ``demo.student``, graded (Inglés only), handed in and assigned,
+  ``APP_ENV=local`` only.
+- ``academics.demo_progress_reports`` (#354): ``demo.tutor``'s progress
+  reports about ``demo.student`` (approved for the family, waiting for
+  review and a draft) and ``demo.coordinator``'s weekly report schedule,
+  ``APP_ENV=local`` only. The three #354 generators also skip a database
+  whose #299 schedule is from an earlier day."""
 
 
 @dataclass

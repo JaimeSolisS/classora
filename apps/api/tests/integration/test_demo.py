@@ -130,6 +130,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "courses.demo_past_cohort: 89 rows",
         "academics.demo_notes: 7 rows",
         "academics.demo_evaluations: 32 rows",
+        "academics.demo_learning_plans: 18 rows",
+        "academics.demo_homework: 16 rows",
+        "academics.demo_progress_reports: 9 rows",
     ]
 
 

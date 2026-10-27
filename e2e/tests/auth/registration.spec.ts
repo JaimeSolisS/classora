@@ -11,7 +11,9 @@ import { common, errors, signedInAs } from '../support/catalog';
 // account on /register (reached from /login), can't sign in while it is
 // pending, the demo Owner approves it on /approvals (the approval inbox,
 // #40 G1; the shared signed-in state: approval needs no reauthentication),
-// and the person then signs in.
+// and the person then signs in. After the nav check the inbox is filtered to
+// registrations (#354 E2): the open list is oldest first, 10 a page, and the
+// shared demo data and parallel specs leave their own open items on it.
 //
 // Budgets (#169 I2; #27, ADR-0008; see support/auth.ts): 1 registration
 // request (`registration.ip`: 10 per hour), 2 logins (`login.ip`), and 1
@@ -116,6 +118,14 @@ test('a parent requests an account, the Owner approves it and the parent signs i
     .click();
   await expect(owner).toHaveURL('/approvals');
   const ownerMain = owner.getByRole('main');
+  await expect(
+    ownerMain.getByRole('heading', {
+      level: 1,
+      name: common.approvals.title,
+    }),
+  ).toBeVisible();
+  // Registrations only, so the row never depends on other open items (#354).
+  await owner.goto('/approvals?type=identity.registration');
   await expect(
     ownerMain.getByRole('heading', {
       level: 1,
