@@ -45,6 +45,7 @@ Overview. "Creating issue" is the issue whose migration creates the table. Wheth
 | `charges` | billing | #90 (sources added by #91–#94) | append-only |
 | `charge_adjustments` | billing | #90 | append-only |
 | `charge_due_date_changes` | billing | #97 | append-only |
+| `charge_reminders` | billing | #97 | append-only |
 | `payments` | billing | #90 (table), #96 (endpoints) | append-only |
 | `payment_reversals` | billing | #90 (table), #100 (endpoints) | append-only |
 | `payment_allocations` | billing | #90 | append-only |
@@ -448,9 +449,9 @@ The money outcome per cancellation classification (E3). One row per effective in
 | `id` | UUID | no | PK |
 | `effective_from` | TIMESTAMPTZ | no | **UNIQUE** |
 | `excused_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `credit` |
-| `on_time_outcome` | VARCHAR(8) | no | seeded `credit` |
-| `late_outcome` | VARCHAR(8) | no | seeded `charge` |
-| `no_show_outcome` | VARCHAR(8) | no | seeded `charge` |
+| `on_time_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `credit` |
+| `late_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `charge` |
+| `no_show_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `charge` |
 | `created_by_user_id` | UUID | yes | FK `users`; `NULL` for the seeded row |
 
 The rule in effect at the change's classification instant applies. Managed with `billing.manage`.
@@ -505,6 +506,21 @@ Gap-free yearly counters (E13).
 ### 3.26 View `billing_ledger_entries` (#90)
 
 A read-only `UNION ALL` of the money rows of one account, for the cursor-paginated history (architecture §4.4) and the per-student filter. One row per `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases` and `refunds` row, with at least: `billing_account_id`, `entry_type`, `entry_id`, `student_id` (`NULL` for payment-level rows), `amount`, `occurred_at` (`posted_at` or `created_at`). The cursor is `(occurred_at, entry_id)`. #90 fixes the exact columns. The view stores nothing and is never written.
+
+### 3.27 `charge_reminders` (#97)
+
+One row per charge and reminder stage, so the reminder job is idempotent (E11, natural key `(charge_id, stage)`). The in-app notifications to the account's guardians (`family_guardians` → `guardians.user_id`) are inserted in the same transaction through `create_notification`, as `{type, params}` ([ADR-0015](adr/0015-server-side-i18n.md)). The `notifications` table itself has no dedup key, and one charge stage notifies several guardians, so the key lives here.
+
+| Column | Type | Null | Check / note |
+|---|---|---|---|
+| `id` | UUID | no | PK |
+| `charge_id` | UUID | no | FK `charges` |
+| `stage` | VARCHAR(24) | no | the reminder stage; #97 defines the stage codes and their offsets from the effective due date |
+| `sent_at` | TIMESTAMPTZ | no | |
+
+- **Natural key:** `UNIQUE (charge_id, stage)`; the job inserts with `INSERT … ON CONFLICT DO NOTHING` and notifies only when the row was inserted.
+- **Immutability:** append-only (§5.1 triggers).
+- **Index:** the unique key serves the lookup by charge.
 
 ## 4. Invariants and derived values
 
@@ -571,7 +587,7 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
   The App invariants of §4.1 are checked after step 2.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
-- **Jobs and sweepers:** insert on the natural keys with `INSERT … ON CONFLICT DO NOTHING` and treat a conflict as success; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97) and `idempotency:purge_keys` (hourly, #88).
+- **Jobs and sweepers:** insert on the natural keys with `INSERT … ON CONFLICT DO NOTHING` and treat a conflict as success; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
 - **Scheduling transactions** never post charges: a billing failure can't roll back a schedule change (E1). Enrollment charges are the exception: they are posted in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), which already holds the enrollment locks.
 
 ## 7. Indexes
@@ -583,6 +599,7 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `charges (billing_account_id, due_date)`: overdue and reminders;
 - `charge_adjustments (charge_id)`;
 - `charge_due_date_changes (charge_id, created_at)`;
+- `charge_reminders (charge_id, stage)` (the unique key);
 - `payments (billing_account_id, received_on, id)`;
 - `payment_allocations (charge_id)` and `payment_allocations (payment_id)`;
 - `refunds (payment_id)`;
@@ -616,6 +633,7 @@ erDiagram
     students ||--o{ packages : ""
     charges ||--o{ charge_adjustments : ""
     charges ||--o{ charge_due_date_changes : ""
+    charges ||--o{ charge_reminders : ""
     charges ||--o{ charge_discounts : ""
     charges ||--o{ payment_allocations : ""
     payments ||--o{ payment_allocations : ""
@@ -656,7 +674,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #94 M6-09 Packages | E1 (purchase), E6 (purchase key), E10, E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions`, `charges` |
 | #95 M6-10 Discounts, custom prices | E9 (precedence step 1, discount snapshot equation) | `custom_prices`, `discounts`, `charge_discounts` |
 | #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`), E12 (method from the seeded table) | `payment_methods`, `payments`, `payment_allocations` |
-| #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`) | `charge_due_date_changes` |
+| #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`) | `charge_due_date_changes`, `charge_reminders` |
 | #98 M6-13 Receipts | E13 (`number_series`, snapshot incl. template version, one per payment), E14, E15 | `receipts`, `number_series` |
 | #99 M6-14 Reconciliation | E2 (delta adjustment), E3 (rules, outcomes, closures), E10 (`charge` debits units) | `cancellation_billing_rules`, `charge_adjustments` |
 | #100 M6-15 Reversals, refunds | E5 (reversal releases allocations, refunds from the remainder, I3), E6, E8 (`finance.refund.approve`, `finance.refund_or_reversal`, `finance.correction`) | `payment_reversals`, `allocation_releases`, `refunds` |

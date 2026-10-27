@@ -223,7 +223,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
   - **#121 (M8-04):** payment-method editing and receipt-template editing (E12, E13).
 - The coverage table "M6 issue → decisions and tables it relies on" for #87–#103 is [`../data-model.md` §10](../data-model.md#10-m6-issue-coverage).
 - **This ADR adds nothing** to the dependency files, the permission catalog or the migrations. Each implementing issue adds its own tables, seeds and permissions.
-- Family charges never depend on closeout or on tutors' reports. No-shows and sessions never closed out are still charged (E1, E2).
+- Apart from package-covered sessions (E10: units consumed, or the ordinary charge posted, at closeout approval), family charges never depend on closeout or on tutors' reports: no-shows and sessions never closed out are still charged (E1, E2).
 - Billing is off until an administrator sets `billing_starts_on`, so going live never charges DEV history or demo data.
 - A student outside a family is visible as unbilled rather than silently skipped (E4).
 - Every money row is explainable from immutable history (spec §16); corrections are new rows, never edits (W4.5).
