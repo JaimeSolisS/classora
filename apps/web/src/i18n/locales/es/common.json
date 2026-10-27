@@ -4476,8 +4476,9 @@
     },
     "family": {
       "title": "Mi progreso",
+      "titleOf": "Progreso de {{name}}",
       "mine": "Mi progreso",
-      "whose": "Progreso de",
+      "whose": "De quién es el progreso",
       "noStudents": "No hay ningún estudiante vinculado a tu cuenta."
     },
     "links": {

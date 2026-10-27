@@ -16,14 +16,16 @@ import { SELECT_CLASS } from '@/features/students/styles';
 import { ProgressLinks } from './ProgressLinks';
 import { ProgressView } from './ProgressView';
 
-// /my-progress[?student=] (#322 A2, B4, B6, D1), students and guardians:
-// the h1 "My progress", #308's family student picker ("Whose progress":
-// "My progress" for the student themselves, otherwise the child's name),
-// kept as ?student= (an unknown or foreign value falls back to the first
-// student, with no request for it; one entry shows plain text; none, a
-// message), the related family links and the shared progress view with the
-// lazy "Notes from the tutor". An adult who hasn't shared their academic
-// records shows the consent message, with no request. Code-split.
+// /my-progress[?student=] (#322 A2, B4, B6, D1; #350), students and
+// guardians: the h1 names the selected entry ("My progress" for the student
+// themselves, otherwise "{name}'s progress"; "Progress" while loading, on
+// error or with no students), #308's family student picker for 2+ entries
+// ("Whose progress": "My progress" for the student themselves, otherwise the
+// child's name), kept as ?student= (an unknown or foreign value falls back
+// to the first student, with no request for it; one entry has no picker;
+// none, a message), the related family links and the shared progress view
+// with the lazy "Notes from the tutor". An adult who hasn't shared their
+// academic records shows the consent message, with no request. Code-split.
 
 function useFamilyStudent() {
   const [params, setParams] = useSearchParams();
@@ -52,10 +54,16 @@ function useFamilyStudent() {
 
 export function MyProgressPage() {
   const { t } = useTranslation();
-  useDocumentTitle(t('progress.family.title'));
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const { students, items, selected, choose } = useFamilyStudent();
+  const title =
+    students.isError || !students.data || !selected
+      ? t('progress.title')
+      : selected.relation === 'self'
+        ? t('progress.family.title')
+        : t('progress.family.titleOf', { name: selected.display_name });
+  useDocumentTitle(title);
   const label = (student: FamilyStudent) => {
     const name =
       student.relation === 'self'
@@ -103,12 +111,7 @@ export function MyProgressPage() {
               ))}
             </select>
           </div>
-        ) : (
-          <p className="text-sm">
-            <span className="font-medium">{t('progress.family.whose')}</span>{' '}
-            {label(selected)}
-          </p>
-        )}
+        ) : null}
         {selected.schedule_access === 'consent_required' ? (
           <ConsentRequired
             name={selected.display_name}
@@ -140,7 +143,7 @@ export function MyProgressPage() {
         tabIndex={-1}
         className="text-2xl font-semibold outline-none"
       >
-        {t('progress.family.title')}
+        {title}
       </h1>
       {content}
     </div>
