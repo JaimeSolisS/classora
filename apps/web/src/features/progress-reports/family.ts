@@ -11,7 +11,8 @@ import {
 
 // The family pages' student (#315 F4, F5; #308's picker): GET
 // /schedule/family-students, and the ?student= choice. An unknown or
-// foreign value falls back to the first student, with no request for it.
+// foreign value falls back to the first student, with no request for it;
+// `named` is the family student ?student= names, if any (#341).
 
 export function useFamilyStudent() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,12 +22,13 @@ export function useFamilyStudent() {
   });
   const items = students.data?.items ?? [];
   const requested = uuidParam(searchParams.get('student'));
-  const selected =
-    items.find((student) => student.student_id === requested) ?? items[0];
+  const named = items.find((student) => student.student_id === requested);
+  const selected = named ?? items[0];
   return {
     students,
     items,
     selected,
+    named,
     choose: (studentId: string) =>
       setSearchParams(new URLSearchParams({ student: studentId })),
   };

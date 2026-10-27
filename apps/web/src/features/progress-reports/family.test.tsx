@@ -32,7 +32,8 @@ import {
 // who hasn't shared (no request), the list (cards, "Load more", empty), a
 // 403 consent and both inline 404 messages, the detail (narrative and
 // facts, never a status or a reason; "Back to reports" with the student),
-// Try again focusing the heading, and plain text.
+// Try again focusing the heading, and plain text. #341: without a usable
+// ?student=, the report's student among the readable ones.
 
 const FAMILY = 'GET /api/v1/schedule/family-students';
 const FOREIGN_ID = '00000000-0000-4000-8000-000000315f99';
@@ -210,10 +211,113 @@ describe('the family detail (F5, F6)', () => {
     expect(main().querySelectorAll('button')).toHaveLength(0);
   });
 
-  it("without ?student=, the picker's default student", async () => {
+  // #341: a staff link (no ?student=) or a foreign ?student= asks the
+  // detail route for each readable family student, never anyone else.
+  it("without ?student=, the report's student is found; the URL names them", async () => {
+    await open(`/my-progress-reports/${REPORT_ID}`, {
+      [detailOf(CHILD_ID)]: () => problemWith(404, 'not_found'),
+      [detailOf(SIBLING_ID)]: () => jsonResponse(200, APPROVED_REPORT),
+    });
+    await settleUntil(() => text().includes('Buen avance en física.'));
+    await settleUntil(
+      () =>
+        app!.location() ===
+        `/my-progress-reports/${REPORT_ID}?student=${SIBLING_ID}`,
+    );
+    expect(
+      linkTo(`/my-progress-reports?student=${SIBLING_ID}`)?.textContent,
+    ).toBe('Back to reports');
+    // Requested once: the probe's data is reused after the URL change.
+    expect(api.calls(detailOf(SIBLING_ID))).toHaveLength(1);
+    expect(api.calls(detailOf(CHILD_ID))).toHaveLength(1);
+    // Never an adult who hasn't shared.
+    expect(api.calls(detailOf(ADULT_ID))).toHaveLength(0);
+    // The other child's 404 is expected, never reported.
+    expect(reports()).toHaveLength(0);
+  });
+
+  it('without ?student=, a report of the first student', async () => {
     await open(`/my-progress-reports/${REPORT_ID}`);
     await settleUntil(() => text().includes('Buen avance en física.'));
+    await settleUntil(
+      () =>
+        app!.location() ===
+        `/my-progress-reports/${REPORT_ID}?student=${CHILD_ID}`,
+    );
     expect(api.calls(detailOf(CHILD_ID))).toHaveLength(1);
+  });
+
+  it('a foreign ?student=: the readable students are asked, never it', async () => {
+    await open(`/my-progress-reports/${REPORT_ID}?student=${FOREIGN_ID}`, {
+      [detailOf(CHILD_ID)]: () => problemWith(404, 'not_found'),
+      [detailOf(SIBLING_ID)]: () => jsonResponse(200, APPROVED_REPORT),
+    });
+    await settleUntil(() => text().includes('Buen avance en física.'));
+    await settleUntil(
+      () =>
+        app!.location() ===
+        `/my-progress-reports/${REPORT_ID}?student=${SIBLING_ID}`,
+    );
+    expect(api.calls(detailOf(FOREIGN_ID))).toHaveLength(0);
+    expect(api.calls(detailOf(ADULT_ID))).toHaveLength(0);
+  });
+
+  it('without ?student=, every student 404: no longer available, not reported', async () => {
+    await open(`/my-progress-reports/${REPORT_ID}`, {
+      [detailOf(CHILD_ID)]: () => problemWith(404, 'not_found'),
+      [detailOf(SIBLING_ID)]: () => problemWith(404, 'not_found'),
+    });
+    await settleUntil(() =>
+      text().includes('This report is no longer available.'),
+    );
+    // No student is known: both links go to the list.
+    expect(
+      [...main().querySelectorAll('a')]
+        .filter((a) => a.getAttribute('href') === '/my-progress-reports')
+        .map((a) => a.textContent),
+    ).toEqual(['Back to reports', 'Back to tutor reports']);
+    expect(app!.location()).toBe(`/my-progress-reports/${REPORT_ID}`);
+    expect(api.calls(detailOf(ADULT_ID))).toHaveLength(0);
+    expect(reports()).toHaveLength(0);
+  });
+
+  it('without ?student=, a failure and a 404: Try again finds the report', async () => {
+    await open(`/my-progress-reports/${REPORT_ID}`, {
+      [detailOf(CHILD_ID)]: [
+        () => problemWith(500, 'internal_error'),
+        () => jsonResponse(200, APPROVED_REPORT),
+      ],
+      [detailOf(SIBLING_ID)]: () => problemWith(404, 'not_found'),
+    });
+    await settleUntil(() => text().includes('Try again'));
+    expect(text()).not.toContain('This report is no longer available.');
+    // Only the unexpected failure is reported.
+    expect(reports()).toHaveLength(1);
+    await click(buttonNamed(main(), 'Try again'));
+    await settleUntil(() => text().includes('Buen avance en física.'));
+    await settleUntil(
+      () =>
+        app!.location() ===
+        `/my-progress-reports/${REPORT_ID}?student=${CHILD_ID}`,
+    );
+    await settleUntil(() => focused() === heading());
+    // Try again asks again only for the failed student.
+    expect(api.calls(detailOf(SIBLING_ID))).toHaveLength(1);
+  });
+
+  it('one entry without ?student=: one request, the report', async () => {
+    const selfId = SELF_ONLY.items[0]!.student_id;
+    await open(
+      `/my-progress-reports/${REPORT_ID}`,
+      {
+        [FAMILY]: () => jsonResponse(200, SELF_ONLY),
+        [detailOf(selfId)]: () => jsonResponse(200, APPROVED_REPORT),
+      },
+      STUDENT,
+    );
+    await settleUntil(() => text().includes('Buen avance en física.'));
+    expect(api.calls(detailOf(selfId))).toHaveLength(1);
+    expect(api.calls(detailOf(CHILD_ID))).toHaveLength(0);
   });
 
   it('a 404: "This report is no longer available." inline, with the list link', async () => {
