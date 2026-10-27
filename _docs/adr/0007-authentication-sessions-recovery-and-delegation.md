@@ -175,7 +175,7 @@ Other effects:
 - There is no self-service recovery: a user who forgets their password needs a staff member (or, for an Owner, the operator) to issue a reset token.
 - Staff on shared front-desk screens log in again after 30 idle minutes.
 - Later milestones' endpoints for the listed sensitive actions must use the reauthentication list from #26.
-- Still open: legal wording for consent and privacy notices (M10-07, spec §18 item 9); the general API rate limit ([ADR-0008](0008-rate-limiting-without-redis.md), follow-up #163); permission assignments for finance and payroll beyond the delegable names (ISSUE-F7, ADR-0006, M6-01).
+- Still open: legal wording for consent and privacy notices (M10-07, spec §18 item 9); the general API rate limit ([ADR-0008](0008-rate-limiting-without-redis.md), follow-up #163). Permission assignments for finance and payroll beyond the delegable names are decided in [ADR-0006](0006-financial-ledger-idempotency-and-numbering.md) (ISSUE-F7, #86, M6-01).
 
 ## Alternatives considered
 

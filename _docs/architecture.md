@@ -140,7 +140,7 @@ modules/<domain>/
 - Timestamps use ISO 8601 with offset. Instants are stored as UTC `TIMESTAMPTZ` (→ ISSUE-D3 for date-only values).
 - Pagination is offset/limit for ordinary tables and cursor-based for large histories (audit, ledger, notifications).
 - Optimistic concurrency uses a `version` column on edited records (→ ISSUE-D5 for the wire format).
-- Financial mutations require idempotency keys (→ ISSUE-F4 for the mechanism).
+- Financial mutations require idempotency keys (ISSUE-F4, accepted in [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md)).
 
 ## 5. Data architecture (approved constraints)
 
@@ -150,7 +150,7 @@ modules/<domain>/
 - UUID primary keys, FKs, unique and check constraints. Database constraints protect business invariants.
 - Search uses B-tree indexes, full-text search and `pg_trgm` (→ ISSUE-D6 for bilingual text).
 - Financial data is append-only with corrections made as adjustments and reversals. Payroll periods are locked once finalized. Catalog prices and rates are effective-dated.
-- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here.
+- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here. The billing schema is in [`data-model.md` §3](data-model.md#3-billing-tables).
 
 ## 6. Background processing (approved)
 
@@ -160,7 +160,7 @@ modules/<domain>/
 - Periodic tasks today (registered by `app/core/jobs.create_job_app`): `identity:purge_auth_sessions` and `ratelimit:purge_counters` (hourly), `scheduling:expire_offers` (every 5 minutes), `scheduling:materialize_series` (08:00 UTC) and `academics:create_progress_report_placeholders` (07:00 UTC, M5-16c). The last one lives in `app/workflows/progress_report_schedule_tasks.py`, not in a module's `tasks.py`, because it composes `academics` with `scheduling`, `families`, `catalog`, `identity` and `administration`.
 - Failed jobs must be visible to administrators, with retry controls (§9 of the spec).
 
-Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic scheduler placement), ISSUE-J3 (failed-job admin UI), ISSUE-J4 (idempotency mechanics).
+Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic scheduler placement), ISSUE-J3 (failed-job admin UI). ISSUE-J4 (idempotency mechanics for generated financial records) is accepted in [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md).
 
 ## 7. Cross-cutting concerns
 
@@ -197,7 +197,7 @@ Open points: → ISSUE-FL1, FL2, FL3.
 - The center's configured time zone governs scheduling, local date boundaries, recurrence and due dates.
 - Recurrence expansion and DST handling (local wall-clock expansion, `fold=0`): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
 
-Open points: → ISSUE-D3, ISSUE-X1.
+Open points: → ISSUE-D3. Server-rendered text (ISSUE-X1) is accepted in [ADR-0015](adr/0015-server-side-i18n.md).
 
 ### 7.5 Auditing
 
@@ -272,7 +272,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -419,9 +419,9 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 #### ISSUE-J4 — Idempotency mechanics for generated financial records (M)
 - **Spec:** W4.1, W7.2, §6 "transactional and idempotent".
-- **Resolution — PROPOSED:**
-  - Each generated record carries a deterministic **natural key** with a unique constraint. Examples: `(tuition_plan_id, billing_period_start)`, `(class_session_id, student_id, charge_kind)`, `(expense_template_id, period_start)`.
-  - Jobs insert with `ON CONFLICT DO NOTHING` and treat a conflict as success.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md).
+  - Each generated record carries a deterministic **natural key** with a partial unique index (see [`data-model.md`](data-model.md#39-charges)). Examples: `(class_session_id, student_id)` for session charges, `(tuition_plan_id, period_start)` for tuition periods, `(package_id)` for package expiry; later `(expense_template_id, period_start)` for recurring expenses.
+  - Jobs insert with `ON CONFLICT DO NOTHING` and treat a conflict as success. Jobs never use the API `idempotency_keys` table.
 
 ### 10.5 Scheduling
 
@@ -461,61 +461,59 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - §6 "Charges generated automatically from billable lessons".
   - §3 "Rescheduling normally preserves an existing charge".
 - **Problem:** The spec does not say whether a charge is created when a session is confirmed, when it occurs, or when closeout is approved. The rescheduling rule implies the charge exists before the session.
-- **Resolution — PROPOSED:**
-  - Per-session lessons: post the charge when the occurrence is **confirmed and materialized**.
-  - Courses: post at **enrollment**.
-  - Tuition plans: post per billing period by a periodic job.
-  - Packages: charge at purchase. Each delivered session then **debits package credit** at closeout approval (the hook is `app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only).
-  - Cancellations and duration changes create adjustment entries according to policy.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E1, E3).
+  - Per-session lessons: a 15-minute sweeper (`billing:post_session_charges`) posts a charge for each `confirmed` or `completed` participant on the natural key `(class_session_id, student_id)`, at the price in effect on the local service date. Nothing posts inside the scheduling transaction; #60's `apply_confirmation_charge` stays a no-op. A reschedule keeps the charge.
+  - Group and course enrollments: post at **enrollment**, in the M4 hooks' Unit of Work, plus a sweeper.
+  - Tuition plans: one charge per plan per local period, from a daily job.
+  - Packages: charge at purchase. A covered session posts no charge; its units are consumed at closeout approval (`app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only), first-expiring-first.
+  - `billing_settings.billing_starts_on` (`NULL` = billing off) is the floor date. Items with no billing account or no price are listed for staff as unbilled, never charged at zero.
+  - Cancellations follow the billing-owned `cancellation_billing_rules` (`credit` or `charge` per classification); duration changes create delta adjustments.
 
 #### ISSUE-F2 — Billed duration vs actual duration (A)
 - **Spec:** §3 "billable duration changes create adjustment entries"; tutors report actual hours.
-- **Resolution — PROPOSED:**
-  - Families are billed on **scheduled** duration.
-  - An admin-approved change to billable duration creates an adjustment.
-  - Tutors are paid on **approved actual** hours.
-  - The two values are stored separately on the class session.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E2).
+  - Families are billed on **`scheduled_minutes`**.
+  - A staff edit of `scheduled_minutes` (which needs `schedule.manage`) on a charged session posts one delta adjustment per charged participant: the catalog price for the new duration minus the current net, or pro rata by minutes when that duration has no price. Its `source_key` includes the session version.
+  - Tutors are paid on **approved** `actual_minutes` (M7); `actual_minutes` never changes a family charge.
+  - The two values are stored separately on the class session (#47).
 
 #### ISSUE-F3 — Ledger owner and balance derivation (M)
 - **Spec:** §6 family-consolidated billing; W4.4 balance formula.
-- **Resolution — PROPOSED:**
-  - A **family billing account** owns the ledger, and every charge also references the student it covers.
-  - Balance = Σ posted charges and adjustments − Σ allocations − Σ refunds/credits. The balance is computed, not stored, with an optional verified snapshot used only for reporting.
-  - Rows become immutable once `posted`. The application database role has no UPDATE on posted financial columns, enforced by a trigger or by revoked privileges.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E4, E5, E10).
+  - One **family billing account** per family (`family_id` unique) owns the ledger, and every charge also references the student it covers. A student with no family isn't billed; guardians in `family_guardians` see the account.
+  - Typed append-only tables: charges, signed adjustments against a charge, payments and reversals, allocations and releases, refunds. Credits are negative adjustments; account credit is a payment's unallocated remainder.
+  - `net = amount + Σ adjustments`; `open = net − Σ valid allocations`; outstanding = Σ open; account credit = Σ over unreversed payments of (amount − valid allocations − refunds); net balance = outstanding − account credit. Computed, not stored; a verified snapshot only for reporting.
+  - Posted rows are immutable through `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers raising 42501 (the migration 0004 pattern); the least-privilege role follows in #165.
   - When several packages apply, credit is consumed **first-expiring-first**.
-  - Data model detail is deferred to `_docs/data-model.md`.
+  - Data model: [`data-model.md`](data-model.md).
 
 #### ISSUE-F4 — API idempotency keys (M)
 - **Spec:** §10 "PostgreSQL transactions and idempotency keys".
-- **Resolution — PROPOSED:**
-  - Financial POST endpoints (payments, allocations, refunds, payroll approval and payment) require an `Idempotency-Key` header.
-  - Store key, user, endpoint, request hash, response status and body in an `idempotency_keys` table for 7 days.
-  - A replay with the same hash returns the stored response. The same key with a different hash returns `422`.
-  - The frontend generates the key once per form submission.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E6).
+  - Every endpoint that posts a ledger row (manual charges and adjustments, package purchases, payments, allocations, reversals, refunds, withdrawal confirmations; later payroll approval and payment) requires an `Idempotency-Key` header of 16–128 `[A-Za-z0-9_-]` characters (`400 idempotency_key_required` / `idempotency_key_invalid`).
+  - The core `idempotency_keys` table stores user, endpoint, key, request hash, response status and body, `UNIQUE (user_id, endpoint, key)`, inserted in the business transaction; only `2xx` responses are stored; 7 days, purged hourly by `idempotency:purge_keys`.
+  - A replay with the same hash returns the stored response with `Idempotent-Replayed: true`. The same key with a different hash returns `422 idempotency_key_reused`.
+  - The frontend generates the key (`crypto.randomUUID()`) once per form submission and reuses it on retry.
 
 #### ISSUE-F5 — Receipt and payslip numbering (M)
 - **Problem:** Branded receipts need human-readable numbers. PostgreSQL sequences can leave gaps on rollback.
-- **Resolution — PROPOSED:** Allocate gap-free yearly series (`R-2026-000123`, `P-2026-000045`) from a counter row locked `FOR UPDATE` inside the posting transaction.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E13). Allocate gap-free yearly series (`R-2026-000123`; `P` reserved for payslips in M7) from the core `number_series (code, year)` row locked `FOR UPDATE` inside the posting transaction, after the billing account lock; the year is the center-local year of the issue instant. One receipt per payment, issued in the payment's transaction, stored as a frozen snapshot.
 
 #### ISSUE-F6 — Accrual-basis revenue recognition (A)
 - **Spec:** §8 cash and accrual reporting.
 - **Problem:** The spec does not say when prepaid packages, course fees and tuition count as earned revenue.
-- **Resolution — PROPOSED:**
-  - Accrual revenue is recognized on **service delivery** (session date) for packages and per-session charges, and per billing period for tuition plans.
-  - Course fees are recognized pro rata over the cohort's sessions.
-  - Unrecognized prepaid amounts are reported as deferred revenue.
-  - This needs **Owner confirmation**.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E7). A reporting rule for #117.
+  - Per-session charges are recognized on the session's current local date, net of adjustments.
+  - Packages are deferred revenue, recognized per consumption (`net price × units consumed / units granted`); expired unused credit is recognized on the expiry date.
+  - Course fees are recognized pro rata over the cohort's not-cancelled, not-skipped sessions; tuition periods and flat group fees in full on `period_start` (or the enrollment date).
+  - Unrecognized prepaid amounts are reported as deferred revenue. Cash basis uses `received_on`, net of reversals and refunds.
 
 #### ISSUE-F7 — Who records payments and approves closeout (C)
 - **Spec:**
   - §6 says "Admins record… payments" while W4.3 says "Finance staff record an external payment".
   - §3 says "submission for approval… admins reapprove", §7 says "Academic Coordinators verify hours", and W3.3 says "authorized academic reviewer".
-- **Resolution — PROPOSED:**
-  - Define permissions, not roles, in the spec.
-  - `payment.record` is granted to Finance and Administrator.
-  - `teaching_hours.approve` is granted to Academic Coordinator and Administrator.
-  - `payroll.prepare` goes to Finance. `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2).
-- **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type). The `payment.record` and `payroll.*` parts stay PROPOSED.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27), `payment.record` and `payroll.*` parts: see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E8). Permissions, not roles. `billing.view`, `billing.manage` and `payment.record` go to the Owner, the Administrator and Finance Staff (not delegable; each seeded by the first issue that uses it: #90, #89, #96). Reversals and refunds use `finance.refund.approve` (Owner, delegable) with reauthentication. `payroll.prepare` goes to Finance Staff; `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2). Academic Coordinators and tutors get no billing permission.
+- **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type).
 - **Closeout review part ACCEPTED** (#78, owner-delegated, 2026-10-24): `teaching_hours.approve` holders approve, request changes or correct a closeout on the staff session page; closeouts have **no reject**; a reviewer can't approve, send back or correct a closeout they submitted (`403 closeout_self_review`) unless they hold the Owner role; approvals are immutable revisions and a correction supersedes.
 - **Progress report review part ACCEPTED** (#83, owner-delegated decision E4, 2026-10-25): spec W5.2 "an administrator approves" progress reports is read as staff with academic approval authority, as above: a new permission `progress_report.review` for the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. Holders approve, request changes or retract a submitted progress report on its review page (the `academics.progress_report` approval type, decided only there); there is no reject; a reviewer can't decide a report they wrote (`403 progress_report_self_review`) unless they hold the Owner role. Only approved reports reach families.
 - **Closeout on behalf note** (#301, owner-delegated, 2026-10-25): staff on-behalf closeouts are attributed to the tutor (`tutor_user_id` and the approval requester stay the tutor, for payroll); the on-behalf submitter can't approve or correct them (`403 closeout_self_review`), Owner excepted; an on-behalf submission is corrected, never sent back.
@@ -724,11 +722,11 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 #### ISSUE-X1 — Server-rendered text language (M)
 - **Problem:** PDFs (receipts, payslips, reports) and job error messages are rendered on the server, but react-i18next only covers the client.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0015, 2026-10-27): see [ADR-0015](adr/0015-server-side-i18n.md) (E14).
   - Problem Details `code` values are stable keys that the client translates.
-  - Notifications are stored as `{type, params}` and rendered on the client, so a language switch applies retroactively.
-  - Server-side PDFs use gettext catalogs plus Babel for date and number formatting. These are supporting libraries and need approval.
-  - Each PDF uses the recipient's preferred language, falling back to the center default.
+  - Notifications are stored as `{type, params}` and rendered on the client, so a language switch applies retroactively. Stored data stays language-neutral.
+  - Server-side PDFs use Jinja2 templates (autoescape, `StrictUndefined`) converted by WeasyPrint, with JSON server catalogs (`apps/api/app/i18n/locales/{es,en}/`) and in-house money and date formatting. Jinja2, WeasyPrint and the Debian Pango and font packages are approved and added by #98; gettext and Babel are not used.
+  - Each PDF uses the recipient's preferred language, falling back to the center default `es`; the language is stored on the document record. Receipts render synchronously.
 
 #### ISSUE-X2 — FullCalendar licensing (A; spec §18.6 open)
 - **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
@@ -767,7 +765,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0015 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
@@ -776,7 +774,7 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | [0003](adr/0003-database-connection-topology.md) | Database connection topology (PgBouncer, direct connections) and background jobs — **Accepted** | D1, J1, J2 (N1 stays PROPOSED apart from the direct `LISTEN` connection) |
 | [0004](adr/0004-money-time-and-date-representation.md) | Money, time and date representation — **Accepted** | D2, D3 |
 | [0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md) | Scheduling invariants, overrides, recurrence and calendar — **Accepted** | D4, D6 (`btree_gist`), SC1–SC3, X2 |
-| 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
+| [0006](adr/0006-financial-ledger-idempotency-and-numbering.md) | Financial ledger, idempotency and numbering — **Accepted** | F1–F7 (F7 `payment.record` and `payroll.*` parts), J4 |
 | [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
 | [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
 | 0009 | File scanning, release and previews — *deferred to a later version* | FL1–FL3 |
@@ -785,9 +783,9 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | 0012 | Secrets delivery | I1 |
 | 0013 | Backups and restore drills | I7 |
 | 0014 | Error tracking (Sentry decision) and telemetry collection | O1–O3 |
-| 0015 | Server-side i18n | X1 |
+| [0015](adr/0015-server-side-i18n.md) | Server-side i18n — **Accepted** | X1 |
 | [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods).
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods).
