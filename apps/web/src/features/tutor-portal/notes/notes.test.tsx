@@ -632,7 +632,27 @@ describe('the notification links (H4)', () => {
         },
         recipient,
       ),
-    ).toBe('/my-schedule?view=list&date=2026-11-09');
+    ).toBe(`/my-schedule?for=${ANA}&view=list&date=2026-11-09`);
+  });
+
+  it("keeps today's link without a student id, and drops the date without a zone", () => {
+    const link = NOTIFICATION_LINKS['academics.learning_note_published']!;
+    const params = {
+      class_session_id: SESSION_ID,
+      starts_at: '2026-11-09T16:00:00Z',
+    };
+    expect(link(params, recipient)).toBe(
+      '/my-schedule?view=list&date=2026-11-09',
+    );
+    expect(link({ ...params, student_id: '' }, recipient)).toBe(
+      '/my-schedule?view=list&date=2026-11-09',
+    );
+    expect(link({ ...params, student_id: 7 }, recipient)).toBe(
+      '/my-schedule?view=list&date=2026-11-09',
+    );
+    expect(link({ ...params, student_id: ANA }, { userId: TUTOR.id })).toBe(
+      `/my-schedule?for=${ANA}&view=list`,
+    );
   });
 
   it("opens the tutor's notes page for an unpublish", () => {

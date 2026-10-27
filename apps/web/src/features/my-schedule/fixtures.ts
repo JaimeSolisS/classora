@@ -38,6 +38,14 @@ export const MATEO: FamilyStudent = {
   is_minor: false,
   schedule_access: 'consent_required',
 };
+/** A second shared child of LUCIA's guardian (#325: a link names them). */
+export const TOMAS: FamilyStudent = {
+  student_id: '00000000-0000-4000-8000-000000067c04',
+  display_name: 'Tomás Pérez',
+  relation: 'guardian',
+  is_minor: true,
+  schedule_access: 'allowed',
+};
 export const SELF: FamilyStudent = {
   student_id: '00000000-0000-4000-8000-000000067c03',
   display_name: 'Ana López',
