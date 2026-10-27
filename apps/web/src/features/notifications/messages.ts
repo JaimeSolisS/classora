@@ -234,7 +234,21 @@ function mySchedule(
   params: NotificationItem['params'],
   recipient: NotificationRecipient,
 ): string {
-  const search = new URLSearchParams({ view: 'list' });
+  return `/my-schedule?${myScheduleSearch(params, recipient).toString()}`;
+}
+
+/** The query of a My schedule link: `for` (when given) first, then the
+ * List view and the session's local date, in the page's own key order. */
+function myScheduleSearch(
+  params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+  whose?: string,
+): URLSearchParams {
+  const search = new URLSearchParams();
+  if (whose) {
+    search.set('for', whose);
+  }
+  search.set('view', 'list');
   const start = params.starts_at;
   if (
     recipient.timeZone &&
@@ -243,7 +257,21 @@ function mySchedule(
   ) {
     search.set('date', toLocalDate(start, recipient.timeZone));
   }
-  return `/my-schedule?${search.toString()}`;
+  return search;
+}
+
+/** My schedule for a shared note (#79 H4, #325): `mySchedule`'s link with
+ * the note's student selected (`for=<student_id>`, #67 E2); without a
+ * student id, `mySchedule`'s link. */
+function noteSchedule(
+  params: NotificationItem['params'],
+  recipient: NotificationRecipient,
+): string {
+  const studentId =
+    typeof params.student_id === 'string' && params.student_id
+      ? params.student_id
+      : undefined;
+  return `/my-schedule?${myScheduleSearch(params, recipient, studentId).toString()}`;
 }
 
 /** The tutor's closeout of the session (#78 F1); My schedule without an id. */
@@ -363,8 +391,9 @@ export const NOTIFICATION_LINKS: Readonly<
   // #301b F1: a reviewer closed out the tutor's class on their behalf.
   'academics.closeout_submitted_on_behalf': closeoutLink,
   // #79 H4: a shared note opens the family's My schedule on the class's
-  // date; a reviewer's unpublish opens the tutor's notes page.
-  'academics.learning_note_published': mySchedule,
+  // date, with the note's student selected (#325); a reviewer's unpublish
+  // opens the tutor's notes page.
+  'academics.learning_note_published': noteSchedule,
   'academics.learning_note_unpublished': notesLink,
   // #308 F2: a finalized evaluation opens the family's academic history of
   // the student; a void opens the author's evaluation.

@@ -68,8 +68,8 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // #79 I8 (before #62b): the tutor, on a phone, opens that session's notes
 // from My schedule, writes an internal note and a second one that they
 // share (the dialog shows its text). The guardian's bell has the shared-note
-// notification and its link opens My schedule on the class's date; the
-// class's details show "Notes from the tutor" with the shared text only, and
+// notification and its link opens My schedule on the class's date with
+// the note's child already selected (#325); the class's details show "Notes from the tutor" with the shared text only, and
 // the guardian's GET …/learning-notes never contains the internal text. Axe
 // on the notes page, the share dialog and the guardian's dialog.
 //
@@ -908,10 +908,12 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           ),
         })
         .click();
+      // #325: the link names the note's child, already selected (this
+      // guardian has a second linked child, #67 G8).
       await expect(parent.page).toHaveURL(
-        `/my-schedule?view=list&date=${day.date}`,
+        `/my-schedule?for=${childId}&view=list&date=${day.date}`,
       );
-      await whose.selectOption({ label: studentName });
+      await expect(whose).toHaveValue(childId);
       await expect(calendarOf(parent.page)).toHaveAttribute(
         'aria-busy',
         'false',

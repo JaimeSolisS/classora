@@ -26,6 +26,7 @@ import {
   LUCIA,
   MATEO,
   SELF,
+  TOMAS,
   TUTOR_ID,
   TUTOR_ITEMS,
   tutorItem,
@@ -362,6 +363,42 @@ describe('the My schedule page', () => {
     // A single entry is plain text, not a control.
     expect(app.container.querySelector('select')).toBeNull();
     expect(text()).toContain('Whose schedule Lucía Pérez');
+  });
+
+  it("a shared note's link opens the second child's schedule (#325)", async () => {
+    api = stubApi({
+      'GET /api/v1/auth/me': meAs(user('guardian')),
+      [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA, TOMAS)),
+      [scheduleOf(TOMAS.student_id)]: () =>
+        jsonResponse(200, {
+          student_id: TOMAS.student_id,
+          items: [familyItem()],
+          truncated: false,
+        }),
+    });
+    const link = NOTIFICATION_LINKS['academics.learning_note_published']!(
+      {
+        student_id: TOMAS.student_id,
+        class_session_id: familyItem().id,
+        starts_at: familyItem().starts_at,
+      },
+      { userId: TUTOR_ID, timeZone: ZONE },
+    );
+    expect(link).toBe(
+      `/my-schedule?for=${TOMAS.student_id}&view=list&date=2026-11-09`,
+    );
+    app = await renderApp(link, ROUTES);
+    await loaded();
+
+    const select = app.container.querySelector('select')!;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'Lucía Pérez',
+      'Tomás Pérez',
+    ]);
+    expect(select.value).toBe(TOMAS.student_id);
+    expect(api.calls(scheduleOf(TOMAS.student_id)).length).toBeGreaterThan(0);
+    expect(api.calls(scheduleOf(LUCIA.student_id))).toHaveLength(0);
+    expect(text()).toContain('Tutor: Carmen Ruiz');
   });
 
   it('an unknown ?for= falls back to the default without a request for it', async () => {
