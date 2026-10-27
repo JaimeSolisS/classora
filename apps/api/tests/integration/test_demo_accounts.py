@@ -42,8 +42,9 @@ STUDENTS_VISIBLE = {
     "demo.tutor": 3,
     "demo.student": 1,
     "demo.guardian": 2,
-    # #303: S and A, the cohort's students.
-    "demo.tutor2": 2,
+    # #303: S and A, the cohort's students; #353: and B, of the finished
+    # cohort (its last class is within the 30-day assignment lookback).
+    "demo.tutor2": 3,
 }
 """C5: the ``GET /api/v1/students`` total of each account after the seed."""
 

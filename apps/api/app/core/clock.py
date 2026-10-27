@@ -37,7 +37,8 @@ def system_now() -> datetime:
 
 
 _source: Callable[[], datetime] = system_now
-"""What :func:`now` returns; replaced only by the test fixture."""
+"""What :func:`now` returns; replaced only by the test fixture and the demo
+seed's ``seed_clock`` (#353)."""
 
 
 def now() -> datetime:

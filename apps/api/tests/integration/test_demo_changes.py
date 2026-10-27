@@ -1,5 +1,9 @@
 """The #303 demo changes (#303 D, E2-E7): ``scheduling.demo_changes``, the
-whole run, and what each demo account sees after it."""
+whole run, and what each demo account sees after it.
+
+The row and per-account checks run the generators through
+``scheduling.demo_changes`` (#353 G5), so the #303 numbers stay as pinned;
+the rerun, ``dev`` and stale-schedule checks run every generator."""
 
 import asyncio
 import dataclasses
@@ -37,19 +41,22 @@ from tests.integration.demo_support import (
     COURSES_GENERATOR,
     DEMO_303_TABLE_COUNTS,
     DEV_LINES,
-    FIRST_RUN_LINES,
     FROZEN_NOW,
     GENERATOR_NAMES,
     NEW_303_GENERATORS,
+    NEW_353_GENERATORS,
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
     SCHEDULE_GENERATOR,
+    TABLE_COUNTS_THROUGH_303,
     TUTOR2_GENERATOR,
     UntouchedSession,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_before_303,
+    generators_through,
     migrate,
 )
 from tests.integration.test_demo_schedule import (
@@ -59,6 +66,10 @@ from tests.integration.test_demo_schedule import (
     signed_in,
     student_labels,
 )
+
+THROUGH_CHANGES = generators_through(CHANGES_GENERATOR)
+"""The #303 run (#353 G5): every generator up to ``scheduling.demo_changes``."""
+THROUGH_CHANGES_LINES = first_run_lines(THROUGH_CHANGES)
 
 # T = Wednesday 2026-11-04: D(1) = Friday 11-06, D(6) = Friday 11-13,
 # D(7) = Monday 11-16, D(8) = Tuesday 11-17, Sat1 + 7 = Saturday 11-14.
@@ -108,9 +119,9 @@ def test_a_first_run_writes_every_change(migrated_url, env_for, clock, capsys):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_CHANGES) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == THROUGH_CHANGES_LINES
     tutor = user_id(migrated_url, "demo.tutor")
     tutor2 = user_id(migrated_url, "demo.tutor2")
     labels = student_labels(migrated_url)
@@ -277,7 +288,10 @@ def test_a_first_run_writes_every_change(migrated_url, env_for, clock, capsys):
     assert count(migrated_url, "users") == 8
     assert count(migrated_url, "students") == 5
     assert count(migrated_url, "families") == 3
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_303)
+        == TABLE_COUNTS_THROUGH_303
+    )
 
 
 @pytest.mark.parametrize(
@@ -295,19 +309,22 @@ def test_a_weekend_run_writes_the_same_counts(
     clock.set(now)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_CHANGES) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert capsys.readouterr().out.splitlines() == THROUGH_CHANGES_LINES
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_303)
+        == TABLE_COUNTS_THROUGH_303
+    )
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (15) prints 0 rows.
+    # E4: every generator (19 since #353) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 15
+    assert len(GENERATOR_NAMES) == 19
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -351,7 +368,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 def test_a_schedule_from_an_earlier_day_is_skipped(
     migrated_url, env_for, clock, capsys
 ):
-    # E6 / G3: the #299 run on 2026-11-04, then every generator 10 days later.
+    # E6 / G3: the #299 run on 2026-11-04, then every generator 10 days later
+    # (the #353 ones skip too, #353 G3).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([], generators=generators_before_303()) == 0
@@ -361,7 +379,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
     assert demo.main([]) == 0
 
     written = {"identity.demo_tutor2": 1, TUTOR2_GENERATOR: 12}
-    skipped = {COURSES_GENERATOR, CHANGES_GENERATOR}
+    skipped = {COURSES_GENERATOR, CHANGES_GENERATOR, *NEW_353_GENERATORS}
     assert capsys.readouterr().out.splitlines() == [
         *RERUN_REFERENCE_LINES,
         *(
@@ -407,10 +425,9 @@ def test_a_refused_service_call_rolls_the_run_back(migrated_url, env_for, clock)
         return dataclasses.replace(plan_demo_changes(today), request_day=closure)
 
     generators = [
-        *demo.DEMO_GENERATORS[:-1],
+        *generators_through(COURSES_GENERATOR),
         DemoChangesGenerator(plan=on_the_closure),
     ]
-    assert generators[-2].name == COURSES_GENERATOR
     with pytest.raises(SlotUnavailableError):
         demo.main([], generators=generators)
 
@@ -427,7 +444,8 @@ def test_the_303_counts_cover_its_new_tables():
         COURSES_GENERATOR,
         CHANGES_GENERATOR,
     )
-    assert GENERATOR_NAMES[-3:] == list(NEW_303_GENERATORS[1:])
+    first = GENERATOR_NAMES.index(TUTOR2_GENERATOR)
+    assert GENERATOR_NAMES[first : first + 3] == list(NEW_303_GENERATORS[1:])
     assert DEMO_303_TABLE_COUNTS["course_templates"] == 1
 
 
@@ -452,7 +470,7 @@ def _notification_types(client: TestClient, cookie: Any) -> list[str]:
 def test_every_account_sees_the_303_data(migrated_url, env_for, clock):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_CHANGES) == 0
     labels = student_labels(migrated_url)
     ids = {label: str(student) for student, label in labels.items()}
     tutor = user_id(migrated_url, "demo.tutor")

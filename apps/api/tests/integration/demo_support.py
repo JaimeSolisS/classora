@@ -1,12 +1,14 @@
-"""Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303).
+"""Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
+#353).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
   its ``migrated_url`` and ``env_for`` fixtures).
 - The expected summary lines of a first run, a rerun and a ``dev`` run.
 - The #299 tables and their counts after a first run (:func:`demo_table_counts`),
-  and the #303 rows in the same tables and its own (:data:`DEMO_303_TABLE_COUNTS`,
-  :data:`ALL_TABLE_COUNTS`).
+  the #303 rows in the same tables and its own (:data:`DEMO_303_TABLE_COUNTS`,
+  :data:`TABLE_COUNTS_THROUGH_303`), and the #353 ones
+  (:data:`DEMO_353_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -50,6 +52,27 @@ DEMO_CHANGES_ROWS = 16
 """#303 D8: 1 substitution, 1 offer, 1 offer session, 1 session request, 1
 change request, 1 availability change request, 3 approval requests and 7
 notifications (see :data:`DEMO_303_TABLE_COUNTS`)."""
+
+HELD_SESSIONS_GENERATOR = "scheduling.demo_held_sessions"
+DEMO_HELD_SESSIONS_ROWS = 30
+"""#353 B4: 3 sessions, 3 participants, 3 offers, 3 offer sessions, 3
+attendance rows, 3 closeouts, 3 approvals, 3 approval requests and 6
+notifications (see :data:`DEMO_353_TABLE_COUNTS`)."""
+PAST_COHORT_GENERATOR = "courses.demo_past_cohort"
+DEMO_PAST_COHORT_ROWS = 89
+"""#353 C4: 1 template + 1 subject + 2 modules + 2 assessments + 1 snapshot,
+1 cohort, 3 enrollments, 1 series, 3 series participants, 6 sessions, 18
+session participants, 1 offer, 6 offer sessions, 18 attendance rows, 6
+closeouts, 6 approvals, 6 approval requests and 7 notifications."""
+NOTES_GENERATOR = "academics.demo_notes"
+DEMO_NOTES_ROWS = 7
+"""#353 D3: 3 notes and 4 notifications (N1 and N2 to ``demo.student`` and
+``demo.guardian``)."""
+EVALUATIONS_GENERATOR = "academics.demo_evaluations"
+DEMO_EVALUATIONS_ROWS = 32
+"""#353 E6: 2 templates, 3 criteria, 9 evaluations, 10 scores and 8
+notifications (S's four final evaluations to ``demo.student`` and
+``demo.guardian``)."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -123,12 +146,54 @@ DEMO_303_TABLE_COUNTS = {
 """The rows the #303 generators add to each table they count, after a first
 run on a fresh database (several tables are shared with #299)."""
 
-ALL_TABLE_COUNTS = {
-    table: DEMO_TABLE_COUNTS.get(table, 0) + DEMO_303_TABLE_COUNTS.get(table, 0)
-    for table in {**DEMO_TABLE_COUNTS, **DEMO_303_TABLE_COUNTS}
+DEMO_353_TABLE_COUNTS = {
+    # scheduling.demo_held_sessions (H1-H3) and courses.demo_past_cohort.
+    "class_sessions": 3 + 6,
+    "class_session_participants": 3 + 6 * 3,
+    "assignment_offers": 3 + 1,
+    "assignment_offer_sessions": 3 + 6,
+    "class_session_attendance": 3 + 6 * 3,
+    "session_closeouts": 3 + 6,
+    "session_closeout_approvals": 3 + 6,
+    "course_templates": 1,
+    "course_template_subjects": 1,
+    "course_template_modules": 2,
+    "course_template_assessments": 2,
+    "course_template_snapshots": 1,
+    "course_cohorts": 1,
+    "cohort_enrollments": 3,
+    "class_series": 1,
+    "class_series_participants": 3,
+    # The closeouts' review items, all approved.
+    "approval_requests": 3 + 6,
+    # academics.demo_notes and academics.demo_evaluations.
+    "session_notes": 3,
+    "evaluation_templates": 2,
+    "evaluation_template_criteria": 3,
+    "evaluations": 9,
+    "evaluation_scores": 10,
+    # Held: 3 offers received and 3 closeouts approved to demo.tutor. Past
+    # cohort: the series offer and 6 closeouts approved to demo.tutor2.
+    # Notes: N1 and N2 to demo.student and demo.guardian. Evaluations: S's
+    # Ev1, Ev2, midterm and final to demo.student and demo.guardian.
+    "notifications": 6 + 7 + 4 + 8,
 }
+"""The rows the #353 generators add to each table they count, after a first
+run on a fresh database (several tables are shared with #299 and #303)."""
+
+
+def _sum(*parts: dict[str, int]) -> dict[str, int]:
+    tables = {table for part in parts for table in part}
+    return {table: sum(part.get(table, 0) for part in parts) for table in tables}
+
+
+TABLE_COUNTS_THROUGH_303 = _sum(DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS)
 """Every table of :data:`DEMO_TABLE_COUNTS` and :data:`DEMO_303_TABLE_COUNTS`
-after a first run of every generator."""
+after a first run of the generators through ``scheduling.demo_changes``."""
+
+ALL_TABLE_COUNTS = _sum(DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS, DEMO_353_TABLE_COUNTS)
+"""Every counted table of #299, #303 and #353 after a first run of every
+generator."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 """A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
@@ -156,6 +221,10 @@ GENERATOR_NAMES = [
     TUTOR2_GENERATOR,
     COURSES_GENERATOR,
     CHANGES_GENERATOR,
+    HELD_SESSIONS_GENERATOR,
+    PAST_COHORT_GENERATOR,
+    NOTES_GENERATOR,
+    EVALUATIONS_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -168,6 +237,10 @@ FIRST_RUN_LINES = [
     f"{TUTOR2_GENERATOR}: {DEMO_TUTOR2_ROWS} rows",
     f"{COURSES_GENERATOR}: {DEMO_COURSES_ROWS} rows",
     f"{CHANGES_GENERATOR}: {DEMO_CHANGES_ROWS} rows",
+    f"{HELD_SESSIONS_GENERATOR}: {DEMO_HELD_SESSIONS_ROWS} rows",
+    f"{PAST_COHORT_GENERATOR}: {DEMO_PAST_COHORT_ROWS} rows",
+    f"{NOTES_GENERATOR}: {DEMO_NOTES_ROWS} rows",
+    f"{EVALUATIONS_GENERATOR}: {DEMO_EVALUATIONS_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -193,9 +266,19 @@ def generators_through(name: str) -> list[demo.DemoGenerator]:
     return list(demo.DEMO_GENERATORS[: names.index(name) + 1])
 
 
+NEW_353_GENERATORS = (
+    HELD_SESSIONS_GENERATOR,
+    PAST_COHORT_GENERATOR,
+    NOTES_GENERATOR,
+    EVALUATIONS_GENERATOR,
+)
+
+
 def generators_before_303() -> list[demo.DemoGenerator]:
-    """The #299 run: every registered generator except the four #303 ones."""
-    return [g for g in demo.DEMO_GENERATORS if g.name not in NEW_303_GENERATORS]
+    """The #299 run: every registered generator except the four #303 ones
+    and the four #353 ones."""
+    later = {*NEW_303_GENERATORS, *NEW_353_GENERATORS}
+    return [g for g in demo.DEMO_GENERATORS if g.name not in later]
 
 
 def first_run_lines(generators: Sequence[demo.DemoGenerator]) -> list[str]:

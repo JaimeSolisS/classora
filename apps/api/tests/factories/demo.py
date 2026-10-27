@@ -20,11 +20,11 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 6. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-The registered generators (#23, #195, #299, #303) write nothing on a rerun
-(``0 rows``), even on a later day: the #299 and #303 data keep the dates of
-their first run. A future generator may add rows on a rerun unless its issue says
-otherwise. To start over, reset with ``docker compose down -v``, then
-``make migrate`` and ``make seed-demo``.
+The registered generators (#23, #195, #299, #303, #353) write nothing on a
+rerun (``0 rows``), even on a later day: the #299, #303 and #353 data keep
+the dates of their first run. A future generator may add rows on a rerun
+unless its issue says otherwise. To start over, reset with ``docker compose
+down -v``, then ``make migrate`` and ``make seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -55,8 +55,14 @@ from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
 from tests.factories.base import GeneratorSkipped, reseed
 from tests.factories.catalog import DemoCatalogGenerator
+from tests.factories.demo_academics import (
+    DemoEvaluationsGenerator,
+    DemoHeldSessionsGenerator,
+    DemoNotesGenerator,
+)
 from tests.factories.demo_changes import DemoChangesGenerator
 from tests.factories.demo_courses import DemoCoursesGenerator
+from tests.factories.demo_past_cohort import DemoPastCohortGenerator
 from tests.factories.demo_schedule import DemoScheduleGenerator
 from tests.factories.families import DemoFamiliesGenerator
 from tests.factories.identity import DEMO_ACCOUNT_GENERATORS
@@ -87,6 +93,10 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     DemoSecondTutorGenerator(),
     DemoCoursesGenerator(),
     DemoChangesGenerator(),
+    DemoHeldSessionsGenerator(),
+    DemoPastCohortGenerator(),
+    DemoNotesGenerator(),
+    DemoEvaluationsGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -117,7 +127,21 @@ their factories (``persist`` / ``persist_batch``; never commit).
   cohort class, ``demo.guardian``'s pending session and reschedule requests
   and ``demo.tutor``'s pending time off, ``APP_ENV=local`` only. The course
   and change generators skip a database whose #299 schedule is from an
-  earlier day (reset to add them)."""
+  earlier day (reset to add them).
+- ``scheduling.demo_held_sessions`` (#353): ``demo.tutor``'s three past
+  classes, each with attendance and a closeout approved by
+  ``demo.coordinator``, through the services under the seed clock,
+  ``APP_ENV=local`` only.
+- ``courses.demo_past_cohort`` (#353): a finished six-class cohort taught by
+  ``demo.tutor2`` with three students enrolled, every class closed out and
+  approved, ``APP_ENV=local`` only.
+- ``academics.demo_notes`` (#353): two notes shared with ``demo.guardian``'s
+  family and one internal note, ``APP_ENV=local`` only.
+- ``academics.demo_evaluations`` (#353): two evaluation templates,
+  ``demo.tutor``'s evaluations (one still a draft) and the finished cohort's
+  course evaluations, so its completion shows ``completed`` and
+  ``not_completed``, ``APP_ENV=local`` only. The four #353 generators also
+  skip a database whose #299 schedule is from an earlier day."""
 
 
 @dataclass
