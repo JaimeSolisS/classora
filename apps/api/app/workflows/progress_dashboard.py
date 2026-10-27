@@ -279,7 +279,11 @@ async def _plans(
         session, [plan.id for plan, _ in plans]
     )
     counted = [
-        (plan, name, academics.plan_counts(milestones[plan.id], today))
+        (
+            plan,
+            name,
+            academics.plan_counts(milestones[plan.id], today, plan_status=plan.status),
+        )
         for plan, name in plans
     ]
     counted.sort(key=_plan_order)

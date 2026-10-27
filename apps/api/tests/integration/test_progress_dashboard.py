@@ -1093,6 +1093,42 @@ def test_the_plans(client, owner, metrics):
     assert old["plans"]["active"] == 3
 
 
+def test_a_completed_plan_counts_no_overdue_milestone(module_seeded_url, client, owner):
+    """#332: a completed plan's not-done milestone due before today isn't
+    overdue; the sum is the active plans' (own student: ``metrics`` stays)."""
+    url = module_seeded_url
+    tutor = a_tutor(url)
+    student = new_student(url)
+    late = (("pending", date(2031, 3, 4)),)
+    closed = plan(
+        url,
+        student,
+        new_subject(url),
+        tutor.id,
+        title="Cerrado",
+        status="completed",
+        closed_on=date(2031, 3, 1),
+        milestones=late,
+    )
+    active = plan(
+        url,
+        student,
+        new_subject(url),
+        tutor.id,
+        title="Activo",
+        status="active",
+        milestones=late,
+    )
+    plans = read_progress(client, owner, student)["plans"]
+    items = {item["id"]: item for item in plans["items"]}
+    assert items[closed]["milestones_overdue"] == 0
+    assert items[active]["milestones_overdue"] == 1
+    assert plans["milestones_overdue"] == 1
+    assert (plans["active"], plans["completed"]) == (1, 1)
+    for item in (items[closed], items[active]):
+        assert (item["milestones_done"], item["milestones_total"]) == (0, 1)
+
+
 def test_the_subjects_and_the_filter(client, owner, metrics):
     expected = [
         subject_ref(metrics, s)

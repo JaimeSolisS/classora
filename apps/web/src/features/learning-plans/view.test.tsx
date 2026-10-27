@@ -188,6 +188,7 @@ describe('content (C1-C3)', () => {
     expect(text()).toContain('Completed on Nov 20, 2026');
     expect(text()).toContain('Pending');
     expect(text()).toContain('In progress');
+    expect(text()).not.toContain('Overdue'); // #332: closed plans have none
     expect(selects()).toHaveLength(0);
     await openPageAgain(ALL_DONE_PLAN);
     expect(text()).toMatch(/1\. Objetivo 1Complete/);

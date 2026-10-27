@@ -120,7 +120,10 @@ class ProgressPlanItem(_Closed):
     objectives_total: int
     milestones_done: int
     milestones_total: int
-    milestones_overdue: int
+    milestones_overdue: int = Field(
+        description="Milestones not done whose due date is before the center's"
+        " today; always 0 for a completed plan."
+    )
     target_on: date | None
 
 
@@ -129,7 +132,10 @@ class ProgressPlans(_Closed):
     completed: int
     objectives_complete: int
     objectives_total: int
-    milestones_overdue: int
+    milestones_overdue: int = Field(
+        description="The overdue milestones of the listed plans; completed plans"
+        " count 0, so this is the active plans' sum."
+    )
     items: list[ProgressPlanItem] = Field(
         description="At most 20: active plans first by target date (none last),"
         " then completed plans, the latest completed first."

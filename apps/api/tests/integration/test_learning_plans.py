@@ -1094,6 +1094,87 @@ def test_progress_and_overdue_values(module_seeded_url, client, at_now):
     assert summary["progress"] == {"done": 1, "total": 3, "percent": "33"}
 
 
+def no_overdue(view: dict[str, Any]) -> bool:
+    return view["overdue_milestones"] == 0 and not any(
+        m["overdue"] for o in view["objectives"] for m in o["milestones"]
+    )
+
+
+def test_a_closed_plan_has_no_overdue_milestones(module_seeded_url, client, staff):
+    """#332: once completed or discontinued (from active or from draft), every
+    read reports no overdue milestone, for every reader; an active plan in
+    the same list keeps its count."""
+    url = module_seeded_url
+    me, mine = student_account(url)
+    family = Family(me, uuid.uuid4(), mine)
+    student = sign_in(client, me.username)
+    _, cookie, _, _, done = drafted(
+        client,
+        url,
+        family=family,
+        active=True,
+        objectives=[
+            objective(
+                "A",
+                milestone("A1", due_on="2031-03-04"),
+                milestone("A2", due_on="2031-03-01"),
+                milestone("A3", due_on="2031-03-02"),
+            )
+        ],
+    )
+    a1, a2, a3 = done["objectives"][0]["milestones"]
+    ok(progress(client, cookie, a2["id"], a2["version"], "in_progress"))
+    before = ok(progress(client, cookie, a3["id"], a3["version"], "done"))
+    assert before["overdue_milestones"] == 2
+    completed = ok(
+        transition(client, cookie, done["id"], before["version"], "complete")
+    )
+    assert completed["status"] == "completed"
+    assert no_overdue(completed)
+    assert completed["progress"] == before["progress"]
+    assert completed["objectives_complete"] == before["objectives_complete"]
+    assert [m["status"] for m in completed["objectives"][0]["milestones"]] == [
+        "pending",
+        "in_progress",
+        "done",
+    ]
+    for reader in (cookie, staff, student):
+        assert no_overdue(ok(get(client, reader, plan_path(done["id"]))))
+
+    one_overdue = [objective("B", milestone("B1", due_on="2031-03-04"))]
+    _, active_cookie, _, _, left = drafted(
+        client, url, family=family, active=True, objectives=one_overdue
+    )
+    assert left["overdue_milestones"] == 1
+    discontinued = ok(
+        transition(client, active_cookie, left["id"], left["version"], "discontinue")
+    )
+    assert no_overdue(discontinued)
+    assert no_overdue(ok(get(client, staff, plan_path(left["id"]))))
+    _, draft_cookie, _, _, draft = drafted(
+        client, url, family=family, objectives=one_overdue
+    )
+    assert draft["overdue_milestones"] == 1  # a draft keeps the rule
+    dropped = ok(
+        transition(client, draft_cookie, draft["id"], draft["version"], "discontinue")
+    )
+    assert no_overdue(dropped)
+    assert no_overdue(ok(get(client, staff, plan_path(draft["id"]))))
+    _, _, _, _, still = drafted(
+        client, url, family=family, active=True, objectives=one_overdue
+    )
+
+    for reader in (staff, student):
+        listed = {
+            item["id"]: item["overdue_milestones"]
+            for item in ok(get(client, reader, plans_path(mine)))["items"]
+        }
+        expected = {done["id"]: 0, left["id"]: 0, still["id"]: 1}
+        if reader is staff:  # the family never sees a never-activated plan
+            expected[draft["id"]] = 0
+        assert listed == expected
+
+
 # --- E4: the subject rule, the former tutor, staff ------------------------------------
 
 

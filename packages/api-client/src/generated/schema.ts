@@ -10575,7 +10575,10 @@ export interface components {
             /** Due On */
             due_on: string | null;
             status: components["schemas"]["MilestoneStatus"];
-            /** Overdue */
+            /**
+             * Overdue
+             * @description Not done and due before the center's today; always false once the plan is completed or discontinued.
+             */
             overdue: boolean;
             /** Completed At */
             completed_at: string | null;
@@ -10736,7 +10739,7 @@ export interface components {
             objectives_total: number;
             /**
              * Overdue Milestones
-             * @description Milestones not done whose due date is before the center's today.
+             * @description Milestones not done whose due date is before the center's today; always 0 once the plan is completed or discontinued.
              */
             overdue_milestones: number;
             /**
@@ -10806,7 +10809,7 @@ export interface components {
             objectives_total: number;
             /**
              * Overdue Milestones
-             * @description Milestones not done whose due date is before the center's today.
+             * @description Milestones not done whose due date is before the center's today; always 0 once the plan is completed or discontinued.
              */
             overdue_milestones: number;
             /**
@@ -11724,7 +11727,10 @@ export interface components {
             milestones_done: number;
             /** Milestones Total */
             milestones_total: number;
-            /** Milestones Overdue */
+            /**
+             * Milestones Overdue
+             * @description Milestones not done whose due date is before the center's today; always 0 for a completed plan.
+             */
             milestones_overdue: number;
             /** Target On */
             target_on: string | null;
@@ -11741,7 +11747,10 @@ export interface components {
             objectives_complete: number;
             /** Objectives Total */
             objectives_total: number;
-            /** Milestones Overdue */
+            /**
+             * Milestones Overdue
+             * @description The overdue milestones of the listed plans; completed plans count 0, so this is the active plans' sum.
+             */
             milestones_overdue: number;
             /**
              * Items

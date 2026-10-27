@@ -174,6 +174,7 @@ describe('the list (B)', () => {
     expect(draft).toContain('From Nov 2, 2026 · No target date');
     expect(draft).not.toContain('overdue');
     expect(completed).toContain('Completed');
+    expect(completed).not.toContain('overdue'); // #332: closed plans have none
     expect(rows[0]!.querySelector('a')!.getAttribute('href')).toBe(
       `/learning-plans/${MANAGER_LIST.items[0]!.id}`,
     );

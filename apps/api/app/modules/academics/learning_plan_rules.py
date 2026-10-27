@@ -131,9 +131,14 @@ def progress(statuses: Iterable[str]) -> tuple[int, int, Decimal]:
     return done, total, percent
 
 
-def is_overdue(status: str, due_on: date | None, today: date) -> bool:
+def is_overdue(
+    status: str, due_on: date | None, today: date, *, plan_status: str
+) -> bool:
     """A milestone that isn't ``done`` whose ``due_on`` is before the
-    center's today."""
+    center's today, while its plan is draft or active. A completed or
+    discontinued plan has no overdue milestones (#332)."""
+    if plan_status in CLOSED:
+        return False
     return status != DONE and due_on is not None and due_on < today
 
 
