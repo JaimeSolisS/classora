@@ -1,6 +1,8 @@
 """The #353 notes and evaluations (#353 D, E, F2-F7): ``academics.demo_notes``,
 ``academics.demo_evaluations``, the whole run with the four #353
-generators, and what each demo account sees after it."""
+generators, and what each demo account sees after it. The tests that pin
+exact notifications, Approvals or progress numbers run the generators through
+``academics.demo_evaluations`` (#354 G6)."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -36,16 +38,20 @@ from tests.integration.demo_support import (
     CHANGES_GENERATOR,
     DEMO_353_TABLE_COUNTS,
     DEV_LINES,
+    EVALUATIONS_GENERATOR,
     FIRST_RUN_LINES,
     FROZEN_NOW,
     GENERATOR_NAMES,
     NEW_353_GENERATORS,
+    NEW_354_GENERATORS,
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
+    TABLE_COUNTS_THROUGH_353,
     UntouchedSession,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_through,
     migrate,
 )
@@ -91,15 +97,19 @@ def env_for(monkeypatch):
     return lambda app_env, dsn: demo_env(monkeypatch, app_env, dsn)
 
 
+THROUGH_353 = generators_through(EVALUATIONS_GENERATOR)
+"""Every generator through the #353 ones (#354 G6)."""
+
+
 def test_a_first_run_writes_the_notes_and_evaluations(
     migrated_url, env_for, clock, capsys
 ):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_353) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(THROUGH_353)
     assert app_clock.now() == FROZEN_NOW
     labels = student_labels(migrated_url)
 
@@ -211,7 +221,10 @@ def test_a_first_run_writes_the_notes_and_evaluations(
         ("academics.learning_note_published", "demo.guardian", 2),
         ("academics.learning_note_published", "demo.student", 2),
     ]
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_353)
+        == TABLE_COUNTS_THROUGH_353
+    )
 
 
 @pytest.mark.parametrize(
@@ -237,12 +250,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # F4: every generator (19) prints 0 rows.
+    # F4: every generator (22 since #354) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 19
+    assert len(GENERATOR_NAMES) == 22
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -286,7 +299,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 def test_a_schedule_from_an_earlier_day_is_skipped(
     migrated_url, env_for, clock, capsys
 ):
-    # F6 / G3: the #303 run on 2026-11-04, then every generator 10 days later.
+    # F6 / G3: the #303 run on 2026-11-04, then every generator 10 days later
+    # (the #354 ones skip too).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([], generators=generators_through(CHANGES_GENERATOR)) == 0
@@ -300,7 +314,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in NEW_353_GENERATORS
+            if name in {*NEW_353_GENERATORS, *NEW_354_GENERATORS}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -311,7 +325,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
 
 
 def test_the_353_counts_cover_its_new_tables():
-    assert GENERATOR_NAMES[-4:] == list(NEW_353_GENERATORS)
+    assert GENERATOR_NAMES[-7:-3] == list(NEW_353_GENERATORS)
     assert DEMO_353_TABLE_COUNTS["session_closeouts"] == 9
     assert DEMO_353_TABLE_COUNTS["evaluations"] == 9
 
@@ -363,9 +377,10 @@ def _session_log(client: TestClient, cookie: Any, student: str) -> dict[str, Any
 
 
 def test_every_account_sees_the_353_data(migrated_url, env_for, clock):
+    # The #353 data alone (#354 G6): test_demo_reports has the #354 views.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_353) == 0
     labels = student_labels(migrated_url)
     ids = {label: str(student) for student, label in labels.items()}
     names = {str(student): label for student, label in labels.items()}

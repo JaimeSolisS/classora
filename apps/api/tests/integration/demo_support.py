@@ -1,5 +1,5 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353).
+#353, #354).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -7,8 +7,9 @@
 - The expected summary lines of a first run, a rerun and a ``dev`` run.
 - The #299 tables and their counts after a first run (:func:`demo_table_counts`),
   the #303 rows in the same tables and its own (:data:`DEMO_303_TABLE_COUNTS`,
-  :data:`TABLE_COUNTS_THROUGH_303`), and the #353 ones
-  (:data:`DEMO_353_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
+  :data:`TABLE_COUNTS_THROUGH_303`), the #353 ones
+  (:data:`DEMO_353_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_353`) and the
+  #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -73,6 +74,20 @@ DEMO_EVALUATIONS_ROWS = 32
 """#353 E6: 2 templates, 3 criteria, 9 evaluations, 10 scores and 8
 notifications (S's four final evaluations to ``demo.student`` and
 ``demo.guardian``)."""
+
+LEARNING_PLANS_GENERATOR = "academics.demo_learning_plans"
+DEMO_LEARNING_PLANS_ROWS = 18
+"""#354 B4: 2 plans, 3 objectives, 7 milestones and 6 notifications (LP1 and
+LP2 activated and LP2 completed, to ``demo.student`` and ``demo.guardian``)."""
+HOMEWORK_GENERATOR = "academics.demo_homework"
+DEMO_HOMEWORK_ROWS = 16
+"""#354 C4: 3 assignments, 3 submission rows and 10 notifications (3 set and
+1 graded to ``demo.student`` and ``demo.guardian``, 2 handed in to
+``demo.tutor``)."""
+PROGRESS_REPORTS_GENERATOR = "academics.demo_progress_reports"
+DEMO_PROGRESS_REPORTS_ROWS = 9
+"""#354 D4: 3 reports, 2 approval requests, 1 schedule and 3 notifications (R1
+approved, to ``demo.tutor``, ``demo.student`` and ``demo.guardian``)."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -181,6 +196,29 @@ DEMO_353_TABLE_COUNTS = {
 """The rows the #353 generators add to each table they count, after a first
 run on a fresh database (several tables are shared with #299 and #303)."""
 
+DEMO_354_TABLE_COUNTS = {
+    # academics.demo_learning_plans: LP1 (2 objectives, 4 milestones) and LP2
+    # (1 objective, 3 milestones).
+    "learning_plans": 2,
+    "learning_plan_objectives": 2 + 1,
+    "learning_plan_milestones": 4 + 3,
+    # academics.demo_homework: HW1-HW3, one recipient (S) each.
+    "assignments": 3,
+    "assignment_submissions": 3,
+    # academics.demo_progress_reports: R1-R3 and the weekly schedule; R1's and
+    # R2's review items.
+    "progress_reports": 3,
+    "progress_report_schedules": 1,
+    "approval_requests": 2,
+    # Plans: 2 activated + 1 completed, homework: 3 set + 1 graded, each to
+    # demo.student and demo.guardian; 2 handed in to demo.tutor; R1 approved
+    # to demo.tutor, demo.student and demo.guardian.
+    "notifications": 3 * 2 + 4 * 2 + 2 + 3,
+}
+"""The rows the #354 generators add to each table they count, after a first
+run on a fresh database (``approval_requests`` and ``notifications`` are
+shared)."""
+
 
 def _sum(*parts: dict[str, int]) -> dict[str, int]:
     tables = {table for part in parts for table in part}
@@ -191,8 +229,19 @@ TABLE_COUNTS_THROUGH_303 = _sum(DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS)
 """Every table of :data:`DEMO_TABLE_COUNTS` and :data:`DEMO_303_TABLE_COUNTS`
 after a first run of the generators through ``scheduling.demo_changes``."""
 
-ALL_TABLE_COUNTS = _sum(DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS, DEMO_353_TABLE_COUNTS)
-"""Every counted table of #299, #303 and #353 after a first run of every
+TABLE_COUNTS_THROUGH_353 = _sum(
+    DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS, DEMO_353_TABLE_COUNTS
+)
+"""Every counted table of #299, #303 and #353 after a first run of the
+generators through ``academics.demo_evaluations`` (#354 G6)."""
+
+ALL_TABLE_COUNTS = _sum(
+    DEMO_TABLE_COUNTS,
+    DEMO_303_TABLE_COUNTS,
+    DEMO_353_TABLE_COUNTS,
+    DEMO_354_TABLE_COUNTS,
+)
+"""Every counted table of #299, #303, #353 and #354 after a first run of every
 generator."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
@@ -225,6 +274,9 @@ GENERATOR_NAMES = [
     PAST_COHORT_GENERATOR,
     NOTES_GENERATOR,
     EVALUATIONS_GENERATOR,
+    LEARNING_PLANS_GENERATOR,
+    HOMEWORK_GENERATOR,
+    PROGRESS_REPORTS_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -241,6 +293,9 @@ FIRST_RUN_LINES = [
     f"{PAST_COHORT_GENERATOR}: {DEMO_PAST_COHORT_ROWS} rows",
     f"{NOTES_GENERATOR}: {DEMO_NOTES_ROWS} rows",
     f"{EVALUATIONS_GENERATOR}: {DEMO_EVALUATIONS_ROWS} rows",
+    f"{LEARNING_PLANS_GENERATOR}: {DEMO_LEARNING_PLANS_ROWS} rows",
+    f"{HOMEWORK_GENERATOR}: {DEMO_HOMEWORK_ROWS} rows",
+    f"{PROGRESS_REPORTS_GENERATOR}: {DEMO_PROGRESS_REPORTS_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -273,11 +328,17 @@ NEW_353_GENERATORS = (
     EVALUATIONS_GENERATOR,
 )
 
+NEW_354_GENERATORS = (
+    LEARNING_PLANS_GENERATOR,
+    HOMEWORK_GENERATOR,
+    PROGRESS_REPORTS_GENERATOR,
+)
+
 
 def generators_before_303() -> list[demo.DemoGenerator]:
-    """The #299 run: every registered generator except the four #303 ones
-    and the four #353 ones."""
-    later = {*NEW_303_GENERATORS, *NEW_353_GENERATORS}
+    """The #299 run: every registered generator except the four #303 ones,
+    the four #353 ones and the three #354 ones."""
+    later = {*NEW_303_GENERATORS, *NEW_353_GENERATORS, *NEW_354_GENERATORS}
     return [g for g in demo.DEMO_GENERATORS if g.name not in later]
 
 

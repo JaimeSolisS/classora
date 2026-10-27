@@ -96,7 +96,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -546,8 +546,18 @@ follows these rules.
     approved, and none is overdue or waiting on Approvals;
   - `demo.student` has evaluations and a second cohort, which is `ended`
     (hidden by the cohort list's default `current` filter), so specs keep
-    opening cohorts by name. It has no homework, so the progress steps'
-    homework average comes from the spec's own grade.
+    opening cohorts by name. Its homework is the #354 data (next bullet).
+- The E2E stack also has the #354 demo data (the
+  `academics.demo_learning_plans`, `academics.demo_homework` and
+  `academics.demo_progress_reports` generators: learning plans, homework,
+  progress reports and a weekly report schedule for `demo.student`, with
+  their approval item and notifications). It is **not** an E2E fixture:
+  - specs never select it, and never assert on unfiltered totals of plans,
+    homework, reports, schedules or open Approvals items;
+  - `demo.student`'s only graded demo homework is in Inglés (Secundaria), so
+    a spec's own Matemáticas grade gives the Matemáticas homework average;
+  - the Owner's Approvals have one open progress report item from it, so
+    specs filter Approvals by type (as `registration.spec.ts` now does).
 - **Never change `demo.owner` in a spec** (its profile, state, roles,
   password or preferences): every test shares its signed-in session
   (`storageState`). A test that needs an Owner to act signs `demo.owner` in

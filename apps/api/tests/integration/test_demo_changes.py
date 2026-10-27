@@ -45,6 +45,7 @@ from tests.integration.demo_support import (
     GENERATOR_NAMES,
     NEW_303_GENERATORS,
     NEW_353_GENERATORS,
+    NEW_354_GENERATORS,
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
     SCHEDULE_GENERATOR,
@@ -319,12 +320,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (19 since #353) prints 0 rows.
+    # E4: every generator (22 since #354) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 19
+    assert len(GENERATOR_NAMES) == 22
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -369,7 +370,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
     migrated_url, env_for, clock, capsys
 ):
     # E6 / G3: the #299 run on 2026-11-04, then every generator 10 days later
-    # (the #353 ones skip too, #353 G3).
+    # (the #353 and #354 ones skip too, #353 G3, #354 G4).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([], generators=generators_before_303()) == 0
@@ -379,7 +380,12 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
     assert demo.main([]) == 0
 
     written = {"identity.demo_tutor2": 1, TUTOR2_GENERATOR: 12}
-    skipped = {COURSES_GENERATOR, CHANGES_GENERATOR, *NEW_353_GENERATORS}
+    skipped = {
+        COURSES_GENERATOR,
+        CHANGES_GENERATOR,
+        *NEW_353_GENERATORS,
+        *NEW_354_GENERATORS,
+    }
     assert capsys.readouterr().out.splitlines() == [
         *RERUN_REFERENCE_LINES,
         *(

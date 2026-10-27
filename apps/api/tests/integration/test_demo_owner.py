@@ -54,7 +54,8 @@ def test_the_generators_are_registered_in_order():
     # then the catalog, the tutor and the schedule; #303 A1: demo.tutor2
     # after demo.guardian, then its setup, the course and the changes; #353
     # A1: then the held classes, the finished cohort, the notes and the
-    # evaluations.
+    # evaluations; #354 A1: then the learning plans, the homework and the
+    # progress reports.
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
     assert GENERATOR_NAMES == [
         "identity.demo_owner",
@@ -76,6 +77,9 @@ def test_the_generators_are_registered_in_order():
         "courses.demo_past_cohort",
         "academics.demo_notes",
         "academics.demo_evaluations",
+        "academics.demo_learning_plans",
+        "academics.demo_homework",
+        "academics.demo_progress_reports",
     ]
 
 
