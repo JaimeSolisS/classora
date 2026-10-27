@@ -496,7 +496,7 @@ Gap-free yearly counters (E13).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
-| `code` | VARCHAR(4) | no | `R` (receipts) \| `P` (payslips, reserved for M7) |
+| `code` | TEXT | no | `CHECK (code IN ('R', 'P'))`: `R` (receipts), `P` (payslips, reserved for M7) |
 | `year` | SMALLINT | no | the center-local year of the issue instant |
 | `last_value` | INTEGER | no | `>= 0` |
 
