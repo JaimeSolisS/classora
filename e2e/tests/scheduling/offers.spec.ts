@@ -100,11 +100,18 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // text and the closeout student's progress is 404. The student context
 // stays open until then.
 //
+// Course completion (#323), on the same demo.student context (390 px),
+// after those API checks: the menu → "Mis cursos" → the #303 demo cohort
+// "Examen de ingreso, grupo 1"; its completion answer has exactly one row,
+// the student's own (relation self), and "Mi progreso" shows a status
+// badge (axe). Read-only.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (demo.tutor; the
 // reauthenticated Owner context of createApprovedTutor, #55; and
 // demo.student, #313), no one-time-link redemption, 1 registration (the
-// substitute, #55); the attendance, closeout, review, resubmission and
-// progress steps add none (#76, #77, #78, #305, #322). It never
+// substitute, #55); the attendance, closeout, review, resubmission,
+// progress and course completion steps add none (#76, #77, #78, #305,
+// #322, #323). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -115,8 +122,9 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // #313 G3 adds about 30 s (the homework steps): 180 → 210 s. #322 G3 adds
-// about 20 s (the progress steps): 210 → 230 s.
-const TEST_TIMEOUT_MS = 230_000;
+// about 20 s (the progress steps): 210 → 230 s. #323 adds about 10 s (the
+// course completion step): 230 → 240 s.
+const TEST_TIMEOUT_MS = 240_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
@@ -124,6 +132,9 @@ const TUTOR_PASSWORD = 'classora-demo-tutor';
 const DEMO_STUDENT = 'demo.student';
 const DEMO_STUDENT_NAME = 'Demo Student';
 const DEMO_STUDENT_PASSWORD = 'classora-demo-student';
+/** The #303 demo cohort demo.student is enrolled in (#323;
+ * tests.factories.demo_changes.COHORT_NAME). */
+const DEMO_COHORT = 'Examen de ingreso, grupo 1';
 const LEVEL = 'Primaria';
 /** The subject of the session `run.sh` inserts for attendance (#76). */
 const ATTENDANCE_SUBJECT = 'E2E Attendance';
@@ -1501,6 +1512,50 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       `/api/v1/students/${closeoutStudentId}/progress`,
     );
     expect(foreign.status).toBe(404);
+
+    // 13. Course completion (#323), still demo.student at 390 px: the menu
+    // → "Mis cursos" → the demo cohort; its completion answer has exactly
+    // one row, the student's own, and "Mi progreso" shows a status badge
+    // (axe). Read-only: nothing is written.
+    const completion = common.courses.cohorts.completion;
+    await student!.page
+      .getByRole('banner')
+      .getByRole('button', { name: common.nav.toggle })
+      .click();
+    await student!.page
+      .getByRole('banner')
+      .getByRole('link', { name: common.nav.myCourses, exact: true })
+      .click();
+    await expect(student!.page).toHaveURL(/\/courses\/cohorts$/);
+    const completionAnswer = student!.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/cohorts\/[0-9a-f-]{36}\/completion$/.test(
+          new URL(response.url()).pathname,
+        ),
+    );
+    await student!.page
+      .getByRole('main')
+      .getByRole('link', { name: DEMO_COHORT, exact: true })
+      .click();
+    const answer = await completionAnswer;
+    expect(answer.status()).toBe(200);
+    const rows = (
+      (await answer.json()) as { students: { student: { id: string } }[] }
+    ).students;
+    expect(rows.map((row) => row.student.id)).toEqual([self!.student_id]);
+    const mine = student!.page
+      .getByRole('main')
+      .getByRole('region', { name: completion.myHeading });
+    await expect(mine).toBeVisible();
+    await expect(mine).toContainText(
+      new RegExp(
+        Object.values(completion.status)
+          .map((status) => escape(status))
+          .join('|'),
+      ),
+    );
+    expect(await axeViolations(student!.page)).toEqual([]);
     expect(await cspViolations(student!.page)).toEqual([]);
     expect(student!.consoleErrors).toEqual([]);
   } finally {

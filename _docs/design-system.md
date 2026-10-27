@@ -422,6 +422,17 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   filters (a `SearchPicker`, two labelled `type="date"` inputs with the
   range error on "To", a removable chip, "Clear filters") stack in one
   column below `sm`.
+- **Completion disclosure table** (`features/courses/cohorts/completion`,
+  #323): the cohort's "Course completion" roster is a contained table (the
+  #311 scroll region, named by the table's `caption` so it never shares the
+  section's name, `tabIndex={0}`) with one disclosure row per student: the
+  name is a button (`aria-expanded`, `aria-controls` the detail `<tr>`,
+  accessible name "Details for {name}", focus stays on it when toggled), and
+  the detail row is one cell spanning every column, `hidden` until opened,
+  holding `StudentCompletionDetail` (lists, never a nested table, so it
+  reflows at 320 px). Statuses ("In progress", "Met", "Passed", …) are
+  bordered text badges with an icon, dashed while pending, never colour
+  alone. Decimals are shown as the API's text (`decimalText`).
 - **`CloseoutOnBehalfDialog`** (`features/scheduling/session`, #301b): a
   reviewer's "Close out on behalf of {tutor}" or "Take over and resubmit".
   The minutes and summary fields are `CloseoutFields`, shared with

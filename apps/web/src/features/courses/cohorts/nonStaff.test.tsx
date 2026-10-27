@@ -3,6 +3,7 @@ import type { SessionUserBody } from '@/features/auth/session';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
+  problem,
   stubApi,
   TEST_USER,
   type ApiStub,
@@ -30,6 +31,9 @@ const DETAIL = `GET /api/v1/cohorts/${COHORT_ID}`;
 const SESSIONS_ROUTE = `GET /api/v1/cohorts/${COHORT_ID}/sessions`;
 const TEMPLATES = 'GET /api/v1/course-templates';
 const SUBJECTS = 'GET /api/v1/subjects';
+// #323: the page asks for the course completion of tutors and families;
+// these tests leave it hidden (its own tests are completion.test.tsx).
+const COMPLETION = `GET /api/v1/cohorts/${COHORT_ID}/completion`;
 
 const user = (
   roles: SessionUserBody['roles'],
@@ -54,6 +58,7 @@ function stub(
       jsonResponse(200, { items: FAMILY_LIST_ITEMS, next_cursor: null }),
     [DETAIL]: () => jsonResponse(200, FAMILY_COHORT),
     [SESSIONS_ROUTE]: () => jsonResponse(200, { items: FAMILY_SESSIONS }),
+    [COMPLETION]: () => problem(404, 'cohort_not_found'),
     [TEMPLATES]: () =>
       jsonResponse(200, { items: [], total: 0, limit: 100, offset: 0 }),
     [SUBJECTS]: () =>

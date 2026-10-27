@@ -38,6 +38,8 @@ type Common = {
     learningPlans: string;
     // #322 G3: the family's progress page.
     progress: string;
+    // #323: the family's courses ("Mis cursos").
+    myCourses: string;
   };
   // #62b E1: the request dialog and My change requests.
   changeRequests: {
@@ -842,6 +844,21 @@ type Common = {
           string
         >;
         withdrawDialog: Record<'title' | 'reason' | 'submit' | 'done', string>;
+      };
+      // #323: course completion on the cohort page.
+      completion: Record<
+        | 'heading'
+        | 'myHeading'
+        | 'detailsFor'
+        | 'assessmentsCount'
+        | 'modulesCount',
+        string
+      > & {
+        status: Record<'in_progress' | 'completed' | 'not_completed', string>;
+        criterion: Record<'pending', string>;
+        outcome: Record<'not_evaluated', string>;
+        attendance: Record<'ofHeld', string>;
+        detail: Record<'required', string>;
       };
     };
     templates: Record<

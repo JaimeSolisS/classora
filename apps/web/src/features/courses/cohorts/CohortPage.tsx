@@ -7,7 +7,7 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
-import { useCan } from '@/features/auth/useSession';
+import { useCan, useSession } from '@/features/auth/useSession';
 import { CALENDAR_KEY } from '@/features/calendar/api';
 import {
   fetchClassroomCapacityOptions,
@@ -50,6 +50,8 @@ import {
   CohortSessionsSection,
   type CohortSessionsState,
 } from './CohortSessionsSection';
+import { CohortCompletion } from './completion/CohortCompletion';
+import { completionAudience, familyHeading } from './completion/rules';
 import { CohortView } from './CohortView';
 import { EditCohortDialog } from './EditCohortDialog';
 import { useEnrollLabels, useWithdrawLabels } from './enrollmentLabels';
@@ -89,6 +91,11 @@ import {
 // cohort and stays in the dialog; a withdrawal's version_conflict,
 // enrollment_not_active or enrollment_not_found closes it, refreshes the
 // roster and says so at the top.
+//
+// Course completion (#323) follows the Students panel: the roster for
+// evaluation.manage holders and the cohort's tutor, the family's own
+// sections for a student or guardian, nothing (and no request) for anyone
+// else.
 
 /** The withdrawal answers that mean "the roster you saw is stale" (C2). */
 const STALE_WITHDRAWAL = new Set([
@@ -121,6 +128,9 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
   const canViewCourses = useCan('course.view');
   const canOverride = useCan('schedule.override');
   const canViewStudents = useCan('student.view');
+  const canEvaluate = useCan('evaluation.manage');
+  const session = useSession();
+  const roles = session.status === 'signedIn' ? session.user.roles : [];
   const client = useQueryClient();
   const [notice, setNotice] = useState<string | null>(
     (location.state as PageNotice | null)?.notice ?? null,
@@ -273,6 +283,12 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
   }
 
   const roster = detail.roster ?? null;
+  // #323 W0: decided once the detail has loaded; null sends no request.
+  const audience = completionAudience({
+    canEvaluate,
+    hasTutorRoster: Array.isArray(detail.tutor_roster),
+    roles,
+  });
   const controls = enrollmentControls(detail, canManage);
 
   function showWithdrawn(shown: boolean) {
@@ -376,6 +392,13 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
               setNotice(null);
               setWithdrawing(item);
             }}
+          />
+        ) : null}
+        {audience ? (
+          <CohortCompletion
+            cohortId={cohortId}
+            audience={audience}
+            familyHeading={familyHeading(roles)}
           />
         ) : null}
       </CohortView>
