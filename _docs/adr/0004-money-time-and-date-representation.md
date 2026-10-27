@@ -59,6 +59,15 @@ Table names, relationship cardinalities and finance ledger conventions (the rest
 - **`TIMESTAMPTZ` for every temporal value, including calendar dates.** Rejected: it would infer calendar dates from UTC instants, which spec §16 forbids.
 - **Recurrence stored as UTC instants.** Rejected: recurrence must be defined in local wall-clock time.
 
+## Implementation notes (M6-02, #87, 2026-10-27, owner-delegated)
+
+These notes refine the Decision above without changing it. They record the recommended options accepted on #87 (`apps/api/app/core/money.py`).
+
+- **Rounding (E2).** Half-up is half away from zero (`ROUND_HALF_UP`, the same as PostgreSQL `round(numeric, 2)`): `2.345 -> 2.35`, `-2.345 -> -2.35`. A credit is exactly minus the charge it mirrors. Each operation (`Money.rounded`, `multiply`, `prorate`, `allocate`, `split`) rounds once, from the exact value, on integer centavos, so no result depends on the ambient `decimal` context. Construction never rounds.
+- **Allocation (E3).** `allocate(amount, weights)` uses cumulative rounding over non-negative integer weights: part *i* = R(A·C<sub>i</sub>/W) − R(A·C<sub>i−1</sub>/W). The parts sum exactly to the amount, each is within one centavo of its share, and none has the opposite sign. The first *k* parts sum to `amount.prorate(C_k, W)`, so a recognition that books "cumulative now − cumulative before" on each consumption leaves the remainder to the last one (the ADR-0006 E7 reading).
+- **JSON (E4).** Money is a string only, matching `^-?\d{1,12}(\.\d{1,2})?$` (the web's `money.ts` pattern). Output always has two places and never `-0.00`. Field error codes: `money_invalid`, `money_precision`, `money_out_of_range`. Each endpoint states the sign and range of its fields.
+- **Database (E5).** `MoneyType` maps a `NUMERIC(14,2)` column and binds `Money` only (a `Decimal`, `int`, `float` or `str` is a `TypeError`); results come back as `Money`. `money_sum()` sums a money expression as `Money` (`0.00` when no row matches). Audit rows store money as `"1250.00"`.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §5, §7.4, §10.3 ISSUE-D2 and ISSUE-D3, §11

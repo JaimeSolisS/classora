@@ -5946,7 +5946,21 @@ Money is a JSON string such as `"1250.00"` (MXN), described in OpenAPI as
 `type: string, format: decimal`. It is never a float on the server, in the
 client or in the UI; the UI formats it with
 `Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })`.
-Approved (ADR-0004). The shared `Money` type is M6-02.
+Approved (ADR-0004).
+
+The shared type is `Money` in `apps/api/app/core/money.py` (M6-02, #87):
+
+- **Input:** a JSON string only, matching `^-?\d{1,12}(\.\d{1,2})?$` (up to 12
+  integer digits and 2 decimals), the same pattern as `apps/web/src/lib/money.ts`.
+  JSON numbers, whitespace, `+`, exponents, thousands separators, `.5` and
+  `12.` are `422`.
+- **Output:** always a string with two places (`"1250.00"`); never `"-0.00"`.
+- **Field error codes** (`errors[].code`): `money_invalid` (not a string, or not
+  an amount), `money_precision` (more than two decimals; it wins when both
+  fail) and `money_out_of_range` (more than 12 integer digits).
+- **Sign and range:** the type checks neither; the sign and range of each field
+  are stated by its endpoint, with its own codes.
+- **OpenAPI:** `type: string, format: decimal`, with the pattern above.
 
 ## Client and contract workflow
 
