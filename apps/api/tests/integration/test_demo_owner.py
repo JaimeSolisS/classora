@@ -52,7 +52,9 @@ def demo_owner_rows(url: str) -> list:
 def test_the_generators_are_registered_in_order():
     # #195 E1: the seven demo accounts, then the demo families; #299 A1:
     # then the catalog, the tutor and the schedule; #303 A1: demo.tutor2
-    # after demo.guardian, then its setup, the course and the changes.
+    # after demo.guardian, then its setup, the course and the changes; #353
+    # A1: then the held classes, the finished cohort, the notes and the
+    # evaluations.
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
     assert GENERATOR_NAMES == [
         "identity.demo_owner",
@@ -70,6 +72,10 @@ def test_the_generators_are_registered_in_order():
         "staff.demo_tutor2",
         "courses.demo_courses",
         "scheduling.demo_changes",
+        "scheduling.demo_held_sessions",
+        "courses.demo_past_cohort",
+        "academics.demo_notes",
+        "academics.demo_evaluations",
     ]
 
 

@@ -1447,13 +1447,23 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     }),
   ).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
-  await page.goto('/approvals?type=academics.session_closeout&status=approved');
-  await expect(
-    page
-      .getByRole('main')
-      .getByRole('row')
-      .filter({ hasText: CLOSEOUT_SUBJECT }),
-  ).toBeVisible();
+  // The approved list is oldest first, 10 a page, and the demo seed's
+  // approved closeouts (#353) come before this one: page through the list
+  // instead of expecting the row on the first page.
+  const approvedRow = page
+    .getByRole('main')
+    .getByRole('row')
+    .filter({ hasText: CLOSEOUT_SUBJECT });
+  for (let listPage = 1; ; listPage += 1) {
+    await page.goto(
+      `/approvals?type=academics.session_closeout&status=approved&page=${listPage}`,
+    );
+    // The header row and at least one item: the page has loaded.
+    await expect(page.getByRole('main').getByRole('row').nth(1)).toBeVisible();
+    if ((await approvedRow.count()) > 0) break;
+    expect(listPage, 'the approved E2E closeout').toBeLessThan(5);
+  }
+  await expect(approvedRow).toBeVisible();
   await page.goto('/approvals?type=academics.session_closeout');
   await expect(
     page

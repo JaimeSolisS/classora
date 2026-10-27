@@ -126,6 +126,10 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "staff.demo_tutor2: 12 rows",
         "courses.demo_courses: 49 rows",
         "scheduling.demo_changes: 16 rows",
+        "scheduling.demo_held_sessions: 30 rows",
+        "courses.demo_past_cohort: 89 rows",
+        "academics.demo_notes: 7 rows",
+        "academics.demo_evaluations: 32 rows",
     ]
 
 

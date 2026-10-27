@@ -96,7 +96,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -533,6 +533,21 @@ follows these rules.
   approvals or notifications. `demo.tutor` has one pending availability
   change from it, so specs that read `demo.tutor`'s pending changes pick
   their own (as `availability.spec.ts` does with the newest).
+- The E2E stack also has the #353 demo data (the
+  `scheduling.demo_held_sessions`, `courses.demo_past_cohort`,
+  `academics.demo_notes` and `academics.demo_evaluations` generators: past
+  classes with attendance and approved closeouts, a finished cohort, session
+  notes, evaluation templates and evaluations, with their approval items and
+  notifications). It is **not** an E2E fixture:
+  - specs never select it, and never assert on unfiltered totals of
+    closeouts, notes, templates, evaluations or completion rows;
+  - `demo.tutor`'s demo classes are always more than 7 days old (outside the
+    E2E attendance fixture's slot search), every one is closed out and
+    approved, and none is overdue or waiting on Approvals;
+  - `demo.student` has evaluations and a second cohort, which is `ended`
+    (hidden by the cohort list's default `current` filter), so specs keep
+    opening cohorts by name. It has no homework, so the progress steps'
+    homework average comes from the spec's own grade.
 - **Never change `demo.owner` in a spec** (its profile, state, roles,
   password or preferences): every test shares its signed-in session
   (`storageState`). A test that needs an Owner to act signs `demo.owner` in
