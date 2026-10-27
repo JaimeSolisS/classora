@@ -4390,6 +4390,7 @@
     },
     "family": {
       "title": "My progress",
+      "titleOf": "{{name}}'s progress",
       "mine": "My progress",
       "whose": "Whose progress",
       "noStudents": "There's no student linked to your account."

@@ -184,8 +184,8 @@ afterEach(() => {
 describe('the family page: student and access (A2, B4, D1)', () => {
   it('the h1, the picker defaulting to the first student, the family links', async () => {
     await openFamily();
-    expect(heading()!.textContent).toBe('My progress');
-    expect(document.title).toContain('My progress');
+    expect(heading()!.textContent).toBe("Lucía Pérez's progress");
+    expect(document.title).toContain("Lucía Pérez's progress");
     expect(labelled<HTMLSelectElement>(main(), 'Whose progress').value).toBe(
       CHILD_ID,
     );
@@ -202,6 +202,7 @@ describe('the family page: student and access (A2, B4, D1)', () => {
   it('?student= picks; the picker keeps the period and drops the subject', async () => {
     await openFamily(`/my-progress?student=${SIBLING_ID}`);
     await settleUntil(() => text().includes('No classes in this period.'));
+    expect(heading()!.textContent).toBe("Andrés Pérez's progress");
     expect(paramsOf(progressOf(CHILD_ID))).toHaveLength(0);
     void app!.router.navigate(
       `/my-progress?student=${SIBLING_ID}&months=6&subject=${MATH.id}`,
@@ -220,6 +221,7 @@ describe('the family page: student and access (A2, B4, D1)', () => {
     );
     await settleUntil(() => paramsOf(progressOf(CHILD_ID)).length > 0);
     expect(paramsOf(progressOf(CHILD_ID))[0]!.get('from')).toBe('2026-05-01');
+    expect(heading()!.textContent).toBe("Lucía Pérez's progress");
   });
 
   it('a foreign ?student= falls back to the first, with no request for it', async () => {
@@ -227,18 +229,20 @@ describe('the family page: student and access (A2, B4, D1)', () => {
     expect(paramsOf(progressOf(FOREIGN_ID))).toHaveLength(0);
     expect(paramsOf(logOf(FOREIGN_ID))).toHaveLength(0);
     expect(paramsOf(progressOf(CHILD_ID))).toHaveLength(1);
+    expect(heading()!.textContent).toBe("Lucía Pérez's progress");
   });
 
   it("an adult who hasn't shared: the consent message and no request", async () => {
     await openFamily(`/my-progress?student=${ADULT_ID}`);
     expect(text()).toContain("hasn't shared their academic records");
+    expect(heading()!.textContent).toBe("Mateo Pérez's progress");
     expect(paramsOf(progressOf(ADULT_ID))).toHaveLength(0);
     expect(paramsOf(logOf(ADULT_ID))).toHaveLength(0);
     // The picker stays usable.
     expect(labelled<HTMLSelectElement>(main(), 'Whose progress')).toBeTruthy();
   });
 
-  it('one entry (the student themselves): "My progress" as plain text', async () => {
+  it('one entry (the student themselves): the h1 "My progress", no picker or whose line', async () => {
     const self = SELF_ONLY.items[0]!.student_id;
     await open(
       '/my-progress',
@@ -250,7 +254,9 @@ describe('the family page: student and access (A2, B4, D1)', () => {
       STUDENT_USER,
     );
     await settleUntil(() => main().querySelector('figure'));
-    expect(text()).toContain('Whose progress My progress');
+    expect(heading()!.textContent).toBe('My progress');
+    expect(document.title).toContain('My progress');
+    expect(text()).not.toContain('Whose progress');
     expect(
       [...main().querySelectorAll('label')].map((label) => label.textContent),
     ).not.toContain('Whose progress');
@@ -263,6 +269,7 @@ describe('the family page: student and access (A2, B4, D1)', () => {
     await settleUntil(() =>
       text().includes("There's no student linked to your account."),
     );
+    expect(heading()!.textContent).toBe('Progress');
   });
 
   it('a 403 consent: the consent message, not reported', async () => {
@@ -841,7 +848,10 @@ describe('Spanish (F2)', () => {
   it('uses the catalog words', async () => {
     applyLanguage('es');
     await openFamily();
-    expect(heading()!.textContent).toBe('Mi progreso');
+    expect(heading()!.textContent).toBe('Progreso de Lucía Pérez');
+    expect(
+      labelled<HTMLSelectElement>(main(), 'De quién es el progreso').value,
+    ).toBe(CHILD_ID);
     expect(tile('Asistencia').textContent).toContain(
       '6 de 8 clases con asistencia',
     );
@@ -849,5 +859,24 @@ describe('Spanish (F2)', () => {
     expect(logArticles()[1]!.textContent).toContain('Retardo');
     expect(logArticles()[3]!.textContent).toContain('Sin registrar');
     expect(buttonNamed(main(), '12 meses')).toBeTruthy();
+  });
+
+  it('one entry (the student themselves): "Mi progreso", no whose line', async () => {
+    applyLanguage('es');
+    const self = SELF_ONLY.items[0]!.student_id;
+    await open(
+      '/my-progress',
+      {
+        [FAMILY]: () => jsonResponse(200, SELF_ONLY),
+        [progressOf(self)]: () => jsonResponse(200, PROGRESS),
+        [logOf(self)]: () => jsonResponse(200, LOG_PAGE),
+      },
+      STUDENT_USER,
+    );
+    await settleUntil(() => main().querySelector('figure'));
+    expect(heading()!.textContent).toBe('Mi progreso');
+    expect(document.title).toContain('Mi progreso');
+    expect(text()).not.toContain('Progreso de Mi progreso');
+    expect(text()).not.toContain('De quién es el progreso');
   });
 });
