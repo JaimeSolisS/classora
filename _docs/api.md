@@ -3828,8 +3828,11 @@ statement), `academics.service.cohort_assessment_evaluations` (one statement,
 permission or package. **Live, never stored:** no recorded decision, no
 override, no notification, no audit row, no job; an attendance correction, an
 evaluation amendment or void, or a late evaluation changes the result on the
-next read. Certificates and PDFs are out of scope. The web consumer is M5-18b
-(#323).
+next read. Certificates and PDFs are out of scope. The web consumer is the
+cohort page (`/courses/cohorts/:cohortId`, M5-18b, #323): the roster for
+`evaluation.manage` holders and the cohort's tutor, the family's own sections
+for students and guardians, no request for anyone else, and nothing shown on a
+`403` or `404`.
 
 `GET /api/v1/cohorts/{cohort_id}/completion`:
 

@@ -48,12 +48,12 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55; and `demo.student`, #313 G3, the one login reserved
  * for it; the #76 attendance, #77 closeout, #78 review, #305
- * resubmission and #322 progress steps reuse the contexts and the shared
- * Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
+ * resubmission, #322 progress and #323 course completion steps reuse the
+ * contexts and the shared Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
  * Owner session: 0) = 49 attempts,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example
- * courses/cohorts.spec.ts, #243). Keep the total well under both limits;
+ * courses/cohorts.spec.ts, #243 and #323). Keep the total well under both limits;
  * never add a setting that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20

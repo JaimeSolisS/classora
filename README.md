@@ -302,6 +302,11 @@ unless a bullet says otherwise.
   take, read-only (Groups and My courses): tutors see their students' names
   and the sessions they teach, families only their own children's sessions.
   A guardian of an adult student sees them only with that student's consent.
+- On a cohort's page, staff and the cohort's tutor see each enrolled
+  student's progress against the course's completion criteria (attendance,
+  required modules and required assessments) and whether they completed it,
+  computed live from the cohort's syllabus; students and guardians see the
+  same for their own enrolled students.
 
 **Approvals**
 
@@ -346,8 +351,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** course completion, billing and payments, payroll, reporting and
-analytics, and deployment. See the
+**Not built yet:** billing and payments, payroll, reporting and analytics,
+and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

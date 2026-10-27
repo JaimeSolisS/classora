@@ -2523,7 +2523,76 @@
           "notFound": "This enrollment no longer exists. The list was reloaded."
         }
       },
-      "myTitle": "My courses"
+      "myTitle": "My courses",
+      "completion": {
+        "heading": "Course completion",
+        "caption": "Each enrolled student's progress against the completion criteria",
+        "myHeading": "My progress",
+        "studentHeading": "{{name}}'s progress",
+        "context": "Results are final for each student once the course has ended and all its classes are closed out.",
+        "empty": "No students are enrolled.",
+        "detailsFor": "Details for {{name}}",
+        "noneRequired": "None required",
+        "assessmentsCount": "{{done}} of {{required}} required passed",
+        "modulesCount": "{{done}} of {{required}} required",
+        "awaiting_one": "{{count}} awaiting closeout",
+        "awaiting_other": "{{count}} awaiting closeout",
+        "criteria": {
+          "attendance": "Minimum attendance {{percent}} %",
+          "modules": "Required modules: {{titles}}",
+          "assessments": "Required assessments: {{items}}",
+          "assessmentMinimum": "{{title}} (minimum {{percent}} %)",
+          "none": "No completion criteria. Every enrolled student completes the course when it ends."
+        },
+        "columns": {
+          "student": "Student",
+          "status": "Status",
+          "attendance": "Attendance",
+          "assessments": "Assessments",
+          "modules": "Modules"
+        },
+        "status": {
+          "in_progress": "In progress",
+          "completed": "Completed",
+          "not_completed": "Not completed"
+        },
+        "criterion": {
+          "met": "Met",
+          "not_met": "Not met",
+          "pending": "Pending",
+          "not_required": "Not required"
+        },
+        "outcome": {
+          "passed": "Passed",
+          "failed": "Failed",
+          "not_evaluated": "Not evaluated"
+        },
+        "attendance": {
+          "ofHeld": "{{attended}} of {{held}}",
+          "percent": "({{percent}} %)"
+        },
+        "detail": {
+          "attendance": "Attendance",
+          "assessments": "Assessments",
+          "modules": "Required modules",
+          "attended_one": "{{attended}} of {{count}} class attended",
+          "attended_other": "{{attended}} of {{count}} classes attended",
+          "absent_one": "{{count}} absent",
+          "absent_other": "{{count}} absent",
+          "remaining_one": "{{count}} still to come",
+          "remaining_other": "{{count}} still to come",
+          "minimum": "Minimum {{percent}} %",
+          "required": "Required",
+          "score": "{{percent}} %",
+          "evaluatedOn": "Evaluated on {{date}}",
+          "attempts_one": "{{count}} attempt",
+          "attempts_other": "{{count}} attempts",
+          "noAssessments": "No assessments.",
+          "noModules": "No required modules.",
+          "courseCovered": "Covered by the course",
+          "courseCoveredHelp": "This module has no required assessment; it counts as met when the course ends."
+        }
+      }
     }
   },
   "offers": {

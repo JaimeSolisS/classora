@@ -26,10 +26,16 @@ import { createSubjectViaApi } from '../support/tutors';
 // (the cohort is full, "Whole cohort") → "Override and enroll" with a
 // reason → "Overridden"; withdraw Uno with a reason; "Show withdrawn" lists
 // it with the reason. Axe on the panel and the dialogs. Never demo
-// students.
+// students. Course completion (#323), in the same test: its template adds
+// a minimum attendance of 80 % and a required whole-course "Examen final"
+// (minimum 70), so after the withdrawal the "Acreditación del curso"
+// section lists Dos only ("En curso", 0 of 0, 0 of 1 required assessments
+// passed, 0 of 1 required modules) and its disclosure shows the exam
+// (required, not evaluated) and "Introducción" pending (axe with it open).
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
-// no registration (API calls with the shared Owner session). A Tuesday at
+// no registration (API calls with the shared Owner session; #323 adds
+// none). A Tuesday at
 // 10:00 is inside the seeded opening hours and beyond the notice window,
 // never a Sunday (the #249 data rule); no tutor and no room, so no tutor or
 // room check applies. It never changes the zone, the policies or the
@@ -39,6 +45,8 @@ const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const cohorts = common.courses.cohorts;
+/** The enrollment test's required whole-course assessment (#323). */
+const FINAL_EXAM = 'Examen final';
 const templates = common.courses.templates;
 // Chromium logs every 4xx resource as a console error: the expected 409.
 const EXPECTED_RESOURCE_ERROR =
@@ -84,10 +92,22 @@ async function csrf(page: Page): Promise<string> {
   return csrfTokenOf(me);
 }
 
+/** The completion criteria the enrollment test adds (#323). */
+type TemplateCompletion = {
+  min_attendance_percent: number;
+  assessments: {
+    title: string;
+    module_index: number | null;
+    is_required: boolean;
+    min_score_percent: number | null;
+  }[];
+};
+
 async function createTemplateViaApi(
   page: Page,
   name: string,
   subjectId: string,
+  completion?: TemplateCompletion,
 ): Promise<string> {
   const created = await api(page, '/api/v1/course-templates', {
     method: 'POST',
@@ -101,6 +121,7 @@ async function createTemplateViaApi(
         { title: 'Introducción', is_required: true },
         { title: 'Cierre', is_required: false },
       ],
+      ...completion,
     },
   });
   expect(created.status).toBe(201);
@@ -340,6 +361,17 @@ test('an Owner enrolls over the maximum with an override, then withdraws', async
     page,
     `Curso inscripción ${suffix}`,
     subjectId,
+    {
+      min_attendance_percent: 80,
+      assessments: [
+        {
+          title: FINAL_EXAM,
+          module_index: null,
+          is_required: true,
+          min_score_percent: 70,
+        },
+      ],
+    },
   );
   const cohortId = await createCohortViaApi(page, {
     name: cohortName,
@@ -473,6 +505,47 @@ test('an Owner enrolls over the maximum with an override, then withdraws', async
   await expect(
     withdrawn.getByRole('row').filter({ hasText: first }),
   ).toContainText('Cambió de horario escolar.');
+  await expectNoAxeViolations(page);
+
+  // 5. Course completion (#323): only the active student, nothing held or
+  // evaluated yet; the disclosure shows the required final exam and the
+  // required module, still pending.
+  const completion = cohorts.completion;
+  const section = main.getByRole('region', { name: completion.heading });
+  const secondRow = section.getByRole('row').filter({
+    has: page.getByRole('button', {
+      name: fill(completion.detailsFor, { name: second }),
+    }),
+  });
+  await expect(secondRow).toContainText(completion.status.in_progress);
+  await expect(secondRow).toContainText(
+    fill(completion.attendance.ofHeld, { attended: 0, held: 0 }),
+  );
+  await expect(secondRow).toContainText(
+    fill(completion.assessmentsCount, { done: 0, required: 1 }),
+  );
+  await expect(secondRow).toContainText(
+    fill(completion.modulesCount, { done: 0, required: 1 }),
+  );
+  await expect(
+    section.getByRole('button', {
+      name: fill(completion.detailsFor, { name: first }),
+    }),
+  ).toHaveCount(0);
+  const toggle = section.getByRole('button', {
+    name: fill(completion.detailsFor, { name: second }),
+  });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const detail = page.locator(
+    `[id="${await toggle.getAttribute('aria-controls')}"]`,
+  );
+  const exam = detail.getByRole('listitem').filter({ hasText: FINAL_EXAM });
+  await expect(exam).toContainText(completion.detail.required);
+  await expect(exam).toContainText(completion.outcome.not_evaluated);
+  await expect(
+    detail.getByRole('listitem').filter({ hasText: 'Introducción' }),
+  ).toContainText(completion.criterion.pending);
   await expectNoAxeViolations(page);
 
   expect(await cspViolations(page)).toEqual([]);

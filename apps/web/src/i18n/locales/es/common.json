@@ -2564,7 +2564,81 @@
           "notFound": "Esta inscripción ya no existe. La lista se volvió a cargar."
         }
       },
-      "myTitle": "Mis cursos"
+      "myTitle": "Mis cursos",
+      "completion": {
+        "heading": "Acreditación del curso",
+        "caption": "Avance de cada estudiante inscrito frente a los criterios de acreditación",
+        "myHeading": "Mi progreso",
+        "studentHeading": "Progreso de {{name}}",
+        "context": "Los resultados de cada estudiante son definitivos cuando el curso termina y todas sus clases están cerradas.",
+        "empty": "No hay estudiantes inscritos.",
+        "detailsFor": "Detalles de {{name}}",
+        "noneRequired": "Ninguno requerido",
+        "assessmentsCount": "{{done}} de {{required}} requeridas aprobadas",
+        "modulesCount": "{{done}} de {{required}} requeridos",
+        "awaiting_one": "{{count}} pendiente de cierre",
+        "awaiting_many": "{{count}} pendientes de cierre",
+        "awaiting_other": "{{count}} pendientes de cierre",
+        "criteria": {
+          "attendance": "Asistencia mínima {{percent}} %",
+          "modules": "Módulos requeridos: {{titles}}",
+          "assessments": "Evaluaciones requeridas: {{items}}",
+          "assessmentMinimum": "{{title}} (mínimo {{percent}} %)",
+          "none": "Sin criterios de acreditación. Cada estudiante inscrito acredita el curso cuando termina."
+        },
+        "columns": {
+          "student": "Estudiante",
+          "status": "Estado",
+          "attendance": "Asistencia",
+          "assessments": "Evaluaciones",
+          "modules": "Módulos"
+        },
+        "status": {
+          "in_progress": "En curso",
+          "completed": "Acreditado",
+          "not_completed": "No acreditado"
+        },
+        "criterion": {
+          "met": "Cumplido",
+          "not_met": "No cumplido",
+          "pending": "Pendiente",
+          "not_required": "No requerido"
+        },
+        "outcome": {
+          "passed": "Aprobada",
+          "failed": "Reprobada",
+          "not_evaluated": "Sin evaluar"
+        },
+        "attendance": {
+          "ofHeld": "{{attended}} de {{held}}",
+          "percent": "({{percent}} %)"
+        },
+        "detail": {
+          "attendance": "Asistencia",
+          "assessments": "Evaluaciones",
+          "modules": "Módulos requeridos",
+          "attended_one": "{{attended}} de {{count}} clase con asistencia",
+          "attended_many": "{{attended}} de {{count}} clases con asistencia",
+          "attended_other": "{{attended}} de {{count}} clases con asistencia",
+          "absent_one": "{{count}} falta",
+          "absent_many": "{{count}} faltas",
+          "absent_other": "{{count}} faltas",
+          "remaining_one": "{{count}} por venir",
+          "remaining_many": "{{count}} por venir",
+          "remaining_other": "{{count}} por venir",
+          "minimum": "Mínimo {{percent}} %",
+          "required": "Obligatoria",
+          "score": "{{percent}} %",
+          "evaluatedOn": "Evaluada el {{date}}",
+          "attempts_one": "{{count}} intento",
+          "attempts_many": "{{count}} intentos",
+          "attempts_other": "{{count}} intentos",
+          "noAssessments": "Sin evaluaciones.",
+          "noModules": "Sin módulos requeridos.",
+          "courseCovered": "Cubierto por el curso",
+          "courseCoveredHelp": "Este módulo no tiene evaluación requerida; cuenta como cumplido cuando el curso termina."
+        }
+      }
     }
   },
   "offers": {
