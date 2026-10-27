@@ -6,12 +6,14 @@ from decimal import Decimal
 import factory
 import pytest
 
+from app.core.money import Money
 from tests.factories.base import (
     RESERVED_EMAIL_DOMAINS,
     ClassoraFactory,
     FactoryCreateError,
     get_faker,
     money,
+    money_value,
     reseed,
 )
 from tests.integration.samples import SampleProfileFactory
@@ -108,6 +110,46 @@ def test_money_bounds_and_scale():
         amount = money("0.00", "0.00")
 
     assert repr(PriceFactory.build().amount) == "Decimal('0.00')"
+
+
+class Charge:
+    def __init__(self, amount: Money) -> None:
+        self.amount = amount
+
+
+def test_money_value_is_money_within_bounds():
+    class ChargeFactory(ClassoraFactory):
+        class Meta:
+            model = Charge
+
+        amount = money_value("-1.50", "2.25")
+
+    reseed(87)
+    amounts = [ChargeFactory.build().amount for _ in range(300)]
+    assert all(type(amount) is Money for amount in amounts)
+    assert all(Money("-1.50") <= amount <= Money("2.25") for amount in amounts)
+    assert Money("-1.50") in amounts or Money("2.25") in amounts  # bounds reachable
+    reseed(87)
+    assert [ChargeFactory.build().amount for _ in range(300)] == amounts
+
+
+def test_money_value_single_point_and_default_range():
+    class ChargeFactory(ClassoraFactory):
+        class Meta:
+            model = Charge
+
+        amount = money_value("12.34", "12.34")
+
+    assert repr(ChargeFactory.build().amount) == "Money('12.34')"
+
+    class DefaultFactory(ClassoraFactory):
+        class Meta:
+            model = Charge
+
+        amount = money_value()
+
+    amount = DefaultFactory.build().amount
+    assert Money.zero() <= amount <= Money("9999.99")
 
 
 def vars_of(instance: object) -> dict[str, object]:

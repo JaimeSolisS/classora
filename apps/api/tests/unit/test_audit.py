@@ -18,6 +18,7 @@ from app.core.audit import (
     to_json_value,
 )
 from app.core.logging import request_id_var
+from app.core.money import Money
 
 # --- C3: JSON values ----------------------------------------------------------
 
@@ -60,6 +61,12 @@ ID = uuid.UUID("0199a000-0000-7000-8000-000000000001")
         (Level.HIGH, 3),
         ([1, "a", None, ID], [1, "a", None, str(ID)]),
         ({"a": {"b": [Decimal("2.50")]}}, {"a": {"b": ["2.50"]}}),
+        # Money (M6-02 E3): the two-place string, also inside lists and dicts.
+        (Money("1250.00"), "1250.00"),
+        (Money("-3.5"), "-3.50"),
+        (Money("-0"), "0.00"),
+        ([Money("1"), None], ["1.00", None]),
+        ({"a": {"b": [Money("2.5")]}}, {"a": {"b": ["2.50"]}}),
     ],
 )
 def test_supported_values(value, expected):

@@ -19,6 +19,7 @@ from app.core.models import (
     StandardColumns,
     VersionedMixin,
 )
+from app.core.money import Money, MoneyType
 
 
 class TestBase(DeclarativeBase):
@@ -101,3 +102,12 @@ class AuditedThing(Audited, SoftDeleteMixin, VersionedMixin, StandardColumns, Te
     )
     api_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     pin_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MoneyThing(Audited, StandardColumns, TestBase):
+    """The money mapping tests' model (M6-02 E2, E3): ``MoneyType`` columns."""
+
+    __tablename__ = "money_things"
+
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    refund: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)

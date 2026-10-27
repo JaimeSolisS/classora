@@ -32,7 +32,8 @@ Privacy (architecture ISSUE-I7, spec §16)
 
 Types (ADR-0004)
     - Money: a ``Decimal`` with exactly 2 places (``Decimal("1250.00")``),
-      never built from a ``float``: use :func:`money`.
+      never built from a ``float``: use :func:`money`. Billing models take a
+      :class:`~app.core.money.Money` (M6-02): use :func:`money_value`.
     - Calendar values: ``datetime.date``: use :func:`calendar_date`.
     - Instants: timezone-aware UTC ``datetime``: use :func:`instant`.
 """
@@ -49,6 +50,8 @@ import faker
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+
+from app.core.money import Money
 
 LOCALE = "es_MX"
 RESERVED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
@@ -154,6 +157,22 @@ def money(low: str = "0.00", high: str = "9999.99") -> factory.LazyFunction:
 
     def _amount() -> Decimal:
         return Decimal(factory.random.randgen.randint(low_cents, high_cents)).scaleb(-2)
+
+    return factory.LazyFunction(_amount)
+
+
+def money_value(low: str = "0.00", high: str = "9999.99") -> factory.LazyFunction:
+    """A :class:`~app.core.money.Money` in ``[low, high]`` (M6-02 F3).
+
+    Built from an integer number of centavos drawn from the factory seed,
+    never from a ``float``.
+    """
+    low_cents = int(Money(low).amount.scaleb(2))
+    high_cents = int(Money(high).amount.scaleb(2))
+
+    def _amount() -> Money:
+        cents = factory.random.randgen.randint(low_cents, high_cents)
+        return Money(Decimal(cents).scaleb(-2))
 
     return factory.LazyFunction(_amount)
 

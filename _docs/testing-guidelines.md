@@ -87,7 +87,8 @@ threshold is enforced.
   with the reference seeds applied (`seeded_url`). Every factory user shares one
   precomputed Argon2id hash of the test-only `TEST_USER_PASSWORD`.
 - Types follow ADR-0004: money is a `Decimal` with exactly 2 places
-  (`money()`), never built from a `float`; calendar values are `date`
+  (`money()`), never built from a `float`; billing tests use `Money`
+  (`app/core/money.py`) through `money_value()`; calendar values are `date`
   (`calendar_date()`); instants are timezone-aware UTC `datetime` (`instant()`).
 
 ### Reference seeds and demo data
