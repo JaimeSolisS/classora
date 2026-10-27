@@ -256,10 +256,12 @@ async def dashboard_plans(
     return [(plan, "" if name is None else str(name)) for plan, name in rows]
 
 
-def plan_counts(milestones: Iterable[MilestoneFact], today: date) -> PlanCounts:
+def plan_counts(
+    milestones: Iterable[MilestoneFact], today: date, *, plan_status: str
+) -> PlanCounts:
     """#81: the progress percentage (whole number), the objectives whose
     milestones are all done, and the done and overdue milestones (at the
-    center's ``today``)."""
+    center's ``today``; none once the plan is closed, #332)."""
     facts = list(milestones)
     by_objective: dict[uuid.UUID, list[str]] = defaultdict(list)
     for fact in facts:
@@ -278,6 +280,8 @@ def plan_counts(milestones: Iterable[MilestoneFact], today: date) -> PlanCounts:
         milestones_overdue=sum(
             1
             for f in facts
-            if learning_plan_rules.is_overdue(f.status, f.due_on, today)
+            if learning_plan_rules.is_overdue(
+                f.status, f.due_on, today, plan_status=plan_status
+            )
         ),
     )

@@ -33963,7 +33963,8 @@
           },
           "overdue": {
             "type": "boolean",
-            "title": "Overdue"
+            "title": "Overdue",
+            "description": "Not done and due before the center's today; always false once the plan is completed or discontinued."
           },
           "completed_at": {
             "anyOf": [
@@ -34323,7 +34324,7 @@
           "overdue_milestones": {
             "type": "integer",
             "title": "Overdue Milestones",
-            "description": "Milestones not done whose due date is before the center's today."
+            "description": "Milestones not done whose due date is before the center's today; always 0 once the plan is completed or discontinued."
           },
           "updated_at": {
             "type": "string",
@@ -34461,7 +34462,7 @@
           "overdue_milestones": {
             "type": "integer",
             "title": "Overdue Milestones",
-            "description": "Milestones not done whose due date is before the center's today."
+            "description": "Milestones not done whose due date is before the center's today; always 0 once the plan is completed or discontinued."
           },
           "updated_at": {
             "type": "string",
@@ -36551,7 +36552,8 @@
           },
           "milestones_overdue": {
             "type": "integer",
-            "title": "Milestones Overdue"
+            "title": "Milestones Overdue",
+            "description": "Milestones not done whose due date is before the center's today; always 0 for a completed plan."
           },
           "target_on": {
             "anyOf": [
@@ -36610,7 +36612,8 @@
           },
           "milestones_overdue": {
             "type": "integer",
-            "title": "Milestones Overdue"
+            "title": "Milestones Overdue",
+            "description": "The overdue milestones of the listed plans; completed plans count 0, so this is the active plans' sum."
           },
           "items": {
             "items": {

@@ -307,7 +307,9 @@ def _summary_fields(
         ),
         "objectives_total": len(by_objective),
         "overdue_milestones": sum(
-            1 for _, status, due_on in facts if rules.is_overdue(status, due_on, today)
+            1
+            for _, status, due_on in facts
+            if rules.is_overdue(status, due_on, today, plan_status=plan.status)
         ),
         "updated_at": plan.updated_at,
     }
@@ -372,7 +374,9 @@ async def _view(
                         activities=m.activities,
                         due_on=m.due_on,
                         status=cast(MilestoneStatus, m.status),
-                        overdue=rules.is_overdue(m.status, m.due_on, today),
+                        overdue=rules.is_overdue(
+                            m.status, m.due_on, today, plan_status=plan.status
+                        ),
                         completed_at=m.completed_at,
                         completed_by=(
                             None

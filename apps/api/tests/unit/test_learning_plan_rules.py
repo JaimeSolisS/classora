@@ -74,8 +74,26 @@ def test_progress(statuses, expected):
         ("done", None, False),
     ],
 )
-def test_is_overdue(status, due_on, expected):
-    assert rules.is_overdue(status, due_on, TODAY) is expected
+@pytest.mark.parametrize("plan_status", ["draft", "active"])
+def test_is_overdue(status, due_on, expected, plan_status):
+    assert rules.is_overdue(status, due_on, TODAY, plan_status=plan_status) is expected
+
+
+@pytest.mark.parametrize(
+    ("status", "due_on"),
+    [
+        ("pending", date(2031, 3, 4)),
+        ("in_progress", date(2031, 3, 4)),
+        ("in_progress", date(2000, 1, 1)),
+        ("done", date(2031, 3, 4)),
+        ("pending", TODAY),
+        ("pending", None),
+    ],
+)
+@pytest.mark.parametrize("plan_status", ["completed", "discontinued"])
+def test_a_closed_plan_has_no_overdue_milestone(status, due_on, plan_status):
+    # #332: once completed or discontinued, nothing counts as overdue.
+    assert rules.is_overdue(status, due_on, TODAY, plan_status=plan_status) is False
 
 
 @pytest.mark.parametrize(

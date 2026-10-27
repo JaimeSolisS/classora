@@ -196,7 +196,8 @@ class LearningPlanSummary(_Closed):
     )
     objectives_total: int
     overdue_milestones: int = Field(
-        description="Milestones not done whose due date is before the center's today."
+        description="Milestones not done whose due date is before the center's"
+        " today; always 0 once the plan is completed or discontinued."
     )
     updated_at: datetime
 
@@ -209,7 +210,10 @@ class LearningPlanMilestoneView(_Closed):
     activities: str | None
     due_on: date | None
     status: MilestoneStatus
-    overdue: bool
+    overdue: bool = Field(
+        description="Not done and due before the center's today; always false"
+        " once the plan is completed or discontinued."
+    )
     completed_at: datetime | None
     completed_by: LearningPlanPerson | None
 

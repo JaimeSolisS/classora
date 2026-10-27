@@ -3,6 +3,7 @@
 ``academics.progress_aggregates``) and the closed view allow-lists."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from itertools import product
@@ -244,12 +245,16 @@ def test_the_plan_counts():
         MilestoneFact(plan, two, "in_progress", today),  # due today: not overdue
         MilestoneFact(plan, two, "done", date(2031, 1, 1)),  # done: never overdue
     ]
-    counts = plan_counts(facts, today)
+    counts = plan_counts(facts, today, plan_status="active")
     assert counts.progress_percent == Decimal(60)
     assert (counts.milestones_done, counts.milestones_total) == (3, 5)
     assert (counts.objectives_complete, counts.objectives_total) == (1, 2)
     assert counts.milestones_overdue == 1
-    empty = plan_counts([], today)
+    # #332: a completed plan counts no overdue milestone; the rest is the same.
+    closed = plan_counts(facts, today, plan_status="completed")
+    assert closed.milestones_overdue == 0
+    assert replace(closed, milestones_overdue=1) == counts
+    empty = plan_counts([], today, plan_status="active")
     assert (empty.progress_percent, empty.objectives_total) == (Decimal(0), 0)
 
 

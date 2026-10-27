@@ -186,19 +186,33 @@ export const FAMILY_FLAGGED: LearningPlan = {
   can_update_progress: true,
 };
 
-export const COMPLETED_PLAN: LearningPlan = {
-  ...ACTIVE_PLAN,
-  ...NO_FLAGS,
-  status: 'completed',
-  closed_at: '2026-11-20T18:00:00Z',
-};
+/** The active plan once closed: a completed or discontinued plan has no
+ * overdue milestone (#332), whatever its milestones' status and due dates. */
+function closed(
+  status: 'completed' | 'discontinued',
+  closed_at: string,
+): LearningPlan {
+  return withTotals({
+    ...ACTIVE_PLAN,
+    ...NO_FLAGS,
+    status,
+    closed_at,
+    objectives: ACTIVE_PLAN.objectives.map((o) => ({
+      ...o,
+      milestones: o.milestones.map((m) => ({ ...m, overdue: false })),
+    })),
+  });
+}
 
-export const DISCONTINUED_PLAN: LearningPlan = {
-  ...ACTIVE_PLAN,
-  ...NO_FLAGS,
-  status: 'discontinued',
-  closed_at: '2026-11-21T18:00:00Z',
-};
+export const COMPLETED_PLAN: LearningPlan = closed(
+  'completed',
+  '2026-11-20T18:00:00Z',
+);
+
+export const DISCONTINUED_PLAN: LearningPlan = closed(
+  'discontinued',
+  '2026-11-21T18:00:00Z',
+);
 
 /** An active plan whose milestones are all done (Complete shows no count). */
 export const ALL_DONE_PLAN: LearningPlan = withTotals({

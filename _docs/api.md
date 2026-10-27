@@ -4872,7 +4872,8 @@ plan, `{done, total, percent}` with `percent` = done / total × 100 rounded
 half-up to a whole number, a JSON **string** (`"33"`). An objective is
 `complete` when all its milestones are `done` (`objectives_complete`); a
 milestone is `overdue` when it isn't `done` and its `due_on` is before the
-center's today (`overdue_milestones`).
+center's today (`overdue_milestones`), while the plan is `draft` or
+`active`: a `completed` or `discontinued` plan has none (#332).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -5508,7 +5509,8 @@ zero denominator; plan progress is a whole number such as `"67"`):
 - **Learning plans:** the student's live `active` and `completed` plans, not
   range-filtered (subject-filtered), with the #81 progress, the objectives
   whose milestones are all done, and the milestones overdue at the center's
-  today.
+  today (a `completed` plan has none, #332, so `plans.milestones_overdue`
+  sums the active plans).
 - **Range:** `to` defaults to the center's today, `from` to the first day of
   the month 11 months before `to`'s month (12 calendar months). `from` after
   `to` or before 2000-01-01 is `range_invalid` (on `from`), `to` after today
