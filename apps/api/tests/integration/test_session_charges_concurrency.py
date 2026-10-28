@@ -75,8 +75,8 @@ async def _writer_first(
     meanwhile: Callable[[], Awaitable[None]] | None = None,
 ) -> tuple[session_charges.ItemOutcome, float, float]:
     """A locks the session, runs ``change`` and holds; B's step starts once
-    A holds the lock. Returns B's outcome, when A committed and when B
-    finished (monotonic seconds)."""
+    A holds the lock. Returns B's outcome, when A started its commit and
+    when B finished (monotonic seconds)."""
     engine = short_lived_engine(url)
     holding = asyncio.Event()
     committed_at = 0.0
@@ -91,7 +91,9 @@ async def _writer_first(
                 await asyncio.sleep(HOLD_SECONDS)
                 if meanwhile is not None:
                     await meanwhile()
-            committed_at = time.monotonic()
+                # Taken just before the commit (the block's exit): B can't
+                # get the lock before it, so B always finishes later.
+                committed_at = time.monotonic()
         finally:
             holding.set()
 
@@ -169,8 +171,8 @@ def test_billing_turned_off_while_waiting_posts_nothing(module_seeded_url, attem
 
 async def _step_first(url: str, it: Item) -> tuple[float, float]:
     """B's step holds the session ``FOR SHARE`` (after posting, before its
-    commit); A then cancels. Returns when B committed and when A's cancel
-    finished."""
+    commit); A then cancels. Returns when B started its commit and when A's
+    cancel finished."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
     holding = asyncio.Event()
     committed_at = 0.0
@@ -185,7 +187,9 @@ async def _step_first(url: str, it: Item) -> tuple[float, float]:
                 assert outcome == "posted"
                 holding.set()
                 await asyncio.sleep(HOLD_SECONDS)
-            committed_at = time.monotonic()
+                # Taken just before the commit (the block's exit): A's cancel
+                # can't get the lock before it, so it always finishes later.
+                committed_at = time.monotonic()
         finally:
             holding.set()
 
