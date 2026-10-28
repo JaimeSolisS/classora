@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -215,6 +215,12 @@ Codes in use today:
 | `period_invalid` / `period_in_future` | 422 | A progress report period that isn't a Monday-Sunday week, a calendar month or an on-demand period of at most 366 days (on `period_start` or `period_end`), or that starts after the center's today. |
 | `progress_report_schedule_exists` | 409 | Adding or reactivating a report schedule when the tutor already has an active one of that cadence for the student and subject; `details.schedule_id` names it (see Report schedules). |
 | `schedule_author_invalid` / `schedule_subject_not_assigned` / `schedule_starts_on_invalid` | 422 | A report schedule's tutor isn't an active tutor who currently teaches the student; its subject isn't one they teach the student; its first period is before the current one, not a Monday / the 1st, or more than a year ahead. Field errors at `body.author_user_id`, `body.subject_id`, `body.starts_on` on the add; top-level codes on a reactivation (as are `student_inactive` and `subject_unknown` there). |
+| `service_price_exists` | 409 | `POST /api/v1/billing/service-prices` with a key (class type, pricing model, subject, level, duration, cohort or group) that another price already has, `NULL`s included; `details.service_price_id` is its id (see Price catalog). |
+| `price_effective_from_invalid` | 422 | A new version of a price that has versions starts before the center's local today or not after the latest version; the field error is on `["body","effective_from"]` (see Price catalog). |
+| `price_version_in_effect` | 409 | Deleting a price version that is in effect or in the past; only upcoming versions can be deleted (see Price catalog). |
+| `price_version_in_use` | 409 | Deleting a price version that a charge or a package uses (the `price_versions` guard, from M6-05/M6-09 on; see Price catalog). |
+| `pricing_model_not_allowed` / `scope_not_allowed` / `scope_conflict` / `level_not_allowed` / `duration_not_allowed` / `duration_out_of_range` / `amount_negative` / `date_out_of_range` | 422 | Field codes of a price catalog body (see Price catalog). |
+| `subject_unknown` / `subject_inactive` / `education_level_unknown` / `education_level_inactive` / `cohort_unknown` / `group_unknown` / `scope_subject_mismatch` | 422 | Reference field codes of `POST /api/v1/billing/service-prices`, all in one response (see Price catalog). |
 | `range_in_future` / `range_too_long` | 422 | A progress dashboard range whose `to` is after the center's today (on `["query","to"]`) or that covers more than 24 calendar months (on `["query","from"]`); with `range_invalid` (`from` after `to` or before 2000-01-01) and `subject_unknown` (on `["query","subject_id"]`) as `validation_error` field errors (see Progress dashboard). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
@@ -5886,6 +5892,118 @@ a cohort's syllabus through the cohort (#65, #67). No reauthentication.
   without a `course_templates` event (`version` and `updated_at` are never
   audited, #22). `403`, `404`, `409`, `422` and a document that changes
   nothing write no event.
+
+### Price catalog
+
+Implemented by M6-04 (#89; spec §6 pricing, §16; ADR-0006 "Price
+catalog"; owner-delegated decisions E1-E7 (a)) in the new
+`apps/api/app/modules/billing/` module (`models.py`, `schemas.py`,
+`prices.py`, `pricing.py`, `errors.py`, `service.py`); the routes and the
+cross-module names are in `app/workflows/price_catalog_router.py` and
+`app/workflows/price_catalog.py`. Tables: `_docs/data-model.md` §3.4, §3.5.
+The web page is M6-04b (#363).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/service-prices` | `require("billing.manage")` | Offset pagination; filters `class_type`, `pricing_model` (`per_session` or `full_course`), `subject_id` (unknown: an empty page). Items are `ServicePriceItem`. At most four statements per page, whatever its size. |
+| `POST /api/v1/billing/service-prices` | `require("billing.manage")` | Body `ServicePriceCreate`: the item and its first version in one transaction. `201` with `ServicePriceDetail`. |
+| `GET /api/v1/billing/service-prices/{service_price_id}` | `require("billing.manage")` | `ServicePriceDetail`. |
+| `POST /api/v1/billing/service-prices/{service_price_id}/versions` | `require("billing.manage")` | Body `PriceVersionCreate`. `201` with `ServicePriceDetail`. |
+| `DELETE /api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}` | `require("billing.manage")` | `204`. Upcoming versions only. |
+
+`billing.manage` is held by Owners, Administrators and Finance Staff; not
+delegable; seeded by M6-04. Academic Coordinators, tutors, students and
+guardians get `403`. No reauthentication and no `Idempotency-Key`: catalog
+rows are configuration, not ledger rows. There is no `PATCH` and no item
+`DELETE`: the key never changes, and a price is retired with a `null`
+version. Only `per_session` and `full_course` items are served: `package`
+prices come with their product (M6-09) and `per_period` prices with tuition
+plans (M6-08); those rows are never listed, and their ids are `404`.
+
+- **Shapes.** `PriceVersionItem`: `id`, `effective_from`, `amount` (Money or
+  `null` = not offered), `status` (`past`, `current` or `upcoming` against
+  the center's local today) and `created_at`. `ServicePriceItem`: `id`,
+  `class_type` (`individual`, `group`, `course`), `pricing_model`,
+  `subject {id, name, education_level_id, education_level_name}`,
+  `education_level {id, name} | null` (`null` = any level),
+  `duration_minutes | null` (any), `cohort {id, name} | null`,
+  `group {id, name} | null`, `current` (the version in effect today) and
+  `next` (the earliest upcoming one), `created_at`. `ServicePriceDetail`
+  adds `versions`, newest `effective_from` first.
+- **List order:** class type (individual, group, course); the subject's
+  level order, then level name; subject name; pricing model (per_session,
+  full_course); unscoped before scoped, then the cohort or group name; any
+  level first, then the level order; any duration first, then ascending;
+  `id`. Names compare case-insensitively.
+- **Create body** (`ServicePriceCreate`, unknown fields `422`):
+  `class_type`, `pricing_model`, `subject_id`, optional `cohort_id`,
+  `group_id`, `education_level_id`, `duration_minutes`, and the first
+  version's `effective_from` and `amount` (required, not `null`). Field
+  codes, all in one response: `pricing_model` other than `per_session` /
+  `full_course` (`literal_error`) or not allowed for the class type
+  (`pricing_model_not_allowed`: individual takes per_session; group
+  per_session or full_course; course full_course); a cohort only on
+  `course` and a group only on `group` (`scope_not_allowed`), never both
+  (`scope_conflict`); a scoped price has no level (`level_not_allowed`) and
+  no duration; a duration only on `per_session` (`duration_not_allowed`),
+  15 to 480 (`duration_out_of_range`); `effective_from` from 2000-01-01 to
+  2099-12-31 (`date_out_of_range`); `amount` as Money (`money_invalid`,
+  `money_precision`, `money_out_of_range`) and not negative
+  (`amount_negative`); `0.00` is a price.
+- **Create references** (after the body, all in one `422`):
+  `subject_unknown`, `subject_inactive` (the subject or its level is
+  inactive), `education_level_unknown`, `education_level_inactive`,
+  `cohort_unknown`, `group_unknown`, and `scope_subject_mismatch` when the
+  cohort's or group's subject is another one. The level is the
+  **student's** level, so any active level is accepted. Prices created
+  earlier keep working after a deactivation. Then `409
+  service_price_exists` (`details.service_price_id`) when the key exists,
+  `NULL` level and duration included (`UNIQUE NULLS NOT DISTINCT`, also for
+  two concurrent creates).
+- **Check order** of the writes: `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` → `422` (body) → `404`
+  → the rules below.
+- **Effective dates.** A version runs from its `effective_from` until the
+  next one's. An item's **first** version may start on any date, past
+  included, so a price entered late can bill the sessions that waited.
+  **Every later** version (`PriceVersionCreate`: `effective_from` and
+  `amount`, both required; `amount: null` = not offered from that date)
+  must start on or after the center's local today **and** after every
+  existing version (`422 price_effective_from_invalid`); a version equal to
+  the previous one is accepted. Versions are **never edited**: to change an
+  upcoming one, delete it and add another. Only an **upcoming** version
+  (`effective_from` after today) can be deleted (`409
+  price_version_in_effect`); one used by a charge or a package is `409
+  price_version_in_use` (the guard below). Deleting an item's only
+  (upcoming) version leaves it without versions, and its next version is a
+  first version again. Writers of one item are serialized by the item row
+  (`FOR UPDATE`). A new version never changes a posted charge: charges
+  store their `price_version_id` and amount (M6-05/M6-06).
+- **For other modules: `billing.service.lookup_price`**
+  `(session, *, class_type, pricing_model, subject_id, on,
+  education_level_id=None, duration_minutes=None, cohort_id=None,
+  group_id=None)` →
+  `PriceInEffect(service_price_id, price_version_id, effective_from,
+  amount, rank)` or `None`. `on` is a center-local date. Candidates with the
+  query's class type, pricing model and subject rank **0** (scoped to the
+  query's cohort or group), **1** (exact level and exact duration), **2**
+  (exact level, any duration), **3** (any level, exact duration), **4**
+  (any level, any duration); a `None` query level or duration matches only
+  the "any" items. The most specific candidate **with a version in effect
+  on `on`** decides (a candidate whose versions all start later is
+  skipped); if that version's amount is `null`, the result is `None` and
+  less specific items are **not** consulted. One statement, no lock, no
+  commit. `ValueError` for `package` (read through the product, M6-09),
+  for a cohort outside `course`, a group outside `group`, or both. The
+  custom student or family price (M6-10) is a step above this function.
+- **Guard** (`price_versions`): the trigger
+  `price_versions_no_referenced_change` refuses an `UPDATE` or `DELETE` of
+  a version for which `price_version_is_referenced(id)` is true (42501),
+  and `price_versions_no_truncate` refuses every `TRUNCATE`. The predicate
+  is `SELECT false` until M6-05 (charges) and M6-09 (packages) replace it.
+- **Audit:** automatic: a `create` event for the item and for each
+  version (the amount as its string, `"250.00"`), a `delete` event for a
+  deleted version. `4xx` responses write no event.
 
 ### Response headers
 

@@ -3853,6 +3853,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/service-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Service Prices
+         * @description The catalog prices with their current and next versions, by class
+         *     type (individual, group, course), the subject's level and name, the
+         *     pricing model, unscoped before scoped (then the cohort or group name),
+         *     any level first (then the level order), any duration first (then
+         *     ascending) and id. `package` and `per_period` prices are not listed.
+         */
+        get: operations["list_service_prices_api_v1_billing_service_prices_get"];
+        put?: never;
+        /**
+         * Create Service Price
+         * @description Create a catalog price and its first version, which may start on any
+         *     date (a price entered late can bill the sessions that waited).
+         */
+        post: operations["create_service_price_api_v1_billing_service_prices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/service-prices/{service_price_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Service Price
+         * @description A catalog price with all its versions, newest first.
+         */
+        get: operations["get_service_price_api_v1_billing_service_prices__service_price_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/service-prices/{service_price_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Price Version
+         * @description Add a version. Versions are never edited: to change an upcoming one,
+         *     delete it and add another.
+         */
+        post: operations["add_price_version_api_v1_billing_service_prices__service_price_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Price Version
+         * @description Delete an upcoming version.
+         */
+        delete: operations["delete_price_version_api_v1_billing_service_prices__service_price_id__versions__price_version_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -5482,6 +5572,8 @@ export interface components {
             education_level_name: string;
         };
         /** @enum {string} */
+        CatalogPricingModel: "per_session" | "full_course";
+        /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
         /** @enum {string} */
         ChangeClassification: "on_time" | "late" | "no_show" | "excused";
@@ -6804,6 +6896,8 @@ export interface components {
              */
             warnings: components["schemas"]["SchedulingWarning"][];
         };
+        /** @enum {string} */
+        ClassType: "individual" | "group" | "course";
         /**
          * ClassroomCreate
          * @description A new classroom (``POST /api/v1/classrooms``). It starts active;
@@ -11209,6 +11303,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[ServicePriceItem] */
+        OffsetPage_ServicePriceItem_: {
+            /** Items */
+            items: components["schemas"]["ServicePriceItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[SessionRequestItem] */
         OffsetPage_SessionRequestItem_: {
             /** Items */
@@ -11513,11 +11618,89 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
         PlanStatus: "draft" | "active" | "completed" | "discontinued";
+        /**
+         * PriceCatalogReference
+         * @description A level, cohort or group an item points at: its id and current
+         *     name.
+         */
+        PriceCatalogReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PriceCatalogSubject
+         * @description The item's subject, with its own level's name.
+         */
+        PriceCatalogSubject: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Education Level Id
+             * Format: uuid
+             */
+            education_level_id: string;
+            /** Education Level Name */
+            education_level_name: string;
+        };
+        /**
+         * PriceVersionCreate
+         * @description ``POST /api/v1/billing/service-prices/{id}/versions`` (#89 B5).
+         *     ``amount`` is required; an explicit ``null`` means "not offered from
+         *     this date".
+         */
+        PriceVersionCreate: {
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Amount */
+            amount: string | null;
+        };
+        /**
+         * PriceVersionItem
+         * @description One version (#89 B1). ``status`` is against the center's local
+         *     today: ``current`` is the version in effect, ``past`` an older one,
+         *     ``upcoming`` one that starts later. ``amount: null`` means "not
+         *     offered".
+         */
+        PriceVersionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Amount */
+            amount: string | null;
+            status: components["schemas"]["PriceVersionStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        PriceVersionStatus: "past" | "current" | "upcoming";
         /**
          * PrivacyNoticeAcceptanceRequest
          * @description The version the user read and accepts
@@ -12834,6 +13017,96 @@ export interface components {
             until: string | null;
             /** Count */
             count: number | null;
+        };
+        /**
+         * ServicePriceCreate
+         * @description ``POST /api/v1/billing/service-prices``: the item's key and its first
+         *     version (#89 B3). Fields are in rule order (see the module docstring).
+         */
+        ServicePriceCreate: {
+            class_type: components["schemas"]["ClassType"];
+            pricing_model: components["schemas"]["CatalogPricingModel"];
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Cohort Id */
+            cohort_id?: string | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Education Level Id */
+            education_level_id?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
+        /**
+         * ServicePriceDetail
+         * @description An item with all its versions, newest ``effective_from`` first.
+         */
+        ServicePriceDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            class_type: components["schemas"]["ClassType"];
+            pricing_model: components["schemas"]["CatalogPricingModel"];
+            subject: components["schemas"]["PriceCatalogSubject"];
+            education_level: components["schemas"]["PriceCatalogReference"] | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            cohort: components["schemas"]["PriceCatalogReference"] | null;
+            group: components["schemas"]["PriceCatalogReference"] | null;
+            current: components["schemas"]["PriceVersionItem"] | null;
+            next: components["schemas"]["PriceVersionItem"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Versions */
+            versions: components["schemas"]["PriceVersionItem"][];
+        };
+        /**
+         * ServicePriceItem
+         * @description One catalog item (#89 B1). ``education_level`` and
+         *     ``duration_minutes`` ``null`` mean "any"; ``cohort``/``group`` scope it.
+         *     ``current`` is the version in effect today (``amount: null`` = not
+         *     offered) and ``next`` the earliest upcoming one.
+         */
+        ServicePriceItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            class_type: components["schemas"]["ClassType"];
+            pricing_model: components["schemas"]["CatalogPricingModel"];
+            subject: components["schemas"]["PriceCatalogSubject"];
+            education_level: components["schemas"]["PriceCatalogReference"] | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            cohort: components["schemas"]["PriceCatalogReference"] | null;
+            group: components["schemas"]["PriceCatalogReference"] | null;
+            current: components["schemas"]["PriceVersionItem"] | null;
+            next: components["schemas"]["PriceVersionItem"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * SessionAttendance
@@ -28056,6 +28329,305 @@ export interface operations {
                 };
             };
             /** @description The enrollment changed since it was read (version_conflict), or it was already withdrawn (enrollment_not_active). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_service_prices_api_v1_billing_service_prices_get: {
+        parameters: {
+            query?: {
+                class_type?: components["schemas"]["ClassType"] | null;
+                pricing_model?: components["schemas"]["CatalogPricingModel"] | null;
+                subject_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ServicePriceItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_service_price_api_v1_billing_service_prices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePriceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePriceDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A price with the same class type, pricing model, subject, level, duration and scope exists (service_price_exists); `details.service_price_id` is its id. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_service_price_api_v1_billing_service_prices__service_price_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePriceDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such price (not_found); `package` and `per_period` prices are not served here. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_price_version_api_v1_billing_service_prices__service_price_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePriceDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such price (not_found); `package` and `per_period` prices are not served here. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_price_version_api_v1_billing_service_prices__service_price_id__versions__price_version_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_price_id: string;
+                price_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such price, or a version of another price (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use). */
             409: {
                 headers: {
                     [name: string]: unknown;

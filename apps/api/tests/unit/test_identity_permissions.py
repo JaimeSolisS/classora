@@ -88,6 +88,9 @@ EXPECTED = {
     # staff with academic approval authority (ISSUE-F7); no Finance, Tutor,
     # Student or Guardian (tutors write through the report record policy).
     "progress_report.review": {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR},
+    # Owner-delegated decision #89 E6 (a) (ADR-0006 E8): no Academic
+    # Coordinator, Tutor, Student or Guardian.
+    "billing.manage": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
 }
 
 
@@ -101,8 +104,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 35
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 90
+    assert len(PERMISSIONS) == 36
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 93
 
 
 def test_every_code_has_the_dotted_form():

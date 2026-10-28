@@ -42,7 +42,8 @@ cohort routes live in ``app.workflows.cohorts_router`` and call
 :func:`list_cohorts` and :func:`cohort_exists`, and the pure
 :func:`derive_occurrence_count` and :func:`cohort_status`. ``scheduling``
 calls :func:`lock_cohort` (the cohort row ``FOR UPDATE``, after the
-students and the zone, before the series) and :func:`cohort_names`. This
+students and the zone, before the series) and :func:`cohort_names`;
+``billing`` joins :func:`cohort_name_columns` (#89). This
 module never imports ``scheduling``.
 
 **Cohort enrollment** (#66, :mod:`~app.modules.courses.enrollment`): the
@@ -73,7 +74,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, or_, select, tuple_
+from sqlalchemy import ColumnElement, Select, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -966,6 +967,12 @@ async def lock_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortLock
     if cohort is None:
         return None
     return CohortLock(id=cohort.id, max_students=cohort.max_students)
+
+
+def cohort_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, name FROM course_cohorts``, **not executed** (#89 E7):
+    the price catalog joins it as a subquery (the #80 F2 pattern)."""
+    return select(CourseCohort.id, CourseCohort.name)
 
 
 async def cohort_names(

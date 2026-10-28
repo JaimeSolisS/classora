@@ -174,7 +174,9 @@ each returning the :class:`GroupEnrollmentChange` the
 receives; :func:`list_group_enrollment_periods` for the M6-07 sweeper; and
 the reads with the student record policy :func:`get_group`,
 :func:`list_groups`, :func:`list_group_sessions` and
-:func:`get_group_enrollment` (:mod:`~app.modules.scheduling.group_reads`).
+:func:`get_group_enrollment` (:mod:`~app.modules.scheduling.group_reads`),
+and for the price catalog (#89) :func:`group_subject_id` and
+:func:`group_name_columns`.
 The group row lock (:func:`lock_group`, :mod:`~app.modules.scheduling.
 group_lock`) comes after the students and the zone for every writer that
 changes a group occurrence's participants or room.
@@ -495,6 +497,10 @@ from app.modules.scheduling.group_reads import get_group as get_group
 from app.modules.scheduling.group_reads import (
     get_group_enrollment as get_group_enrollment,
 )
+from app.modules.scheduling.group_reads import (
+    group_name_columns as group_name_columns,
+)
+from app.modules.scheduling.group_reads import group_subject_id as group_subject_id
 from app.modules.scheduling.group_reads import (
     list_group_sessions as list_group_sessions,
 )

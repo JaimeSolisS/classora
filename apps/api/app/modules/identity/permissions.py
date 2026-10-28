@@ -139,6 +139,11 @@ ASSIGNMENT_REVIEW = "assignment.review"
 # report unless they hold the Owner role. Tutors write their reports through
 # the report record policy (academics/progress_report_rules.py).
 PROGRESS_REPORT_REVIEW = "progress_report.review"
+# Price catalog (#89, owner-delegated decision E6 (a); ADR-0006 E8): who reads
+# and manages the service price catalog (Owner, Administrator, Finance
+# Staff; not delegable). Seeded by #89, its first user; billing.view (#90)
+# and payment.record (#96) come with their own issues.
+BILLING_MANAGE = "billing.manage"
 
 
 @dataclass(frozen=True)
@@ -182,6 +187,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(LEARNING_PLAN_MANAGE),
     PermissionDef(ASSIGNMENT_REVIEW),
     PermissionDef(PROGRESS_REPORT_REVIEW),
+    PermissionDef(BILLING_MANAGE),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -229,6 +235,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 LEARNING_PLAN_MANAGE,
                 ASSIGNMENT_REVIEW,
                 PROGRESS_REPORT_REVIEW,
+                BILLING_MANAGE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -251,7 +258,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
             }
         ),
         FINANCE_STAFF: frozenset(
-            {STUDENT_VIEW, GUARDIAN_VIEW, SCHEDULE_VIEW, COURSE_VIEW}
+            {STUDENT_VIEW, GUARDIAN_VIEW, SCHEDULE_VIEW, COURSE_VIEW, BILLING_MANAGE}
         ),
         # Record policies limit these to assigned students, self and linked
         # children (#21, #33-#35), and tutor.view to the tutor's own profile

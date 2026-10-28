@@ -347,6 +347,50 @@ rate_limit = ["available_slots.user"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/service-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 E6 (a): reads need billing.manage too (no billing.view yet). No
+# reauthentication and no Idempotency-Key: catalog rows are configuration.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/service-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B3: the empty body is 422 for the allowed roles. The 201, 409 and the
+# field codes are in tests/integration/test_price_catalog.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/service-prices/{service_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B4: the placeholder id is no price: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/service-prices/{service_price_id}/versions"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B6: the placeholder ids are no price: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/business-settings"
 access = "authenticated"
 

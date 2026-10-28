@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, false, func, or_, select, tuple_
+from sqlalchemy import ColumnElement, Select, false, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -272,6 +272,24 @@ def _overridden() -> Any:
         .exists()
         .label("overridden")
     )
+
+
+def group_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, name FROM class_groups``, **not executed** (#89 E7):
+    the price catalog joins it as a subquery (the #80 F2 pattern)."""
+    return select(ClassGroup.id, ClassGroup.name)
+
+
+async def group_subject_id(
+    session: AsyncSession, group_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The subject of a group, or ``None`` for an unknown group (#89 B3:
+    a group-scoped price must name the group's subject). No record policy:
+    the caller holds a staff permission. One statement."""
+    found: uuid.UUID | None = await session.scalar(
+        select(ClassGroup.subject_id).where(ClassGroup.id == group_id)
+    )
+    return found
 
 
 async def get_group_enrollment(
