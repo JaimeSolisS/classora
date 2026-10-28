@@ -30,6 +30,7 @@ const THEMES = ['light', 'dark'] as const;
 // (#39 E2),
 // /settings (once its form loaded, #37 I2), /settings/scheduling-policies
 // (once its form loaded, #61 H2), /billing/prices (#363 F5),
+// /billing/unbilled and /billing/settings (#366 E4),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -120,6 +121,14 @@ const ROUTES: ScannedRoute[] = [
     signedIn: true,
     waitForField: common.billing.prices.fields.classType,
   },
+  // #366 E4: the Unbilled and Settings tabs (billing stays off here).
+  {
+    name: 'billing-unbilled',
+    path: '/billing/unbilled',
+    signedIn: true,
+    waitForField: common.billing.unbilled.filters.reason,
+  },
+  { name: 'billing-settings', path: '/billing/settings', signedIn: true },
   {
     name: 'catalog-level',
     path: '/catalog/education-levels',

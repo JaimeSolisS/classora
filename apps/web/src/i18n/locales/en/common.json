@@ -4516,7 +4516,9 @@
   "billing": {
     "tabs": {
       "label": "Billing sections",
-      "prices": "Prices"
+      "prices": "Prices",
+      "unbilled": "Unbilled",
+      "settings": "Settings"
     },
     "prices": {
       "title": "Prices",
@@ -4640,6 +4642,75 @@
       "notFoundHelp": "This price doesn't exist or is no longer available.",
       "detailTitle": "Price",
       "detailHeading": "{{service}}: {{subject}}"
+    },
+    "unbilled": {
+      "title": "Unbilled sessions",
+      "intro": "Confirmed and completed sessions since the billing start date that can't be charged, and why. Fix the cause and the session is charged.",
+      "delay": "New confirmations are billed within about 15 minutes.",
+      "filters": {
+        "label": "Unbilled session filters",
+        "reason": "Reason",
+        "all": "All"
+      },
+      "reasons": {
+        "no_billing_account": "Not in a family",
+        "no_price": "No price for this class"
+      },
+      "columns": {
+        "when": "Date and time",
+        "student": "Student",
+        "subject": "Subject",
+        "length": "Length",
+        "family": "Family",
+        "reason": "Reason",
+        "actions": "Actions"
+      },
+      "minutes": "{{minutes}} min",
+      "noFamily": "No family",
+      "fix": {
+        "family": "Open families",
+        "familyFor": "Open families to add {{student}} to one",
+        "price": "Open prices",
+        "priceFor": "Open prices to add one for {{subject}}"
+      },
+      "emptyOff": "Billing is off; nothing is charged yet.",
+      "openSettings": "Open billing settings",
+      "emptyOn": "Every confirmed session since {{date}} is billed.",
+      "emptyFiltered": "No unbilled sessions with this reason."
+    },
+    "settings": {
+      "title": "Billing settings",
+      "intro": "When billing starts charging the confirmed and completed sessions.",
+      "card": {
+        "title": "Billing start date",
+        "rules": "Sessions before the start date are never charged. Turning billing off stops new charges but never removes charges already posted."
+      },
+      "status": {
+        "off": "Billing is off.",
+        "on": "Billing charges sessions from {{date}}."
+      },
+      "change": "Change",
+      "dialog": {
+        "title": "Change billing",
+        "mode": "Billing",
+        "modes": {
+          "on": "Charge sessions from a date",
+          "off": "Turn billing off"
+        },
+        "offHelp": "No new charges are posted. Charges already posted stay.",
+        "startsOn": "Start date",
+        "dateHelp": "Sessions on or after this date, in the center's time zone, are charged.",
+        "pastWarning": "This date is in the past: confirmed and completed sessions from that date on will be charged."
+      },
+      "validation": {
+        "dateRequired": "Choose a date.",
+        "dateRange": "Choose a date from 2000 to 2099."
+      },
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "reload": "Reload",
+      "saved": "Billing settings saved."
     }
   }
 }

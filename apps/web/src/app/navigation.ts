@@ -1,6 +1,7 @@
 import type { ParseKeys } from 'i18next';
 import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
+import { BILLING_ACCESS } from '@/features/billing/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_COURSES_ACCESS } from '@/features/courses/cohorts/access';
@@ -57,14 +58,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     permission: 'catalog.manage',
   },
   { to: '/settings', labelKey: 'nav.settings', permission: 'settings.manage' },
-  // Billing (#363 A2): the price catalog for billing.manage holders. Later
-  // billing pages may widen this to `anyPermission` once billing.view
-  // exists (#90).
-  {
-    to: '/billing/prices',
-    labelKey: 'nav.billing',
-    permission: 'billing.manage',
-  },
+  // Billing (#363 A2, #366 A2): billing.view or billing.manage holders.
+  // /billing opens the first section of the Billing tabs they may open.
+  { to: '/billing', labelKey: 'nav.billing', ...BILLING_ACCESS },
   // Every role holds student.view; the API filters the list (#33 I1).
   { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
   // Guardians see their own profile only (#34 I1).
