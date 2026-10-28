@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0060"
+HEAD = "0061"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -148,6 +148,28 @@ PROGRESS_REPORT_TABLES = ["progress_reports"]
 SCHEDULE_TABLES = ["progress_report_schedules"]
 IDEMPOTENCY_TABLES = ["idempotency_keys"]
 PRICE_CATALOG_TABLES = ["price_versions", "service_prices"]
+LEDGER_TABLES = [
+    "billing_accounts",
+    "payment_methods",
+    "charges",
+    "charge_adjustments",
+    "payments",
+    "payment_reversals",
+    "payment_allocations",
+    "allocation_releases",
+    "refunds",
+]
+"""The tables revision 0061 adds (#90 A2)."""
+APPEND_ONLY_LEDGER_TABLES = [
+    "charges",
+    "charge_adjustments",
+    "payments",
+    "payment_reversals",
+    "payment_allocations",
+    "allocation_releases",
+    "refunds",
+]
+LEDGER_VIEW = "billing_ledger_entries"
 SCHEDULE_PERIOD_UNIQUE = "uq_progress_reports_schedule_period"
 SCHEDULE_FK = "fk_progress_reports_schedule_id_progress_report_schedules"
 CLOSEOUT_REVIEW_COLUMNS = {
@@ -373,6 +395,8 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *SCHEDULE_TABLES,
             *IDEMPOTENCY_TABLES,
             *PRICE_CATALOG_TABLES,
+            *LEDGER_TABLES,
+            LEDGER_VIEW,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4512,9 +4536,24 @@ def _of_0060(diff: Any) -> bool:
     return False
 
 
+def _of_0061(diff: Any) -> bool:
+    """A metadata difference that revision 0061 adds: the ledger tables and
+    their indexes (#90 A2, A3)."""
+    if diff[0] == "add_table":
+        return diff[1].name in LEDGER_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in LEDGER_TABLES
+    return False
+
+
+def _of_0060_on(diff: Any) -> bool:
+    """A metadata difference that revision 0060 or a later one adds."""
+    return _of_0060(diff) or _of_0061(diff)
+
+
 def _of_0059_on(diff: Any) -> bool:
     """A metadata difference that revision 0059 or a later one adds."""
-    return _of_0059(diff) or _of_0060(diff)
+    return _of_0059(diff) or _of_0060_on(diff)
 
 
 def _of_0058_on(diff: Any) -> bool:
@@ -10465,7 +10504,7 @@ def test_0059_adds_the_idempotency_keys_and_downgrade_drops_them(
     command.upgrade(config, "0059")
 
     assert version_nums(dsn) == ["0059"]
-    assert [d for d in metadata_diff(dsn) if not _of_0060(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0060_on(d)] == []
     assert public_tables(dsn) - before == set(IDEMPOTENCY_TABLES)
     run_sql(dsn, IDEMPOTENCY_INSERT, _idempotency_values(dsn))
 
@@ -10614,7 +10653,7 @@ def test_0060_adds_the_price_catalog_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0060")
 
     assert version_nums(dsn) == ["0060"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0061(d)] == []
     assert public_tables(dsn) - before == set(PRICE_CATALOG_TABLES)
     assert _functions(dsn) == {"price_version_is_referenced", "price_versions_guard"}
     [price] = run_sql(dsn, PRICE_INSERT, {"s": _subject_row(dsn)})
@@ -10629,7 +10668,7 @@ def test_0060_adds_the_price_catalog_and_downgrade_drops_it(fresh_database_url):
     assert version_nums(dsn) == ["0059"]
     assert public_tables(dsn) == before
     assert _functions(dsn) == set()
-    assert [d for d in metadata_diff(dsn) if not _of_0060(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0060_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -10706,14 +10745,14 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
         "price_versions_no_referenced_change",
         "price_versions_no_truncate",
     }
-    # E2: the staged predicate is "nothing references a version" until #90
-    # and #94 replace it.
+    # E2: the staged predicate; #90 (0061) replaced "SELECT false" with an
+    # EXISTS on charges (#94 adds packages).
     [body] = run_sql(
         dsn,
         "SELECT prosrc, provolatile::text AS provolatile FROM pg_proc"
         " WHERE proname = 'price_version_is_referenced'",
     )
-    assert body.prosrc.strip().endswith("SELECT false")
+    assert body.prosrc.strip().endswith(CHARGES_PREDICATE)
     assert body.provolatile == "v"
     [answer] = run_sql(
         dsn,
@@ -10721,3 +10760,254 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
         {"v": uuid.uuid4()},
     )
     assert answer.r is False
+
+
+# --- 0061: the billing account and the ledger core (#90 A1-A6) ----------------------
+
+CHARGES_PREDICATE = (
+    "SELECT EXISTS (SELECT 1 FROM charges WHERE price_version_id = version_id)"
+)
+LEDGER_VIEW_COLUMNS = [
+    "entry_type",
+    "entry_id",
+    "billing_account_id",
+    "kind",
+    "student_id",
+    "charge_id",
+    "payment_id",
+    "amount",
+    "balance_effect",
+    "occurred_at",
+]
+
+
+def _predicate_body(dsn: str) -> str:
+    [row] = run_sql(
+        dsn,
+        "SELECT prosrc FROM pg_proc WHERE proname = 'price_version_is_referenced'",
+    )
+    return str(row.prosrc).strip()
+
+
+def _append_only_functions(dsn: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT proname FROM pg_proc WHERE proname LIKE '%\\_append\\_only'"
+        " AND proname <> 'audit_events_append_only'",
+    )
+    return {row.proname for row in rows}
+
+
+def test_0061_adds_the_ledger_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0060")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0061")
+
+    assert version_nums(dsn) == ["0061"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == {*LEDGER_TABLES, LEDGER_VIEW}
+    assert _append_only_functions(dsn) == {
+        f"{table}_append_only" for table in APPEND_ONLY_LEDGER_TABLES
+    }
+    assert _predicate_body(dsn).endswith(CHARGES_PREDICATE)
+    methods = run_sql(
+        dsn, "SELECT code, is_active, version FROM payment_methods ORDER BY code"
+    )
+    assert [(m.code, m.is_active, m.version) for m in methods] == [
+        ("cash", True, 1),
+        ("other", True, 1),
+        ("transfer", True, 1),
+    ]
+
+    command.downgrade(config, "0060")
+
+    assert version_nums(dsn) == ["0060"]
+    assert public_tables(dsn) == before
+    assert _append_only_functions(dsn) == set()
+    assert _predicate_body(dsn).endswith("SELECT false")
+    assert [d for d in metadata_diff(dsn) if not _of_0061(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    uuid_null = ("uuid", "YES", None, None)
+    money = ("numeric", "NO", None, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "billing_accounts") == {
+        **STANDARD_COLUMNS,
+        "family_id": uuid_,
+        "due_offset_days": ("smallint", "NO", None, "0"),
+    }
+    assert _columns(dsn, "payment_methods") == {
+        **{k: v for k, v in STANDARD_COLUMNS.items() if k != "id"},
+        "code": ("character varying", "NO", 32, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "charges") == {
+        **standard,
+        "billing_account_id": uuid_,
+        "student_id": uuid_,
+        "kind": ("character varying", "NO", 24, None),
+        "class_session_id": uuid_null,
+        "group_enrollment_id": uuid_null,
+        "cohort_enrollment_id": uuid_null,
+        "service_date": ("date", "NO", None, None),
+        "service_period_end": ("date", "YES", None, None),
+        "price_version_id": uuid_null,
+        "education_level_id": uuid_null,
+        "scheduled_minutes": ("smallint", "YES", None, None),
+        "list_amount": money,
+        "discount_amount": ("numeric", "NO", None, "0"),
+        "amount": money,
+        "due_date": ("date", "NO", None, None),
+        "description": ("character varying", "YES", 200, None),
+        "posted_at": ("timestamp with time zone", "NO", None, None),
+        "posted_by_user_id": uuid_null,
+    }
+    # E3: the staged columns come with their own issues.
+    assert {"tuition_plan_id", "package_id", "custom_price_id"}.isdisjoint(
+        _columns(dsn, "charges")
+    )
+    assert "withdrawal_id" not in _columns(dsn, "refunds")
+    assert _columns(dsn, "charge_adjustments") == {
+        **standard,
+        "charge_id": uuid_,
+        "billing_account_id": uuid_,
+        "student_id": uuid_,
+        "kind": ("character varying", "NO", 24, None),
+        "amount": money,
+        "reason": ("character varying", "YES", 500, None),
+        "source_key": ("character varying", "YES", 200, None),
+        "posted_at": ("timestamp with time zone", "NO", None, None),
+        "posted_by_user_id": uuid_null,
+    }
+    assert _columns(dsn, "payments") == {
+        **standard,
+        "billing_account_id": uuid_,
+        "amount": money,
+        "received_on": ("date", "NO", None, None),
+        "payment_method_code": ("character varying", "NO", 32, None),
+        "reference": ("character varying", "YES", 100, None),
+        "payer_name": ("character varying", "YES", 200, None),
+        "note": ("character varying", "YES", 500, None),
+        "recorded_by_user_id": uuid_,
+    }
+    assert set(_columns(dsn, "payment_reversals")) == {
+        *standard,
+        "payment_id",
+        "billing_account_id",
+        "reason",
+        "reversed_by_user_id",
+    }
+    assert set(_columns(dsn, "payment_allocations")) == {
+        *standard,
+        "payment_id",
+        "charge_id",
+        "billing_account_id",
+        "amount",
+        "created_by_user_id",
+    }
+    assert set(_columns(dsn, "allocation_releases")) == {
+        *standard,
+        "allocation_id",
+        "payment_reversal_id",
+        "charge_adjustment_id",
+        "released_by_user_id",
+    }
+    assert set(_columns(dsn, "refunds")) == {
+        *standard,
+        "payment_id",
+        "billing_account_id",
+        "amount",
+        "refunded_on",
+        "payment_method_code",
+        "reference",
+        "reason",
+        "refunded_by_user_id",
+    }
+    charges = _constraints(dsn, "charges")
+    assert {
+        "ck_charges_kind",
+        "ck_charges_one_source",
+        "ck_charges_description_valid",
+        "ck_charges_service_period_end_valid",
+        "ck_charges_scheduled_minutes_range",
+        "ck_charges_list_amount_non_negative",
+        "ck_charges_discount_amount_non_negative",
+        "ck_charges_amount_non_negative",
+        "ck_charges_amount_equation",
+        "uq_charges_id_account",
+        "uq_charges_id_account_student",
+    } <= set(charges)
+    assert charges["uq_charges_id_account_student"] == (
+        "UNIQUE (id, billing_account_id, student_id)"
+    )
+    assert _constraints(dsn, "charge_adjustments")[
+        "fk_charge_adjustments_charge_id_charges"
+    ].startswith(
+        "FOREIGN KEY (charge_id, billing_account_id, student_id) REFERENCES"
+        " charges(id, billing_account_id, student_id)"
+    )
+    for table in ("payment_reversals", "payment_allocations", "refunds"):
+        assert _constraints(dsn, table)[f"fk_{table}_payment_id_payments"].startswith(
+            "FOREIGN KEY (payment_id, billing_account_id) REFERENCES"
+            " payments(id, billing_account_id)"
+        )
+    for table in LEDGER_TABLES:
+        for name, definition in _constraints(dsn, table).items():
+            if definition.startswith("FOREIGN KEY"):
+                assert "ON DELETE RESTRICT" in definition, (table, name)
+    indexes = _indexes(dsn, "charges")
+    assert (
+        "WHERE ((kind)::text = 'session'::text)"
+        in indexes["uq_charges_session_student"]
+    )
+    assert "(class_session_id, student_id)" in indexes["uq_charges_session_student"]
+    assert "UNIQUE" in indexes["uq_charges_group_enrollment"]
+    assert "UNIQUE" in indexes["uq_charges_cohort_enrollment"]
+    assert (
+        "(billing_account_id, posted_at, id)" in indexes["ix_charges_account_posted_at"]
+    )
+    assert "(student_id, service_date)" in indexes["ix_charges_student_service_date"]
+    assert "(billing_account_id, due_date)" in indexes["ix_charges_account_due_date"]
+    assert (
+        "WHERE (price_version_id IS NOT NULL)" in indexes["ix_charges_price_version_id"]
+    )
+    assert (
+        "WHERE (source_key IS NOT NULL)"
+        in _indexes(dsn, "charge_adjustments")["uq_charge_adjustments_source_key"]
+    )
+    assert "ix_charge_adjustments_charge_id" in _indexes(dsn, "charge_adjustments")
+    assert (
+        "(billing_account_id, received_on, id)"
+        in _indexes(dsn, "payments")["ix_payments_account_received_on"]
+    )
+    assert {
+        "ix_payment_allocations_charge_id",
+        "ix_payment_allocations_payment_id",
+    } <= set(_indexes(dsn, "payment_allocations"))
+    assert "ix_refunds_payment_id" in _indexes(dsn, "refunds")
+    for table in APPEND_ONLY_LEDGER_TABLES:
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    assert _triggers(dsn, "billing_accounts") == set()
+    assert _triggers(dsn, "payment_methods") == set()
+    view_columns = run_sql(
+        dsn,
+        "SELECT column_name FROM information_schema.columns"
+        " WHERE table_name = :t ORDER BY ordinal_position",
+        {"t": LEDGER_VIEW},
+    )
+    assert [row.column_name for row in view_columns] == LEDGER_VIEW_COLUMNS

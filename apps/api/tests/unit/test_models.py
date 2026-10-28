@@ -74,7 +74,10 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # audit_events
     # (M2-04) and
     # rate_limit_counters (M2-09) and idempotency_keys (M6-03) are shared
-    # infrastructure; billing (service_prices and price_versions, M6-04).
+    # infrastructure; billing (service_prices and price_versions, M6-04;
+    # billing_accounts, payment_methods, charges, charge_adjustments,
+    # payments, payment_reversals, payment_allocations, allocation_releases
+    # and refunds, M6-05).
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
@@ -132,6 +135,15 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "idempotency_keys",
         "service_prices",
         "price_versions",
+        "billing_accounts",
+        "payment_methods",
+        "charges",
+        "charge_adjustments",
+        "payments",
+        "payment_reversals",
+        "payment_allocations",
+        "allocation_releases",
+        "refunds",
         "account_tokens",
         "registration_requests",
         "education_levels",

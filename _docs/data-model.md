@@ -37,7 +37,7 @@ Overview. "Creating issue" is the issue whose migration creates the table. Wheth
 |---|---|---|---|
 | `billing_accounts` | billing | #90 | mutable config |
 | `billing_settings` | billing | #91 | mutable config (singleton) |
-| `payment_methods` | billing | #96 | mutable reference |
+| `payment_methods` | billing | #90 (table, seed), #96 (first use) | mutable reference |
 | `service_prices` | billing | #89 | mutable config |
 | `price_versions` | billing | #89 | guarded: immutable once referenced |
 | `custom_prices` | billing | #95 | mutable config |
@@ -67,7 +67,7 @@ Referenced tables of earlier domains: `families`, `family_students`, `family_gua
 
 ### 3.1 `billing_accounts`
 
-One billing account per family (E4). Created on first use with `INSERT … ON CONFLICT (family_id) DO NOTHING`.
+One billing account per family (E4). Created on first use (`billing.service.ensure_billing_account`, #90 E4): a `SELECT` by `family_id`, and if there is none an ORM insert inside a savepoint; a violation of `uq_billing_accounts_family_id` (a concurrent first use) rolls the savepoint back, with its audit event, and the row is read again. The table is `Audited`, and the audit guard refuses ORM `INSERT … ON CONFLICT` on audited tables.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -94,7 +94,7 @@ Managed with `billing.manage`. The demo seed chooses its own date.
 
 ### 3.3 `payment_methods`
 
-Billing-owned reference table (E12), seeded with `cash`, `transfer` and `other`. Labels come from the client catalogs. M8-04 (#121) adds editing behind reauthentication.
+Billing-owned reference table (E12), created and seeded with `cash`, `transfer` and `other` by #90's migration (0061), because `payments` and `refunds` reference it; #96 is its first user. Labels come from the client catalogs. M8-04 (#121) adds editing behind reauthentication. The table has no `id`; its audit events use a UUIDv5 of `code` as `record_id` (`PaymentMethod.id`).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -203,23 +203,23 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 | `id` | UUID | no | PK |
 | `billing_account_id` | UUID | no | FK `billing_accounts` |
 | `student_id` | UUID | no | FK `students` |
-| `kind` | VARCHAR(24) | no | `session` \| `group_enrollment` \| `cohort_enrollment` \| `tuition_period` \| `package_purchase` \| `manual` |
+| `kind` | VARCHAR(24) | no | `session` \| `group_enrollment` \| `cohort_enrollment` \| `tuition_period` (from #93) \| `package_purchase` (from #94) \| `manual` |
 | `class_session_id` | UUID | yes | FK `class_sessions`; source of `session` |
 | `group_enrollment_id` | UUID | yes | FK `group_enrollments`; source of `group_enrollment` |
 | `cohort_enrollment_id` | UUID | yes | FK `cohort_enrollments`; source of `cohort_enrollment` |
-| `tuition_plan_id` | UUID | yes | FK `tuition_plans`; source of `tuition_period` |
-| `package_id` | UUID | yes | FK `packages`; source of `package_purchase` |
+| `tuition_plan_id` | UUID | yes | FK `tuition_plans`; source of `tuition_period` (column added by #93) |
+| `package_id` | UUID | yes | FK `packages`; source of `package_purchase` (column added by #94) |
 | `service_date` | DATE | no | the session's original local date; the enrollment's local date; the period start (`period_start`); the purchase date; or the staff-entered date |
-| `service_period_end` | DATE | yes | last day of a `tuition_period`; `>= service_date` |
+| `service_period_end` | DATE | yes | last day of a `tuition_period`; `>= service_date` (`ck_charges_service_period_end_valid`; `NULL` for every kind until #93) |
 | `price_version_id` | UUID | yes | FK `price_versions`; the version used (`NULL` for `manual` and custom-priced charges) |
 | `custom_price_id` | UUID | yes | FK `custom_prices` (column added by #95) |
 | `education_level_id` | UUID | yes | FK `education_levels`; the student's level at posting (snapshot) |
-| `scheduled_minutes` | SMALLINT | yes | the session's `scheduled_minutes` at posting (snapshot; `session` only) |
+| `scheduled_minutes` | SMALLINT | yes | the session's `scheduled_minutes` at posting (snapshot; `session` only); 15–480 (`ck_charges_scheduled_minutes_range`, the `class_sessions` range) |
 | `list_amount` | NUMERIC(14,2) | no | `>= 0`; price before discounts |
 | `discount_amount` | NUMERIC(14,2) | no | `>= 0`; default 0 |
 | `amount` | NUMERIC(14,2) | no | `>= 0`; `CHECK (amount = list_amount - discount_amount)` |
 | `due_date` | DATE | no | set at posting, never updated (E11) |
-| `description` | VARCHAR(200) | yes | `manual` only, trimmed, 1–200 characters |
+| `description` | VARCHAR(200) | yes | `manual` only, trimmed, 1–200 characters (`ck_charges_description_valid`) |
 | `posted_at` | TIMESTAMPTZ | no | |
 | `posted_by_user_id` | UUID | yes | FK `users`; `NULL` when a job posted it |
 
@@ -232,6 +232,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
   - `manual` ⇔ every source column `NULL`, and `description IS NOT NULL`.
 
   Written as `num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id, tuition_plan_id, package_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END` plus one implication per kind.
+- **Staged CHECKs (#90 E3):** #90 creates the kinds whose source exists. `ck_charges_kind` allows `session`, `group_enrollment`, `cohort_enrollment` and `manual`; `ck_charges_one_source` is the rule above over the three existing source columns, with the `session` ⇔ `scheduled_minutes` and `manual` ⇔ `description` implications. #93 (`tuition_plan_id`) and #94 (`package_id`) each add their column, its foreign key and its natural key, and replace both named CHECKs to include their kind.
 - **`price_version_id` and `custom_price_id`:** at most one is set.
 - **Natural keys** (partial unique indexes, J4):
   - `(class_session_id, student_id) WHERE kind = 'session'`;
@@ -240,7 +241,8 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
   - `(tuition_plan_id, service_date) WHERE kind = 'tuition_period'`, i.e. `(tuition_plan_id, period_start)`;
   - `(package_id) WHERE kind = 'package_purchase'`.
 
-  Manual charges have no natural key; they rely on the API idempotency key (§3.24).
+  #90 names them `uq_charges_session_student`, `uq_charges_group_enrollment` and `uq_charges_cohort_enrollment`; #93 and #94 add the last two. Manual charges have no natural key; they rely on the API idempotency key (§3.24).
+- **Posting (#90 E4):** `billing.service.post_charge` locks the account row, checks the natural key under the lock, and inserts through the ORM in a savepoint; a violation of a named natural-key index (a posting for the same key to another account) counts as already posted (`created = False`).
 - **Composite targets:** `UNIQUE (id, billing_account_id)` and `UNIQUE (id, billing_account_id, student_id)`, referenced by the composite foreign keys of allocations and adjustments (I4, I5).
 - **Kept account:** a charge keeps the account it was posted to, even if the student later moves to another family. There is no foreign key to `family_students`.
 - **Rescheduling:** a rescheduled session keeps its charge and its `service_date`; reporting uses the session's current date (E7).
@@ -263,7 +265,7 @@ Signed corrections against one charge (E2, E3, E5, E8, E9). A credit is a negati
 | `posted_by_user_id` | UUID | yes | FK `users`; `NULL` for a job |
 
 - **Composite FK:** `(charge_id, billing_account_id, student_id)` → `charges (id, billing_account_id, student_id)` (I5).
-- **`source_key`:** partial UNIQUE `WHERE source_key IS NOT NULL`. Generated adjustments always set it; the implementing issue fixes the format, which includes the triggering event, for example `duration_change:<charge_id>:<session version after the edit>` (E2) or `cancellation_credit:<charge_id>` (E3). Manual adjustments rely on the API idempotency key.
+- **`source_key`:** partial UNIQUE `WHERE source_key IS NOT NULL` (`uq_charge_adjustments_source_key`). Every kind except `manual` must set it (`CHECK (kind = 'manual' OR source_key IS NOT NULL)`, #90); the implementing issue fixes the format, which includes the triggering event, for example `duration_change:<charge_id>:<session version after the edit>` (E2) or `cancellation_credit:<charge_id>` (E3). Manual adjustments rely on the API idempotency key.
 - **Releases:** if an adjustment pushes the charge's net below its valid allocations, the newest allocations are released in the same transaction, and a smaller allocation is re-inserted when the release frees more than needed (E5). The released money becomes account credit.
 - A negative `manual` adjustment is a financial correction: `billing.manage` plus reauthentication `finance.correction` (E8).
 
@@ -354,7 +356,7 @@ Money paid back out of a payment's unallocated remainder (E5). A cash refund red
 | `payment_method_code` | VARCHAR(32) | no | FK `payment_methods` (how the money went back) |
 | `reference` | VARCHAR(100) | yes | staff text |
 | `reason` | VARCHAR(500) | no | staff text |
-| `withdrawal_id` | UUID | yes | FK `withdrawals`; set by #101 |
+| `withdrawal_id` | UUID | yes | FK `withdrawals`; set by #101 (column added by #101) |
 | `refunded_by_user_id` | UUID | no | FK `users` |
 
 Needs `finance.refund.approve` plus reauthentication `finance.refund_or_reversal` (E8).
@@ -513,7 +515,22 @@ Gap-free yearly counters (E13).
 
 ### 3.26 View `billing_ledger_entries` (#90)
 
-A read-only `UNION ALL` of the money rows of one account, for the cursor-paginated history (architecture §4.4) and the per-student filter. One row per `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases` and `refunds` row, with at least: `billing_account_id`, `entry_type`, `entry_id`, `student_id` (`NULL` for payment-level rows), `amount`, `occurred_at` (`posted_at` or `created_at`). The cursor is `(occurred_at, entry_id)`. #90 fixes the exact columns. The view stores nothing and is never written.
+A read-only `UNION ALL` of the money rows of one account, for the cursor-paginated history (architecture §4.4) and the per-student filter. One row per `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases` and `refunds` row. The cursor is `(occurred_at, entry_id)`. The view stores nothing and is never written; it is defined only in migration 0061 and read through a `table()` construct outside the ORM metadata (`billing.balances.LEDGER_VIEW`). The columns (#90):
+
+| Column | charges | charge_adjustments | payments | payment_reversals | payment_allocations | allocation_releases | refunds |
+|---|---|---|---|---|---|---|---|
+| `entry_type` | `charge` | `adjustment` | `payment` | `payment_reversal` | `allocation` | `allocation_release` | `refund` |
+| `entry_id` | id | id | id | id | id | id | id |
+| `billing_account_id` | own | own | own | own | own | via allocation | own |
+| `kind` | `kind` | `kind` | `payment_method_code` | NULL | NULL | NULL | `payment_method_code` |
+| `student_id` | own | own | NULL | NULL | via charge | via allocation → charge | NULL |
+| `charge_id` | id | `charge_id` | NULL | NULL | `charge_id` | via allocation | NULL |
+| `payment_id` | NULL | NULL | id | `payment_id` | `payment_id` | via allocation | `payment_id` |
+| `amount` | `amount` | `amount` (signed) | `amount` | the payment's `amount` | `amount` | the allocation's `amount` | `amount` |
+| `balance_effect` | `+amount` | `+amount` (signed) | `−amount` | `+` payment amount | `0` | `0` | `+amount` |
+| `occurred_at` | `posted_at` | `posted_at` | `created_at` | `created_at` | `created_at` | `created_at` | `created_at` |
+
+`balance_effect` is the row's effect on the net balance: Σ `balance_effect` over an account equals its net balance (§4.2, given I3: a payment with refunds is never reversed).
 
 ### 3.27 `charge_reminders` (#97)
 
@@ -597,7 +614,7 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
   The App invariants of §4.1 are checked after step 2.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
-- **Jobs and sweepers:** insert on the natural keys with `INSERT … ON CONFLICT DO NOTHING` and treat a conflict as success; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
+- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
 - **Scheduling transactions** never post charges: a billing failure can't roll back a schedule change (E1). Enrollment charges are the exception: they are posted in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), which already holds the enrollment locks.
 
 ## 7. Indexes
@@ -607,6 +624,7 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `charges (billing_account_id, posted_at, id)`: account history;
 - `charges (student_id, service_date)`: per-student breakdown;
 - `charges (billing_account_id, due_date)`: overdue and reminders;
+- `charges (price_version_id) WHERE price_version_id IS NOT NULL` (`ix_charges_price_version_id`, #90): the price-version predicate (§5.2) and the `RESTRICT` check when an unreferenced version is deleted;
 - `charge_adjustments (charge_id)`;
 - `charge_due_date_changes (charge_id, created_at)`;
 - `charge_reminders (charge_id, stage)` (the unique key);
@@ -677,7 +695,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #87 M6-02 Money | E5 (`NUMERIC(14,2)`, half-up per line, no currency), ADR-0004 | none (value object) |
 | #88 M6-03 Idempotency | E6 | `idempotency_keys` |
 | #89 M6-04 Price catalog | E8 (`billing.manage`), E9 (key, versions, lookup, guarded trigger) | `service_prices`, `price_versions` |
-| #90 M6-05 Account and ledger core | E4, E5 (rows, triggers, balances, statuses), E8 (`billing.view`), E11 (`due_date`, `due_offset_days`) | `billing_accounts`, `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases`, `refunds`, view `billing_ledger_entries` |
+| #90 M6-05 Account and ledger core | E4, E5 (rows, triggers, balances, statuses, the release on a credit), E11 (`due_date`, `due_offset_days`); `billing.view` and the read routes in #364 (M6-05b) | `billing_accounts`, `payment_methods` (table, seed), `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases`, `refunds`, view `billing_ledger_entries` |
 | #91 M6-06 Session charges | E1 (sweeper, floor, unbilled list, `apply_confirmation_charge`), E2 (`scheduled_minutes`), E9 (lookup), E10 (covered by a package → no charge), E11 (session due date) | `billing_settings`, `charges` |
 | #92 M6-07 Enrollment charges | E1 (M4 hooks + sweeper), E9 (`full_course`, late proration, `enrollment_removal`), E11 | `charges`, `charge_adjustments` |
 | #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `charges` |

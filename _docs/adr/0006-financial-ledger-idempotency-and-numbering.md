@@ -12,6 +12,8 @@ Accepted
 
 Owner: JaimeSolisS. Decision items E1–E13 and E15 (ADR-0006), or E14 (ADR-0015), taken as recommended (option (a) for each), owner-delegated, on 2026-10-27 (GitHub issue #86, M6-01). No amendments. The orchestrator recorded the decision on the issue as an "owner-delegated recommended decision" (owner /goal 2026-10-27: "make recommended decisions"). E14 is recorded in [ADR-0015](0015-server-side-i18n.md).
 
+Clarification (#90, 2026-10-27): on `Audited` tables the natural-key insert is an ORM insert in a savepoint after a check under the account lock; a natural-key conflict counts as success, as before.
+
 ## Context
 
 Resolves architecture §10 **ISSUE-F1** (when lesson charges are posted), **ISSUE-F2** (billed vs actual duration), **ISSUE-F3** (ledger owner and balance derivation), **ISSUE-F4** (API idempotency keys), **ISSUE-F5** (receipt and payslip numbering), **ISSUE-F6** (accrual-basis revenue recognition), the remaining `payment.record` and `payroll.*` parts of **ISSUE-F7**, and **ISSUE-J4** (idempotency of generated financial records) in [`../architecture.md`](../architecture.md) §10.4 and §10.6. Records decision items **E1–E13 and E15** of issue #86. F1, F2, F6 and F7 are product decisions (architecture §12). The schema that implements this ADR is in [`../data-model.md`](../data-model.md).
