@@ -39,7 +39,7 @@ Downgrading drops exactly what the upgrade created, in reverse order.
 """
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Any, Final
 
 import sqlalchemy as sa
 from alembic import op
@@ -137,14 +137,14 @@ def _check(table: str, name: str, condition: str) -> sa.CheckConstraint:
     return sa.CheckConstraint(condition, name=op.f(f"ck_{table}_{name}"))
 
 
-def _overlap(target: str) -> postgresql.ExcludeConstraint:
+def _overlap(target: Any, where: Any, name: str) -> postgresql.ExcludeConstraint:
     return postgresql.ExcludeConstraint(
         (sa.text("service_price_id"), "="),
-        (sa.text(target), "="),
+        (target, "="),
         (sa.text(RANGE), "&&"),
-        name=f"ex_{CUSTOM}_{target.removesuffix('_id')}_overlap",
+        name=name,
         using="gist",
-        where=sa.text(f"{target} IS NOT NULL"),
+        where=where,
     )
 
 
@@ -173,8 +173,16 @@ def _create_custom_prices() -> None:
         _fk(CUSTOM, "student_id", "students"),
         _fk(CUSTOM, "family_id", "families"),
         sa.PrimaryKeyConstraint("id", name=op.f(f"pk_{CUSTOM}")),
-        _overlap("student_id"),
-        _overlap("family_id"),
+        _overlap(
+            sa.text("student_id"),
+            sa.text("student_id IS NOT NULL"),
+            "ex_custom_prices_student_overlap",
+        ),
+        _overlap(
+            sa.text("family_id"),
+            sa.text("family_id IS NOT NULL"),
+            "ex_custom_prices_family_overlap",
+        ),
     )
     _partial_index(
         "ix_custom_prices_student_item",

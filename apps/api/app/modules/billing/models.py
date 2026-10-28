@@ -709,14 +709,14 @@ def _percent() -> Numeric[Any]:
     return Numeric(14, 4)
 
 
-def _overlap(target: str, name: str) -> ExcludeConstraint:
+def _overlap(target: Any, where: Any, name: str) -> ExcludeConstraint:
     return ExcludeConstraint(
         (text("service_price_id"), "="),
-        (text(target), "="),
+        (target, "="),
         (text(CUSTOM_PRICE_RANGE_SQL), "&&"),
         name=name,
         using="gist",
-        where=text(f"{target} IS NOT NULL"),
+        where=where,
     )
 
 
@@ -731,8 +731,16 @@ class CustomPrice(Audited, VersionedMixin, Model):
             "expires_on IS NULL OR expires_on >= effective_from", name="dates"
         ),
         CheckConstraint("amount >= 0", name="amount_non_negative"),
-        _overlap("student_id", CUSTOM_PRICE_STUDENT_OVERLAP),
-        _overlap("family_id", CUSTOM_PRICE_FAMILY_OVERLAP),
+        _overlap(
+            text("student_id"),
+            text("student_id IS NOT NULL"),
+            CUSTOM_PRICE_STUDENT_OVERLAP,
+        ),
+        _overlap(
+            text("family_id"),
+            text("family_id IS NOT NULL"),
+            CUSTOM_PRICE_FAMILY_OVERLAP,
+        ),
         Index(
             "ix_custom_prices_student_item",
             "student_id",
