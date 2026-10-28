@@ -141,9 +141,15 @@ ASSIGNMENT_REVIEW = "assignment.review"
 PROGRESS_REPORT_REVIEW = "progress_report.review"
 # Price catalog (#89, owner-delegated decision E6 (a); ADR-0006 E8): who reads
 # and manages the service price catalog (Owner, Administrator, Finance
-# Staff; not delegable). Seeded by #89, its first user; billing.view (#90)
-# and payment.record (#96) come with their own issues.
+# Staff; not delegable). Seeded by #89, its first user; payment.record (#96)
+# comes with its own issue.
 BILLING_MANAGE = "billing.manage"
+# Billing accounts (#364 / #90b F1 (a); ADR-0006 E8): who reads every
+# family's billing account, charges and ledger (Owner, Administrator,
+# Finance Staff; not delegable). Guardians read their own family's account
+# through the record policy of app/workflows/billing_accounts.py, not
+# through this permission.
+BILLING_VIEW = "billing.view"
 
 
 @dataclass(frozen=True)
@@ -188,6 +194,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(ASSIGNMENT_REVIEW),
     PermissionDef(PROGRESS_REPORT_REVIEW),
     PermissionDef(BILLING_MANAGE),
+    PermissionDef(BILLING_VIEW),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -236,6 +243,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 ASSIGNMENT_REVIEW,
                 PROGRESS_REPORT_REVIEW,
                 BILLING_MANAGE,
+                BILLING_VIEW,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -258,7 +266,14 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
             }
         ),
         FINANCE_STAFF: frozenset(
-            {STUDENT_VIEW, GUARDIAN_VIEW, SCHEDULE_VIEW, COURSE_VIEW, BILLING_MANAGE}
+            {
+                STUDENT_VIEW,
+                GUARDIAN_VIEW,
+                SCHEDULE_VIEW,
+                COURSE_VIEW,
+                BILLING_MANAGE,
+                BILLING_VIEW,
+            }
         ),
         # Record policies limit these to assigned students, self and linked
         # children (#21, #33-#35), and tutor.view to the tutor's own profile

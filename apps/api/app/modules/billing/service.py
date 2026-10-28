@@ -16,6 +16,8 @@ custom price above it).
 (:mod:`~app.modules.billing.ledger`), :func:`account_balance`,
 :func:`family_balance`, :func:`charge_balances`, :func:`ledger_entries`
 and the pure :func:`charge_status` (:mod:`~app.modules.billing.balances`).
+The billing account reads (#364) add :func:`account_of_family` and
+:func:`charge_details` (a filtered page of charges, statuses in SQL).
 
 - **Lock order (data-model §6):** the caller's own scheduling or courses
   locks first; the billing account row ``FOR UPDATE``
@@ -35,7 +37,9 @@ and the pure :func:`charge_status` (:mod:`~app.modules.billing.balances`).
 
 from app.modules.billing.balances import account_balance as account_balance
 from app.modules.billing.balances import account_credit as account_credit
+from app.modules.billing.balances import account_of_family as account_of_family
 from app.modules.billing.balances import charge_balances as charge_balances
+from app.modules.billing.balances import charge_details as charge_details
 from app.modules.billing.balances import charge_status as charge_status
 from app.modules.billing.balances import family_balance as family_balance
 from app.modules.billing.balances import ledger_entries as ledger_entries
@@ -78,8 +82,14 @@ from app.modules.billing.prices import list_versions as list_versions
 from app.modules.billing.pricing import lookup_price as lookup_price
 from app.modules.billing.schemas import AccountBalance as AccountBalance
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
+from app.modules.billing.schemas import (
+    BillingAccountReference as BillingAccountReference,
+)
 from app.modules.billing.schemas import ChargeBalance as ChargeBalance
+from app.modules.billing.schemas import ChargeDetail as ChargeDetail
+from app.modules.billing.schemas import ChargeDetailPage as ChargeDetailPage
 from app.modules.billing.schemas import ChargeDraft as ChargeDraft
+from app.modules.billing.schemas import ChargeStatus as ChargeStatus
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
 from app.modules.billing.schemas import PostedAdjustment as PostedAdjustment
 from app.modules.billing.schemas import PostedCharge as PostedCharge

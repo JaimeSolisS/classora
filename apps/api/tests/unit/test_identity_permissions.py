@@ -91,6 +91,10 @@ EXPECTED = {
     # Owner-delegated decision #89 E6 (a) (ADR-0006 E8): no Academic
     # Coordinator, Tutor, Student or Guardian.
     "billing.manage": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
+    # #364 (#86 E8): guardians read their own family's account through the
+    # record policy, not through billing.view; no Academic Coordinator,
+    # Tutor or Student.
+    "billing.view": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
 }
 
 
@@ -104,8 +108,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 36
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 93
+    assert len(PERMISSIONS) == 37
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 96
 
 
 def test_every_code_has_the_dotted_form():

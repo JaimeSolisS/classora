@@ -3943,6 +3943,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/families/{family_id}/billing-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Family Billing Account
+         * @description The family's billing account: the outstanding amount, the account
+         *     credit, the net balance and the open amounts by status (pending,
+         *     partially paid, overdue), overall and per student, computed for the
+         *     center's today. Staff with billing.view see every family; a guardian
+         *     only their own family. A family with no account yet has `account_id:
+         *     null` and zeros.
+         */
+        get: operations["get_family_billing_account_api_v1_families__family_id__billing_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Billing Charges
+         * @description The family's charges with their net, allocated and open amounts and
+         *     their status, newest service date first (then posted time, then id).
+         *     `posted_by_user_id` is null for a guardian. A student with no charge on
+         *     the account gives an empty page.
+         */
+        get: operations["list_family_billing_charges_api_v1_families__family_id__billing_account_charges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Billing Ledger
+         * @description The family's ledger history, newest first: charges, adjustments,
+         *     payments, reversals, allocations, releases and refunds, each with its
+         *     effect on the net balance. With `student_id`, only that student's rows
+         *     (payment-level rows have no student).
+         */
+        get: operations["list_family_billing_ledger_api_v1_families__family_id__billing_account_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -5475,6 +5546,93 @@ export interface components {
             days: components["schemas"]["AvailableDay"][];
         };
         /**
+         * BillingAccountSummary
+         * @description A family's billing account (#364 B1). ``account_id`` is ``null`` (and
+         *     every amount zero) while the family has no account yet. ``outstanding =
+         *     pending + partially_paid + overdue``; ``net_balance = outstanding −
+         *     account_credit``. ``students``: every student with a charge on the
+         *     account and every current member of the family, by name then id.
+         *     ``today`` is the center-local date the statuses were computed for.
+         */
+        BillingAccountSummary: {
+            family: components["schemas"]["BillingFamily"];
+            /** Account Id */
+            account_id: string | null;
+            /** Due Offset Days */
+            due_offset_days: number;
+            /**
+             * Outstanding
+             * Format: decimal
+             * @example 1250.00
+             */
+            outstanding: string;
+            /**
+             * Account Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit: string;
+            /**
+             * Net Balance
+             * Format: decimal
+             * @example 1250.00
+             */
+            net_balance: string;
+            /**
+             * Pending
+             * Format: decimal
+             * @example 1250.00
+             */
+            pending: string;
+            /**
+             * Partially Paid
+             * Format: decimal
+             * @example 1250.00
+             */
+            partially_paid: string;
+            /**
+             * Overdue
+             * Format: decimal
+             * @example 1250.00
+             */
+            overdue: string;
+            /** Students */
+            students: components["schemas"]["StudentBalanceItem"][];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+        };
+        /**
+         * BillingFamily
+         * @description The family the account belongs to.
+         */
+        BillingFamily: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * BillingStudent
+         * @description A student of the account: id and display name.
+         */
+        BillingStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * BusinessSettingsDetail
          * @description The center's business settings (``GET /api/v1/business-settings``).
          *
@@ -5967,6 +6125,94 @@ export interface components {
         };
         /** @enum {string} */
         ChangeStatus: "pending" | "approved" | "rejected" | "cancelled";
+        /**
+         * ChargeItem
+         * @description One charge with its derived values (#364 B2). ``due_date`` is the
+         *     effective due date; ``net = amount + adjustments_total``; ``open = net −
+         *     allocated``. ``posted_by_user_id`` is ``null`` for a job-posted charge
+         *     and for a caller without billing.view. At most one of the source ids is
+         *     set (none for a manual charge).
+         */
+        ChargeItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["BillingStudent"];
+            /** Kind */
+            kind: string;
+            /**
+             * Service Date
+             * Format: date
+             */
+            service_date: string;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /** Description */
+            description: string | null;
+            /**
+             * List Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            list_amount: string;
+            /**
+             * Discount Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            discount_amount: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Adjustments Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            adjustments_total: string;
+            /**
+             * Net
+             * Format: decimal
+             * @example 1250.00
+             */
+            net: string;
+            /**
+             * Allocated
+             * Format: decimal
+             * @example 1250.00
+             */
+            allocated: string;
+            /**
+             * Open
+             * Format: decimal
+             * @example 1250.00
+             */
+            open: string;
+            status: components["schemas"]["ChargeStatus"];
+            /**
+             * Posted At
+             * Format: date-time
+             */
+            posted_at: string;
+            /** Posted By User Id */
+            posted_by_user_id: string | null;
+            /** Class Session Id */
+            class_session_id: string | null;
+            /** Group Enrollment Id */
+            group_enrollment_id: string | null;
+            /** Cohort Enrollment Id */
+            cohort_enrollment_id: string | null;
+        };
+        /** @enum {string} */
+        ChargeStatus: "void" | "paid" | "overdue" | "partially_paid" | "pending";
         /**
          * ClassSeriesCancel
          * @description Cancel a series' occurrences from a date on (``POST
@@ -8538,6 +8784,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** CursorPage[LedgerEntryItem] */
+        CursorPage_LedgerEntryItem_: {
+            /** Items */
+            items: components["schemas"]["LedgerEntryItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** CursorPage[NotificationItem] */
         CursorPage_NotificationItem_: {
             /** Items */
@@ -10932,6 +11185,48 @@ export interface components {
             can_update_progress: boolean;
         };
         /**
+         * LedgerEntryItem
+         * @description One ledger row (#364 B3; the ``billing_ledger_entries`` view):
+         *     ``balance_effect`` is its effect on the net balance; ``kind`` is the
+         *     charge or adjustment kind, or the payment or refund method; payment-level
+         *     rows have no ``student_id``.
+         */
+        LedgerEntryItem: {
+            entry_type: components["schemas"]["LedgerEntryType"];
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Kind */
+            kind: string | null;
+            /** Student Id */
+            student_id: string | null;
+            /** Charge Id */
+            charge_id: string | null;
+            /** Payment Id */
+            payment_id: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Balance Effect
+             * Format: decimal
+             * @example 1250.00
+             */
+            balance_effect: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+        };
+        /** @enum {string} */
+        LedgerEntryType: "charge" | "adjustment" | "payment" | "payment_reversal" | "allocation" | "allocation_release" | "refund";
+        /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
          */
@@ -11208,6 +11503,17 @@ export interface components {
         OffsetPage_ChangeRequestItem_: {
             /** Items */
             items: components["schemas"]["ChangeRequestItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ChargeItem] */
+        OffsetPage_ChargeItem_: {
+            /** Items */
+            items: components["schemas"]["ChargeItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -11618,7 +11924,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -14171,6 +14477,38 @@ export interface components {
              * Format: date-time
              */
             starts_at: string;
+        };
+        /**
+         * StudentBalanceItem
+         * @description One student's open amounts on the account. Account credit is
+         *     account-level only.
+         */
+        StudentBalanceItem: {
+            student: components["schemas"]["BillingStudent"];
+            /**
+             * Outstanding
+             * Format: decimal
+             * @example 1250.00
+             */
+            outstanding: string;
+            /**
+             * Pending
+             * Format: decimal
+             * @example 1250.00
+             */
+            pending: string;
+            /**
+             * Partially Paid
+             * Format: decimal
+             * @example 1250.00
+             */
+            partially_paid: string;
+            /**
+             * Overdue
+             * Format: decimal
+             * @example 1250.00
+             */
+            overdue: string;
         };
         /**
          * StudentCompletion
@@ -28629,6 +28967,199 @@ export interface operations {
             };
             /** @description Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_family_billing_account_api_v1_families__family_id__billing_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountSummary"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_billing_charges_api_v1_families__family_id__billing_account_charges_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                /** @description Only charges in these statuses (repeatable). */
+                status?: components["schemas"]["ChargeStatus"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ChargeItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_billing_ledger_api_v1_families__family_id__billing_account_ledger_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_LedgerEntryItem_"];
+                };
+            };
+            /** @description The cursor is not valid (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or one whose account you can't see (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -116,6 +116,9 @@ from app.workflows.assignments_router import router as assignments_router
 from app.workflows.assignments_router import (
     student_router as student_assignments_router,
 )
+from app.workflows.billing_accounts_router import (
+    router as billing_accounts_router,
+)
 from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
@@ -296,6 +299,7 @@ def build_app(
     app.include_router(groups_router)
     app.include_router(cohorts_router)
     app.include_router(price_catalog_router)
+    app.include_router(billing_accounts_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)
