@@ -4014,6 +4014,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Billing Settings
+         * @description The billing start date (`billing_starts_on`; `null`: billing is off)
+         *     and the settings' version.
+         */
+        get: operations["read_billing_settings_api_v1_billing_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Billing Settings
+         * @description Set the billing start date (any date, past included) or turn billing
+         *     off with `null`. Charges are posted for confirmed and completed
+         *     individual sessions on or after the date; moving the date later or
+         *     clearing it pauses posting and never changes posted charges. Sending the
+         *     current value changes nothing (the version is still checked). After a
+         *     date is set, the charges are posted by a queued job.
+         */
+        patch: operations["change_billing_settings_api_v1_billing_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/billing/unbilled-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Unbilled Items
+         * @description The billable sessions that have no charge because the student has no
+         *     family (`no_billing_account`) or no price is in effect on the session's
+         *     local date (`no_price`), by service date, start time, student name and
+         *     id. `reason` may be repeated. Empty while billing is off. Each item is
+         *     charged by the next sweeper run once its cause is fixed.
+         */
+        get: operations["list_unbilled_items_api_v1_billing_unbilled_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -5545,6 +5599,8 @@ export interface components {
             /** Days */
             days: components["schemas"]["AvailableDay"][];
         };
+        /** @enum {string} */
+        BillableState: "confirmed" | "completed";
         /**
          * BillingAccountSummary
          * @description A family's billing account (#364 B1). ``account_id`` is ``null`` (and
@@ -5618,6 +5674,36 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * BillingSettingsDetail
+         * @description ``GET /api/v1/billing/settings`` (#91 B1, B2). ``billing_starts_on``
+         *     is the billing start floor, a center-local date: ``null`` means billing
+         *     is off (nothing is posted); otherwise charges are posted only for
+         *     service dates on or after it.
+         */
+        BillingSettingsDetail: {
+            /** Billing Starts On */
+            billing_starts_on: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BillingSettingsUpdate
+         * @description ``PATCH /api/v1/billing/settings`` (#91 B3). Both keys are required;
+         *     ``billing_starts_on: null`` turns billing off. Any date from 2000-01-01
+         *     to 2099-12-31, past included (``date_out_of_range`` otherwise).
+         */
+        BillingSettingsUpdate: {
+            /** Version */
+            version: number;
+            /** Billing Starts On */
+            billing_starts_on: string | null;
         };
         /**
          * BillingStudent
@@ -11664,6 +11750,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[UnbilledSessionItem] */
+        OffsetPage_UnbilledSessionItem_: {
+            /** Items */
+            items: components["schemas"]["UnbilledSessionItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[UserListItem] */
         OffsetPage_UserListItem_: {
             /** Items */
@@ -15327,6 +15424,59 @@ export interface components {
             phone?: string | null;
             /** Professional Experience */
             professional_experience?: string | null;
+        };
+        /** @enum {string} */
+        UnbilledReason: "no_billing_account" | "no_price";
+        /**
+         * UnbilledRecord
+         * @description A referenced record: its id and current name.
+         */
+        UnbilledRecord: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * UnbilledSessionItem
+         * @description One confirmed or completed individual session participant the
+         *     sweeper skips (``GET /api/v1/billing/unbilled-items``).
+         */
+        UnbilledSessionItem: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Service Date
+             * Format: date
+             * @description The session's local date in the center's time zone.
+             */
+            service_date: string;
+            state: components["schemas"]["BillableState"];
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            subject: components["schemas"]["UnbilledRecord"];
+            student: components["schemas"]["UnbilledRecord"];
+            /** @description The student's current level (null: none). */
+            education_level: components["schemas"]["UnbilledRecord"] | null;
+            /** @description The student's family (null: none, reason no_billing_account). */
+            family: components["schemas"]["UnbilledRecord"] | null;
+            reason: components["schemas"]["UnbilledReason"];
         };
         /**
          * UserAllowedActions
@@ -29160,6 +29310,156 @@ export interface operations {
             };
             /** @description No such family, or one whose account you can't see (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    read_billing_settings_api_v1_billing_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_billing_settings_api_v1_billing_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The settings changed since they were loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_unbilled_items_api_v1_billing_unbilled_items_get: {
+        parameters: {
+            query?: {
+                reason?: components["schemas"]["UnbilledReason"][] | null;
+                student_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_UnbilledSessionItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

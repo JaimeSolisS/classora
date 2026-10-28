@@ -56,6 +56,12 @@ contact events (the version bump changes no audited column).
 student's id, display name and active flag, without any access check (the
 caller's own permission decides, e.g. ``schedule.view``).
 
+**Levels of referenced students** (#91): :func:`student_level_references`
+is :func:`student_references` with each student's current
+``education_level_id`` (a session charge's price and snapshot), and
+:func:`families_of_students` the families of several students. No access
+check.
+
 **Ages of referenced students** (#59 S1): :func:`student_age_references`
 is :func:`student_references` with each student's ``birthdate``, so another
 module's record policy can apply the adult rule (``is_minor`` with the
@@ -164,12 +170,14 @@ __all__ = [
     "FamilyScheduleFacts",
     "StudentAccessFacts",
     "StudentAgeReference",
+    "StudentLevelReference",
     "academic_notification_recipients",
     "add_family_guardian",
     "add_family_student",
     "create_family",
     "create_guardian",
     "create_student",
+    "families_of_students",
     "family_of_student",
     "family_record_reference",
     "family_schedule_facts",
@@ -193,6 +201,7 @@ __all__ = [
     "revoke_consent",
     "set_student_account",
     "student_age_references",
+    "student_level_references",
     "student_notification_recipients",
     "student_references",
     "unlink_guardian",
@@ -231,6 +240,9 @@ family_of_student = _groupings.family_of_student
 """The student's family, or ``None`` (one statement; no access check).
 ``billing.service.post_charge`` resolves the billing account with it
 (#90 B3)."""
+families_of_students = _groupings.families_of_students
+"""The families of several students, by student id (one statement; no
+access check; #91 D4, the unbilled list)."""
 FamilyRecordReference = _groupings.FamilyRecordReference
 family_record_reference = _groupings.family_record_reference
 own_family_id = _groupings.own_family_id
@@ -256,6 +268,44 @@ async def student_references(
             id=row.id,
             display_name=f"{row.given_names} {row.family_names}",
             is_active=row.is_active,
+        )
+        for row in rows
+    }
+
+
+@dataclass(frozen=True)
+class StudentLevelReference:
+    """A referenced student with the current education level id (#91: the
+    level a session charge snapshots and prices with; ``None`` when the
+    student has none)."""
+
+    id: uuid.UUID
+    display_name: str
+    education_level_id: uuid.UUID | None
+
+
+async def student_level_references(
+    session: AsyncSession, ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, StudentLevelReference]:
+    """The students with these ids with their current level id (unknown ids
+    are left out). One statement (none for an empty collection); no access
+    check."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(
+            Student.id,
+            Student.given_names,
+            Student.family_names,
+            Student.education_level_id,
+        ).where(Student.id.in_(wanted))
+    )
+    return {
+        row.id: StudentLevelReference(
+            id=row.id,
+            display_name=f"{row.given_names} {row.family_names}",
+            education_level_id=row.education_level_id,
         )
         for row in rows
     }

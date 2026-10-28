@@ -90,7 +90,13 @@ A singleton (the `business_settings` pattern: a `singleton BOOLEAN` column with 
 | `billing_starts_on` | DATE | yes | `NULL`: the sweepers post nothing; otherwise they post only for service dates on or after it (E1) |
 | `version` | INTEGER | no | |
 
-Managed with `billing.manage`. The demo seed chooses its own date.
+Created by #91 (migration 0062, which inserts the one row with `billing_starts_on = NULL`). Audited and versioned; a local `DATE`, so no time-zone dependency.
+
+- **Routes (#91):** `GET /api/v1/billing/settings` (`billing.view`) and `PATCH /api/v1/billing/settings` (`billing.manage`, body `{version, billing_starts_on}`, no reauthentication). Any date from 2000-01-01 to 2099-12-31, past included, or `NULL` (billing off). Moving the date later or back to `NULL` pauses posting for the dates it excludes and never changes posted charges. Each change writes one `update` audit event with the old and new date; sending the current value writes nothing.
+- **After commit**, a `PATCH` whose result is a date queues one `billing:post_session_charges` run (`app.core.jobs.defer_session_charges`).
+- **Readers:** the sweepers read the floor with `billing.service.billing_starts_on(session, lock=True)` (`FOR SHARE`, after their own scheduling locks and before the account lock, §6).
+
+The demo seed chooses its own date.
 
 ### 3.3 `payment_methods`
 
@@ -246,6 +252,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 - **Composite targets:** `UNIQUE (id, billing_account_id)` and `UNIQUE (id, billing_account_id, student_id)`, referenced by the composite foreign keys of allocations and adjustments (I4, I5).
 - **Kept account:** a charge keeps the account it was posted to, even if the student later moves to another family. There is no foreign key to `family_students`.
 - **Rescheduling:** a rescheduled session keeps its charge and its `service_date`; reporting uses the session's current date (E7).
+- **Session charges (#91):** `billing:post_session_charges` charges `individual` sessions only; #92 adds group per-session charges (`group/per_session` with `group_id`) through the same eligibility predicate and price key, and course sessions are never charged per session (#91 G1). A `0.00` price posts a zero charge (`list_amount = amount = 0.00`, status `void`); it is not an unbilled item (#91 G5). A key that `billing.service.package_covered_keys` returns takes the package path instead (no charge, not listed); the seam returns nothing until #94 implements it (#91 G7).
 
 ### 3.10 `charge_adjustments`
 
@@ -614,7 +621,8 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
   The App invariants of §4.1 are checked after step 2.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
-- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
+- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), the enrollment sweepers (#92), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
+- **Session charges (#91):** one Unit of Work per candidate `(class_session_id, student_id)`, in this order: the session row `FOR SHARE` (`scheduling.service.lock_session_for_billing`; every scheduling writer that changes a session's state, time, duration or participants takes it `FOR UPDATE`) → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last).
 - **Scheduling transactions** never post charges: a billing failure can't roll back a schedule change (E1). Enrollment charges are the exception: they are posted in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), which already holds the enrollment locks.
 
 ## 7. Indexes
@@ -696,7 +704,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #88 M6-03 Idempotency | E6 | `idempotency_keys` |
 | #89 M6-04 Price catalog | E8 (`billing.manage`), E9 (key, versions, lookup, guarded trigger) | `service_prices`, `price_versions` |
 | #90 M6-05 Account and ledger core | E4, E5 (rows, triggers, balances, statuses, the release on a credit), E11 (`due_date`, `due_offset_days`); `billing.view` and the read routes in #364 (M6-05b) | `billing_accounts`, `payment_methods` (table, seed), `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases`, `refunds`, view `billing_ledger_entries` |
-| #91 M6-06 Session charges | E1 (sweeper, floor, unbilled list, `apply_confirmation_charge`), E2 (`scheduled_minutes`), E9 (lookup), E10 (covered by a package → no charge), E11 (session due date) | `billing_settings`, `charges` |
+| #91 M6-06 Session charges | E1 (sweeper, floor, unbilled list, `apply_confirmation_charge` removed), E2 (`scheduled_minutes`), E9 (lookup), E10 (covered by a package → no charge), E11 (session due date) | `billing_settings`, `charges` |
 | #92 M6-07 Enrollment charges | E1 (M4 hooks + sweeper), E9 (`full_course`, late proration, `enrollment_removal`), E11 | `charges`, `charge_adjustments` |
 | #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `charges` |
 | #94 M6-09 Packages | E1 (purchase), E6 (purchase key), E10, E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions`, `charges` |

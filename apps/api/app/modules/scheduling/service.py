@@ -138,6 +138,14 @@ a create), composed with ``academics`` by ``app.workflows.evaluations``,
 which also uses :func:`student_ids_for_tutor`,
 :func:`ensure_family_student_access` and :func:`note_session_columns`.
 
+Session charges (#91, :mod:`~app.modules.scheduling.billing_context`):
+:data:`BILLABLE_STATES` (``confirmed``, ``completed``), the unexecuted
+:func:`billable_participant_columns` (the candidates of
+``app.workflows.session_charges``) and :func:`lock_session_for_billing`
+(the session with its participants, the row ``FOR SHARE``: every writer
+that changes a session's state, time, duration or participants takes it
+``FOR UPDATE``, so a charge is posted from committed, current data).
+
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
 :func:`reconcile_series_closures` per series before the extension; the
@@ -285,6 +293,18 @@ from app.modules.scheduling.attendance_rules import (
 )
 from app.modules.scheduling.attendance_rules import (
     attendance_block as attendance_block,
+)
+from app.modules.scheduling.billing_context import (
+    BILLABLE_STATES as BILLABLE_STATES,
+)
+from app.modules.scheduling.billing_context import (
+    BillableSession as BillableSession,
+)
+from app.modules.scheduling.billing_context import (
+    billable_participant_columns as billable_participant_columns,
+)
+from app.modules.scheduling.billing_context import (
+    lock_session_for_billing as lock_session_for_billing,
 )
 from app.modules.scheduling.booking import (
     create_class_session as create_class_session,

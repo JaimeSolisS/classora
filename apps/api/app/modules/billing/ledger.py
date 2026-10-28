@@ -30,7 +30,7 @@ from collections.abc import Collection
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -142,6 +142,15 @@ def _natural_key_filter(draft: ChargeDraft) -> list[Any] | None:
             Charge.cohort_enrollment_id == draft.cohort_enrollment_id,
         ]
     return None
+
+
+def session_charge_key_columns() -> Select[uuid.UUID | None, uuid.UUID]:
+    """``SELECT class_session_id, student_id FROM charges WHERE kind =
+    'session'`` (the session natural key, ``uq_charges_session_student``),
+    **not executed**: the session sweeper anti-joins it (#91 C4)."""
+    return select(Charge.class_session_id, Charge.student_id).where(
+        Charge.kind == "session"
+    )
 
 
 async def _posted_charge(session: AsyncSession, key: list[Any]) -> PostedCharge | None:

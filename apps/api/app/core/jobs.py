@@ -4,10 +4,10 @@ This module is the one place that builds the Procrastinate :class:`App` and its
 connectors. Task modules expose ``register(app)``; :func:`create_job_app`
 calls them, so the API process and the ``worker`` container see the same
 tasks. Like ``app.core.model_registry``, it is the registry that imports the
-modules' task files (lazily, inside :func:`create_job_app`), and the one
-workflow task file (``app.workflows.progress_report_schedule_tasks``, #316: a
-job that composes modules); module code never imports another module's
-``tasks`` (ADR-0002).
+modules' task files (lazily, inside :func:`create_job_app`), and the
+workflow task files (``app.workflows.progress_report_schedule_tasks``, #316,
+and ``app.workflows.session_charge_tasks``, #91: jobs that compose modules);
+module code never imports another module's ``tasks`` (ADR-0002).
 
 Rules for every job (ADR-0003, ISSUE-J1 to J4):
 
@@ -45,7 +45,9 @@ Pool sizes are small fixed defaults; sizing for the hosts is M10-04.
 **Cross-module triggers** (#232 B1): a task that another module defers has
 its name here, so the deferring module never imports the owner's ``tasks``
 or ``service`` (ADR-0002). :func:`defer_series_materialization` is the
-closure writes' after-commit trigger of ``scheduling:materialize_series``.
+closure writes' after-commit trigger of ``scheduling:materialize_series``;
+:func:`defer_session_charges` the billing settings ``PATCH``'s trigger of
+``billing:post_session_charges`` (#91 B4).
 """
 
 import functools
@@ -85,6 +87,13 @@ MATERIALIZE_SERIES_TASK: Final = "scheduling:materialize_series"
 closure write (#232 B1)."""
 MATERIALIZE_SERIES_QUEUEING_LOCK: Final = "scheduling-materialize-series"
 """At most one queued ``scheduling:materialize_series`` job (the periodic
+tick shares it)."""
+
+SESSION_CHARGES_TASK: Final = "billing:post_session_charges"
+"""The 15-minute session charge sweeper (#91 C1), also deferred after a
+``PATCH /api/v1/billing/settings`` that sets a date (#91 B4)."""
+SESSION_CHARGES_QUEUEING_LOCK: Final = "billing-post-session-charges"
+"""At most one queued ``billing:post_session_charges`` job (the periodic
 tick shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
@@ -215,9 +224,11 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     Core and module tasks (the hourly purges of rate-limit counters, #27, of
     sessions, #25, and of expired idempotency keys, #88; the five-minute
     offer expiry, #52; the nightly series materialization, #53; the daily
-    progress report placeholders, #316,
-    whose task file is ``app/workflows/progress_report_schedule_tasks.py``
-    because it composes modules) are registered in every environment. The demo tasks
+    progress report placeholders, #316, and the 15-minute session charge
+    sweeper, #91, whose task files are
+    ``app/workflows/progress_report_schedule_tasks.py`` and
+    ``app/workflows/session_charge_tasks.py`` because they compose modules)
+    are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
@@ -225,7 +236,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     from app.core import demo_jobs, idempotency_tasks, ratelimit_tasks
     from app.modules.identity import tasks as identity_tasks
     from app.modules.scheduling import tasks as scheduling_tasks
-    from app.workflows import progress_report_schedule_tasks
+    from app.workflows import progress_report_schedule_tasks, session_charge_tasks
 
     app = App(connector=connector)
     ratelimit_tasks.register(app)
@@ -233,6 +244,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     identity_tasks.register(app)
     scheduling_tasks.register(app)
     progress_report_schedule_tasks.register(app)
+    session_charge_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -276,4 +288,29 @@ async def defer_series_materialization(job_app: App) -> None:
         logger.error(
             "Deferring the series materialization failed",
             extra={"task_name": MATERIALIZE_SERIES_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_session_charges(job_app: App) -> None:
+    """Queue one ``billing:post_session_charges`` run now (#91 B4).
+
+    Call it only **after** the Unit of Work has committed (the billing
+    settings route adds it as a background task, which runs after the
+    response). A run already queued makes this a no-op (``queueing_lock``:
+    ``AlreadyEnqueued`` is ignored). Any other failure is logged and
+    swallowed: the write already succeeded, and the next 15-minute tick
+    posts the charges (no outbox).
+    """
+    try:
+        await job_app.configure_task(
+            SESSION_CHARGES_TASK,
+            allow_unknown=False,
+            queueing_lock=SESSION_CHARGES_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the session charges failed",
+            extra={"task_name": SESSION_CHARGES_TASK, "error": type(exc).__name__},
         )

@@ -31,6 +31,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -94,6 +95,23 @@ async def family_of_student(
         )
     ).first()
     return None if row is None else FamilyReference(id=row.id, name=row.name)
+
+
+async def families_of_students(
+    session: AsyncSession, student_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, FamilyReference]:
+    """The families of these students, by student id; a student without a
+    family (or unknown) is left out. One statement (none for an empty
+    collection); no access check (#91 D4: the unbilled list)."""
+    wanted = set(student_ids)
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(FamilyStudent.student_id, Family.id, Family.name)
+        .join(Family, Family.id == FamilyStudent.family_id)
+        .where(FamilyStudent.student_id.in_(wanted))
+    )
+    return {row.student_id: FamilyReference(id=row.id, name=row.name) for row in rows}
 
 
 async def family_of_guardian(
@@ -534,6 +552,7 @@ __all__ = [
     "add_guardian",
     "add_student",
     "create_family",
+    "families_of_students",
     "family_of_guardian",
     "family_of_student",
     "family_record_reference",

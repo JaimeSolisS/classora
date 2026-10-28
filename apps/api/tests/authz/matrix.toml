@@ -391,6 +391,34 @@ allow = ["owner", "administrator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/settings"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 B2: the billing start date. Shapes:
+# tests/integration/test_billing_settings_routes.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/settings"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 B3: the empty body is 422 for the allowed roles (nothing changes and
+# no job is queued). No reauthentication. The 200, 409 and the queued run:
+# tests/integration/test_billing_settings_routes.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/unbilled-items"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 D2: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
 path = "/api/v1/business-settings"
 access = "authenticated"
 

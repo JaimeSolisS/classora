@@ -18,10 +18,9 @@ notification commit together or not at all.
    the request's ``created_at``, E3) → the request ``confirmed`` with its
    session. A ``409`` / ``422`` of the create path passes through and the
    request stays ``pending``;
-2. the charge step (M6-06, see below);
-3. ``administration.service.decide_approval_request(action="approve")``:
+2. ``administration.service.decide_approval_request(action="approve")``:
    the handler accepts because the request is already ``confirmed``;
-4. the requester's ``scheduling.session_request_confirmed`` notification,
+3. the requester's ``scheduling.session_request_confirmed`` notification,
    when they may still act for the student (F2).
 
 **Reject** (:func:`reject_session_request`): the request ``FOR UPDATE``
@@ -37,9 +36,9 @@ for a reject, as the family's withdraw. The create path takes the student
 lock and the zone again inside the same transaction, which is safe:
 ``pg_advisory_xact_lock`` and row locks are re-entrant within a transaction.
 
-**The M6-06 seam:** M6-06 adds the session's charge to
-:func:`apply_confirmation_charge`, in this Unit of Work (a failure there
-rolls the confirmation back). No charge code exists yet.
+No charge is posted here: the session's charge is posted later by the
+``billing:post_session_charges`` sweeper once a tutor confirms it (ADR-0006
+E1; #91 removed the #60 seam).
 """
 
 import uuid
@@ -56,22 +55,11 @@ from app.modules.scheduling.request_schemas import (
     SessionRequestReject,
     SessionRequestReview,
 )
-from app.modules.scheduling.schemas import ClassSessionCreated
 
 __all__ = [
-    "apply_confirmation_charge",
     "confirm_session_request",
     "reject_session_request",
 ]
-
-
-async def apply_confirmation_charge(
-    session: AsyncSession, request_id: uuid.UUID, class_session: ClassSessionCreated
-) -> None:
-    """The charge of a confirmed request's session (none yet).
-
-    M6-06: add the charge step here, in the same Unit of Work."""
-    del session, request_id, class_session
 
 
 async def _resolve_inbox_item(
@@ -107,8 +95,6 @@ async def confirm_session_request(
     row, created = await scheduling.confirm_session_request(
         session, request_id, body, actor_id=principal.user_id
     )
-    # M6-06: the charge step goes here (C6), in this Unit of Work.
-    await apply_confirmation_charge(session, row.id, created)
     await _resolve_inbox_item(session, principal, row.id, action="approve")
     review = await scheduling.get_session_request_review(session, row.id)
     await scheduling.notify_request_decision(session, row, review)
