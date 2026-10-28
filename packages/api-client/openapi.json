@@ -19554,6 +19554,231 @@
         }
       }
     },
+    "/api/v1/billing/settings": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Read Billing Settings",
+        "description": "The billing start date (`billing_starts_on`; `null`: billing is off)\nand the settings' version.",
+        "operationId": "read_billing_settings_api_v1_billing_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Change Billing Settings",
+        "description": "Set the billing start date (any date, past included) or turn billing\noff with `null`. Charges are posted for confirmed and completed\nindividual sessions on or after the date; moving the date later or\nclearing it pauses posting and never changes posted charges. Sending the\ncurrent value changes nothing (the version is still checked). After a\ndate is set, the charges are posted by a queued job.",
+        "operationId": "change_billing_settings_api_v1_billing_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The settings changed since they were loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/unbilled-items": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Unbilled Items",
+        "description": "The billable sessions that have no charge because the student has no\nfamily (`no_billing_account`) or no price is in effect on the session's\nlocal date (`no_price`), by service date, start time, student name and\nid. `reason` may be repeated. Empty while billing is off. Each item is\ncharged by the next sweeper run once its cause is fixed.",
+        "operationId": "list_unbilled_items_api_v1_billing_unbilled_items_get",
+        "parameters": [
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnbilledReason"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_UnbilledSessionItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -23499,6 +23724,13 @@
         "title": "AvailableSlots",
         "description": "``GET /api/v1/available-slots``: every date of the range, in order."
       },
+      "BillableState": {
+        "type": "string",
+        "enum": [
+          "confirmed",
+          "completed"
+        ]
+      },
       "BillingAccountSummary": {
         "properties": {
           "family": {
@@ -23628,6 +23860,67 @@
         ],
         "title": "BillingFamily",
         "description": "The family the account belongs to."
+      },
+      "BillingSettingsDetail": {
+        "properties": {
+          "billing_starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Starts On"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "billing_starts_on",
+          "version",
+          "updated_at"
+        ],
+        "title": "BillingSettingsDetail",
+        "description": "``GET /api/v1/billing/settings`` (#91 B1, B2). ``billing_starts_on``\nis the billing start floor, a center-local date: ``null`` means billing\nis off (nothing is posted); otherwise charges are posted only for\nservice dates on or after it."
+      },
+      "BillingSettingsUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "billing_starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Starts On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "billing_starts_on"
+        ],
+        "title": "BillingSettingsUpdate",
+        "description": "``PATCH /api/v1/billing/settings`` (#91 B3). Both keys are required;\n``billing_starts_on: null`` turns billing off. Any date from 2000-01-01\nto 2099-12-31, past included (``date_out_of_range`` otherwise)."
       },
       "BillingStudent": {
         "properties": {
@@ -36897,6 +37190,37 @@
         ],
         "title": "OffsetPage[TutorListItem]"
       },
+      "OffsetPage_UnbilledSessionItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnbilledSessionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[UnbilledSessionItem]"
+      },
       "OffsetPage_UserListItem_": {
         "properties": {
           "items": {
@@ -44735,6 +45059,112 @@
         ],
         "title": "TutorUpdate",
         "description": "A profile change (``PATCH /api/v1/tutors/{user_id}``). Fields not sent\nstay unchanged; ``\"\"`` or ``null`` clears ``email``, ``phone`` or\n``professional_experience``."
+      },
+      "UnbilledReason": {
+        "type": "string",
+        "enum": [
+          "no_billing_account",
+          "no_price"
+        ]
+      },
+      "UnbilledRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "UnbilledRecord",
+        "description": "A referenced record: its id and current name."
+      },
+      "UnbilledSessionItem": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date",
+            "description": "The session's local date in the center's time zone."
+          },
+          "state": {
+            "$ref": "#/components/schemas/BillableState"
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/UnbilledRecord"
+          },
+          "student": {
+            "$ref": "#/components/schemas/UnbilledRecord"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The student's current level (null: none)."
+          },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The student's family (null: none, reason no_billing_account)."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/UnbilledReason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "starts_at",
+          "ends_at",
+          "service_date",
+          "state",
+          "scheduled_minutes",
+          "subject",
+          "student",
+          "education_level",
+          "family",
+          "reason"
+        ],
+        "title": "UnbilledSessionItem",
+        "description": "One confirmed or completed individual session participant the\nsweeper skips (``GET /api/v1/billing/unbilled-items``)."
       },
       "UserAllowedActions": {
         "properties": {

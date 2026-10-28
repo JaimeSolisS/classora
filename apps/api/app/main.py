@@ -66,6 +66,7 @@ from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
 )
+from app.modules.billing.settings_router import router as billing_settings_router
 from app.modules.catalog.classrooms_router import router as classrooms_router
 from app.modules.catalog.periods_router import router as periods_router
 from app.modules.catalog.router import router as catalog_router
@@ -175,6 +176,7 @@ from app.workflows.session_notes_router import (
 from app.workflows.session_requests_router import (
     router as session_request_review_router,
 )
+from app.workflows.unbilled_items_router import router as unbilled_items_router
 
 
 @asynccontextmanager
@@ -300,6 +302,8 @@ def build_app(
     app.include_router(cohorts_router)
     app.include_router(price_catalog_router)
     app.include_router(billing_accounts_router)
+    app.include_router(billing_settings_router)
+    app.include_router(unbilled_items_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

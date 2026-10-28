@@ -494,3 +494,48 @@ class LedgerEntry(BaseModel):
     amount: Money
     balance_effect: Money
     occurred_at: datetime
+
+
+# --- Billing settings and package coverage (#91) -------------------------------------
+
+
+class BillingSettingsDetail(BaseModel):
+    """``GET /api/v1/billing/settings`` (#91 B1, B2). ``billing_starts_on``
+    is the billing start floor, a center-local date: ``null`` means billing
+    is off (nothing is posted); otherwise charges are posted only for
+    service dates on or after it."""
+
+    billing_starts_on: date | None
+    version: int
+    updated_at: datetime
+
+
+class BillingSettingsUpdate(BaseModel):
+    """``PATCH /api/v1/billing/settings`` (#91 B3). Both keys are required;
+    ``billing_starts_on: null`` turns billing off. Any date from 2000-01-01
+    to 2099-12-31, past included (``date_out_of_range`` otherwise)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    billing_starts_on: date | None
+
+    @field_validator("billing_starts_on")
+    @classmethod
+    def _date_range(cls, value: date | None) -> date | None:
+        return None if value is None else _effective_from(value)
+
+
+@dataclass(frozen=True)
+class CoverageQuery:
+    """One ``(class_session_id, student_id)`` asked of
+    :func:`~app.modules.billing.service.package_covered_keys` (#91 G7):
+    with what #94 needs to find an eligible package (the student, the
+    subject, the session's local service date and its scheduled
+    minutes)."""
+
+    class_session_id: uuid.UUID
+    student_id: uuid.UUID
+    subject_id: uuid.UUID
+    service_date: date
+    scheduled_minutes: int

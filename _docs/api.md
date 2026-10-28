@@ -6057,6 +6057,60 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   Payment-level rows have no `student_id`, so the student filter leaves
   them out.
 
+### Billing settings and unbilled session items
+
+Implemented by M6-06 (#91; spec §3, §6, W4.1, W4.2; ADR-0006 E1, E2, E9,
+E10, E11; owner-delegated decisions G1-G8 (a)). The settings routes are in
+`app/modules/billing/settings_router.py` (table `billing_settings`,
+`_docs/data-model.md` §3.2); the unbilled list is
+`app/workflows/unbilled_items_router.py` over
+`app/workflows/session_charges.py`, which also holds the sweeper. The web
+pages are M6-06b (#366).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/settings` | `require("billing.view")` | `BillingSettingsDetail`: `billing_starts_on` (`null`: billing is off), `version`, `updated_at`. |
+| `PATCH /api/v1/billing/settings` | `require("billing.manage")` | Body `BillingSettingsUpdate` `{version, billing_starts_on}`, both required, unknown fields `422`. `200` with the detail. |
+| `GET /api/v1/billing/unbilled-items` | `require("billing.view")` | Offset pagination; filters `reason` (`no_billing_account`, `no_price`; repeatable) and `student_id`. Items are `UnbilledSessionItem`. |
+
+- **Billing start date.** Any date from 2000-01-01 to 2099-12-31, past
+  included (`date_out_of_range` otherwise), or `null`. Check order of the
+  `PATCH`: `401` → `403 csrf_failed` → `403 privacy_notice_required` →
+  `403 permission_denied` → `422` → the row `FOR UPDATE` → `409
+  version_conflict`. A change bumps `version` and writes one `update`
+  audit event with the old and new date; sending the current value changes
+  nothing (no event, no version bump; the version is still checked). No
+  reauthentication and no `Idempotency-Key`: the setting posts nothing by
+  itself, and moving it later or back to `null` never changes posted
+  charges. After the commit, a `PATCH` whose result is a date queues one
+  `billing:post_session_charges` run.
+- **Session charges** (the `billing:post_session_charges` job, every 15
+  minutes): every `confirmed` or `completed` **individual** session whose
+  local date (center zone) is on or after `billing_starts_on` gets one
+  `session` charge per participant, at the catalog price in effect on that
+  local date (`billing.service.lookup_price` with the student's current
+  level and the session's `scheduled_minutes`), due on the service date
+  plus the account's `due_offset_days`, posted with no actor. A `0.00`
+  price posts a zero charge. Group per-session charges come with M6-07; a
+  session covered by a package takes the package path from M6-09. A posted
+  charge is never changed by the job (a reschedule, a new duration, a new
+  price version or a family move keep it).
+- **Unbilled items.** The candidates the job skips, computed on read
+  (nothing stored, no lock): `no_billing_account` (the student has no
+  family; checked first) or `no_price` (no price in effect, or "not
+  offered"). Billing off gives an empty page; a candidate that is priced
+  but not posted yet, or covered by a package, is not listed. Each is
+  charged by the next run once its cause is fixed. `UnbilledSessionItem`:
+  `class_session_id`, `starts_at`, `ends_at`, `service_date`, `state`,
+  `scheduled_minutes`, `subject {id, name}`, `student {id, name}`,
+  `education_level {id, name} | null` (the student's), `family {id, name}
+  | null` and `reason`. Order: `service_date`, `starts_at`, student name
+  (case-insensitive), `class_session_id`, `student_id`. At most six
+  statements plus one price lookup per distinct (subject, level, minutes,
+  date).
+- **Check order of the list:** `401` → `403 privacy_notice_required` →
+  `403 permission_denied` → `422` (the query). No new error code.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one

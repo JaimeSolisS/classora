@@ -39,6 +39,7 @@ from app.modules.administration.settings_models import (
 from app.modules.billing.models import (
     AllocationRelease,
     BillingAccount,
+    BillingSettings,
     Charge,
     ChargeAdjustment,
     Payment,
@@ -144,6 +145,7 @@ def test_the_guard_scans_the_real_audited_models():
         AssignmentOfferSession,
         AssignmentSubmission,
         BillingAccount,
+        BillingSettings,
         BusinessSettings,
         Charge,
         ChargeAdjustment,

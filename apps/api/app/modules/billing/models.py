@@ -1,5 +1,5 @@
-"""Billing tables: the price catalog (#89) and the ledger core (#90;
-``_docs/data-model.md`` §3; ADR-0006).
+"""Billing tables: the price catalog (#89), the ledger core (#90) and the
+billing settings (#91; ``_docs/data-model.md`` §3; ADR-0006).
 
 **Price catalog** (#89; data-model §3.4, §3.5, §5.2; ADR-0006 "Price
 catalog"):
@@ -45,6 +45,10 @@ migration 0061 (#90) makes it ``EXISTS`` a charge with that
   one account (I4), and an adjustment on its charge's account and student
   (I5). The view ``billing_ledger_entries`` is defined only in the
   migration (``balances.LEDGER_VIEW`` reads it, outside the metadata).
+
+**Billing settings** (#91; data-model §3.2): ``billing_settings``, a
+singleton (mutable config, versioned) holding the billing start floor
+``billing_starts_on`` (``NULL``: the sweepers post nothing).
 
 Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``.
 """
@@ -627,3 +631,21 @@ class Refund(Audited, Model):
     reference: Mapped[str | None] = mapped_column(String(REFERENCE_MAX), nullable=True)
     reason: Mapped[str] = mapped_column(String(REASON_MAX))
     refunded_by_user_id: Mapped[uuid.UUID] = _actor(nullable=False)
+
+
+# --- Billing settings (#91) ----------------------------------------------------------
+
+
+class BillingSettings(Audited, VersionedMixin, Model):
+    """The one billing settings row (#91 A3; data-model §3.2). Migration
+    0062 inserts it with ``billing_starts_on = NULL`` (billing off).
+    ``billing_starts_on`` is a center-local date, not an instant: no
+    time-zone dependency is registered (#37 E1)."""
+
+    __tablename__ = "billing_settings"
+    __table_args__ = (CheckConstraint("singleton", name="singleton_true"),)
+
+    singleton: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), unique=True
+    )
+    billing_starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)

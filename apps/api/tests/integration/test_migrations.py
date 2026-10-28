@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0061"
+HEAD = "0062"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -160,6 +160,8 @@ LEDGER_TABLES = [
     "refunds",
 ]
 """The tables revision 0061 adds (#90 A2)."""
+BILLING_SETTINGS_TABLES = ["billing_settings"]
+"""The table revision 0062 adds (#91 A2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -397,6 +399,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PRICE_CATALOG_TABLES,
             *LEDGER_TABLES,
             LEDGER_VIEW,
+            *BILLING_SETTINGS_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4546,9 +4549,22 @@ def _of_0061(diff: Any) -> bool:
     return False
 
 
+def _of_0062(diff: Any) -> bool:
+    """A metadata difference that revision 0062 adds: the billing_settings
+    table (#91 A2)."""
+    if diff[0] == "add_table":
+        return diff[1].name in BILLING_SETTINGS_TABLES
+    return False
+
+
+def _of_0061_on(diff: Any) -> bool:
+    """A metadata difference that revision 0061 or a later one adds."""
+    return _of_0061(diff) or _of_0062(diff)
+
+
 def _of_0060_on(diff: Any) -> bool:
     """A metadata difference that revision 0060 or a later one adds."""
-    return _of_0060(diff) or _of_0061(diff)
+    return _of_0060(diff) or _of_0061_on(diff)
 
 
 def _of_0059_on(diff: Any) -> bool:
@@ -10653,7 +10669,7 @@ def test_0060_adds_the_price_catalog_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0060")
 
     assert version_nums(dsn) == ["0060"]
-    assert [d for d in metadata_diff(dsn) if not _of_0061(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0061_on(d)] == []
     assert public_tables(dsn) - before == set(PRICE_CATALOG_TABLES)
     assert _functions(dsn) == {"price_version_is_referenced", "price_versions_guard"}
     [price] = run_sql(dsn, PRICE_INSERT, {"s": _subject_row(dsn)})
@@ -10807,7 +10823,7 @@ def test_0061_adds_the_ledger_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0061")
 
     assert version_nums(dsn) == ["0061"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0062(d)] == []
     assert public_tables(dsn) - before == {*LEDGER_TABLES, LEDGER_VIEW}
     assert _append_only_functions(dsn) == {
         f"{table}_append_only" for table in APPEND_ONLY_LEDGER_TABLES
@@ -10828,7 +10844,7 @@ def test_0061_adds_the_ledger_and_downgrade_drops_it(fresh_database_url):
     assert public_tables(dsn) == before
     assert _append_only_functions(dsn) == set()
     assert _predicate_body(dsn).endswith("SELECT false")
-    assert [d for d in metadata_diff(dsn) if not _of_0061(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0061_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11011,3 +11027,65 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         {"t": LEDGER_VIEW},
     )
     assert [row.column_name for row in view_columns] == LEDGER_VIEW_COLUMNS
+
+
+# --- 0062: the billing settings singleton (#91 A1, A2) ------------------------------
+
+
+def test_0062_adds_the_billing_settings_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0061")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0062")
+
+    assert version_nums(dsn) == ["0062"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(BILLING_SETTINGS_TABLES)
+    rows = run_sql(
+        dsn, "SELECT singleton, billing_starts_on, version FROM billing_settings"
+    )
+    assert [(r.singleton, r.billing_starts_on, r.version) for r in rows] == [
+        (True, None, 1)
+    ]
+
+    command.downgrade(config, "0061")
+
+    assert version_nums(dsn) == ["0061"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0062(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_billing_settings_columns_constraints_and_singleton(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, "billing_settings") == {
+        **STANDARD_COLUMNS,
+        "singleton": ("boolean", "NO", None, "true"),
+        "billing_starts_on": ("date", "YES", None, None),
+    }
+    assert set(_constraints(dsn, "billing_settings")) == {
+        "pk_billing_settings",
+        "ck_billing_settings_singleton_true",
+        "uq_billing_settings_singleton",
+    }
+    # A second row violates the singleton: false fails the CHECK, true the
+    # UNIQUE.
+    for value, constraint in (
+        ("false", "ck_billing_settings_singleton_true"),
+        ("true", "uq_billing_settings_singleton"),
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            run_sql(
+                dsn,
+                "INSERT INTO billing_settings (singleton) VALUES (:v)",
+                {"v": value == "true"},
+            )
+    [count] = run_sql(dsn, "SELECT count(*) AS n FROM billing_settings")
+    assert count.n == 1

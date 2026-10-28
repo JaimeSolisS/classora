@@ -33,6 +33,18 @@ The billing account reads (#364) add :func:`account_of_family` and
   newest allocations above the new net (E5).
 - Every primitive runs in the caller's Unit of Work and never commits; the
   reads take no lock and write nothing.
+
+**Billing settings and session charges** (#91;
+:mod:`~app.modules.billing.settings`). For other modules:
+:func:`get_billing_settings`, :func:`billing_starts_on` (the billing start
+floor; ``lock=True`` reads the row ``FOR SHARE``, after the caller's
+scheduling locks and before the account lock) and
+:func:`package_covered_keys` (the package coverage seam, empty until #94;
+the session sweeper and the unbilled list in ``app.workflows.
+session_charges`` call it), and the unexecuted
+:func:`session_charge_key_columns` (the posted session keys the sweeper
+anti-joins). :func:`update_billing_settings` is the ``PATCH
+/api/v1/billing/settings`` write.
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -66,6 +78,9 @@ from app.modules.billing.ledger import (
 from app.modules.billing.ledger import lock_billing_account as lock_billing_account
 from app.modules.billing.ledger import post_adjustment as post_adjustment
 from app.modules.billing.ledger import post_charge as post_charge
+from app.modules.billing.ledger import (
+    session_charge_key_columns as session_charge_key_columns,
+)
 from app.modules.billing.prices import CATALOG_MODELS as CATALOG_MODELS
 from app.modules.billing.prices import CatalogItemRow as CatalogItemRow
 from app.modules.billing.prices import CatalogKey as CatalogKey
@@ -85,13 +100,30 @@ from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
 from app.modules.billing.schemas import (
     BillingAccountReference as BillingAccountReference,
 )
+from app.modules.billing.schemas import (
+    BillingSettingsDetail as BillingSettingsDetail,
+)
+from app.modules.billing.schemas import (
+    BillingSettingsUpdate as BillingSettingsUpdate,
+)
 from app.modules.billing.schemas import ChargeBalance as ChargeBalance
 from app.modules.billing.schemas import ChargeDetail as ChargeDetail
 from app.modules.billing.schemas import ChargeDetailPage as ChargeDetailPage
 from app.modules.billing.schemas import ChargeDraft as ChargeDraft
 from app.modules.billing.schemas import ChargeStatus as ChargeStatus
+from app.modules.billing.schemas import CoverageQuery as CoverageQuery
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
 from app.modules.billing.schemas import PostedAdjustment as PostedAdjustment
 from app.modules.billing.schemas import PostedCharge as PostedCharge
 from app.modules.billing.schemas import PriceInEffect as PriceInEffect
 from app.modules.billing.schemas import StudentBalance as StudentBalance
+from app.modules.billing.settings import billing_starts_on as billing_starts_on
+from app.modules.billing.settings import (
+    get_billing_settings as get_billing_settings,
+)
+from app.modules.billing.settings import (
+    package_covered_keys as package_covered_keys,
+)
+from app.modules.billing.settings import (
+    update_billing_settings as update_billing_settings,
+)

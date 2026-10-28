@@ -131,7 +131,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 
 | Permission | Holders | Scope | First used by |
 |---|---|---|---|
-| `billing.view` | Owner, Administrator, Finance Staff | read any family's account, ledger, balances, receipts, unbilled items | #90 |
+| `billing.view` | Owner, Administrator, Finance Staff | read any family's account, ledger, balances, receipts, unbilled items | #364 (M6-05b) |
 | `billing.manage` | Owner, Administrator, Finance Staff | price catalog, package products, discounts and custom prices, tuition plans, manual charges and adjustments, due-date changes, cancellation rules, billing settings | #89 |
 | `payment.record` | Owner, Administrator, Finance Staff | record and allocate payments | #96 |
 | `finance.refund.approve` | Owner; delegable to Administrators (already in code, ADR-0007) | payment reversals and refunds, with reauthentication (`finance.refund_or_reversal`) | #100 |
@@ -207,7 +207,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
   - **#87 (M6-02):** the `Money` value object (E5 money rules, ADR-0004).
   - **#88 (M6-03):** API idempotency: `idempotency_keys`, the header dependency, the purge job, the web helper (E6).
   - **#89 (M6-04):** the price catalog, versions, the guarded trigger and the lookup; seeds `billing.manage` (E8, E9).
-  - **#90 (M6-05):** billing accounts, the ledger tables, their triggers, the balances and statuses, the ledger view; seeds `billing.view` (E4, E5, E8).
+  - **#90 (M6-05):** billing accounts, the ledger tables, their triggers, the balances and statuses, the ledger view (E4, E5); `billing.view` is seeded by #364 (M6-05b) with the read routes (E8).
   - **#91 (M6-06):** the session sweeper, `billing_settings`, the unbilled list, the fate of `apply_confirmation_charge` (E1, E2, E10 skip).
   - **#92 (M6-07):** enrollment charges in the M4 hooks plus sweepers, late proration, `enrollment_removal` (E1, E9).
   - **#93 (M6-08):** tuition plans and the daily period job (E1, E9, E11).
