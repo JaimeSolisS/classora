@@ -482,7 +482,7 @@ API idempotency (E6). Not `Audited`. Migration `0059` (#88).
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `user_id` | UUID | no | FK `users` `ON DELETE CASCADE` (transient rows) |
+| `user_id` | UUID | no | FK `users` `ON DELETE RESTRICT` |
 | `endpoint` | TEXT | no | method + route template, e.g. `POST /api/v1/billing/payments`; `CHECK (char_length(endpoint) BETWEEN 1 AND 300)` |
 | `key` | TEXT | no | `CHECK (key ~ '^[A-Za-z0-9_-]{16,128}$')` |
 | `request_hash` | BYTEA | no | raw SHA-256 over method, concrete path and canonical JSON body; `CHECK (octet_length(request_hash) = 32)` |

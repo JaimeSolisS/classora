@@ -103,14 +103,14 @@ def test_one_log_line_with_the_count_and_no_keys(seeded_url, user_id, clock, cap
     assert ("01" * 32) not in text
 
 
-def test_the_user_foreign_key_cascades(seeded_url):
+def test_the_user_foreign_key_restricts(seeded_url):
     [constraint] = run_sql(
         seeded_url,
         "SELECT confdeltype::text AS confdeltype FROM pg_constraint"
         " WHERE conname = 'fk_idempotency_keys_user_id_users'",
     )
 
-    assert constraint.confdeltype == "c"  # ON DELETE CASCADE
+    assert constraint.confdeltype == "r"  # ON DELETE RESTRICT
 
 
 # --- D1: registration -----------------------------------------------------------------

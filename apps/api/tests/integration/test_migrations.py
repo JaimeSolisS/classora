@@ -10493,7 +10493,7 @@ def test_idempotency_keys_columns_constraints_and_indexes(fresh_database_url):
     assert constraints["uq_idempotency_keys_user_endpoint_key"] == (
         "UNIQUE (user_id, endpoint, key)"
     )
-    assert "ON DELETE CASCADE" in constraints["fk_idempotency_keys_user_id_users"]
+    assert "ON DELETE RESTRICT" in constraints["fk_idempotency_keys_user_id_users"]
     indexes = _indexes(dsn, "idempotency_keys")
     assert set(indexes) == {
         "ix_idempotency_keys_expires_at",
@@ -10545,12 +10545,13 @@ def test_idempotency_keys_are_unique_per_user_endpoint_and_key(fresh_database_ur
         run_sql(dsn, IDEMPOTENCY_INSERT, values | {"hash": b"\x01" * 32})
 
 
-def test_deleting_a_user_deletes_their_idempotency_keys(fresh_database_url):
+def test_a_user_with_idempotency_keys_cannot_be_deleted(fresh_database_url):
     dsn = fresh_database_url
     command.upgrade(alembic_config(dsn), "head")
     values = _idempotency_values(dsn)
     run_sql(dsn, IDEMPOTENCY_INSERT, values)
 
-    run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": values["u"]})
+    with pytest.raises(IntegrityError, match="fk_idempotency_keys_user_id_users"):
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": values["u"]})
 
-    assert run_sql(dsn, "SELECT count(*) FROM idempotency_keys")[0][0] == 0
+    assert run_sql(dsn, "SELECT count(*) FROM idempotency_keys")[0][0] == 1

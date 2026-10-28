@@ -13,8 +13,8 @@ columns are nullable: they are ``NULL`` only inside the claiming transaction
 ``[A-Za-z0-9_-]``; ``endpoint`` is 1-300 characters.
 ``(user_id, endpoint, key)`` is unique (the claim's upsert target);
 ``expires_at`` is indexed for the hourly purge. ``user_id`` references
-``users`` ``ON DELETE CASCADE`` (transient rows). Not audited. Downgrading
-drops exactly this table.
+``users`` ``ON DELETE RESTRICT`` (no foreign key to ``users`` cascades).
+Not audited. Downgrading drops exactly this table.
 """
 
 from collections.abc import Sequence
@@ -73,7 +73,7 @@ def upgrade() -> None:
             ["user_id"],
             ["users.id"],
             name=op.f(f"fk_{TABLE}_user_id_users"),
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f(f"pk_{TABLE}")),
         sa.UniqueConstraint(

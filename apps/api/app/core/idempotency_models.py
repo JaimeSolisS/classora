@@ -14,7 +14,8 @@ status. ``response_body`` stays ``NULL`` for a ``204``.
 
 Rows are transient: they expire 7 days after the claim and the hourly
 ``idempotency:purge_keys`` job (``app.core.idempotency_tasks``) deletes them.
-Deleting a user deletes their keys (``ON DELETE CASCADE``).
+``user_id`` is ``ON DELETE RESTRICT`` (no foreign key to ``users`` cascades;
+users are archived, never deleted).
 
 Not audited: the keys are bookkeeping of the request, and the business route
 audits its own change.
@@ -61,7 +62,7 @@ class IdempotencyKey(Model):
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     endpoint: Mapped[str] = mapped_column(Text)
     key: Mapped[str] = mapped_column(Text)
