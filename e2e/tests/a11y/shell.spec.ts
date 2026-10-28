@@ -30,7 +30,8 @@ const THEMES = ['light', 'dark'] as const;
 // (#39 E2),
 // /settings (once its form loaded, #37 I2), /settings/scheduling-policies
 // (once its form loaded, #61 H2), /billing/prices (#363 F5),
-// /billing/unbilled and /billing/settings (#366 E4),
+// /billing/unbilled and /billing/settings (#366 E4), /billing/discounts
+// and /billing/custom-prices (#367 G4),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -129,6 +130,19 @@ const ROUTES: ScannedRoute[] = [
     waitForField: common.billing.unbilled.filters.reason,
   },
   { name: 'billing-settings', path: '/billing/settings', signedIn: true },
+  // #367 G4: the Discounts and Custom prices tabs.
+  {
+    name: 'billing-discounts',
+    path: '/billing/discounts',
+    signedIn: true,
+    waitForField: common.billing.discounts.filters.q,
+  },
+  {
+    name: 'billing-custom-prices',
+    path: '/billing/custom-prices',
+    signedIn: true,
+    waitForField: common.billing.customPrices.filters.status,
+  },
   {
     name: 'catalog-level',
     path: '/catalog/education-levels',

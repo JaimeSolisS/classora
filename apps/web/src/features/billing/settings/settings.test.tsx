@@ -126,6 +126,8 @@ describe('navigation and access (A)', () => {
 
     expect(tabs()).toEqual([
       ['Prices', null],
+      ['Discounts', null],
+      ['Custom prices', null],
       ['Unbilled', null],
       ['Settings', 'page'],
     ]);
@@ -412,6 +414,8 @@ describe('Spanish (D1)', () => {
 
     expect(tabs('Secciones de cobros').map(([label]) => label)).toEqual([
       'Precios',
+      'Descuentos',
+      'Precios especiales',
       'Sin cobrar',
       'Configuración',
     ]);

@@ -4615,6 +4615,8 @@
     "tabs": {
       "label": "Secciones de cobros",
       "prices": "Precios",
+      "discounts": "Descuentos",
+      "customPrices": "Precios especiales",
       "unbilled": "Sin cobrar",
       "settings": "Configuración"
     },
@@ -4741,6 +4743,260 @@
       "detailTitle": "Precio",
       "detailHeading": "{{service}}: {{subject}}"
     },
+    "discounts": {
+      "title": "Descuentos",
+      "intro": "Los descuentos se aplican al registrar un cargo, en el orden beca → descuento por hermanos → descuento → promoción, como máximo uno de cada tipo, cada uno sobre lo que queda. Los cargos ya registrados nunca cambian.",
+      "add": "Agregar descuento",
+      "empty": "Aún no hay descuentos.",
+      "emptyFiltered": "Ningún descuento coincide con estos filtros.",
+      "filters": {
+        "label": "Filtros de descuentos",
+        "q": "Nombre",
+        "status": "Estado",
+        "allKinds": "Todos los tipos"
+      },
+      "statusFilters": {
+        "open": "Vigentes y próximos",
+        "current": "Vigentes",
+        "upcoming": "Próximos",
+        "expired": "Vencidos",
+        "inactive": "Inactivos",
+        "all": "Todos"
+      },
+      "kinds": {
+        "discount": "Descuento",
+        "scholarship": "Beca",
+        "sibling": "Descuento por hermanos",
+        "promotion": "Promoción"
+      },
+      "kindHelp": {
+        "discount": "Un descuento general para quien cumpla los criterios o para estudiantes o familias elegidos.",
+        "scholarship": "Solo para los estudiantes o familias que asignes.",
+        "sibling": "Para familias con un mínimo de estudiantes activos.",
+        "promotion": "Por tiempo limitado: necesita fecha de inicio y de fin."
+      },
+      "status": {
+        "current": "Vigente",
+        "upcoming": "Próximo",
+        "expired": "Vencido",
+        "inactive": "Inactivo"
+      },
+      "audience": {
+        "all": "Todos los que califiquen",
+        "assigned": "Solo estudiantes o familias asignados"
+      },
+      "chargeKinds": {
+        "session": "Sesiones",
+        "group_enrollment": "Inscripción a grupo",
+        "cohort_enrollment": "Inscripción a curso",
+        "tuition_period": "Colegiatura",
+        "package_purchase": "Compra de paquete"
+      },
+      "valueTypes": {
+        "percent": "Porcentaje",
+        "amount": "Monto fijo"
+      },
+      "columns": {
+        "name": "Nombre",
+        "kind": "Tipo",
+        "value": "Valor",
+        "who": "Quién lo recibe",
+        "criteria": "Criterios",
+        "validity": "Vigencia",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "fields": {
+        "kind": "Tipo",
+        "name": "Nombre",
+        "valueType": "Valor",
+        "percent": "Porcentaje (%)",
+        "amount": "Monto (MXN)",
+        "audience": "Quién lo recibe",
+        "criteria": "Criterios",
+        "chargeKinds": "Tipos de cargo",
+        "classTypes": "Tipos de clase",
+        "subjects": "Materias",
+        "levels": "Niveles del estudiante",
+        "inactive": "Inactivos",
+        "minFamilyStudents": "Mínimo de estudiantes activos en la familia",
+        "startsOn": "Válido desde",
+        "expiresOn": "Válido hasta",
+        "isActive": "Activo"
+      },
+      "hints": {
+        "percent": "Más de 0 y hasta 100, con hasta 4 decimales.",
+        "amount": "En pesos, por ejemplo 100.00. Nunca deja un cargo por debajo de cero.",
+        "audience": "Todos los que cumplan los criterios, o solo los estudiantes y familias que asignes en la página del descuento.",
+        "scholarshipAssigned": "Una beca es solo para los estudiantes o familias que asignes.",
+        "siblingAll": "Un descuento por hermanos aplica a toda familia que califique.",
+        "criteria": "Todos opcionales: un cargo debe cumplir cada criterio que elijas.",
+        "any": "Cualquiera",
+        "chosen_one": "{{count}} elegido",
+        "chosen_many": "{{count}} elegidos",
+        "chosen_other": "{{count}} elegidos",
+        "minFamily": "De {{min}} a {{max}} estudiantes activos.",
+        "optionalDate": "Opcional.",
+        "promotionDates": "Obligatoria para una promoción.",
+        "isActive": "Un descuento inactivo nunca se aplica."
+      },
+      "validation": {
+        "nameRequired": "Escribe el nombre.",
+        "nameTooLong": "Usa como máximo 120 caracteres.",
+        "valueRequired": "Escribe el valor.",
+        "percentInvalid": "Escribe un porcentaje como 10 o 12.5.",
+        "percentPrecision": "Un porcentaje tiene como máximo 4 decimales.",
+        "percentRange": "Escribe más de 0 y hasta 100.",
+        "amountInvalid": "Escribe un monto con hasta 2 decimales, por ejemplo 100.00.",
+        "amountPositive": "Escribe un monto mayor que 0.",
+        "minFamilyRequired": "Escribe el mínimo de estudiantes activos.",
+        "minFamilyRange": "Escribe un número entero de 2 a 20.",
+        "datesRequired": "Una promoción necesita las dos fechas.",
+        "dateInvalid": "Elige una fecha válida.",
+        "datesOrder": "El fin no puede ser antes del inicio."
+      },
+      "percent": "{{value}} %",
+      "assignedCount_one": "{{count}} asignado",
+      "assignedCount_many": "{{count}} asignados",
+      "assignedCount_other": "{{count}} asignados",
+      "minFamily_one": "familias con ≥ {{count}} estudiante activo",
+      "minFamily_many": "familias con ≥ {{count}} estudiantes activos",
+      "minFamily_other": "familias con ≥ {{count}} estudiantes activos",
+      "range": "{{from}} – {{until}}",
+      "until": "Hasta el {{until}}",
+      "noEnd": "Sin fin",
+      "view": "Ver",
+      "viewFor": "Ver {{name}}",
+      "createNote": "Los descuentos aplican a los cargos que se registren a partir de ahora.",
+      "editTitle": "Editar descuento",
+      "editNote": "Los cambios aplican a los cargos que se registren a partir de ahora. Los cargos registrados conservan el descuento como estaba.",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Descuento guardado.",
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "activate": "Activar",
+      "deactivated": "Descuento desactivado.",
+      "activated": "Descuento activado.",
+      "deactivateDialog": {
+        "title": "¿Desactivar este descuento?",
+        "body": "{{name}} no se aplicará a los cargos que se registren a partir de ahora. Los cargos registrados lo conservan."
+      },
+      "activateDialog": {
+        "title": "¿Activar este descuento?",
+        "body": "{{name}} vuelve a aplicarse a los cargos que se registren a partir de ahora y califiquen."
+      },
+      "assignments": {
+        "title": "Asignaciones",
+        "everyone": "Este descuento aplica a todos los que cumplan sus criterios: no hay nada que asignar.",
+        "empty": "Aún no hay nadie asignado: el descuento no aplica a nadie.",
+        "name": "Nombre",
+        "type": "Tipo",
+        "assignedOn": "Asignado el",
+        "remove": "Quitar",
+        "removeFor": "Quitar {{name}}",
+        "removeTitle": "¿Quitar esta asignación?",
+        "removeBody": "{{name}} no recibirá {{discount}} en los cargos que se registren a partir de ahora. Los cargos registrados lo conservan.",
+        "removed": "Asignación quitada."
+      },
+      "assign": {
+        "title": "Asignar",
+        "description": "Quién recibe {{name}}. La asignación de una familia cubre a cada uno de sus estudiantes.",
+        "kind": "Asignar a",
+        "choose": {
+          "student": "Elige un estudiante.",
+          "family": "Elige una familia."
+        },
+        "alreadyAssigned": "{{name}} (ya asignado)",
+        "exists": "Este estudiante o familia ya está asignado a este descuento.",
+        "submit": "Asignar",
+        "done": "{{name}} asignado."
+      },
+      "back": "Volver a descuentos",
+      "notFound": "Descuento no encontrado",
+      "notFoundHelp": "Este descuento no existe o ya no está disponible.",
+      "detailTitle": "Descuento"
+    },
+    "customPrices": {
+      "title": "Precios especiales",
+      "intro": "Un precio especial reemplaza el precio del catálogo para ese estudiante o familia (el del estudiante gana al de la familia). Los descuentos se aplican encima.",
+      "add": "Agregar precio especial",
+      "addNote": "Aplica a los cargos que se registren desde su fecha de inicio.",
+      "empty": "Aún no hay precios especiales.",
+      "emptyFiltered": "Ningún precio especial coincide con estos filtros.",
+      "filters": {
+        "label": "Filtros de precios especiales",
+        "target": "Ver los precios especiales de",
+        "status": "Estado",
+        "clear": "Ver todos",
+        "unknown": {
+          "student": "El estudiante elegido",
+          "family": "La familia elegida"
+        }
+      },
+      "statusFilters": {
+        "open": "Vigentes y próximos",
+        "current": "Vigentes",
+        "upcoming": "Próximos",
+        "past": "Anteriores",
+        "all": "Todos"
+      },
+      "columns": {
+        "target": "Estudiante o familia",
+        "service": "Servicio",
+        "catalog": "Precio del catálogo hoy",
+        "amount": "Precio especial",
+        "dates": "Desde – hasta",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "fields": {
+        "targetKind": "Para",
+        "service": "Precio del catálogo",
+        "amount": "Precio especial (MXN)",
+        "effectiveFrom": "Desde",
+        "expiresOn": "Hasta"
+      },
+      "hints": {
+        "service": "Precios por sesión y por curso completo del catálogo, con su precio de hoy.",
+        "noCatalog": "El catálogo aún no tiene precios por sesión ni por curso completo. Agrega uno en Precios.",
+        "effectiveFrom": "Hoy o después.",
+        "expiresOn": "Opcional: el último día en que aplica."
+      },
+      "validation": {
+        "targetRequired": "Elige un estudiante o una familia.",
+        "serviceRequired": "Elige el precio del catálogo.",
+        "amountRequired": "Escribe el monto.",
+        "amountInvalid": "Escribe un monto de 0 o más con hasta 2 decimales, por ejemplo 300.00.",
+        "dateRequired": "Elige una fecha.",
+        "dateBeforeToday": "Elige hoy o una fecha posterior.",
+        "datesOrder": "El fin no puede ser antes del inicio.",
+        "endBeforeMin": "Elige hoy o una fecha posterior, no antes del inicio."
+      },
+      "option": "{{service}} — {{amount}}",
+      "overlap": {
+        "student": "Este estudiante ya tiene un precio especial para este servicio en esas fechas.",
+        "family": "Esta familia ya tiene un precio especial para este servicio en esas fechas."
+      },
+      "end": "Terminar",
+      "endFor": "Terminar el precio especial de {{name}} para {{service}}",
+      "delete": "Eliminar",
+      "deleteFor": "Eliminar el precio especial de {{name}} para {{service}}",
+      "endDialog": {
+        "title": "Terminar este precio especial",
+        "description": "{{name}}, {{service}}.",
+        "help": "El último día en que aplica. Después aplica el precio del catálogo.",
+        "submit": "Terminar"
+      },
+      "deleteDialog": {
+        "title": "¿Eliminar este precio especial?",
+        "body": "Se eliminará el precio especial de {{name}} para {{service}}. Aún no ha empezado."
+      },
+      "added": "Precio especial agregado.",
+      "ended": "Precio especial terminado.",
+      "deleted": "Precio especial eliminado."
+    },
     "unbilled": {
       "title": "Sesiones sin cobrar",
       "intro": "Sesiones confirmadas y completadas desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y la sesión se cobra.",
@@ -4809,6 +5065,21 @@
       "saving": "Guardando…",
       "reload": "Recargar",
       "saved": "Configuración de cobros guardada."
+    },
+    "targets": {
+      "kinds": {
+        "student": "Estudiante",
+        "family": "Familia"
+      },
+      "search": {
+        "student": "Buscar estudiante",
+        "family": "Buscar familia"
+      },
+      "searchHelp": {
+        "student": "Escribe parte del nombre del estudiante.",
+        "family": "Escribe parte del nombre de la familia."
+      },
+      "chosen": "Elegido: {{name}}"
     }
   }
 }

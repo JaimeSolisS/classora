@@ -43,9 +43,51 @@ type Common = {
     // #363 F4: the price catalog.
     billing: string;
   };
-  // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs.
+  // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs;
+  // #367 G3, G4: discounts and custom prices.
   billing: {
-    tabs: Record<'label' | 'prices' | 'unbilled' | 'settings', string>;
+    tabs: Record<
+      | 'label'
+      | 'prices'
+      | 'discounts'
+      | 'customPrices'
+      | 'unbilled'
+      | 'settings',
+      string
+    >;
+    targets: {
+      kinds: Record<'student' | 'family', string>;
+      search: Record<'student' | 'family', string>;
+    };
+    discounts: {
+      title: string;
+      add: string;
+      save: string;
+      back: string;
+      deactivate: string;
+      kinds: Record<
+        'discount' | 'scholarship' | 'sibling' | 'promotion',
+        string
+      >;
+      audience: Record<'all' | 'assigned', string>;
+      status: Record<'current' | 'upcoming' | 'expired' | 'inactive', string>;
+      fields: Record<
+        'name' | 'percent' | 'minFamilyStudents' | 'subjects',
+        string
+      >;
+      filters: { q: string };
+      assign: { title: string; submit: string };
+      assignments: { title: string; remove: string; removeFor: string };
+    };
+    customPrices: {
+      title: string;
+      add: string;
+      delete: string;
+      deleteFor: string;
+      filters: { status: string };
+      fields: Record<'service' | 'amount' | 'effectiveFrom', string>;
+      overlap: Record<'student' | 'family', string>;
+    };
     settings: {
       title: string;
       change: string;
@@ -67,6 +109,7 @@ type Common = {
       title: string;
       add: string;
       save: string;
+      cancel: string;
       back: string;
       viewExisting: string;
       fields: Record<

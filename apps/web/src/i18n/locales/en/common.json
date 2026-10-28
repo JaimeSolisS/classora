@@ -4517,6 +4517,8 @@
     "tabs": {
       "label": "Billing sections",
       "prices": "Prices",
+      "discounts": "Discounts",
+      "customPrices": "Custom prices",
       "unbilled": "Unbilled",
       "settings": "Settings"
     },
@@ -4643,6 +4645,257 @@
       "detailTitle": "Price",
       "detailHeading": "{{service}}: {{subject}}"
     },
+    "discounts": {
+      "title": "Discounts",
+      "intro": "Discounts apply when a charge is posted, in the order scholarship → sibling discount → discount → promotion, at most one of each kind, each on what remains. Charges already posted never change.",
+      "add": "Add discount",
+      "empty": "No discounts yet.",
+      "emptyFiltered": "No discounts match these filters.",
+      "filters": {
+        "label": "Discount filters",
+        "q": "Name",
+        "status": "Status",
+        "allKinds": "All kinds"
+      },
+      "statusFilters": {
+        "open": "Current and upcoming",
+        "current": "Current",
+        "upcoming": "Upcoming",
+        "expired": "Expired",
+        "inactive": "Inactive",
+        "all": "All"
+      },
+      "kinds": {
+        "discount": "Discount",
+        "scholarship": "Scholarship",
+        "sibling": "Sibling discount",
+        "promotion": "Promotion"
+      },
+      "kindHelp": {
+        "discount": "A general discount for everyone who qualifies or for chosen students or families.",
+        "scholarship": "Only for the students or families you assign.",
+        "sibling": "For families with a minimum number of active students.",
+        "promotion": "For a limited time: it needs a start and an end date."
+      },
+      "status": {
+        "current": "Current",
+        "upcoming": "Upcoming",
+        "expired": "Expired",
+        "inactive": "Inactive"
+      },
+      "audience": {
+        "all": "Everyone who qualifies",
+        "assigned": "Only assigned students or families"
+      },
+      "chargeKinds": {
+        "session": "Sessions",
+        "group_enrollment": "Group enrollment",
+        "cohort_enrollment": "Course enrollment",
+        "tuition_period": "Tuition",
+        "package_purchase": "Package purchase"
+      },
+      "valueTypes": {
+        "percent": "Percentage",
+        "amount": "Fixed amount"
+      },
+      "columns": {
+        "name": "Name",
+        "kind": "Kind",
+        "value": "Value",
+        "who": "Who gets it",
+        "criteria": "Criteria",
+        "validity": "Valid",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "fields": {
+        "kind": "Kind",
+        "name": "Name",
+        "valueType": "Value",
+        "percent": "Percentage (%)",
+        "amount": "Amount (MXN)",
+        "audience": "Who gets it",
+        "criteria": "Criteria",
+        "chargeKinds": "Charge kinds",
+        "classTypes": "Class types",
+        "subjects": "Subjects",
+        "levels": "Student levels",
+        "inactive": "Inactive",
+        "minFamilyStudents": "Minimum active students in the family",
+        "startsOn": "Valid from",
+        "expiresOn": "Valid until",
+        "isActive": "Active"
+      },
+      "hints": {
+        "percent": "More than 0 and up to 100, with up to 4 decimals.",
+        "amount": "In pesos, for example 100.00. It never takes a charge below zero.",
+        "audience": "Everyone who meets the criteria, or only the students and families you assign on the discount's page.",
+        "scholarshipAssigned": "A scholarship is only for the students or families you assign.",
+        "siblingAll": "A sibling discount applies to every family that qualifies.",
+        "criteria": "All optional: a charge must meet every criterion you choose.",
+        "any": "Any",
+        "chosen_one": "{{count}} chosen",
+        "chosen_other": "{{count}} chosen",
+        "minFamily": "From {{min}} to {{max}} active students.",
+        "optionalDate": "Optional.",
+        "promotionDates": "Required for a promotion.",
+        "isActive": "An inactive discount is never applied."
+      },
+      "validation": {
+        "nameRequired": "Enter the name.",
+        "nameTooLong": "Use at most 120 characters.",
+        "valueRequired": "Enter the value.",
+        "percentInvalid": "Enter a percentage such as 10 or 12.5.",
+        "percentPrecision": "A percentage has at most 4 decimals.",
+        "percentRange": "Enter more than 0 and up to 100.",
+        "amountInvalid": "Enter an amount with up to 2 decimals, for example 100.00.",
+        "amountPositive": "Enter an amount greater than 0.",
+        "minFamilyRequired": "Enter the minimum number of active students.",
+        "minFamilyRange": "Enter a whole number from 2 to 20.",
+        "datesRequired": "A promotion needs both dates.",
+        "dateInvalid": "Choose a valid date.",
+        "datesOrder": "The end can't be before the start."
+      },
+      "percent": "{{value}} %",
+      "assignedCount_one": "{{count}} assigned",
+      "assignedCount_other": "{{count}} assigned",
+      "minFamily_one": "families with ≥ {{count}} active student",
+      "minFamily_other": "families with ≥ {{count}} active students",
+      "range": "{{from}} – {{until}}",
+      "until": "Until {{until}}",
+      "noEnd": "No end",
+      "view": "View",
+      "viewFor": "View {{name}}",
+      "createNote": "Discounts apply to charges posted from now on.",
+      "editTitle": "Edit discount",
+      "editNote": "Changes apply to charges posted from now on. Posted charges keep the discount as it was.",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Discount saved.",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "deactivated": "Discount deactivated.",
+      "activated": "Discount activated.",
+      "deactivateDialog": {
+        "title": "Deactivate this discount?",
+        "body": "{{name}} won't apply to charges posted from now on. Posted charges keep it."
+      },
+      "activateDialog": {
+        "title": "Activate this discount?",
+        "body": "{{name}} applies again to charges posted from now on that qualify."
+      },
+      "assignments": {
+        "title": "Assignments",
+        "everyone": "This discount applies to everyone who meets its criteria: there is nothing to assign.",
+        "empty": "No one is assigned yet: the discount applies to no one.",
+        "name": "Name",
+        "type": "Type",
+        "assignedOn": "Assigned on",
+        "remove": "Remove",
+        "removeFor": "Remove {{name}}",
+        "removeTitle": "Remove this assignment?",
+        "removeBody": "{{name}} won't get {{discount}} on charges posted from now on. Posted charges keep it.",
+        "removed": "Assignment removed."
+      },
+      "assign": {
+        "title": "Assign",
+        "description": "Who gets {{name}}. A family's assignment covers each of its students.",
+        "kind": "Assign to",
+        "choose": {
+          "student": "Choose a student.",
+          "family": "Choose a family."
+        },
+        "alreadyAssigned": "{{name}} (already assigned)",
+        "exists": "This student or family is already assigned to this discount.",
+        "submit": "Assign",
+        "done": "{{name}} assigned."
+      },
+      "back": "Back to discounts",
+      "notFound": "Discount not found",
+      "notFoundHelp": "This discount doesn't exist or is no longer available.",
+      "detailTitle": "Discount"
+    },
+    "customPrices": {
+      "title": "Custom prices",
+      "intro": "A custom price replaces the catalog price for that student or family (a student's beats the family's). Discounts still apply on top.",
+      "add": "Add custom price",
+      "addNote": "It applies to charges posted from its start date on.",
+      "empty": "No custom prices yet.",
+      "emptyFiltered": "No custom prices match these filters.",
+      "filters": {
+        "label": "Custom price filters",
+        "target": "Show the custom prices of",
+        "status": "Status",
+        "clear": "Show everyone",
+        "unknown": {
+          "student": "The chosen student",
+          "family": "The chosen family"
+        }
+      },
+      "statusFilters": {
+        "open": "Current and upcoming",
+        "current": "Current",
+        "upcoming": "Upcoming",
+        "past": "Past",
+        "all": "All"
+      },
+      "columns": {
+        "target": "Student or family",
+        "service": "Service",
+        "catalog": "Catalog price today",
+        "amount": "Custom price",
+        "dates": "From – until",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "fields": {
+        "targetKind": "For",
+        "service": "Catalog price",
+        "amount": "Custom price (MXN)",
+        "effectiveFrom": "From",
+        "expiresOn": "Until"
+      },
+      "hints": {
+        "service": "Per-session and full-course prices of the catalog, with their price today.",
+        "noCatalog": "The catalog has no per-session or full-course prices yet. Add one in Prices.",
+        "effectiveFrom": "Today or later.",
+        "expiresOn": "Optional: the last day it applies."
+      },
+      "validation": {
+        "targetRequired": "Choose a student or a family.",
+        "serviceRequired": "Choose the catalog price.",
+        "amountRequired": "Enter the amount.",
+        "amountInvalid": "Enter an amount of 0 or more with up to 2 decimals, for example 300.00.",
+        "dateRequired": "Choose a date.",
+        "dateBeforeToday": "Choose today or a later date.",
+        "datesOrder": "The end can't be before the start.",
+        "endBeforeMin": "Choose today or a later date, not before the start."
+      },
+      "option": "{{service}} — {{amount}}",
+      "overlap": {
+        "student": "This student already has a custom price for this service in those dates.",
+        "family": "This family already has a custom price for this service in those dates."
+      },
+      "end": "End",
+      "endFor": "End the custom price of {{name}} for {{service}}",
+      "delete": "Delete",
+      "deleteFor": "Delete the custom price of {{name}} for {{service}}",
+      "endDialog": {
+        "title": "End this custom price",
+        "description": "{{name}}, {{service}}.",
+        "help": "The last day it applies. The catalog price applies after it.",
+        "submit": "End"
+      },
+      "deleteDialog": {
+        "title": "Delete this custom price?",
+        "body": "The custom price of {{name}} for {{service}} will be deleted. It hasn't started yet."
+      },
+      "added": "Custom price added.",
+      "ended": "Custom price ended.",
+      "deleted": "Custom price deleted."
+    },
     "unbilled": {
       "title": "Unbilled sessions",
       "intro": "Confirmed and completed sessions since the billing start date that can't be charged, and why. Fix the cause and the session is charged.",
@@ -4711,6 +4964,21 @@
       "saving": "Saving…",
       "reload": "Reload",
       "saved": "Billing settings saved."
+    },
+    "targets": {
+      "kinds": {
+        "student": "Student",
+        "family": "Family"
+      },
+      "search": {
+        "student": "Search student",
+        "family": "Search family"
+      },
+      "searchHelp": {
+        "student": "Type part of the student's name.",
+        "family": "Type part of the family's name."
+      },
+      "chosen": "Chosen: {{name}}"
     }
   }
 }
