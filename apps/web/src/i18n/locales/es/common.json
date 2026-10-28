@@ -35,6 +35,7 @@
     "approvals": "Aprobaciones",
     "catalog": "Catálogo",
     "settings": "Configuración",
+    "billing": "Cobros",
     "students": "Estudiantes",
     "guardians": "Padres y tutores",
     "families": "Familias",
@@ -4608,6 +4609,135 @@
       "details": "Detalles de la sesión",
       "loadMore": "Cargar más",
       "loadingMore": "Cargando más…"
+    }
+  },
+  "billing": {
+    "tabs": {
+      "label": "Secciones de cobros",
+      "prices": "Precios"
+    },
+    "prices": {
+      "title": "Precios",
+      "intro": "El precio de cada servicio por materia, nivel del estudiante, duración y tipo de clase. Un precio nunca se edita: programa un cambio a partir de una fecha.",
+      "add": "Agregar precio",
+      "empty": "Aún no hay precios.",
+      "emptyFiltered": "Ningún precio coincide con estos filtros.",
+      "filters": {
+        "label": "Filtros de precios",
+        "all": "Todos"
+      },
+      "fields": {
+        "classType": "Tipo de clase",
+        "pricingModel": "Modelo de precio",
+        "subject": "Materia",
+        "scope": "Aplica a",
+        "level": "Nivel del estudiante",
+        "duration": "Duración (minutos)",
+        "effectiveFrom": "Vigente desde",
+        "amount": "Monto (MXN)"
+      },
+      "columns": {
+        "service": "Servicio",
+        "subject": "Materia",
+        "level": "Nivel del estudiante",
+        "duration": "Duración",
+        "scope": "Aplica a",
+        "current": "Precio vigente",
+        "next": "Próximo cambio",
+        "actions": "Acciones"
+      },
+      "classTypes": {
+        "individual": "Clase individual",
+        "group": "Grupo",
+        "course": "Curso"
+      },
+      "pricingModels": {
+        "per_session": "por sesión",
+        "flat_fee": "cuota por inscripción",
+        "course_fee": "cuota del curso"
+      },
+      "modelOptions": {
+        "per_session": "Por sesión",
+        "flat_fee": "Cuota por inscripción",
+        "course_fee": "Cuota del curso"
+      },
+      "modelFilters": {
+        "per_session": "Por sesión",
+        "full_course": "Cuota por inscripción o del curso"
+      },
+      "service": "{{classType}} · {{pricingModel}}",
+      "subjectOfLevel": "{{level}} · {{subject}}",
+      "any": "Cualquiera",
+      "none": "—",
+      "minutes": "{{minutes}} min",
+      "notOffered": "No se ofrece",
+      "noPriceYet": "Sin precio vigente",
+      "nextChange": "{{date}}: {{amount}}",
+      "view": "Ver precios",
+      "viewFor": "Ver precios de {{service}}, {{subject}}",
+      "choose": "Elige una opción",
+      "noScope": "Ninguno (todos)",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "viewExisting": "Ver el precio existente",
+      "hints": {
+        "scopeCohort": "Opcional: una cohorte de esta materia. Sin cohorte, el precio vale para todas.",
+        "scopeGroup": "Opcional: un grupo de esta materia. Sin grupo, el precio vale para todos.",
+        "scopeNone": "Solo los precios de cursos y grupos pueden aplicar a una cohorte o un grupo.",
+        "scopeFailed": "No pudimos cargar las cohortes o los grupos. Cierra y vuelve a abrir el diálogo.",
+        "scoped": "Un precio para una cohorte o un grupo no lleva nivel ni duración.",
+        "level": "«Cualquiera» vale para los estudiantes de todos los niveles.",
+        "duration": "Vacío vale para cualquier duración; si no, de {{min}} a {{max}} minutos.",
+        "durationPerSession": "Solo los precios por sesión llevan duración.",
+        "amount": "En pesos, por ejemplo 350.00."
+      },
+      "validation": {
+        "classTypeRequired": "Elige el tipo de clase.",
+        "pricingModelRequired": "Elige el modelo de precio.",
+        "subjectRequired": "Elige la materia.",
+        "durationRange": "Escribe minutos enteros de 15 a 480, o déjalo vacío.",
+        "dateRequired": "Elige una fecha.",
+        "dateBeforeMin": "Elige hoy o una fecha posterior.",
+        "amountRequired": "Escribe el monto.",
+        "amountInvalid": "Escribe un monto de 0 o más con hasta 2 decimales, por ejemplo 350.00."
+      },
+      "status": {
+        "past": "Anterior",
+        "current": "Vigente",
+        "upcoming": "Programado"
+      },
+      "versions": {
+        "title": "Historial de precios",
+        "empty": "Este servicio aún no tiene precios. Programa uno.",
+        "effectiveFrom": "Vigente desde",
+        "price": "Precio",
+        "status": "Estado",
+        "actions": "Acciones",
+        "delete": "Eliminar",
+        "deleteFor": "Eliminar el cambio del {{date}}",
+        "deleted": "Cambio de precio eliminado."
+      },
+      "schedule": {
+        "title": "Programar cambio de precio",
+        "help": "El precio nuevo se aplica desde la fecha elegida. Los cobros ya registrados no cambian.",
+        "dateHelp": "Hoy o después, y después del último cambio programado.",
+        "dateHelpFirst": "Cualquier fecha: es el primer precio de este servicio.",
+        "notOffered": "No se ofrece a partir de esta fecha",
+        "submit": "Programar",
+        "saved": "Cambio de precio programado."
+      },
+      "deleteDialog": {
+        "title": "¿Eliminar este cambio de precio?",
+        "body": "El cambio del {{date}} ({{amount}}) se eliminará. El precio anterior seguirá vigente.",
+        "confirm": "Eliminar"
+      },
+      "reload": "Recargar",
+      "back": "Volver a precios",
+      "notFound": "Precio no encontrado",
+      "notFoundHelp": "Este precio no existe o ya no está disponible.",
+      "detailTitle": "Precio",
+      "detailHeading": "{{service}}: {{subject}}"
     }
   }
 }

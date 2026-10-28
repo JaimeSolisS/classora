@@ -248,6 +248,26 @@ const API_CODES = [
   'student_inactive',
   // #322 D1: the progress dashboard's range in the future.
   'range_in_future',
+  // #363 E1: the money input codes (#87) and the price catalog codes (#89).
+  'money_invalid',
+  'money_precision',
+  'money_out_of_range',
+  'amount_negative',
+  'service_price_exists',
+  'price_effective_from_invalid',
+  'price_version_in_effect',
+  'price_version_in_use',
+  'pricing_model_not_allowed',
+  'scope_not_allowed',
+  'scope_conflict',
+  'duration_not_allowed',
+  'duration_out_of_range',
+  'level_not_allowed',
+  'date_out_of_range',
+  'education_level_unknown',
+  'cohort_unknown',
+  'group_unknown',
+  'scope_subject_mismatch',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

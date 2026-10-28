@@ -35,6 +35,7 @@
     "approvals": "Approvals",
     "catalog": "Catalog",
     "settings": "Settings",
+    "billing": "Billing",
     "students": "Students",
     "guardians": "Guardians",
     "families": "Families",
@@ -4510,6 +4511,135 @@
       "details": "Session details",
       "loadMore": "Load more",
       "loadingMore": "Loading more…"
+    }
+  },
+  "billing": {
+    "tabs": {
+      "label": "Billing sections",
+      "prices": "Prices"
+    },
+    "prices": {
+      "title": "Prices",
+      "intro": "The price of each service by subject, student level, duration and class type. A price is never edited: schedule a change from a date.",
+      "add": "Add price",
+      "empty": "No prices yet.",
+      "emptyFiltered": "No prices match these filters.",
+      "filters": {
+        "label": "Price filters",
+        "all": "All"
+      },
+      "fields": {
+        "classType": "Class type",
+        "pricingModel": "Pricing model",
+        "subject": "Subject",
+        "scope": "Applies to",
+        "level": "Student level",
+        "duration": "Duration (minutes)",
+        "effectiveFrom": "Effective from",
+        "amount": "Amount (MXN)"
+      },
+      "columns": {
+        "service": "Service",
+        "subject": "Subject",
+        "level": "Student level",
+        "duration": "Duration",
+        "scope": "Applies to",
+        "current": "Current price",
+        "next": "Next change",
+        "actions": "Actions"
+      },
+      "classTypes": {
+        "individual": "Individual class",
+        "group": "Group",
+        "course": "Course"
+      },
+      "pricingModels": {
+        "per_session": "per session",
+        "flat_fee": "flat fee per enrollment",
+        "course_fee": "course fee"
+      },
+      "modelOptions": {
+        "per_session": "Per session",
+        "flat_fee": "Flat fee per enrollment",
+        "course_fee": "Course fee"
+      },
+      "modelFilters": {
+        "per_session": "Per session",
+        "full_course": "Flat fee or course fee"
+      },
+      "service": "{{classType}} · {{pricingModel}}",
+      "subjectOfLevel": "{{level}} · {{subject}}",
+      "any": "Any",
+      "none": "—",
+      "minutes": "{{minutes}} min",
+      "notOffered": "Not offered",
+      "noPriceYet": "No price yet",
+      "nextChange": "{{date}}: {{amount}}",
+      "view": "View prices",
+      "viewFor": "View prices for {{service}}, {{subject}}",
+      "choose": "Choose an option",
+      "noScope": "None (all)",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "viewExisting": "View the existing price",
+      "hints": {
+        "scopeCohort": "Optional: a cohort of this subject. Without one, the price applies to every cohort.",
+        "scopeGroup": "Optional: a group of this subject. Without one, the price applies to every group.",
+        "scopeNone": "Only course and group prices can apply to one cohort or group.",
+        "scopeFailed": "We couldn't load the cohorts or groups. Close the dialog and open it again.",
+        "scoped": "A price for a cohort or a group has no level or duration.",
+        "level": "\"Any\" applies to students of every level.",
+        "duration": "Empty applies to any duration; otherwise {{min}} to {{max}} minutes.",
+        "durationPerSession": "Only per-session prices have a duration.",
+        "amount": "In pesos, for example 350.00."
+      },
+      "validation": {
+        "classTypeRequired": "Choose the class type.",
+        "pricingModelRequired": "Choose the pricing model.",
+        "subjectRequired": "Choose the subject.",
+        "durationRange": "Enter whole minutes from 15 to 480, or leave it empty.",
+        "dateRequired": "Choose a date.",
+        "dateBeforeMin": "Choose today or a later date.",
+        "amountRequired": "Enter the amount.",
+        "amountInvalid": "Enter an amount of 0 or more with up to 2 decimals, for example 350.00."
+      },
+      "status": {
+        "past": "Past",
+        "current": "Current",
+        "upcoming": "Upcoming"
+      },
+      "versions": {
+        "title": "Price history",
+        "empty": "This service has no prices yet. Schedule one.",
+        "effectiveFrom": "Effective from",
+        "price": "Price",
+        "status": "Status",
+        "actions": "Actions",
+        "delete": "Delete",
+        "deleteFor": "Delete the change of {{date}}",
+        "deleted": "Price change deleted."
+      },
+      "schedule": {
+        "title": "Schedule a price change",
+        "help": "The new price applies from the chosen date. Charges already posted don't change.",
+        "dateHelp": "Today or later, and after the latest scheduled change.",
+        "dateHelpFirst": "Any date: this is the first price of this service.",
+        "notOffered": "Not offered from this date",
+        "submit": "Schedule",
+        "saved": "Price change scheduled."
+      },
+      "deleteDialog": {
+        "title": "Delete this price change?",
+        "body": "The change of {{date}} ({{amount}}) will be deleted. The previous price stays in effect.",
+        "confirm": "Delete"
+      },
+      "reload": "Reload",
+      "back": "Back to prices",
+      "notFound": "Price not found",
+      "notFoundHelp": "This price doesn't exist or is no longer available.",
+      "detailTitle": "Price",
+      "detailHeading": "{{service}}: {{subject}}"
     }
   }
 }

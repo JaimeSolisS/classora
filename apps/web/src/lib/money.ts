@@ -29,3 +29,20 @@ export function formatMoney(amount: string): string {
   // "-0.00" is zero: show "$0.00", not "-$0.00".
   return MONEY_FORMAT.format(NEGATIVE_ZERO.test(amount) ? '0' : amount);
 }
+
+// Money typed into a form (#363 C2): a non-negative amount with up to 12
+// integer digits and up to 2 decimals, e.g. "250" or "350.50". It stays a
+// string all the way to the API body, never a number. The server stays
+// authoritative (money_invalid, money_precision, money_out_of_range,
+// amount_negative).
+const MONEY_INPUT = /^\d{1,12}(\.\d{1,2})?$/;
+
+/** The typed amount as sent: trimmed, otherwise as typed ("250" stays "250"). */
+export function normalizeMoneyInput(value: string): string {
+  return value.trim();
+}
+
+/** Whether a typed amount is a valid non-negative money amount. */
+export function isMoneyInput(value: string): boolean {
+  return MONEY_INPUT.test(normalizeMoneyInput(value));
+}

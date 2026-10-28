@@ -322,6 +322,15 @@ unless a bullet says otherwise.
   approved or sent back for changes on their own page, never rejected). Approving an account request
   never enrolls anyone.
 
+**Billing**
+
+- Owners, administrators and finance staff keep a price catalog (Billing →
+  Prices) by subject, student level, duration and class type (individual,
+  group or course), optionally for one cohort or group. Each price changes
+  from a date: a change is scheduled ahead (or marks the service as not
+  offered), an upcoming change can be deleted, and existing prices are
+  never edited.
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a
@@ -351,8 +360,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** billing and payments, payroll, reporting and analytics,
-and deployment. See the
+**Not built yet:** charges, payments and the rest of billing, payroll,
+reporting and analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

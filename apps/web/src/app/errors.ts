@@ -287,6 +287,29 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   // The progress dashboard's range refusal (#322 D1; #84 sends it as a
   // field code of validation_error, mapped here too).
   ['range_in_future', 'range_in_future'],
+  // Money inputs (#87 codes, mapped by the first money field, #363 E1).
+  ['money_invalid', 'money_invalid'],
+  ['money_precision', 'money_precision'],
+  ['money_out_of_range', 'money_out_of_range'],
+  ['amount_negative', 'amount_negative'],
+  // The price catalog (#89, #363 E1), problem and field codes
+  // (subject_unknown, subject_inactive and education_level_inactive are
+  // listed above).
+  ['service_price_exists', 'service_price_exists'],
+  ['price_effective_from_invalid', 'price_effective_from_invalid'],
+  ['price_version_in_effect', 'price_version_in_effect'],
+  ['price_version_in_use', 'price_version_in_use'],
+  ['pricing_model_not_allowed', 'pricing_model_not_allowed'],
+  ['scope_not_allowed', 'scope_not_allowed'],
+  ['scope_conflict', 'scope_conflict'],
+  ['duration_not_allowed', 'duration_not_allowed'],
+  ['duration_out_of_range', 'duration_out_of_range'],
+  ['level_not_allowed', 'level_not_allowed'],
+  ['date_out_of_range', 'date_out_of_range'],
+  ['education_level_unknown', 'education_level_unknown'],
+  ['cohort_unknown', 'cohort_unknown'],
+  ['group_unknown', 'group_unknown'],
+  ['scope_subject_mismatch', 'scope_subject_mismatch'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
@@ -303,6 +326,11 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
 export const MAPPED_ERROR_CODES: readonly string[] = [
   ...ERROR_CODE_KEYS.keys(),
 ];
+
+/** The `errors` key of a server code, or undefined when it has none. */
+export function codeMessageKey(code: string): ErrorMessageKey | undefined {
+  return ERROR_CODE_KEYS.get(code);
+}
 
 /** The `errors` key for any thrown value. */
 export function errorMessageKey(error: unknown): ErrorMessageKey {

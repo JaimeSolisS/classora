@@ -787,6 +787,24 @@ export const routes: RouteObject[] = [
             }),
             handle: MY_PROGRESS_ACCESS,
           },
+          // The price catalog (#363 A1, code-split): billing.manage holders
+          // (Owner, Administrator, Finance Staff).
+          {
+            path: 'billing/prices',
+            lazy: async () => ({
+              Component: (await import('@/features/billing/pricing/PricesPage'))
+                .PricesPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
+          {
+            path: 'billing/prices/:priceId',
+            lazy: async () => ({
+              Component: (await import('@/features/billing/pricing/PricePage'))
+                .PricePage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).
