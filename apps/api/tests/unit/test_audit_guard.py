@@ -36,6 +36,7 @@ from app.modules.administration.settings_models import (
     OperatingHours,
     SchedulingPolicy,
 )
+from app.modules.billing.models import PriceVersion, ServicePrice
 from app.modules.catalog.models import (
     AcademicPeriod,
     Classroom,
@@ -163,11 +164,13 @@ def test_the_guard_scans_the_real_audited_models():
         LearningPlanMilestone,
         LearningPlanObjective,
         OperatingHours,
+        PriceVersion,
         PrivacyNoticeAcceptance,
         ProgressReport,
         ProgressReportSchedule,
         RegistrationRequest,
         SchedulingPolicy,
+        ServicePrice,
         SessionChangeRequest,
         SessionCloseout,
         SessionNote,
