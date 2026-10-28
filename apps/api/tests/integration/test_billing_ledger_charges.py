@@ -10,7 +10,9 @@
   charges go to the new family's account.
 - **Concurrency:** two connections post the same ``(class_session_id,
   student_id)`` for a family without an account yet: one row, both succeed,
-  exactly one ``created = True``. Repeated 5 times.
+  exactly one ``created = True``. And across accounts (the student moves
+  between the two posts, E4): the second insert hits the named natural key
+  and returns the first charge. Each repeated 5 times.
 """
 
 import asyncio
@@ -266,25 +268,31 @@ def test_manual_charges_have_no_natural_key(module_seeded_url):
     assert first.charge_id != second.charge_id
 
 
-def test_a_charge_keeps_its_account_when_the_student_moves(module_seeded_url):
-    url = module_seeded_url
-    world = _world(url)
-    old = in_uow(url, lambda s: billing.post_charge(s, _draft(world, "session")))
+def _move(student_id: uuid.UUID) -> Any:
+    """A change moving the student to a new family; returns its id."""
 
-    async def _move(session: AsyncSession) -> uuid.UUID:
+    async def _change(session: AsyncSession) -> uuid.UUID:
         member = await session.scalar(
-            select(FamilyStudent).where(FamilyStudent.student_id == world.student)
+            select(FamilyStudent).where(FamilyStudent.student_id == student_id)
         )
         await session.delete(member)
         await session.flush()
         new_family, _ = await factories.family_with_students(session, 0)
         family = await session.get(Family, new_family)
-        student = await session.get(Student, world.student)
+        student = await session.get(Student, student_id)
         assert family is not None and student is not None
         await add_to_family(session, family, student)
         return new_family
 
-    new_family = in_uow(url, _move)
+    return _change
+
+
+def test_a_charge_keeps_its_account_when_the_student_moves(module_seeded_url):
+    url = module_seeded_url
+    world = _world(url)
+    old = in_uow(url, lambda s: billing.post_charge(s, _draft(world, "session")))
+
+    new_family = in_uow(url, _move(world.student))
     new = in_uow(url, lambda s: billing.post_charge(s, _draft(world, "manual")))
 
     new_account = in_uow(url, lambda s: billing.ensure_billing_account(s, new_family))
@@ -330,6 +338,65 @@ def test_two_connections_posting_one_session_charge_store_one_row(
     assert first.charge_id == second.charge_id
     assert first.billing_account_id == second.billing_account_id
     assert sorted([first.created, second.created]) == [False, True]
+    assert (
+        run_sql(
+            url,
+            "SELECT count(*) AS n FROM charges WHERE student_id = :s",
+            {"s": world.student},
+        )[0].n
+        == 1
+    )
+    assert len(events(url, record_type="charges", record_id=first.charge_id)) == 1
+
+
+async def _race_across_accounts(
+    url: str, draft: ChargeDraft
+) -> list[billing.PostedCharge]:
+    """A posts on the first family's account and holds; meanwhile the
+    student moves to another family (committed), and B posts the same key
+    on the new family's account. The account locks don't serialize them:
+    B's check can't see A's uncommitted row, its insert waits on
+    ``uq_charges_session_student`` and, once A commits, the violation rolls
+    B's savepoint back and B returns A's charge."""
+    engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
+    flushed = asyncio.Event()
+
+    async def run_a() -> billing.PostedCharge:
+        try:
+            async with UnitOfWork(create_sessionmaker(engine_a)) as uow:
+                posted = await billing.post_charge(uow.session, draft)
+                flushed.set()
+                await asyncio.sleep(HOLD_SECONDS)
+                return posted
+        finally:
+            flushed.set()
+
+    async def run_b() -> billing.PostedCharge:
+        await flushed.wait()
+        async with UnitOfWork(create_sessionmaker(engine_b)) as uow:
+            await _move(draft.student_id)(uow.session)
+        async with UnitOfWork(create_sessionmaker(engine_b)) as uow:
+            return await billing.post_charge(uow.session, draft)
+
+    try:
+        return list(await asyncio.gather(run_a(), run_b()))
+    finally:
+        await engine_a.dispose()
+        await engine_b.dispose()
+
+
+@pytest.mark.parametrize("attempt", range(REPEATS))
+def test_a_concurrent_post_on_another_account_returns_the_first_charge(
+    module_seeded_url, attempt
+):
+    url = module_seeded_url
+    world = _world(url)
+
+    first, second = asyncio.run(_race_across_accounts(url, _draft(world, "session")))
+
+    assert (first.created, second.created) == (True, False)
+    assert second.charge_id == first.charge_id
+    assert second.billing_account_id == first.billing_account_id
     assert (
         run_sql(
             url,
