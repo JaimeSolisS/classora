@@ -4614,7 +4614,9 @@
   "billing": {
     "tabs": {
       "label": "Secciones de cobros",
-      "prices": "Precios"
+      "prices": "Precios",
+      "unbilled": "Sin cobrar",
+      "settings": "Configuración"
     },
     "prices": {
       "title": "Precios",
@@ -4738,6 +4740,75 @@
       "notFoundHelp": "Este precio no existe o ya no está disponible.",
       "detailTitle": "Precio",
       "detailHeading": "{{service}}: {{subject}}"
+    },
+    "unbilled": {
+      "title": "Sesiones sin cobrar",
+      "intro": "Sesiones confirmadas y completadas desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y la sesión se cobra.",
+      "delay": "Las confirmaciones nuevas se cobran en unos 15 minutos.",
+      "filters": {
+        "label": "Filtros de sesiones sin cobrar",
+        "reason": "Motivo",
+        "all": "Todos"
+      },
+      "reasons": {
+        "no_billing_account": "No pertenece a una familia",
+        "no_price": "Sin precio para esta clase"
+      },
+      "columns": {
+        "when": "Fecha y hora",
+        "student": "Estudiante",
+        "subject": "Materia",
+        "length": "Duración",
+        "family": "Familia",
+        "reason": "Motivo",
+        "actions": "Acciones"
+      },
+      "minutes": "{{minutes}} min",
+      "noFamily": "Sin familia",
+      "fix": {
+        "family": "Abrir familias",
+        "familyFor": "Abrir familias para agregar a {{student}} a una",
+        "price": "Abrir precios",
+        "priceFor": "Abrir precios para agregar uno de {{subject}}"
+      },
+      "emptyOff": "Los cobros están desactivados; todavía no se cobra nada.",
+      "openSettings": "Abrir la configuración de cobros",
+      "emptyOn": "Todas las sesiones confirmadas desde el {{date}} están cobradas.",
+      "emptyFiltered": "No hay sesiones sin cobrar con este motivo."
+    },
+    "settings": {
+      "title": "Configuración de cobros",
+      "intro": "Desde cuándo se cobran las sesiones confirmadas y completadas.",
+      "card": {
+        "title": "Fecha de inicio de cobros",
+        "rules": "Las sesiones anteriores a la fecha de inicio nunca se cobran. Desactivar los cobros detiene los cargos nuevos, pero nunca elimina los cargos ya registrados."
+      },
+      "status": {
+        "off": "Los cobros están desactivados.",
+        "on": "Se cobran las sesiones a partir del {{date}}."
+      },
+      "change": "Cambiar",
+      "dialog": {
+        "title": "Cambiar cobros",
+        "mode": "Cobros",
+        "modes": {
+          "on": "Cobrar sesiones a partir de una fecha",
+          "off": "Desactivar los cobros"
+        },
+        "offHelp": "No se registran cargos nuevos. Los cargos ya registrados se conservan.",
+        "startsOn": "Fecha de inicio",
+        "dateHelp": "Se cobran las sesiones de esta fecha en adelante, en la zona horaria del centro.",
+        "pastWarning": "Esta fecha ya pasó: se cobrarán las sesiones confirmadas y completadas desde esa fecha."
+      },
+      "validation": {
+        "dateRequired": "Elige una fecha.",
+        "dateRange": "Elige una fecha entre 2000 y 2099."
+      },
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "reload": "Recargar",
+      "saved": "Configuración de cobros guardada."
     }
   }
 }

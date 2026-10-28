@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
+import { StoryAuth } from '@/test/StoryAuth';
 import { StoryRouter } from '@/test/StoryRouter';
+import { FINANCE_SESSION } from '../storySession';
 import { EMPTY_PAGE, PRICES_PAGE, PRICE_WITH_NEXT } from './fixtures';
 import { PricesView } from './PricesView';
 
@@ -23,10 +25,12 @@ const meta = {
     listSearch: '',
   },
   render: (args) => (
-    <StoryRouter
-      path="/billing/prices"
-      routes={[{ path: '*', element: <PricesView {...args} /> }]}
-    />
+    <StoryAuth session={FINANCE_SESSION}>
+      <StoryRouter
+        path="/billing/prices"
+        routes={[{ path: '*', element: <PricesView {...args} /> }]}
+      />
+    </StoryAuth>
   ),
 } satisfies Meta<typeof PricesView>;
 

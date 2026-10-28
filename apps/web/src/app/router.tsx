@@ -51,6 +51,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
+import { BILLING_ACCESS } from '@/features/billing/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
@@ -804,6 +805,35 @@ export const routes: RouteObject[] = [
                 .PricePage,
             }),
             handle: { permission: 'billing.manage' },
+          },
+          // #366: the unbilled sessions and the billing start date
+          // (code-split), billing.view holders; /billing opens the first
+          // Billing tab the user may open (the header's Billing item).
+          {
+            path: 'billing/unbilled',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/unbilled/UnbilledPage')
+              ).UnbilledPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing/settings',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/settings/BillingSettingsPage')
+              ).BillingSettingsPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing',
+            lazy: async () => ({
+              Component: (await import('@/features/billing/BillingTabs'))
+                .BillingIndexPage,
+            }),
+            handle: BILLING_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

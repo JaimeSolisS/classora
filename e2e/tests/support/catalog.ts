@@ -43,8 +43,26 @@ type Common = {
     // #363 F4: the price catalog.
     billing: string;
   };
-  // #363 F4, F5: the price catalog.
+  // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs.
   billing: {
+    tabs: Record<'label' | 'prices' | 'unbilled' | 'settings', string>;
+    settings: {
+      title: string;
+      change: string;
+      save: string;
+      saved: string;
+      status: Record<'off' | 'on', string>;
+      dialog: {
+        title: string;
+        startsOn: string;
+        modes: Record<'on' | 'off', string>;
+      };
+    };
+    unbilled: {
+      title: string;
+      emptyOn: string;
+      filters: { reason: string };
+    };
     prices: {
       title: string;
       add: string;

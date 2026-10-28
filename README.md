@@ -330,6 +330,11 @@ unless a bullet says otherwise.
   from a date: a change is scheduled ahead (or marks the service as not
   offered), an upcoming change can be deleted, and existing prices are
   never edited.
+- They can turn billing on from a start date, or off again (Billing →
+  Settings). While it is on, confirmed and completed individual sessions
+  from that date are charged automatically to the student's family, and
+  Billing → Unbilled lists the sessions that can't be charged yet (no
+  family or no price) with a link to fix the cause.
 
 **Notifications**
 
@@ -360,8 +365,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** charges, payments and the rest of billing, payroll,
-reporting and analytics, and deployment. See the
+**Not built yet:** family balances, payments and the rest of billing,
+payroll, reporting and analytics, and deployment. See the
 [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 

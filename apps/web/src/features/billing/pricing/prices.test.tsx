@@ -65,6 +65,7 @@ const FINANCE: SessionUserBody = {
     'schedule.view',
     'course.view',
     'billing.manage',
+    'billing.view',
   ],
 };
 const COORDINATOR: SessionUserBody = {
@@ -207,13 +208,18 @@ describe('access and navigation (A)', () => {
     const nav = [
       ...app!.container.querySelectorAll<HTMLAnchorElement>('header nav a'),
     ].find((a) => a.textContent === 'Billing');
-    expect(nav?.getAttribute('href')).toBe('/billing/prices');
+    // #366 A2: /billing opens the first Billing tab the user may open.
+    expect(nav?.getAttribute('href')).toBe('/billing');
     const tabs = [
       ...main().querySelectorAll<HTMLAnchorElement>(
         'nav[aria-label="Billing sections"] a',
       ),
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
-    expect(tabs).toEqual([['Prices', 'page']]);
+    expect(tabs).toEqual([
+      ['Prices', 'page'],
+      ['Unbilled', null],
+      ['Settings', null],
+    ]);
     expect(main().querySelectorAll('h1')).toHaveLength(1);
     expect(h1()).toBe('Prices');
     expect(document.title).toBe('Prices · Classora');
@@ -233,7 +239,8 @@ describe('access and navigation (A)', () => {
   });
 
   it.each([
-    ['an Owner', user(['owner'], ['billing.manage']), true],
+    ['an Owner', user(['owner'], ['billing.manage', 'billing.view']), true],
+    ['a billing.view holder', user(['finance_staff'], ['billing.view']), true],
     ['Finance', FINANCE, true],
     ['a Coordinator', COORDINATOR, false],
     ['a tutor', user(['tutor'], ['student.view', 'tutor.view']), false],
@@ -245,11 +252,11 @@ describe('access and navigation (A)', () => {
     ],
   ] as const)('the nav item for %s: %s', (_who, as, visible) => {
     const items = NAV_ITEMS.filter((item) => canAccess(as, item));
-    expect(items.some((item) => item.to === '/billing/prices')).toBe(visible);
+    expect(items.some((item) => item.to === '/billing')).toBe(visible);
   });
 
   it('places the item after Settings with the billing label', () => {
-    const index = NAV_ITEMS.findIndex((item) => item.to === '/billing/prices');
+    const index = NAV_ITEMS.findIndex((item) => item.to === '/billing');
     expect(NAV_ITEMS[index - 1]?.to).toBe('/settings');
     expect(NAV_ITEMS[index]?.labelKey).toBe('nav.billing');
   });
