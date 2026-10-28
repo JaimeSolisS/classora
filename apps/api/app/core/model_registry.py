@@ -14,6 +14,7 @@ import app.core.ratelimit_models  # noqa: F401  (rate_limit_counters)
 import app.modules.academics.models  # noqa: F401
 import app.modules.administration.models  # noqa: F401
 import app.modules.administration.settings_models  # noqa: F401
+import app.modules.billing.models  # noqa: F401
 import app.modules.catalog.models  # noqa: F401
 import app.modules.courses.models  # noqa: F401
 import app.modules.families.models  # noqa: F401

@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0059"
+HEAD = "0060"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -147,6 +147,7 @@ ASSIGNMENT_TABLES = ["assignments", "assignment_submissions"]
 PROGRESS_REPORT_TABLES = ["progress_reports"]
 SCHEDULE_TABLES = ["progress_report_schedules"]
 IDEMPOTENCY_TABLES = ["idempotency_keys"]
+PRICE_CATALOG_TABLES = ["price_versions", "service_prices"]
 SCHEDULE_PERIOD_UNIQUE = "uq_progress_reports_schedule_period"
 SCHEDULE_FK = "fk_progress_reports_schedule_id_progress_report_schedules"
 CLOSEOUT_REVIEW_COLUMNS = {
@@ -371,6 +372,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PROGRESS_REPORT_TABLES,
             *SCHEDULE_TABLES,
             *IDEMPOTENCY_TABLES,
+            *PRICE_CATALOG_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4500,9 +4502,24 @@ def _of_0059(diff: Any) -> bool:
     return False
 
 
+def _of_0060(diff: Any) -> bool:
+    """A metadata difference that revision 0060 adds: the service_prices
+    and price_versions tables and the catalog key index (#89 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in PRICE_CATALOG_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in PRICE_CATALOG_TABLES
+    return False
+
+
+def _of_0059_on(diff: Any) -> bool:
+    """A metadata difference that revision 0059 or a later one adds."""
+    return _of_0059(diff) or _of_0060(diff)
+
+
 def _of_0058_on(diff: Any) -> bool:
     """A metadata difference that revision 0058 or a later one adds."""
-    return _of_0058(diff) or _of_0059(diff)
+    return _of_0058(diff) or _of_0059_on(diff)
 
 
 def _of_0057_on(diff: Any) -> bool:
@@ -10272,7 +10289,7 @@ def test_0058_adds_the_schedules_and_downgrade_drops_them(fresh_database_url):
     command.upgrade(config, "0058")
 
     assert version_nums(dsn) == ["0058"]
-    assert [d for d in metadata_diff(dsn) if not _of_0059(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0059_on(d)] == []
     assert public_tables(dsn) - before == set(SCHEDULE_TABLES)
     [schedule] = run_sql(dsn, SCHEDULE_INSERT, _schedule_values(dsn))
     [report] = run_sql(dsn, REPORT_INSERT, _report_values(dsn))
@@ -10448,7 +10465,7 @@ def test_0059_adds_the_idempotency_keys_and_downgrade_drops_them(
     command.upgrade(config, "0059")
 
     assert version_nums(dsn) == ["0059"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0060(d)] == []
     assert public_tables(dsn) - before == set(IDEMPOTENCY_TABLES)
     run_sql(dsn, IDEMPOTENCY_INSERT, _idempotency_values(dsn))
 
@@ -10456,7 +10473,7 @@ def test_0059_adds_the_idempotency_keys_and_downgrade_drops_them(
 
     assert version_nums(dsn) == ["0058"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0059(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0059_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -10555,3 +10572,152 @@ def test_a_user_with_idempotency_keys_cannot_be_deleted(fresh_database_url):
         run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": values["u"]})
 
     assert run_sql(dsn, "SELECT count(*) FROM idempotency_keys")[0][0] == 1
+
+
+# --- 0060: the service price catalog (#89 A1-A5) -------------------------------------
+
+PRICE_INSERT = (
+    "INSERT INTO service_prices (class_type, pricing_model, subject_id)"
+    " VALUES ('individual', 'per_session', :s) RETURNING id"
+)
+VERSION_INSERT = (
+    "INSERT INTO price_versions (service_price_id, effective_from, amount)"
+    " VALUES (:p, :d, :a) RETURNING id"
+)
+
+
+def _functions(dsn: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT proname FROM pg_proc WHERE proname IN"
+        " ('price_version_is_referenced', 'price_versions_guard')",
+    )
+    return {row.proname for row in rows}
+
+
+def _triggers(dsn: str, table: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT tgname FROM pg_trigger WHERE tgrelid = CAST(:t AS regclass)"
+        " AND NOT tgisinternal",
+        {"t": table},
+    )
+    return {row.tgname for row in rows}
+
+
+def test_0060_adds_the_price_catalog_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0059")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0060")
+
+    assert version_nums(dsn) == ["0060"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(PRICE_CATALOG_TABLES)
+    assert _functions(dsn) == {"price_version_is_referenced", "price_versions_guard"}
+    [price] = run_sql(dsn, PRICE_INSERT, {"s": _subject_row(dsn)})
+    run_sql(
+        dsn,
+        VERSION_INSERT,
+        {"p": price.id, "d": date(2031, 1, 1), "a": Decimal("250.00")},
+    )
+
+    command.downgrade(config, "0059")
+
+    assert version_nums(dsn) == ["0059"]
+    assert public_tables(dsn) == before
+    assert _functions(dsn) == set()
+    assert [d for d in metadata_diff(dsn) if not _of_0060(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_null = ("uuid", "YES", None, None)
+    assert _columns(dsn, "service_prices") == {
+        **STANDARD_COLUMNS,
+        "class_type": ("character varying", "NO", 16, None),
+        "pricing_model": ("character varying", "NO", 16, None),
+        "subject_id": uuid_null,
+        "education_level_id": uuid_null,
+        "duration_minutes": ("smallint", "YES", None, None),
+        "cohort_id": uuid_null,
+        "group_id": uuid_null,
+    }
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "price_versions") == {
+        **standard,
+        "service_price_id": ("uuid", "NO", None, None),
+        "effective_from": ("date", "NO", None, None),
+        "amount": ("numeric", "YES", None, None),
+    }
+    prices = _constraints(dsn, "service_prices")
+    assert set(prices) == {
+        "pk_service_prices",
+        "ck_service_prices_class_type_valid",
+        "ck_service_prices_pricing_model_valid",
+        "ck_service_prices_pricing_model_allowed",
+        "ck_service_prices_one_scope",
+        "ck_service_prices_cohort_scope",
+        "ck_service_prices_group_scope",
+        "ck_service_prices_package_individual",
+        "ck_service_prices_subject_required",
+        "ck_service_prices_duration_valid",
+        "ck_service_prices_scoped_any_level_duration",
+        "fk_service_prices_subject_id_subjects",
+        "fk_service_prices_education_level_id_education_levels",
+        "fk_service_prices_cohort_id_course_cohorts",
+        "fk_service_prices_group_id_class_groups",
+    }
+    versions = _constraints(dsn, "price_versions")
+    assert set(versions) == {
+        "pk_price_versions",
+        "ck_price_versions_amount_non_negative",
+        "fk_price_versions_service_price_id_service_prices",
+        "uq_price_versions_service_price_id_effective_from",
+    }
+    assert versions["uq_price_versions_service_price_id_effective_from"] == (
+        "UNIQUE (service_price_id, effective_from)"
+    )
+    for definition in [*prices.values(), *versions.values()]:
+        if definition.startswith("FOREIGN KEY"):
+            assert "ON DELETE RESTRICT" in definition, definition
+    [numeric] = run_sql(
+        dsn,
+        "SELECT numeric_precision, numeric_scale FROM information_schema.columns"
+        " WHERE table_name = 'price_versions' AND column_name = 'amount'",
+    )
+    assert (numeric.numeric_precision, numeric.numeric_scale) == (14, 2)
+    key = _indexes(dsn, "service_prices")["uq_service_prices_catalog_key"]
+    assert "UNIQUE INDEX" in key
+    assert (
+        "(class_type, pricing_model, subject_id, education_level_id,"
+        " duration_minutes, cohort_id, group_id) NULLS NOT DISTINCT"
+    ) in key
+    assert "WHERE ((pricing_model)::text <> 'package'::text)" in key
+    assert _triggers(dsn, "price_versions") == {
+        "price_versions_no_referenced_change",
+        "price_versions_no_truncate",
+    }
+    # E2: the staged predicate is "nothing references a version" until #90
+    # and #94 replace it.
+    [body] = run_sql(
+        dsn,
+        "SELECT prosrc, provolatile::text AS provolatile FROM pg_proc"
+        " WHERE proname = 'price_version_is_referenced'",
+    )
+    assert body.prosrc.strip().endswith("SELECT false")
+    assert body.provolatile == "v"
+    [answer] = run_sql(
+        dsn,
+        "SELECT price_version_is_referenced(CAST(:v AS uuid)) AS r",
+        {"v": uuid.uuid4()},
+    )
+    assert answer.r is False

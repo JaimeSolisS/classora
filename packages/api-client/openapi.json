@@ -18775,6 +18775,447 @@
         }
       }
     },
+    "/api/v1/billing/service-prices": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Service Prices",
+        "description": "The catalog prices with their current and next versions, by class\ntype (individual, group, course), the subject's level and name, the\npricing model, unscoped before scoped (then the cohort or group name),\nany level first (then the level order), any duration first (then\nascending) and id. `package` and `per_period` prices are not listed.",
+        "operationId": "list_service_prices_api_v1_billing_service_prices_get",
+        "parameters": [
+          {
+            "name": "class_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClassType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Class Type"
+            }
+          },
+          {
+            "name": "pricing_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CatalogPricingModel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pricing Model"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ServicePriceItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Service Price",
+        "description": "Create a catalog price and its first version, which may start on any\ndate (a price entered late can bill the sessions that waited).",
+        "operationId": "create_service_price_api_v1_billing_service_prices_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServicePriceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePriceDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A price with the same class type, pricing model, subject, level, duration and scope exists (service_price_exists); `details.service_price_id` is its id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/service-prices/{service_price_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Service Price",
+        "description": "A catalog price with all its versions, newest first.",
+        "operationId": "get_service_price_api_v1_billing_service_prices__service_price_id__get",
+        "parameters": [
+          {
+            "name": "service_price_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Price Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePriceDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such price (not_found); `package` and `per_period` prices are not served here.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/service-prices/{service_price_id}/versions": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Add Price Version",
+        "description": "Add a version. Versions are never edited: to change an upcoming one,\ndelete it and add another.",
+        "operationId": "add_price_version_api_v1_billing_service_prices__service_price_id__versions_post",
+        "parameters": [
+          {
+            "name": "service_price_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Price Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePriceDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such price (not_found); `package` and `per_period` prices are not served here.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}": {
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Price Version",
+        "description": "Delete an upcoming version.",
+        "operationId": "delete_price_version_api_v1_billing_service_prices__service_price_id__versions__price_version_id__delete",
+        "parameters": [
+          {
+            "name": "service_price_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Price Id"
+            }
+          },
+          {
+            "name": "price_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Price Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such price, or a version of another price (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -22955,6 +23396,13 @@
         "title": "CalendarSubject",
         "description": "The session's subject with its level's name."
       },
+      "CatalogPricingModel": {
+        "type": "string",
+        "enum": [
+          "per_session",
+          "full_course"
+        ]
+      },
       "CatalogStatus": {
         "type": "string",
         "enum": [
@@ -25888,6 +26336,14 @@
         ],
         "title": "ClassSessionUpdated",
         "description": "The moved session and its warnings."
+      },
+      "ClassType": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group",
+          "course"
+        ]
       },
       "ClassroomCreate": {
         "properties": {
@@ -35441,6 +35897,37 @@
         ],
         "title": "OffsetPage[OverdueCloseoutItem]"
       },
+      "OffsetPage_ServicePriceItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ServicePriceItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ServicePriceItem]"
+      },
       "OffsetPage_SessionRequestItem_": {
         "properties": {
           "items": {
@@ -36013,6 +36500,7 @@
           "assignment.review",
           "attendance.correct",
           "audit.view",
+          "billing.manage",
           "catalog.manage",
           "consent.record",
           "course.manage",
@@ -36061,6 +36549,146 @@
           "active",
           "completed",
           "discontinued"
+        ]
+      },
+      "PriceCatalogReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PriceCatalogReference",
+        "description": "A level, cohort or group an item points at: its id and current\nname."
+      },
+      "PriceCatalogSubject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "education_level_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Education Level Id"
+          },
+          "education_level_name": {
+            "type": "string",
+            "title": "Education Level Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "education_level_id",
+          "education_level_name"
+        ],
+        "title": "PriceCatalogSubject",
+        "description": "The item's subject, with its own level's name."
+      },
+      "PriceVersionCreate": {
+        "properties": {
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effective_from",
+          "amount"
+        ],
+        "title": "PriceVersionCreate",
+        "description": "``POST /api/v1/billing/service-prices/{id}/versions`` (#89 B5).\n``amount`` is required; an explicit ``null`` means \"not offered from\nthis date\"."
+      },
+      "PriceVersionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PriceVersionStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "effective_from",
+          "amount",
+          "status",
+          "created_at"
+        ],
+        "title": "PriceVersionItem",
+        "description": "One version (#89 B1). ``status`` is against the center's local\ntoday: ``current`` is the version in effect, ``past`` an older one,\n``upcoming`` one that starts later. ``amount: null`` means \"not\noffered\"."
+      },
+      "PriceVersionStatus": {
+        "type": "string",
+        "enum": [
+          "past",
+          "current",
+          "upcoming"
         ]
       },
       "PrivacyNoticeAcceptanceRequest": {
@@ -38932,6 +39560,301 @@
         ],
         "title": "SeriesRecurrenceDetail",
         "description": "The stored rule's structured fields."
+      },
+      "ServicePriceCreate": {
+        "properties": {
+          "class_type": {
+            "$ref": "#/components/schemas/ClassType"
+          },
+          "pricing_model": {
+            "$ref": "#/components/schemas/CatalogPricingModel"
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Subject Id"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "education_level_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level Id"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_type",
+          "pricing_model",
+          "subject_id",
+          "effective_from",
+          "amount"
+        ],
+        "title": "ServicePriceCreate",
+        "description": "``POST /api/v1/billing/service-prices``: the item's key and its first\nversion (#89 B3). Fields are in rule order (see the module docstring)."
+      },
+      "ServicePriceDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "class_type": {
+            "$ref": "#/components/schemas/ClassType"
+          },
+          "pricing_model": {
+            "$ref": "#/components/schemas/CatalogPricingModel"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/PriceCatalogSubject"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceVersionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceVersionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PriceVersionItem"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "class_type",
+          "pricing_model",
+          "subject",
+          "education_level",
+          "duration_minutes",
+          "cohort",
+          "group",
+          "current",
+          "next",
+          "created_at",
+          "versions"
+        ],
+        "title": "ServicePriceDetail",
+        "description": "An item with all its versions, newest ``effective_from`` first."
+      },
+      "ServicePriceItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "class_type": {
+            "$ref": "#/components/schemas/ClassType"
+          },
+          "pricing_model": {
+            "$ref": "#/components/schemas/CatalogPricingModel"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/PriceCatalogSubject"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceVersionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceVersionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "class_type",
+          "pricing_model",
+          "subject",
+          "education_level",
+          "duration_minutes",
+          "cohort",
+          "group",
+          "current",
+          "next",
+          "created_at"
+        ],
+        "title": "ServicePriceItem",
+        "description": "One catalog item (#89 B1). ``education_level`` and\n``duration_minutes`` ``null`` mean \"any\"; ``cohort``/``group`` scope it.\n``current`` is the version in effect today (``amount: null`` = not\noffered) and ``next`` the earliest upcoming one."
       },
       "SessionAttendance": {
         "properties": {

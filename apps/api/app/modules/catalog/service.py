@@ -30,7 +30,9 @@ optionally locked ``FOR SHARE``, or one statement for a page of records);
 :func:`get_subject_for_reference` and :func:`subject_references` do the same
 for subjects, with their level (#44 tutor qualifications);
 :func:`subject_name_columns` is an unexecuted ``(id, name)`` select another
-module joins (#80). :func:`periods_overlapping` gives the active periods of
+module joins (#80); :func:`subject_sort_columns` and
+:func:`education_level_sort_columns` add the levels' names and sort order
+(#89 price catalog). :func:`periods_overlapping` gives the active periods of
 one type over a date range (#80 E3).
 
 **Writes** (``catalog.manage``): create and ``PATCH`` (rename, reorder,
@@ -368,6 +370,26 @@ def subject_name_columns() -> Select[uuid.UUID, str]:
     module joins it as a subquery so a list and its subjects' names come in
     one statement."""
     return select(Subject.id, Subject.name)
+
+
+def subject_sort_columns() -> Select[uuid.UUID, str, uuid.UUID, str, int]:
+    """``SELECT id, name, education_level_id, education_level_name,
+    education_level_sort_order`` of every subject, **not executed** (#89
+    E7): the price catalog joins it as a subquery so a page is named and
+    ordered like the catalog in one statement."""
+    return select(
+        Subject.id,
+        Subject.name,
+        Subject.education_level_id,
+        EducationLevel.name.label("education_level_name"),
+        EducationLevel.sort_order.label("education_level_sort_order"),
+    ).join(EducationLevel, EducationLevel.id == Subject.education_level_id)
+
+
+def education_level_sort_columns() -> Select[uuid.UUID, str, int]:
+    """``SELECT id, name, sort_order FROM education_levels``, **not
+    executed** (#89 E7; the :func:`subject_sort_columns` pattern)."""
+    return select(EducationLevel.id, EducationLevel.name, EducationLevel.sort_order)
 
 
 def _subjects_query() -> Select[Subject, str]:

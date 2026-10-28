@@ -115,12 +115,17 @@ Catalog items (E9).
 | `pricing_model` | VARCHAR(16) | no | `per_session` \| `full_course` \| `per_period` \| `package` |
 | `subject_id` | UUID | yes | FK `subjects`; `NULL` only for a `package` row whose product has no subject (E10) |
 | `education_level_id` | UUID | yes | FK `education_levels`; `NULL` = any level |
-| `duration_minutes` | SMALLINT | yes | `> 0`; `NULL` = any duration |
+| `duration_minutes` | SMALLINT | yes | 15 to 480, only with `per_session` (#89); `NULL` = any duration |
 | `cohort_id` | UUID | yes | FK `course_cohorts`; scope (spec §3, "each cohort has its own … pricing") |
 | `group_id` | UUID | yes | FK `class_groups`; scope |
 | `version` | INTEGER | no | |
 
-- **Checks:** `NOT (cohort_id IS NOT NULL AND group_id IS NOT NULL)`; `cohort_id` only with `class_type = 'course'`; `group_id` only with `class_type = 'group'`; `package` only with `class_type = 'individual'` (E10).
+- **Checks:** `NOT (cohort_id IS NOT NULL AND group_id IS NOT NULL)`; `cohort_id` only with `class_type = 'course'`; `group_id` only with `class_type = 'group'`; `package` only with `class_type = 'individual'` (E10). Added by #89 (E4, E5):
+  - the allowed combinations: `individual` with `per_session`, `per_period` or `package`; `group` with `per_session`, `full_course` or `per_period`; `course` with `full_course`;
+  - `subject_id IS NOT NULL OR pricing_model = 'package'`;
+  - `duration_minutes IS NULL OR (pricing_model = 'per_session' AND duration_minutes BETWEEN 15 AND 480)`;
+  - a scoped row (cohort or group) has `education_level_id IS NULL AND duration_minutes IS NULL`.
+- **API scope (#89 E5):** the #89 routes create, list and read only `per_session` and `full_course` items. `package` rows are created with their product (#94) and `per_period` prices by #93.
 - **Pricing models:** `per_session` (individual sessions, and group sessions priced per session); `full_course` (a cohort fee, or a group flat fee per enrollment); `per_period` (group per-student pricing, through a tuition plan linked to the group enrollment, and tuition plans in general); `package` (the price of a package product).
 - **Catalog key:** `UNIQUE NULLS NOT DISTINCT (class_type, pricing_model, subject_id, education_level_id, duration_minutes, cohort_id, group_id) WHERE pricing_model <> 'package'`. A `package` row is identified by its product instead (`package_products.service_price_id` is UNIQUE), so two products for the same subject can coexist.
 - The key columns don't change once a `price_versions` row exists; a different key is a new item.
@@ -135,7 +140,9 @@ Catalog items (E9).
 | `amount` | NUMERIC(14,2) | yes | `>= 0`; `NULL` = "not offered from this date" |
 
 - **Ranges:** each version runs until the next one's `effective_from`. `UNIQUE (service_price_id, effective_from)` makes overlapping ranges impossible (the #89 constraint).
-- **Lookup:** the version in effect on a local date `d` is the one with the greatest `effective_from <= d`. Precedence (E9): (1) custom student or family price (#95); (2) the cohort- or group-scoped price; (3) the catalog price with the exact level; (4) the catalog price with any level. A `NULL` amount means "not offered": with no price in effect the item is unbilled (`no_price`, E1). #89 documents how a `NULL` at one step interacts with the lower steps.
+- **Lookup:** the version in effect on a local date `d` is the one with the greatest `effective_from <= d`. Precedence (E9): (1) custom student or family price (#95); (2) the cohort- or group-scoped price; (3) the catalog price with the exact level; (4) the catalog price with any level. A `NULL` amount means "not offered": with no price in effect the item is unbilled (`no_price`, E1).
+- **Lookup ranks (#89 E4; `billing.service.lookup_price`, below step 1):** among the items with the service's class type, pricing model and subject, rank 0 is the item scoped to its cohort or group; 1 exact level and exact duration; 2 exact level, any duration; 3 any level, exact duration; 4 any level, any duration (a student without a level, or a query without a duration, matches only the "any" items). The most specific item **with a version in effect on `d`** decides; an item whose versions all start later is skipped. If the deciding version's amount is `NULL`, the result is no price, and lower ranks are **not** consulted.
+- **Effective dates (#89 E3):** an item's first version may have any `effective_from`, past included. Every later version starts on or after the center's local today and after every existing version of the item. Versions are never edited; only an upcoming version (`effective_from` after today) may be deleted. A lookup for a past date therefore never changes once an item has a price.
 - **Guarded:** a version referenced by any `charges` or `packages` row can't be updated or deleted (§5.2). A change is a new version.
 
 ### 3.6 `custom_prices` (#95)
@@ -578,6 +585,8 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 ### 5.2 Guarded tables
 
 `price_versions` (and `custom_prices` from #95) get a `BEFORE UPDATE OR DELETE` row trigger that raises 42501 when the row is referenced by any `charges` or `packages` row, plus the `BEFORE TRUNCATE` trigger. An unreferenced version may still be corrected or removed.
+
+**Staged predicate (#89 E2).** `charges` and `packages` don't exist when `price_versions` is created, so the trigger function `price_versions_guard()` (triggers `price_versions_no_referenced_change` and `price_versions_no_truncate`) asks `price_version_is_referenced(version_id uuid) RETURNS boolean` (`LANGUAGE sql VOLATILE`). Migration 0060 (#89) creates it as `SELECT false`. #90's migration replaces it (`CREATE OR REPLACE`) with an `EXISTS` on `charges.price_version_id`, and #94's adds `packages`; each downgrade restores the previous body. The `RESTRICT` foreign keys from `charges` and `packages` stay the concurrent backstop.
 
 ## 6. Concurrency
 
