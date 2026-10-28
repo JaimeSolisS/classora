@@ -378,6 +378,11 @@ follows these rules.
 - Duplicate or concurrent submissions never double-post (W4.4, W7.4). These
   tests use real concurrent sessions against the Testcontainers PostgreSQL,
   not mocks.
+- Every route with `idempotent()` (#88) is tested for a replay, a key reused
+  with another body (`422 idempotency_key_reused`) and a two-connection
+  concurrent duplicate that runs once. The pattern is
+  `apps/api/tests/integration/test_idempotency.py` (with its test-only router
+  `idempotency_app.py`).
 - Randomized operation sequences are reproducible: the test prints its seed
   and accepts it as input. A property-based testing library is **not**
   approved; adding one needs approval first.

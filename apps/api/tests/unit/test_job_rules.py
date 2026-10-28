@@ -218,6 +218,7 @@ DEMO_TASKS = {"demo:succeed", "demo:fail", "demo:periodic"}
 # Registered in every environment (#25, #27).
 MODULE_TASKS = {
     "identity:purge_auth_sessions",
+    "idempotency:purge_keys",
     "ratelimit:purge_counters",
     "scheduling:expire_offers",
     "scheduling:materialize_series",

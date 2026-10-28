@@ -48,6 +48,17 @@
 #   (app/core/ratelimit.py); the issue that applies it removes it there. The
 #   runtime check sends no rate-limit cases (integration tests cover them).
 #
+# Idempotency keys (#88, ADR-0006 E6; apps/api/app/core/idempotency.py):
+#   idempotency = true   the route declares idempotent() (an Idempotency-Key
+#                        header); must match the route's marker in both
+#                        directions, and the route passes
+#                        IDEMPOTENCY_RESPONSES (400 and 422). Only on
+#                        POST/PUT/PATCH/DELETE, never on a public route. Every
+#                        endpoint that posts a ledger row needs it (#90/#99,
+#                        #94, #96, #100, #101, M7). The runtime check sends no
+#                        key: an allowed role gets 400, which counts as access
+#                        (tests/integration/test_idempotency.py covers replays).
+#
 # Privacy notice (#174; spec §9): every signed-in route answers 403
 # privacy_notice_required until the user accepts the current notice version,
 # except the notice-exempt ones:

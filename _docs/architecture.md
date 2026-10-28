@@ -127,7 +127,7 @@ modules/<domain>/
 
 1. Caddy receives the request from CloudFront and forwards `/api/*` to the API.
 2. Middleware assigns or propagates a **request ID** and starts an OTel span.
-3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)).
+3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)) → idempotency key on decorated financial routes, claimed in the request's transaction ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md); `app/core/idempotency.py`).
 4. The route dependency resolves the current user and checks the **role permission**.
 5. The service loads the target record(s) and runs the **record-level policy** (ownership, guardian link, tutor assignment).
 6. The Unit of Work commits. Audit events, notifications and optimistic-version increments are written in the same transaction.
@@ -157,7 +157,7 @@ modules/<domain>/
 - **Procrastinate on PostgreSQL**, running in a **dedicated worker container** built from the API image.
 - Jobs include charge generation (recurring tuition and enrollments), recurring expenses, rolling recurrence generation, reminders, report and export generation (WeasyPrint PDF, openpyxl XLSX), imports, file scan follow-up, retention and purge tasks.
 - Every job must be **idempotent**. A retry must not create a duplicate business transaction (W4.1, W7.2).
-- Periodic tasks today (registered by `app/core/jobs.create_job_app`): `identity:purge_auth_sessions` and `ratelimit:purge_counters` (hourly), `scheduling:expire_offers` (every 5 minutes), `scheduling:materialize_series` (08:00 UTC) and `academics:create_progress_report_placeholders` (07:00 UTC, M5-16c). The last one lives in `app/workflows/progress_report_schedule_tasks.py`, not in a module's `tasks.py`, because it composes `academics` with `scheduling`, `families`, `catalog`, `identity` and `administration`.
+- Periodic tasks today (registered by `app/core/jobs.create_job_app`): `identity:purge_auth_sessions`, `ratelimit:purge_counters` and `idempotency:purge_keys` (hourly; M6-03), `scheduling:expire_offers` (every 5 minutes), `scheduling:materialize_series` (08:00 UTC) and `academics:create_progress_report_placeholders` (07:00 UTC, M5-16c). The last one lives in `app/workflows/progress_report_schedule_tasks.py`, not in a module's `tasks.py`, because it composes `academics` with `scheduling`, `families`, `catalog`, `identity` and `administration`.
 - Failed jobs must be visible to administrators, with retry controls (§9 of the spec).
 
 Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic scheduler placement), ISSUE-J3 (failed-job admin UI). ISSUE-J4 (idempotency mechanics for generated financial records) is accepted in [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md).

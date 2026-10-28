@@ -73,7 +73,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
     # (M2-04) and
-    # rate_limit_counters (M2-09) are shared infrastructure.
+    # rate_limit_counters (M2-09) and idempotency_keys (M6-03) are shared
+    # infrastructure.
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
@@ -128,6 +129,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "user_delegations",
         "auth_sessions",
         "rate_limit_counters",
+        "idempotency_keys",
         "account_tokens",
         "registration_requests",
         "education_levels",

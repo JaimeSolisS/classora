@@ -477,20 +477,20 @@ An admin-managed withdrawal from a group or cohort enrollment, with its confirme
 
 ### 3.24 `idempotency_keys` (core, #88)
 
-API idempotency (E6). Not `Audited`.
+API idempotency (E6). Not `Audited`. Migration `0059` (#88).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `user_id` | UUID | no | FK `users` |
-| `endpoint` | VARCHAR(200) | no | method + route template, e.g. `POST /api/v1/billing/payments` |
-| `key` | VARCHAR(128) | no | `CHECK (key ~ '^[A-Za-z0-9_-]{16,128}$')` |
-| `request_hash` | CHAR(64) | no | hex SHA-256 over method, concrete path and canonical JSON body |
-| `response_status` | SMALLINT | no | `BETWEEN 200 AND 299` (only `2xx` is stored) |
-| `response_body` | JSONB | yes | |
-| `expires_at` | TIMESTAMPTZ | no | `created_at + 7 days` |
+| `user_id` | UUID | no | FK `users` `ON DELETE RESTRICT` |
+| `endpoint` | TEXT | no | method + route template, e.g. `POST /api/v1/billing/payments`; `CHECK (char_length(endpoint) BETWEEN 1 AND 300)` |
+| `key` | TEXT | no | `CHECK (key ~ '^[A-Za-z0-9_-]{16,128}$')` |
+| `request_hash` | BYTEA | no | raw SHA-256 over method, concrete path and canonical JSON body; `CHECK (octet_length(request_hash) = 32)` |
+| `response_status` | SMALLINT | yes | `BETWEEN 200 AND 299` (only `2xx` is stored); `NULL` only inside the claiming transaction, never committed |
+| `response_body` | JSONB | yes | `NULL` for a `204` (and inside the claiming transaction) |
+| `expires_at` | TIMESTAMPTZ | no | claim time + 7 days; an expired row counts as absent and is replaced by the next claim (ADR-0006 implementation note) |
 
-`UNIQUE (user_id, endpoint, key)`; index `(expires_at)`. Rows are deleted by the hourly `idempotency:purge_keys` job.
+`UNIQUE (user_id, endpoint, key)` (`uq_idempotency_keys_user_endpoint_key`); index `ix_idempotency_keys_expires_at`. Rows are deleted by the hourly `idempotency:purge_keys` job.
 
 ### 3.25 `number_series` (core, #98)
 
