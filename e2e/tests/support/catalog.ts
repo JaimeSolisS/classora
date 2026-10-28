@@ -40,6 +40,26 @@ type Common = {
     progress: string;
     // #323: the family's courses ("Mis cursos").
     myCourses: string;
+    // #363 F4: the price catalog.
+    billing: string;
+  };
+  // #363 F4, F5: the price catalog.
+  billing: {
+    prices: {
+      title: string;
+      add: string;
+      save: string;
+      back: string;
+      viewExisting: string;
+      fields: Record<
+        'classType' | 'subject' | 'duration' | 'effectiveFrom' | 'amount',
+        string
+      >;
+      status: Record<'current' | 'upcoming' | 'past', string>;
+      versions: { title: string };
+      schedule: { title: string; submit: string };
+      deleteDialog: { confirm: string };
+    };
   };
   // #62b E1: the request dialog and My change requests.
   changeRequests: {
@@ -901,6 +921,7 @@ type Errors = {
   guardian_consent_required: string;
   reauth_required: string;
   qualification_exists: string;
+  service_price_exists: string;
 };
 
 function read<T>(path: string): T {

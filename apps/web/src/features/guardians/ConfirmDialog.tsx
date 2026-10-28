@@ -22,6 +22,8 @@ interface ConfirmDialogProps {
   body: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
+  /** An alert shown above the buttons (a refused confirm, #363 D4). */
+  alert?: ReactNode;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
 }
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   body,
   confirmLabel,
   destructive = false,
+  alert,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -81,6 +84,7 @@ export function ConfirmDialog({
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{body}</DialogDescription>
           </DialogHeader>
+          {alert}
           <DialogFooter>
             <Button
               type="button"

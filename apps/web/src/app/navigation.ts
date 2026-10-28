@@ -57,6 +57,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     permission: 'catalog.manage',
   },
   { to: '/settings', labelKey: 'nav.settings', permission: 'settings.manage' },
+  // Billing (#363 A2): the price catalog for billing.manage holders. Later
+  // billing pages may widen this to `anyPermission` once billing.view
+  // exists (#90).
+  {
+    to: '/billing/prices',
+    labelKey: 'nav.billing',
+    permission: 'billing.manage',
+  },
   // Every role holds student.view; the API filters the list (#33 I1).
   { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
   // Guardians see their own profile only (#34 I1).

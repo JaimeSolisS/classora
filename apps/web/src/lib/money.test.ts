@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMoney } from './money';
+import { formatMoney, isMoneyInput, normalizeMoneyInput } from './money';
 
 // Exact strings for Node 24's ICU (the CI runtime).
 describe('formatMoney', () => {
@@ -51,5 +51,50 @@ describe('formatMoney', () => {
 
   it('uses es-MX in both UI languages (no "MX$")', () => {
     expect(formatMoney('1250.00')).not.toContain('MX');
+  });
+});
+
+describe('isMoneyInput and normalizeMoneyInput (#363 C2)', () => {
+  it.each([
+    '0',
+    '0.00',
+    '250',
+    '250.5',
+    '350.00',
+    ' 380.00 ',
+    '999999999999.99',
+  ])('accepts %j', (value) => {
+    expect(isMoneyInput(value)).toBe(true);
+  });
+
+  it.each([
+    '',
+    '   ',
+    '-1',
+    '-0.01',
+    '+5',
+    '1,250.00',
+    '1e3',
+    '12.',
+    '.5',
+    '1.234',
+    '1234567890123',
+    'abc',
+    '$250',
+    'NaN',
+  ])('rejects %j', (value) => {
+    expect(isMoneyInput(value)).toBe(false);
+  });
+
+  it('trims and otherwise keeps the typed string', () => {
+    expect(normalizeMoneyInput('250')).toBe('250');
+    expect(normalizeMoneyInput('  350.5 ')).toBe('350.5');
+    expect(normalizeMoneyInput('0.10')).toBe('0.10');
+  });
+
+  it('every accepted input is a formattable amount', () => {
+    for (const value of ['0', '250', '350.5', ' 12.34 ']) {
+      expect(() => formatMoney(normalizeMoneyInput(value))).not.toThrow();
+    }
   });
 });
