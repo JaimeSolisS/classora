@@ -17,6 +17,8 @@ and never answers ``403``/``404`` for them.
 **Families** (#172): the family grouping functions live in ``groupings.py``
 and are public through this module. The detail shows the student's family to
 staff with ``guardian.view``. Family membership is never student access.
+:func:`family_of_student` gives billing a student's family (#90 B3; no
+access check).
 
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
@@ -164,6 +166,7 @@ __all__ = [
     "create_family",
     "create_guardian",
     "create_student",
+    "family_of_student",
     "family_schedule_facts",
     "get_consents",
     "get_family",
@@ -218,6 +221,10 @@ list_families = _groupings.list_families
 remove_family_guardian = _groupings.remove_guardian
 remove_family_student = _groupings.remove_student
 update_family = _groupings.update_family
+family_of_student = _groupings.family_of_student
+"""The student's family, or ``None`` (one statement; no access check).
+``billing.service.post_charge`` resolves the billing account with it
+(#90 B3)."""
 
 # --- References (#48) -------------------------------------------------------------
 

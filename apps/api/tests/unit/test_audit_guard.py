@@ -36,7 +36,19 @@ from app.modules.administration.settings_models import (
     OperatingHours,
     SchedulingPolicy,
 )
-from app.modules.billing.models import PriceVersion, ServicePrice
+from app.modules.billing.models import (
+    AllocationRelease,
+    BillingAccount,
+    Charge,
+    ChargeAdjustment,
+    Payment,
+    PaymentAllocation,
+    PaymentMethod,
+    PaymentReversal,
+    PriceVersion,
+    Refund,
+    ServicePrice,
+)
 from app.modules.catalog.models import (
     AcademicPeriod,
     Classroom,
@@ -125,12 +137,16 @@ def test_the_guard_scans_the_real_audited_models():
     # Guards against a guard that silently scans nothing.
     assert audited_classes(Base) == [
         AcademicPeriod,
+        AllocationRelease,
         ApprovalRequest,
         Assignment,
         AssignmentOffer,
         AssignmentOfferSession,
         AssignmentSubmission,
+        BillingAccount,
         BusinessSettings,
+        Charge,
+        ChargeAdjustment,
         ClassGroup,
         ClassSeries,
         ClassSeriesParticipant,
@@ -164,10 +180,15 @@ def test_the_guard_scans_the_real_audited_models():
         LearningPlanMilestone,
         LearningPlanObjective,
         OperatingHours,
+        Payment,
+        PaymentAllocation,
+        PaymentMethod,
+        PaymentReversal,
         PriceVersion,
         PrivacyNoticeAcceptance,
         ProgressReport,
         ProgressReportSchedule,
+        Refund,
         RegistrationRequest,
         SchedulingPolicy,
         ServicePrice,
