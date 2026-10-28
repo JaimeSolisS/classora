@@ -113,7 +113,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       UV_LOCKED: "1"
     steps:
@@ -139,7 +139,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
