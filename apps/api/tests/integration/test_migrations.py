@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0058"
+HEAD = "0059"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -146,6 +146,7 @@ LEARNING_PLAN_TABLES = [
 ASSIGNMENT_TABLES = ["assignments", "assignment_submissions"]
 PROGRESS_REPORT_TABLES = ["progress_reports"]
 SCHEDULE_TABLES = ["progress_report_schedules"]
+IDEMPOTENCY_TABLES = ["idempotency_keys"]
 SCHEDULE_PERIOD_UNIQUE = "uq_progress_reports_schedule_period"
 SCHEDULE_FK = "fk_progress_reports_schedule_id_progress_report_schedules"
 CLOSEOUT_REVIEW_COLUMNS = {
@@ -369,6 +370,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *ASSIGNMENT_TABLES,
             *PROGRESS_REPORT_TABLES,
             *SCHEDULE_TABLES,
+            *IDEMPOTENCY_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4488,9 +4490,24 @@ def _of_0058(diff: Any) -> bool:
     return False
 
 
+def _of_0059(diff: Any) -> bool:
+    """A metadata difference that revision 0059 adds: the idempotency_keys
+    table and its index (#88 A1)."""
+    if diff[0] == "add_table":
+        return diff[1].name in IDEMPOTENCY_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in IDEMPOTENCY_TABLES
+    return False
+
+
+def _of_0058_on(diff: Any) -> bool:
+    """A metadata difference that revision 0058 or a later one adds."""
+    return _of_0058(diff) or _of_0059(diff)
+
+
 def _of_0057_on(diff: Any) -> bool:
     """A metadata difference that revision 0057 or a later one adds."""
-    return _of_0057(diff) or _of_0058(diff)
+    return _of_0057(diff) or _of_0058_on(diff)
 
 
 def _of_0056_on(diff: Any) -> bool:
@@ -9922,7 +9939,7 @@ def test_0057_adds_the_progress_report_table_and_downgrade_drops_it(
     command.upgrade(config, "0057")
 
     assert version_nums(dsn) == ["0057"]
-    assert [d for d in metadata_diff(dsn) if not _of_0058(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0058_on(d)] == []
     assert public_tables(dsn) - before == set(PROGRESS_REPORT_TABLES)
     run_sql(dsn, REPORT_INSERT, _report_values(dsn))
 
@@ -10255,7 +10272,7 @@ def test_0058_adds_the_schedules_and_downgrade_drops_them(fresh_database_url):
     command.upgrade(config, "0058")
 
     assert version_nums(dsn) == ["0058"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0059(d)] == []
     assert public_tables(dsn) - before == set(SCHEDULE_TABLES)
     [schedule] = run_sql(dsn, SCHEDULE_INSERT, _schedule_values(dsn))
     [report] = run_sql(dsn, REPORT_INSERT, _report_values(dsn))
@@ -10270,7 +10287,7 @@ def test_0058_adds_the_schedules_and_downgrade_drops_them(fresh_database_url):
     assert version_nums(dsn) == ["0057"]
     assert public_tables(dsn) == before
     assert "schedule_id" not in _columns(dsn, "progress_reports")
-    assert [d for d in metadata_diff(dsn) if not _of_0058(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0058_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -10395,3 +10412,145 @@ def test_one_placeholder_per_schedule_and_period_ever(fresh_database_url):
         insert_placeholder,
         params | {"start": date(2031, 3, 10), "end": date(2031, 3, 16)},
     )
+
+
+# --- 0059: idempotency_keys (#88 A1, A2) ----------------------------------------------
+
+IDEMPOTENCY_INSERT = (
+    "INSERT INTO idempotency_keys (user_id, endpoint, key, request_hash,"
+    " response_status, response_body, expires_at)"
+    " VALUES (:u, :endpoint, :key, :hash, :status, CAST(:body AS jsonb), :expires)"
+    " RETURNING id"
+)
+
+
+def _idempotency_values(dsn: str, **overrides: Any) -> dict[str, Any]:
+    return {
+        "u": _user_row(dsn),
+        "endpoint": "POST /api/v1/billing/payments",
+        "key": "k" * 16,
+        "hash": bytes(32),
+        "status": 201,
+        "body": '{"id": 1}',
+        "expires": WINDOW_END,
+        **overrides,
+    }
+
+
+def test_0059_adds_the_idempotency_keys_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0058")
+    before = public_tables(dsn)
+
+    command.upgrade(config, "0059")
+
+    assert version_nums(dsn) == ["0059"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(IDEMPOTENCY_TABLES)
+    run_sql(dsn, IDEMPOTENCY_INSERT, _idempotency_values(dsn))
+
+    command.downgrade(config, "0058")
+
+    assert version_nums(dsn) == ["0058"]
+    assert public_tables(dsn) == before
+    assert [d for d in metadata_diff(dsn) if not _of_0059(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_idempotency_keys_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    text_ = ("text", "NO", None, None)
+    assert _columns(dsn, "idempotency_keys") == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "user_id": ("uuid", "NO", None, None),
+        "endpoint": text_,
+        "key": text_,
+        "request_hash": ("bytea", "NO", None, None),
+        "response_status": ("smallint", "YES", None, None),
+        "response_body": ("jsonb", "YES", None, None),
+        "expires_at": ("timestamp with time zone", "NO", None, None),
+    }
+    constraints = _constraints(dsn, "idempotency_keys")
+    assert set(constraints) == {
+        "ck_idempotency_keys_endpoint_length",
+        "ck_idempotency_keys_key_format",
+        "ck_idempotency_keys_request_hash_length",
+        "ck_idempotency_keys_response_status_2xx",
+        "fk_idempotency_keys_user_id_users",
+        "pk_idempotency_keys",
+        "uq_idempotency_keys_user_endpoint_key",
+    }
+    assert constraints["uq_idempotency_keys_user_endpoint_key"] == (
+        "UNIQUE (user_id, endpoint, key)"
+    )
+    assert "ON DELETE CASCADE" in constraints["fk_idempotency_keys_user_id_users"]
+    indexes = _indexes(dsn, "idempotency_keys")
+    assert set(indexes) == {
+        "ix_idempotency_keys_expires_at",
+        "pk_idempotency_keys",
+        "uq_idempotency_keys_user_endpoint_key",
+    }
+    assert "(expires_at)" in indexes["ix_idempotency_keys_expires_at"]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"key": "a" * 15}, id="key-too-short"),
+        pytest.param({"key": "a" * 129}, id="key-too-long"),
+        pytest.param({"key": "a" * 15 + "!"}, id="key-bad-character"),
+        pytest.param({"endpoint": ""}, id="empty-endpoint"),
+        pytest.param({"endpoint": "P" * 301}, id="long-endpoint"),
+        pytest.param({"hash": bytes(31)}, id="31-byte-hash"),
+        pytest.param({"status": 199}, id="status-199"),
+        pytest.param({"status": 300}, id="status-300"),
+        pytest.param({"status": 409}, id="status-409"),
+        pytest.param({"u": uuid.uuid4()}, id="unknown-user"),
+    ],
+)
+def test_idempotency_keys_reject_invalid_rows(fresh_database_url, overrides):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    with pytest.raises(IntegrityError):
+        run_sql(dsn, IDEMPOTENCY_INSERT, _idempotency_values(dsn, **overrides))
+
+
+def test_idempotency_keys_are_unique_per_user_endpoint_and_key(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _idempotency_values(dsn)
+    run_sql(dsn, IDEMPOTENCY_INSERT, values)
+    # The bounds of the formats, a NULL response (inside the claiming
+    # transaction) and another endpoint or key are different rows.
+    run_sql(dsn, IDEMPOTENCY_INSERT, values | {"key": "Z" * 128, "endpoint": "P"})
+    run_sql(
+        dsn,
+        IDEMPOTENCY_INSERT,
+        values | {"key": "_-" * 8, "status": None, "body": None},
+    )
+    run_sql(dsn, IDEMPOTENCY_INSERT, values | {"endpoint": "POST /api/v1/other"})
+
+    with pytest.raises(IntegrityError, match="uq_idempotency_keys_user_endpoint_key"):
+        run_sql(dsn, IDEMPOTENCY_INSERT, values | {"hash": b"\x01" * 32})
+
+
+def test_deleting_a_user_deletes_their_idempotency_keys(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    values = _idempotency_values(dsn)
+    run_sql(dsn, IDEMPOTENCY_INSERT, values)
+
+    run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": values["u"]})
+
+    assert run_sql(dsn, "SELECT count(*) FROM idempotency_keys")[0][0] == 0

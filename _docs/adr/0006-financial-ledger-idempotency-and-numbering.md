@@ -256,6 +256,10 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 - **E13 (c), receipts issued on demand at first download.** Rejected: numbers wouldn't follow payment order, and a payment could exist without a receipt.
 - **E15 (b), block #98 until logo uploads exist.** Rejected: defers receipts to the next version, against spec §6.
 
+## Implementation notes (M6-03)
+
+- **#88, 2026-10-27, owner-delegated (E2):** a key whose `expires_at` has passed but that the hourly purge hasn't deleted yet counts as **absent**. The claim is one `INSERT … ON CONFLICT (user_id, endpoint, key) DO UPDATE … WHERE expires_at <= now RETURNING id`, which replaces an expired row atomically, so retention is exactly 7 days whatever the purge timing. The E6 decision above is otherwise unchanged.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.2, §4.4, §5, §6, §10.4 ISSUE-J4, §10.6 ISSUE-F1–F7, §11, §12

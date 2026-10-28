@@ -27,6 +27,13 @@
   policy is applied by a route or listed in
   :data:`~app.core.ratelimit.PENDING_POLICIES`, never both. Static only: the
   runtime cases send no rate-limit requests.
+- Idempotency keys (#88): an entry's ``idempotency = true`` must match the
+  route's :class:`~app.core.idempotency.IdempotencyRule` marker in both
+  directions; a route with the marker documents ``400`` and ``422`` (pass
+  :data:`~app.core.idempotency.IDEMPOTENCY_RESPONSES`), is never public and
+  is only on ``POST``/``PUT``/``PATCH``/``DELETE``. Static only: the runtime
+  cases send no key (an allowed actor gets ``400``, which still counts as
+  access; ``tests/integration/test_idempotency.py`` covers the rest).
 - Privacy notice (#174): an entry's ``notice_exempt`` must match the route's
   :class:`~app.core.authz.AccessRule` (static check; only for
   ``authenticated``). At runtime :func:`notice_cases` adds one ``METHOD path
@@ -85,6 +92,7 @@ from app.core.authz import (
 )
 from app.core.csrf import UNSAFE_METHODS, csrf_token_for
 from app.core.errors import PROBLEM_DETAILS_REF, PROBLEM_JSON
+from app.core.idempotency import route_idempotency_rules
 from app.core.ratelimit import (
     RATE_LIMIT_POLICIES,
     RateLimitPolicy,
@@ -130,6 +138,7 @@ ENTRY_FIELDS = frozenset(
         "rate_limit_exempt",
         "notice_exempt",
         "stream",
+        "idempotency",
     }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -166,6 +175,7 @@ class MatrixEntry:
     rate_limit_exempt: Any = None
     notice_exempt: Any = None
     stream: Any = None
+    idempotency: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -191,6 +201,11 @@ class MatrixEntry:
         """``stream = true`` (#42): the route answers an endless event
         stream; the runtime check reads only its status and headers."""
         return self.stream is True
+
+    @property
+    def is_idempotent(self) -> bool:
+        """``idempotency = true`` (#88): the route declares ``idempotent()``."""
+        return self.idempotency is True
 
     @property
     def needs_reauth(self) -> bool:
@@ -306,6 +321,13 @@ def entry_problems(
             problems.append("stream must be true or false")
         if entry.method != "GET":
             problems.append("stream is only for GET")
+    if entry.idempotency is not None:
+        if not isinstance(entry.idempotency, bool):
+            problems.append("idempotency must be true or false")
+        if entry.method not in UNSAFE_METHODS:
+            problems.append("idempotency is only for POST, PUT, PATCH and DELETE")
+        if entry.access == "public":
+            problems.append("idempotency is never on a public entry")
     return problems
 
 
@@ -499,6 +521,41 @@ def _rate_limit_problems(
     return problems
 
 
+def _idempotency_problems(
+    method: str,
+    path: str,
+    route: RouteContext,
+    rule_kind: str,
+    entry: MatrixEntry | None,
+    document: Mapping[str, Any],
+) -> list[str]:
+    """The idempotency-key problems of one route (#88 E5)."""
+    label = f"{method} {path}"
+    problems: list[str] = []
+    markers = route_idempotency_rules(route)
+    if len(markers) > 1:
+        problems.append(f"{label}: more than one idempotency marker ({len(markers)})")
+    if markers:
+        if rule_kind == "public":
+            problems.append(f"{label}: a public route cannot declare idempotent()")
+        if method not in UNSAFE_METHODS:
+            problems.append(
+                f"{label}: idempotent() is only for POST, PUT, PATCH and DELETE"
+            )
+        for status in ("400", "422"):
+            if not _documents_problem(document, method, path, status):
+                problems.append(
+                    f"{label}: {status} is not documented as ProblemDetails"
+                    " (pass IDEMPOTENCY_RESPONSES)"
+                )
+    if entry is not None and bool(markers) != entry.is_idempotent:
+        problems.append(
+            f"{label}: the route's idempotency is {str(bool(markers)).lower()}"
+            f" but the matrix says {str(entry.is_idempotent).lower()}"
+        )
+    return problems
+
+
 def _policy_coverage_problems(
     routes: Mapping[tuple[str, str], RouteContext],
     rate_limit_policies: Mapping[str, RateLimitPolicy],
@@ -635,6 +692,9 @@ def check_matrix(
             _rate_limit_problems(
                 method, path, route, rule.kind, entry, document, rate_limit_policies
             )
+        )
+        problems.extend(
+            _idempotency_problems(method, path, route, rule.kind, entry, document)
         )
         if entry is None:
             continue

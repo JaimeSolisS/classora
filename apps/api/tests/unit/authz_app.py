@@ -9,6 +9,10 @@ Never mounted in the real app. It has:
 - a sensitive route (#26): the delegable, reauth-bound ``payroll.finalize``
   with ``require_recent_auth("payroll.finalize")`` (the runtime matrix
   self-test reauthenticates its allowed actors and sends ``reauth:none``);
+- an idempotent route (#88): ``POST /sample/charges/{account_id}`` declares
+  ``idempotent()`` (``idempotency = true`` in the matrix; the runtime
+  self-test sends no key, so an allowed actor gets ``400`` before any
+  database work);
 - a notice-exempt route (#174): ``GET /sample/notice`` is
   ``authenticated(notice_exempt=True)`` (the ``notice:pending`` self-test);
 - the ``Origin`` check of the real app (an app-level dependency) and fixed
@@ -22,7 +26,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Response
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from app.core.authz import (
@@ -38,6 +42,11 @@ from app.core.authz import (
 from app.core.config import Settings, get_settings
 from app.core.conventions import install_conventions
 from app.core.csrf import require_trusted_origin
+from app.core.idempotency import (
+    IDEMPOTENCY_RESPONSES,
+    IdempotentRequest,
+    idempotent,
+)
 from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
@@ -99,6 +108,17 @@ class OverrideIn(BaseModel):
 class OverrideOut(BaseModel):
     period_id: uuid.UUID
     by: uuid.UUID
+
+
+class ChargeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: str
+
+
+class ChargeOut(BaseModel):
+    account_id: uuid.UUID
+    amount: str
 
 
 PLACEHOLDER_DSN = SecretStr("postgresql://sample:sample@127.0.0.1:1/sample")
@@ -177,6 +197,21 @@ def build_authz_app() -> FastAPI:
     ) -> OverrideOut:
         return OverrideOut(period_id=period_id, by=principal.user_id)
 
+    @sample.post(
+        "/charges/{account_id}",
+        status_code=201,
+        response_model=ChargeOut,
+        responses={**PERMISSION_RESPONSES, **IDEMPOTENCY_RESPONSES},
+        dependencies=[require(USER_VIEW)],
+    )
+    async def sample_charge(
+        account_id: uuid.UUID,
+        body: ChargeIn,
+        idem: Annotated[IdempotentRequest, idempotent()],
+    ) -> Response:
+        out = ChargeOut(account_id=account_id, amount=body.amount)
+        return await idem.respond(out, status_code=201)
+
     app.include_router(sample)
     app.include_router(_notes_router())
     return app
@@ -244,6 +279,15 @@ SAMPLE_MATRIX: dict[str, Any] = {
             "reason": DOCS_REASON,
         },
         {"method": "GET", "path": "/redoc", "access": "public", "reason": DOCS_REASON},
+        {
+            "method": "POST",
+            "path": "/sample/charges/{account_id}",
+            "access": "permission",
+            "permission": USER_VIEW,
+            "allow": [OWNER, ADMINISTRATOR],
+            "json": {"amount": "10.00"},
+            "idempotency": True,
+        },
         {
             "method": "DELETE",
             "path": "/sample/items/{item_id}",

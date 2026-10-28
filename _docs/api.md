@@ -5933,12 +5933,55 @@ M1-09 in `apps/api/app/core/pagination.py`.
 
 ## Idempotency
 
-Financial POST endpoints (payments, allocations, refunds, payroll approval and
-payment) require an `Idempotency-Key` header. The frontend generates one key
-per form submission and reuses it on retry. A replay with the same key and body
-returns the stored response; the same key with a different body returns `422`;
-a missing key returns `400 idempotency_key_required`. PROPOSED (decided by
-architecture ISSUE-F4 / ADR-0006, implemented by M6-03).
+Every endpoint that posts a ledger row (manual charges and adjustments,
+package purchases, payments, allocations, reversals, refunds, withdrawal
+confirmations; M7 payroll approval and payment) requires an `Idempotency-Key`
+header. Approved ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md)
+E6), implemented by M6-03 (#88) in `apps/api/app/core/idempotency.py`. The
+first decorated routes come with #94 and #96.
+
+- **Header:** exactly one `Idempotency-Key` of 16–128 characters of
+  `[A-Za-z0-9_-]`. The web client sends `crypto.randomUUID()`, one per
+  submission, and sends it again when it retries the same submission
+  (`apps/web/src/lib/idempotency.ts`). The OpenAPI document lists the header as
+  a required parameter of every decorated operation.
+- **Codes:** a missing or empty header is `400 idempotency_key_required`; a
+  repeated or malformed one is `400 idempotency_key_invalid`; the same key with
+  a different request is `422 idempotency_key_reused`. No body ever echoes the
+  key.
+- **Replay:** the same user, endpoint (method and route template) and key with
+  the same request returns the stored status and body (JSON; no body for a
+  `204`) with `Idempotent-Replayed: true`, without running the route again. The
+  first response has no such header. A replay re-runs the access checks first,
+  so a user who has lost the permission gets `403`. The body is a snapshot of
+  the first response, not the record's current state.
+- **Only `2xx` is stored.** The key is claimed in the request's own
+  transaction and committed with the business change and the response. Any
+  failure (an error response, a validation `422`, a version conflict, a crash
+  or a failed commit) rolls the key back, so a retry with the same key runs
+  again.
+- **Expiry:** 7 days after the claim. A key past its expiry counts as new even
+  before the hourly `idempotency:purge_keys` job deletes it.
+- **Hash:** `SHA-256` over the method, the concrete path and the JSON body
+  re-serialized with sorted keys and no whitespace. The query string is not
+  part of it: a decorated route takes its input from the path and the JSON body
+  only. A different path parameter is a different request.
+- **Concurrent duplicates:** the second copy waits on the key's unique index
+  until the first commits, then replays its response (or, if the first rolled
+  back, runs itself). Two copies never both run.
+- **Check order:** `Origin` `403` → session `401` → CSRF `403` → privacy notice
+  `403` → permission `403` → reauthentication `403` (when declared) → rate limit
+  `429` (when declared) → `400` key → claim, replay or `422
+  idempotency_key_reused` → body validation `422` → route.
+
+**Declaring it on a route.** Declare the access rule first, then
+`rate_limit(...)` if the route has one, then
+`idem: Annotated[IdempotentRequest, idempotent()]`. Put `response_model=` and
+`status_code=` on the decorator, pass `IDEMPOTENCY_RESPONSES`, and end the
+route with `return await idem.respond(model, status_code=201)` (`None` with
+`204`). A route that returns without `respond()` is a `500` and stores nothing.
+Its `tests/authz/matrix.toml` entry gets `idempotency = true` (the static check
+enforces it in both directions).
 
 ## Money
 

@@ -15,6 +15,11 @@ from app.core.authz import (
     public,
     require,
 )
+from app.core.idempotency import (
+    IDEMPOTENCY_RESPONSES,
+    IdempotentRequest,
+    idempotent,
+)
 from app.core.ratelimit import (
     PENDING_POLICIES,
     RATE_LIMIT_POLICIES,
@@ -935,3 +940,133 @@ def test_removing_the_login_limit_is_reported():
         "POST /api/v1/auth/login: the route's rate limits are [] but the matrix"
         " says ['login.ip', 'login.username']",
     ]
+
+
+# --- Idempotency keys (#88 E5) ----------------------------------------------------
+
+IDEM_DOCS = {**PERMISSION_RESPONSES, **IDEMPOTENCY_RESPONSES}
+IdemDep = Annotated[IdempotentRequest, idempotent()]
+USER_VIEW_ROLES = ["owner", "administrator"]
+
+
+def idempotency_app() -> FastAPI:
+    """The correct routes plus one decorated route and the planted problems."""
+    app = correct_app()
+    router = APIRouter()
+
+    @router.post("/idem/ok", responses=IDEM_DOCS, dependencies=[require("user.view")])
+    async def ok(idem: IdemDep) -> None: ...
+
+    @router.post(
+        "/idem/unlisted", responses=IDEM_DOCS, dependencies=[require("user.view")]
+    )
+    async def unlisted(idem: IdemDep) -> None: ...
+
+    @router.post(
+        "/idem/no-marker", responses=IDEM_DOCS, dependencies=[require("user.view")]
+    )
+    async def no_marker() -> None: ...
+
+    @router.post(
+        "/idem/undocumented",
+        responses=PERMISSION_RESPONSES,
+        dependencies=[require("user.view")],
+    )
+    async def undocumented(idem: IdemDep) -> None: ...
+
+    @router.get("/idem/read", responses=IDEM_DOCS, dependencies=[require("user.view")])
+    async def read(idem: IdemDep) -> None: ...
+
+    @router.post(
+        "/idem/public",
+        responses={**CSRF_RESPONSES, **IDEMPOTENCY_RESPONSES},
+        dependencies=[public(reason="probe")],
+    )
+    async def open_route(idem: IdemDep) -> None: ...
+
+    app.include_router(router)
+    return app
+
+
+def idem_entry(path: str, method: str = "POST", **fields: Any) -> dict[str, Any]:
+    return entry(
+        method,
+        path,
+        "permission",
+        permission="user.view",
+        allow=USER_VIEW_ROLES,
+        **fields,
+    )
+
+
+def test_a_matching_idempotency_declaration_reports_nothing():
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.post("/idem/ok", responses=IDEM_DOCS, dependencies=[require("user.view")])
+    async def ok(idem: IdemDep) -> None: ...
+
+    app.include_router(router)
+    matrix = [*DOCS, idem_entry("/idem/ok", idempotency=True)]
+
+    assert check_matrix(app, parse_matrix({"route": matrix})) == []
+
+
+def test_every_planted_idempotency_problem_is_reported():
+    matrix = [
+        *CORRECT,
+        idem_entry("/idem/ok", idempotency=True),
+        idem_entry("/idem/unlisted"),
+        idem_entry("/idem/no-marker", idempotency=True),
+        idem_entry("/idem/undocumented", idempotency=True),
+        idem_entry("/idem/read", method="GET", idempotency=True),
+        entry("POST", "/idem/public", "public", reason="p", rate_limit_exempt="p"),
+        # Entry format problems (no such route).
+        idem_entry("/x/not-a-bool", idempotency="yes"),
+    ]
+
+    problems = check_matrix(idempotency_app(), parse_matrix({"route": matrix}))
+
+    assert problems == sorted(
+        [
+            "POST /idem/unlisted: the route's idempotency is true but the matrix"
+            " says false",
+            "POST /idem/no-marker: the route's idempotency is false but the matrix"
+            " says true",
+            "POST /idem/undocumented: 400 is not documented as ProblemDetails"
+            " (pass IDEMPOTENCY_RESPONSES)",
+            "POST /idem/undocumented: 422 is not documented as ProblemDetails"
+            " (pass IDEMPOTENCY_RESPONSES)",
+            "GET /idem/read: idempotent() is only for POST, PUT, PATCH and DELETE",
+            "GET /idem/read: idempotency is only for POST, PUT, PATCH and DELETE",
+            "POST /idem/public: a public route cannot declare idempotent()",
+            "POST /idem/public: the route's idempotency is true but the matrix"
+            " says false",
+            "POST /x/not-a-bool: idempotency must be true or false",
+            "POST /x/not-a-bool: stale entry (no such route)",
+        ]
+    )
+
+
+def test_an_idempotency_flag_on_a_public_entry_is_reported():
+    matrix = [
+        *DOCS,
+        entry("POST", "/x/p", "public", reason="p", idempotency=True),
+    ]
+
+    problems = check_matrix(FastAPI(), parse_matrix({"route": matrix}))
+
+    assert "POST /x/p: idempotency is never on a public entry" in problems
+
+
+def test_the_sample_app_has_an_idempotent_route():
+    entries = {e.key: e for e in parse_matrix(SAMPLE_MATRIX)}
+
+    assert [key for key, e in entries.items() if e.is_idempotent] == [
+        ("POST", "/sample/charges/{account_id}")
+    ]
+
+
+def test_the_real_matrix_has_no_idempotent_route_yet():
+    # #94/#96 add the first ones together with their routes.
+    assert not [e.label for e in load_matrix() if e.is_idempotent]
